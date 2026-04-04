@@ -70,7 +70,7 @@ document.getElementById('verifyBtn').addEventListener('click', function() {
   }
 });
 
-// Resend OTP
+// Resend OTPcmd
 document.getElementById('resendLink').addEventListener('click', function(e) {
   e.preventDefault();
   if (currentEmail) {
