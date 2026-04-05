@@ -7,11 +7,85 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-        * { font-family: 'Inter', sans-serif; }
-        .sidebar { background-color: #621708; }
-        .card-shadow { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); }
-        .nav-item:hover { background-color: #8c2a10; }
-        .nav-item.active { background-color: #8c2a10; border-left: 4px solid #f5e8c7; }
+        
+        * { 
+            font-family: 'Inter', sans-serif; 
+        }
+
+        .sidebar { 
+            background-color: #621708; 
+        }
+
+        .card-shadow { 
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        }
+
+        .nav-item:hover { 
+            background-color: #8c2a10; 
+        }
+        .nav-item.active { 
+            background-color: #8c2a10; 
+            border-left: 4px solid #f5e8c7; 
+        }
+
+        /* Fixed status badge styling */
+        .status-badge {
+            min-width: 92px;
+            text-align: center;
+            padding: 4px 16px;
+        }
+
+        .add-faculty-modal-content {
+            max-height: 82vh;
+            overflow-y: auto;
+        }
+
+        /* ============== LESS VISIBLE SCROLLBARS (Consistent across pages) ============== */
+        /* Sidebar scroll area - Clean & subtle like the Dashboard */
+        .sidebar .flex-1.overflow-y-auto {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.15) transparent;
+        }
+
+        .sidebar .flex-1.overflow-y-auto::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        .sidebar .flex-1.overflow-y-auto::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar .flex-1.overflow-y-auto::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.15);
+            border-radius: 20px;
+        }
+
+        .sidebar .flex-1.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* Modal scroll area */
+        .add-faculty-modal-content {
+            scrollbar-width: thin;
+            scrollbar-color: #d1d5db transparent;
+        }
+
+        .add-faculty-modal-content::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .add-faculty-modal-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .add-faculty-modal-content::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 20px;
+        }
+
+        .add-faculty-modal-content::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -47,7 +121,7 @@
                 <h1 class="text-3xl font-semibold text-gray-900">Faculty Profiles</h1>
                 <p class="text-gray-500 text-sm">Manage faculty members and their information</p>
             </div>
-            <button onclick="addNewFaculty()" 
+            <button onclick="openAddFacultyModal()" 
                     class="bg-[#621708] text-white px-6 py-3 rounded-3xl flex items-center gap-x-2 hover:bg-[#8c2a10]">
                 <span class="text-xl">+</span> Add Faculty
             </button>
@@ -61,11 +135,11 @@
             </div>
             <div class="bg-white rounded-3xl p-6 text-center card-shadow">
                 <div class="text-sm text-gray-500">Active Faculty</div>
-                <div id="active-faculty" class="text-6xl font-semibold text-emerald-600">4</div>
+                <div id="active-faculty" class="text-6xl font-semibold text-black-600">4</div>
             </div>
             <div class="bg-white rounded-3xl p-6 text-center card-shadow">
                 <div class="text-sm text-gray-500">On Leave</div>
-                <div id="onleave-faculty" class="text-6xl font-semibold text-amber-500">1</div>
+                <div id="onleave-faculty" class="text-6xl font-semibold text-black-500">1</div>
             </div>
         </div>
 
@@ -101,6 +175,190 @@
     </div>
 </div>
 
+<!-- ==================== ADD FACULTY MODAL ==================== -->
+<div id="add-faculty-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div class="bg-white rounded-3xl w-full max-w-4xl mx-4 card-shadow overflow-hidden">
+        <div class="bg-[#621708] text-white px-8 py-5 flex items-center justify-between">
+            <h2 class="text-2xl font-semibold">Add New Faculty Member</h2>
+            <button onclick="closeAddFacultyModal()" class="text-white text-3xl leading-none">×</button>
+        </div>
+
+        <div class="add-faculty-modal-content p-8 max-h-[82vh] overflow-y-auto">
+            <!-- Faculty Profile Header -->
+            <div class="grid grid-cols-5 gap-6 mb-12">
+                <div class="col-span-1">
+                    <div onclick="uploadPhoto()" class="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center text-6xl mx-auto cursor-pointer hover:bg-gray-300 transition-colors">
+                        👤
+                    </div>
+                    <p class="text-center text-xs text-gray-500 mt-3">Click to upload photo</p>
+                </div>
+
+                <div class="col-span-4 grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">First Name</label>
+                        <input type="text" placeholder="Enter First Name" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Middle Name</label>
+                        <input type="text" placeholder="Enter Middle Name" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Last Name</label>
+                        <input type="text" placeholder="Enter Last Name" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Date Hired</label>
+                        <input type="date" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Phone Number</label>
+                        <input type="tel" placeholder="+63" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Email Address</label>
+                        <input type="email" placeholder="Enter Email Address" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-sm text-gray-600 mb-1">Address</label>
+                        <input type="text" placeholder="Enter Address" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]">
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-8">
+                <!-- General Information -->
+                <div>
+                    <h3 class="font-semibold mb-5">General Information</h3>
+                    <div class="space-y-6">
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Employee ID</label>
+                                <input type="text" placeholder="Enter Employee ID" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Academic Rank</label>
+                                <select class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                                    <option value="">Select Academic Rank</option>
+                                    <option>Bachelor's Degree</option>
+                                    <option>Master's Degree</option>
+                                    <option>Doctoral Degree</option>
+                                    <option>Professional Degree</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Access Role</label>
+                                <select class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                                    <option value="">Select Access Role</option>
+                                    <option>Faculty</option>
+                                    <option>Admin</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Department</label>
+                                <select class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                                    <option value="">Select Department</option>
+                                    <option>BSIT</option>
+                                    <option>BIT</option>
+                                    <option>BSIE</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Shift</label>
+                                <select class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                                    <option value="">Select Shift</option>
+                                    <option>Morning</option>
+                                    <option>Afternoon</option>
+                                    <option>Night</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Teaching Status</label>
+                                <select class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                                    <option value="">Select Teaching Status</option>
+                                    <option>Active</option>
+                                    <option>Inactive</option>
+                                    <option>Leave/Retired</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Years in Service</label>
+                            <input id="years-input" type="number" value="0" min="0" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contract Information -->
+                <div>
+                    <h3 class="font-semibold mb-5">Contract Information</h3>
+                    <div class="space-y-6">
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Work Type</label>
+                                <select class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                                    <option value="">Select Work Type</option>
+                                    <option>Full-Time</option>
+                                    <option>Part-Time</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Employment Type</label>
+                                <select class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                                    <option value="">Select Employment Type</option>
+                                    <option>Regular</option>
+                                    <option>Contractual</option>
+                                    <option>Non-Teaching</option>
+                                    <option>Part-Time Faculty</option>
+                                    <option>Administrative</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Start Date</label>
+                                <input type="date" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">End Date</label>
+                                <input type="date" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Salary</label>
+                                <input type="text" placeholder="₱" class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-600 mb-1">Renewal</label>
+                                <select class="w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm">
+                                    <option value="">Select Renewal</option>
+                                    <option>Yes</option>
+                                    <option>No</option>
+                                    <option>N/A</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t px-8 py-6 flex justify-end gap-4 bg-white">
+            <button onclick="closeAddFacultyModal()" class="px-8 py-3 border border-gray-300 rounded-2xl text-sm font-medium">Cancel</button>
+            <button onclick="saveFaculty()" class="px-8 py-3 bg-[#621708] text-white rounded-2xl text-sm font-medium">Save Profile</button>
+        </div>
+    </div>
+</div>
+
 <script>
     let facultyData = [
         {id:1, name:"Maria Santos", position:"Associate Professor", status:"Active", department:"BSIT", email:"maria.santos@cite.edu", phone:"+63 912 345 6789"},
@@ -114,10 +372,13 @@
         const grid = document.getElementById('faculty-grid');
         grid.innerHTML = '';
         data.forEach(f => {
-            const statusClass = f.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+            const statusClass = f.status === 'Active' ? 
+                'bg-emerald-100 text-emerald-700' : 
+                'bg-amber-100 text-amber-700';
+
             const html = `
             <div class="bg-white rounded-3xl p-6 card-shadow hover:shadow-xl transition-all">
-                <div class="flex justify-between">
+                <div class="flex justify-between items-start">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-3xl">👤</div>
                         <div>
@@ -125,7 +386,9 @@
                             <div class="text-sm text-gray-500">${f.position}</div>
                         </div>
                     </div>
-                    <span class="px-4 py-1 text-xs font-medium rounded-3xl ${statusClass}">${f.status}</span>
+                    <span class="status-badge px-4 py-1 text-xs font-medium rounded-3xl ${statusClass}">
+                        ${f.status}
+                    </span>
                 </div>
                 <div class="mt-6 space-y-2 text-sm">
                     <div class="flex justify-between"><span class="text-gray-500">Email</span><span class="text-[#621708]">${f.email}</span></div>
@@ -154,20 +417,24 @@
         renderFacultyCards(filtered);
     }
 
-    function addNewFaculty() {
-        const name = prompt("Enter new faculty full name:");
-        if (!name) return;
-        const newF = {
-            id: Date.now(),
-            name: name,
-            position: "Instructor",
-            status: "Active",
-            department: "BSIT",
-            email: name.toLowerCase().replace(" ",".") + "@cite.edu",
-            phone: "+63 900 000 0000"
-        };
-        facultyData.unshift(newF);
-        renderFacultyCards(facultyData);
+    // ==================== ADD FACULTY MODAL FUNCTIONS ====================
+    function openAddFacultyModal() {
+        document.getElementById('add-faculty-modal').classList.remove('hidden');
+    }
+
+    function closeAddFacultyModal() {
+        document.getElementById('add-faculty-modal').classList.add('hidden');
+    }
+
+    function uploadPhoto() {
+        alert("📸 Photo upload dialog would open here");
+    }
+
+    function saveFaculty() {
+        if (confirm("Save this new faculty member?")) {
+            alert("✅ Faculty member has been successfully added!");
+            closeAddFacultyModal();
+        }
     }
 
     window.onload = () => {
