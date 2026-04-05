@@ -4,25 +4,23 @@ const path = require("path");
 const app = express();
 const PORT = 3000;
 
-// ====================== STATIC FILE SERVING ======================
-// Serve everything inside the frontend folder at the root level
+// ================= STATIC FILES =================
+// Serve all files in frontend folder (for CSS, images, JS files, etc.)
 app.use(express.static(path.join(__dirname, "components", "frontend")));
 
-// Optional: Also serve the admin folder directly (helps with cleaner URLs)
+// Optional: Also serve admin folder directly under /admin (useful for future)
 app.use("/admin", express.static(path.join(__dirname, "components", "frontend", "admin")));
 
-// ====================== CUSTOM ROUTES ======================
+// ================= CUSTOM ROUTES =================
 
-// Default route → Login page
+// Home → Login
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "components", "frontend", "login.html"));
 });
 
-// Admin Dashboard (clean URL: http://localhost:3000/dashboard)
+// Dashboard (clean URL)
 app.get("/dashboard", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "dashboard.html")
-  );
+  res.sendFile(path.join(__dirname, "components", "frontend", "admin", "dashboard.html"));
 });
 
 // Redirect /admin → dashboard
@@ -30,74 +28,46 @@ app.get("/admin", (req, res) => {
   res.redirect("/dashboard");
 });
 
-// ====================== ADMIN PAGE ROUTES (Clean URLs) ======================
-// These allow you to use nice URLs like /faculty-profiles instead of /admin/faculty-profiles.html
+// ================= CLEAN ADMIN ROUTES =================
+const adminPages = [
+  "faculty-profiles",
+  "workload-tracker",
+  "engagement-logs",
+  "document-vault",
+  "workflow-approval",
+  "calendar",
+  "reports-analytics",
+  "system-settings",
+  "user-management",
+  "admin-profile"        
+];
 
-app.get("/faculty-profiles", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "faculty-profiles.html")
-  );
+adminPages.forEach(page => {
+  app.get(`/${page}`, (req, res) => {
+    const filePath = path.join(__dirname, "components", "frontend", "admin", `${page}.html`);
+    
+    console.log("Serving:", filePath);
+    
+    res.sendFile(filePath, (err) => {
+      if (err) {
+        console.error(`Error serving ${page}.html:`, err.message);
+        res.status(404).send(`404 - ${page}.html not found`);
+      }
+    });
+  });
 });
 
-app.get("/workload-tracker", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "workload-tracker.html")
-  );
-});
-
-app.get("/engagement-logs", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "engagement-logs.html")
-  );
-});
-
-app.get("/document-vault", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "document-vault.html")
-  );
-});
-
-app.get("/workflow-approval", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "workflow-approval.html")
-  );
-});
-
-app.get("/calendar", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "calendar.html")
-  );
-});
-
-app.get("/reports-analytics", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "reports-analytics.html")
-  );
-});
-
-app.get("/system-settings", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "system-settings.html")
-  );
-});
-
-app.get("/user-management", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "components", "frontend", "admin", "user-management.html")
-  );
-});
-
-// ====================== 404 HANDLER ======================
+// ================= 404 HANDLER =================
 app.use((req, res) => {
   res.status(404).send(`
     <h1>404 - Page Not Found</h1>
-    <p>The page you're looking for doesn't exist.</p>
-    <a href="/dashboard">Go back to Dashboard</a>
+    <p>The page you are looking for does not exist.</p>
+    <a href="/dashboard" style="color: #621708;">← Go back to Dashboard</a>
   `);
 });
 
-// ====================== START SERVER ======================
+// ================= START SERVER =================
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`✅ Server is running at http://localhost:${PORT}`);
   console.log(`   Dashboard → http://localhost:${PORT}/dashboard`);
 });
