@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar - CITE-Flow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        * { font-family: 'Inter', sans-serif; }
+        
+        .sidebar { 
+            background-color: #621708; 
+            width: 280px;
+        }
+        
+        .nav-item { 
+            transition: all 0.2s ease; 
+        }
+        .nav-item:hover { 
+            background-color: #8c2a10; 
+        }
+        .nav-item.active { 
+            background-color: #8c2a10; 
+            border-left: 4px solid #f5e8c7; 
+        }
+        .nav-item.active:hover {
+            background-color: #9c3a1f;
+        }
+
+        .section-header {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            opacity: 0.75;
+            padding-left: 20px;
+            margin-bottom: 8px;
+        }
+
+        .sidebar-scroll::-webkit-scrollbar { 
+            width: 4px; 
+        }
+        .sidebar-scroll::-webkit-scrollbar-thumb { 
+            background-color: rgba(255,255,255,0.3); 
+            border-radius: 20px; 
+        }
+        .sidebar-scroll::-webkit-scrollbar-thumb:hover { 
+            background-color: rgba(255,255,255,0.5); 
+        }
+
+        .nav-icon {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* Glassmorphic Compact Calendar */
+        .calendar-day {
+            min-height: 92px;
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(98, 23, 8, 0.15);
+            border-radius: 16px;
+            padding: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+        }
+        
+        .calendar-day:hover {
+            background: rgba(255, 255, 255, 0.95);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 25px rgba(98, 23, 8, 0.18);
+        }
+
+        .calendar-day.today {
+            background: rgba(254, 243, 242, 0.9);
+            border: 2px solid #621708;
+            box-shadow: 0 0 0 4px rgba(98, 23, 8, 0.1);
+        }
+
+        .calendar-day.other-month {
+            opacity: 0.45;
+        }
+
+        .day-number {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #444;
+        }
+
+        .calendar-day.today .day-number {
+            color: #621708;
+        }
+
+        .event-item {
+            font-size: 9.5px;
+            padding: 3px 7px;
+            border-radius: 6px;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 500;
+        }
+
+        .card-shadow { 
+            box-shadow: 0 15px 35px -10px rgb(0 0 0 / 0.1); 
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+<div class="flex h-screen overflow-hidden">
+    <!-- SIDEBAR (Unchanged) -->
+    <div class="sidebar text-white flex flex-col h-full">
+        <!-- Logo -->
+        <div onclick="window.location.href='/dashboard'" 
+             class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
+            <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3">
+            <div class="text-center">
+                <div class="font-semibold text-base leading-tight">College of Technology</div>
+                <div class="font-semibold text-base leading-tight">and Engineering</div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
+            <!-- FACULTIES & PROFILES -->
+            <div>
+                <div class="section-header text-white/70">FACULTIES & PROFILES</div>
+                <div onclick="window.location.href='/faculty-profiles'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Faculty Profiles
+                </div>
+                <div onclick="window.location.href='/workload-tracker'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                    Workload Tracker
+                </div>
+                <div onclick="window.location.href='/engagement-logs'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
+                    Engagement Logs
+                </div>
+            </div>
+
+            <!-- DOCUMENT MANAGEMENT -->
+            <div>
+                <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
+                <div onclick="window.location.href='/document-vault'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                    Document Vault
+                </div>
+                <div onclick="window.location.href='/workflow-approval'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
+                    Workflow Approval
+                </div>
+            </div>
+
+            <!-- EVENTS -->
+            <div>
+                <div class="section-header text-white/70">EVENTS</div>
+                <div onclick="window.location.href='/calendar'" 
+                     class="nav-item active flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    Calendar
+                </div>
+            </div>
+
+            <!-- ADMINISTRATION -->
+            <div>
+                <div class="section-header text-white/70">ADMINISTRATION</div>
+                <div onclick="window.location.href='/reports-analytics'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
+                    Reports and Analytics
+                </div>
+                <div onclick="window.location.href='/system-settings'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    System Settings
+                </div>
+                <div onclick="window.location.href='/user-management'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    User Management
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Profile -->
+        <div onclick="window.location.href = '/admin/admin-profile.html'" 
+             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
+            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
+            <div class="flex-1 min-w-0">
+                <div class="font-semibold text-sm truncate">PROFILE NAME</div>
+                <div class="text-xs text-white/70">Administrator</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="flex-1 overflow-y-auto p-8">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-semibold text-gray-800">Calendar</h1>
+                    <p class="text-gray-500">Manage academic events and schedules</p>
+                </div>
+                <button onclick="showAddEventModal()" 
+                        class="bg-[#621708] hover:bg-[#8c2a10] text-white px-7 py-3 rounded-3xl flex items-center gap-x-2 font-medium transition-all active:scale-95">
+                    + Add Event
+                </button>
+            </div>
+
+            <div class="grid grid-cols-12 gap-8">
+                <!-- Glassmorphic Calendar -->
+                <div class="col-span-7">
+                    <div class="flex items-center justify-between mb-6">
+                        <button onclick="prevMonth()" 
+                                class="bg-white border border-gray-200 px-6 py-3 rounded-2xl hover:bg-gray-50 transition-colors">← Previous</button>
+                        <div class="text-center">
+                            <span id="currentMonth" class="text-3xl font-semibold text-gray-800"></span>
+                            <span id="currentYear" class="text-3xl font-semibold text-gray-600 ml-3"></span>
+                        </div>
+                        <button onclick="nextMonth()" 
+                                class="bg-white border border-gray-200 px-6 py-3 rounded-2xl hover:bg-gray-50 transition-colors">Next →</button>
+                    </div>
+
+                    <div class="bg-white/70 backdrop-blur-xl rounded-3xl p-6 card-shadow border border-white/60">
+                        <div class="grid grid-cols-7 gap-3" id="calendarGrid"></div>
+                    </div>
+                </div>
+
+                <!-- Upcoming Events -->
+                <div class="col-span-5">
+                    <h2 class="text-xl font-semibold mb-5 flex items-center gap-2">
+                        <span>📅</span> Upcoming Events
+                    </h2>
+                    <div id="upcomingEvents" class="bg-white rounded-3xl p-6 card-shadow space-y-4 max-h-[520px] overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Modal -->
+<div id="eventModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div class="modal-content bg-white rounded-3xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col" overflow= "hidden">
+        <div class="px-6 py-4 bg-gradient-to-r from-[#621708] to-[#8c2a10] text-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+
+                <div class="text-3xl">📅</div>
+                <h3 id="modalTitle" class="text-2xl font-semibold">New Event</h3>
+            </div>
+            <button onclick="hideEventModal()" class="text-4xl leading-none hover:text-white/70">×</button>
+        </div>
+
+        <div class="p-8 space-y-6 overflow-y-auto">
+            <input type="hidden" id="eventId">
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Event Title</label>
+                <input id="eventTitle" type="text" 
+                       class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708] text-lg"
+                       placeholder="Faculty Meeting">
+            </div>
+
+            <div class="grid grid-cols-2 gap-5">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                    <input id="eventDate" type="date" 
+                           class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Time</label>
+                    <input id="eventTime" type="time" 
+                           class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+                <select id="eventType" class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
+                    <option value="meeting">Faculty Meeting</option>
+                    <option value="exam">Examination</option>
+                    <option value="defense">Research Defense</option>
+                    <option value="seminar">Seminar / Workshop</option>
+                    <option value="holiday">Holiday / Break</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea id="eventDesc" rows="3" 
+                          class="w-full border border-gray-300 rounded-3xl px-5 py-4 focus:outline-none focus:border-[#621708]"></textarea>
+            </div>
+        </div>
+
+        
+
+        <div class="px-8 py-6 border-t bg-gray-50 flex justify-between">
+            <button id="deleteBtn" onclick="deleteCurrentEvent()" 
+                    class="hidden px-6 py-3 text-red-600 hover:bg-red-50 rounded-2xl">Delete Event</button>
+            <div class="flex gap-3 ml-auto">
+                <button onclick="hideEventModal()" class="px-8 py-3 text-gray-600 hover:bg-gray-100 rounded-2xl">Cancel</button>
+                <button onclick="handleEditClick()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-10 py-3 rounded-2xl">
+    Save Event
+</button></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// JavaScript
+let currentDate = new Date(2026, 2, 1);
+let events = [];
+let currentEditingId = null;
+
+function loadEvents() {
+    const saved = localStorage.getItem('citeCalendarEvents');
+    if (saved) events = JSON.parse(saved);
+    else {
+        events = [
+            { id: 1, title: "Faculty Meeting", date: "2026-03-10", time: "09:00", type: "meeting", color: "#3b82f6", desc: "" },
+            { id: 2, title: "University Foundation Day", date: "2026-03-21", time: "08:00", type: "holiday", color: "#10b981", desc: "" }
+        ];
+        saveEvents();
+    }
+}
+function setFormReadOnly(isReadOnly) {
+    document.getElementById('eventTitle').readOnly = isReadOnly;
+    document.getElementById('eventDate').readOnly = isReadOnly;
+    document.getElementById('eventTime').readOnly = isReadOnly;
+    document.getElementById('eventType').disabled = isReadOnly;
+    document.getElementById('eventDesc').readOnly = isReadOnly;
+}
+function setFormReadOnly(isReadOnly) {
+    const inputs = document.querySelectorAll('#eventModal input, #eventModal textarea, #eventModal select');
+
+    inputs.forEach(input => {
+        input.disabled = isReadOnly;
+    });
+}
+function saveEvents() {
+    localStorage.setItem('citeCalendarEvents', JSON.stringify(events));
+}
+
+function renderCalendar() {
+    const grid = document.getElementById('calendarGrid');
+    grid.innerHTML = '';
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+
+    const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    document.getElementById('currentMonth').textContent = monthNames[month];
+    document.getElementById('currentYear').textContent = year;
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Empty slots
+    for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement('div');
+        empty.className = "calendar-day other-month";
+        grid.appendChild(empty);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const dayEvents = events.filter(e => e.date === dateStr);
+        const isToday = dateStr === todayStr;
+
+        const div = document.createElement('div');
+        div.className = `calendar-day ${isToday ? 'today' : ''}`;
+
+        let html = `<div class="day-number">${day}</div>`;
+
+        if (dayEvents.length > 0) {
+            html += `<div class="mt-3 space-y-1">`;
+            dayEvents.slice(0, 2).forEach(event => {
+                html += `<div class="event-item text-white" style="background-color: ${event.color}">${event.title}</div>`;
+            });
+            html += `</div>`;
+        }
+
+        div.innerHTML = html;
+        div.onclick = () => showEventsForDate(dateStr);
+        grid.appendChild(div);
+    }
+}
+function handleEditClick() {
+    if (document.getElementById('eventTitle').readOnly) {
+        // SWITCH TO EDIT MODE
+        setFormReadOnly(false);
+        document.getElementById('modalTitle').textContent = "Edit Event";
+        document.querySelector('#eventModal button.bg-\\[\\#621708\\]').textContent = "Save";
+    } else {
+        // SAVE
+        saveEvent();
+    }
+}
+function deleteCurrentEvent() {
+    if (!currentEditingId) return;
+
+    const confirmDelete = confirm("Are you sure you want to delete this event?");
+    if (!confirmDelete) return;
+
+    events = events.filter(e => e.id != currentEditingId);
+
+    saveEvents();
+    hideEventModal();
+    renderCalendar();
+}
+
+function showAddEventModal() {
+    resetModal();
+    document.getElementById('modalTitle').textContent = "Add New Event";
+    document.getElementById('deleteBtn').classList.add('hidden');
+    document.getElementById('eventModal').classList.remove('hidden');
+    document.getElementById('eventDate').value = new Date().toISOString().split('T')[0];
+}
+
+function showAddEventModalWithDate(dateStr) {
+    resetModal();
+    document.getElementById('modalTitle').textContent = "Add New Event";
+    document.getElementById('deleteBtn').classList.add('hidden');
+    document.getElementById('eventModal').classList.remove('hidden');
+    document.getElementById('eventDate').value = dateStr;
+}
+
+function resetModal() {
+    currentEditingId = null;
+    document.getElementById('eventTitle').value = '';
+    document.getElementById('eventDate').value = '';
+    document.getElementById('eventTime').value = '';
+    document.getElementById('eventType').value = 'meeting';
+    document.getElementById('eventDesc').value = '';
+}
+
+function hideEventModal() {
+    document.getElementById('eventModal').classList.add('hidden');
+
+    // Restore footer
+    document.querySelector('#eventModal .border-t').style.display = "flex";
+
+    // Reload page to reset modal content (simple fix)
+    location.reload();
+}
+
+function saveEvent() {
+    const title = document.getElementById('eventTitle').value.trim();
+    const date = document.getElementById('eventDate').value;
+    const time = document.getElementById('eventTime').value || "08:00";
+    const type = document.getElementById('eventType').value;
+    const desc = document.getElementById('eventDesc').value.trim();
+
+    if (!title || !date) {
+        alert("Event Title and Date are required.");
+        return;
+    }
+
+    const colorMap = {
+        meeting: "#3b82f6",
+        exam: "#ef4444",
+        defense: "#8b5cf6",
+        seminar: "#14b8a6",
+        holiday: "#10b981",
+        other: "#6b7280"
+    };
+
+    if (currentEditingId) {
+        // UPDATE EXISTING
+        const event = events.find(e => e.id == currentEditingId);
+        if (event) {
+            event.title = title;
+            event.date = date;
+            event.time = time;
+            event.type = type;
+            event.desc = desc;
+            event.color = colorMap[type];
+        }
+    } else {
+        // ADD NEW
+        events.push({
+            id: Date.now(),
+            title, date, time, type,
+            color: colorMap[type],
+            desc
+        });
+    }
+
+    saveEvents();
+    hideEventModal();
+    renderCalendar();
+}
+function deleteCurrentEvent() {
+    if (!currentEditingId) return;
+
+    const confirmDelete = confirm("Delete this event?");
+    if (!confirmDelete) return;
+
+    events = events.filter(e => e.id != currentEditingId);
+
+    saveEvents();
+    hideEventModal();
+    renderCalendar();
+}
+
+function prevMonth() {
+    currentDate.setMonth(currentDate.getMonth() - 1);
+    renderCalendar();
+}
+
+function nextMonth() {
+    currentDate.setMonth(currentDate.getMonth() + 1);
+    renderCalendar();
+}
+
+function editEvent(id) {
+    const event = events.find(e => e.id == id);
+    if (!event) return;
+
+    currentEditingId = id;
+
+    document.getElementById('modalTitle').textContent = "Edit Event";
+    document.getElementById('deleteBtn').classList.remove('hidden');
+
+    document.querySelector('#eventModal .p-8').innerHTML = `
+        <div class="space-y-6">
+            <input id="eventTitle" value="${event.title}" class="w-full border rounded-xl px-4 py-3">
+            <input id="eventDate" type="date" value="${event.date}" class="w-full border rounded-xl px-4 py-3">
+            <input id="eventTime" type="time" value="${event.time}" class="w-full border rounded-xl px-4 py-3">
+            <textarea id="eventDesc" class="w-full border rounded-xl px-4 py-3">${event.desc || ''}</textarea>
+        </div>
+    `;
+}
+function openEditEvent(id) {
+    const event = events.find(e => e.id == id);
+    if (!event) return;
+
+    currentEditingId = id;
+
+    document.getElementById('modalTitle').textContent = "Edit Event";
+
+    document.getElementById('eventTitle').value = event.title;
+    document.getElementById('eventDate').value = event.date;
+    document.getElementById('eventTime').value = event.time;
+    document.getElementById('eventType').value = event.type;
+    document.getElementById('eventDesc').value = event.desc || '';
+
+    setFormReadOnly(false);
+
+    document.querySelector('#eventModal .border-t').style.display = "flex";
+    document.getElementById('deleteBtn').classList.remove('hidden');
+
+    document.getElementById('eventModal').classList.remove('hidden');
+}
+
+function showEventsForDate(dateStr) {
+    const dayEvents = events.filter(e => e.date === dateStr);
+
+    if (dayEvents.length === 0) {
+        alert("No events for this date.");
+        return;
+    }
+
+    const event = dayEvents[0];
+
+    currentEditingId = event.id;
+
+    document.getElementById('modalTitle').textContent = "Event Details";
+
+    document.getElementById('eventTitle').value = event.title;
+    document.getElementById('eventDate').value = event.date;
+    document.getElementById('eventTime').value = event.time;
+    document.getElementById('eventType').value = event.type;
+    document.getElementById('eventDesc').value = event.desc || '';
+
+    // READONLY
+    setFormReadOnly(true);
+
+    // SHOW footer buttons
+    document.querySelector('#eventModal .border-t').style.display = "flex";
+    document.getElementById('deleteBtn').classList.remove('hidden');
+
+    // CHANGE SAVE BUTTON → EDIT
+    document.querySelector('#eventModal button.bg-\\[\\#621708\\]').textContent = "Edit";
+
+    document.getElementById('eventModal').classList.remove('hidden');
+}
+// Initialize
+window.onload = () => {
+    loadEvents();
+    renderCalendar();
+};
+</script>
+</body>
+</html>
