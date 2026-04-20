@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>CTU – Login</title>
+  <title>CTU – Faculty Login</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -162,8 +162,8 @@
     }
 
     .input-box:focus-within {
-      border-color: #9c2f1f;
-      outline: 3px solid rgba(156,47,31,0.1);
+      border-color: #1e40af;
+      outline: 3px solid rgba(30,64,175,0.1);
       outline-offset: 1px;
     }
 
@@ -171,7 +171,7 @@
       width: clamp(2.125rem, 2.5vw, 2.375rem);
       height: clamp(2.125rem, 2.5vw, 2.375rem);
       background: transparent;
-      color: #9c2f1f;
+      color: #1e40af;
       border-radius: 8px;
       display: flex;
       align-items: center;
@@ -239,7 +239,7 @@
       width: 100%;
       height: clamp(2.8125rem, 3vw, 3.125rem);
       margin-top: clamp(1.125rem, 2vw, 1.5rem);
-      background: #9c2f1f;
+      background: #1e40af;
       color: white;
       border: none;
       border-radius: 0.75rem;
@@ -250,30 +250,12 @@
     }
 
     .login-btn:hover {
-      background: #84261a;
+      background: #1e3a8a;
     }
 
     .login-btn:disabled {
       background: #ccc;
       cursor: not-allowed;
-    }
-
-    /* Register Text */
-    .register-text {
-      text-align: center;
-      margin-top: 1rem;
-      font-size: 0.8125rem;
-      color: #555;
-    }
-
-    .register-text a {
-      color: #000;
-      font-weight: 600;
-      text-decoration: none;
-    }
-
-    .register-text a:hover {
-      text-decoration: underline;
     }
 
     .department-logos {
@@ -300,6 +282,25 @@
     .error { background: #f8d7da; color: #721c24; }
 
     @media (max-width: 1024px) {
+      .layout {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        padding: 40px 0;
+      }
+
+      .image-wrapper {
+        aspect-ratio: 16 / 9;
+        max-height: 50vh;
+        min-height: 320px;
+        border-radius: 28px;
+      }
+
+      .image-area img {
+        clip-path: none;
+        border-radius: 28px;
+      }
+
       .faculty-icon {
         top: 20px;
         right: 20px;
@@ -346,7 +347,7 @@
   </svg>
 
   <!-- Faculty Icon (Top Right) -->
-  <div class="faculty-icon" id="facultyIcon" title="Switch to Faculty Login">
+  <div class="faculty-icon" id="facultyIcon" title="Switch to Admin Login">
     <i class="fas fa-chalkboard-teacher"></i>
   </div>
 
@@ -362,15 +363,15 @@
 
       <img src="ctu-logo.png" alt="CTU logo" class="logo">
 
-      <h1>Welcome Back!</h1>
-      <div class="subtitle">Access your CiteFlow account</div>
+      <h1>Welcome Back, Faculty!</h1>
+      <div class="subtitle">Sign in to access your faculty dashboard</div>
 
       <form id="loginForm">
         <div class="field">
           <label>Email</label>
           <div class="input-box">
             <div class="icon-square"><i class="far fa-envelope"></i></div>
-            <input type="email" id="email" placeholder="name@citeflow.edu.ph" required autocomplete="email">
+            <input type="email" id="email" placeholder="faculty@citeflow.edu.ph" required autocomplete="email">
           </div>
         </div>
 
@@ -393,15 +394,12 @@
           <a href="forgot.html" class="forgot-link">Forgot password?</a>
         </div>
 
-        <button type="submit" id="loginBtn" class="login-btn">Login</button>
+        <button type="submit" id="loginBtn" class="login-btn">Login as Faculty</button>
 
         <div id="message" class="message" style="display:none;"></div>
       </form>
 
-      <!-- Register Text - Brought Back -->
-      <div class="register-text">
-        Don't have an account? <a href="register.html">Register</a>
-      </div>
+      <!-- Register section removed as requested -->
 
       <div class="department-logos">
         <img src="bit_logo.png" alt="BIT Logo" class="dept-logo">
@@ -441,14 +439,14 @@
         });
       });
 
-      // Faculty Icon Click
+      // Faculty Icon Click - Redirect to Admin Login
       const facultyIcon = document.getElementById('facultyIcon');
       facultyIcon.addEventListener('click', function() {
-        window.location.href = 'faculty-login.html';
+        window.location.href = 'login.html';
       });
     });
 
-    // Login Form Handler
+    // Login Form Handler with Faculty Profile Check
     const loginForm = document.getElementById('loginForm');
     const loginBtn = document.getElementById('loginBtn');
     const messageDiv = document.getElementById('message');
@@ -458,12 +456,13 @@
       messageDiv.style.display = 'none';
 
       loginBtn.disabled = true;
-      loginBtn.textContent = 'Logging in...';
+      loginBtn.textContent = 'Signing in...';
 
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
 
       try {
+        // Step 1: Sign in with Supabase Auth
         const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
           email: email,
           password: password
@@ -471,7 +470,27 @@
 
         if (authError) throw authError;
 
-        window.location.href = 'admin/faculty-profiles.html';
+        const user = authData.user;
+
+        // Step 2: Check if user exists in faculty_profiles table
+        const { data: profile, error: profileError } = await supabaseClient
+          .from('faculty_profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError || !profile) {
+          await supabaseClient.auth.signOut();
+          throw new Error('This account is not registered as a faculty member. Please contact the administrator.');
+        }
+
+        // Successful faculty login
+        showMessage(`Welcome back, ${profile.full_name}!`, 'success');
+
+        // Redirect to faculty dashboard
+        setTimeout(() => {
+          window.location.href = 'faculty/dashboard.html';
+        }, 800);
 
       } catch (err) {
         console.error('Login Error:', err);
@@ -481,6 +500,8 @@
           msg = 'Incorrect email or password.';
         } else if (err.message.includes('Email not confirmed')) {
           msg = 'Please confirm your email before logging in.';
+        } else if (err.message.includes('not registered as a faculty')) {
+          msg = err.message;
         } else if (err.message.includes('Failed to fetch')) {
           msg = 'Network error. Please check your internet connection.';
         }
@@ -488,7 +509,7 @@
         showMessage(msg, 'error');
       } finally {
         loginBtn.disabled = false;
-        loginBtn.textContent = 'Login';
+        loginBtn.textContent = 'Login as Faculty';
       }
     });
 
