@@ -12,6 +12,9 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" 
         integrity="sha512-x..." crossorigin="anonymous" referrerpolicy="no-referrer" />
 
+  <!-- Supabase JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     * {
       margin: 0;
@@ -46,7 +49,7 @@
       flex-direction: column;
       justify-content: center;
       text-align: center;
-      padding: 40px 0;                    /* Reduced padding */
+      padding: 40px 0;
     }
 
     .brand-logo {
@@ -55,7 +58,7 @@
       border-radius: 50%;
       object-fit: contain;
       background: #efefef;
-      margin: 0 auto 8px;                /* Reduced margin */
+      margin: 0 auto 8px;
       box-shadow: 0 3px 12px rgba(0,0,0,0.07);
     }
 
@@ -69,13 +72,13 @@
     .subtitle {
       font-size: 0.83rem;
       color: #666;
-      margin-bottom: 18px;               /* Reduced */
+      margin-bottom: 18px;
     }
 
     .form-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;                         /* Tighter gap */
+      gap: 10px;
     }
 
     .field {
@@ -90,9 +93,8 @@
       font-weight: 500;
     }
 
-    .input-wrapper,
-    .select-wrapper {
-      height: 42px;                      /* Reduced from 44px */
+    .input-wrapper {
+      height: 42px;
       background: #ffffff;
       border: 1px solid #bbb;
       border-radius: 0.875rem;
@@ -100,16 +102,15 @@
       display: flex;
       align-items: center;
       transition: border-color 0.2s;
+      position: relative;
     }
 
-    .input-wrapper:focus-within,
-    .select-wrapper:focus-within {
+    .input-wrapper:focus-within {
       border-color: #9c2f1f;
       outline: 3px solid rgba(156,47,31,0.1);
     }
 
-    input,
-    select {
+    input {
       flex: 1;
       border: none;
       outline: none;
@@ -123,13 +124,6 @@
       color: #999;
     }
 
-    select {
-      appearance: none;
-      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E") no-repeat right 14px center;
-      background-size: 12px;
-      padding-right: 30px;
-    }
-
     .password-field {
       position: relative;
     }
@@ -140,15 +134,21 @@
       font-size: 1.1rem;
       color: #555;
       cursor: pointer;
-      padding: 0 6px;
-      width: 32px;
-      flex-shrink: 0;
+      padding: 0 8px;
+      position: absolute;
+      right: 10px;
+      display: none;                    /* Hidden by default */
+    }
+
+    .input-wrapper:focus-within .eye-toggle,
+    .password-field input:not(:placeholder-shown) + .eye-toggle {
+      display: block;                   /* Show only when typing or focused */
     }
 
     .create-btn {
       width: 100%;
-      height: 46px;                      /* Reduced from 48px */
-      margin-top: 16px;                  /* Reduced */
+      height: 46px;
+      margin-top: 16px;
       background: #9c2f1f;
       color: white;
       border: none;
@@ -163,12 +163,16 @@
       background: #84261a;
     }
 
+    .create-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
     .login-prompt {
       text-align: center;
-      margin-top: 14px;                  /* Reduced */
+      margin-top: 14px;
       font-size: 0.81rem;
       color: #555;
-      
     }
     .login-prompt a {
       color: #000;
@@ -193,7 +197,6 @@
       object-fit: contain;
     }
 
-    /* Image Section */
     .image-section {
       flex: 1.2;
       display: flex;
@@ -217,6 +220,15 @@
       display: block;
       clip-path: url(#roundedSlantLeft);
     }
+
+    .message {
+      margin-top: 12px;
+      font-size: 0.85rem;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
 
     @media (max-width: 1024px) {
       .signup-layout {
@@ -258,17 +270,7 @@
   <svg width="0" height="0" style="position:absolute">
     <defs>
       <clipPath id="roundedSlantLeft" clipPathUnits="objectBoundingBox">
-        <path d="
-          M 0.14 0.00
-          Q 0.04 0.00 0.07 0.14
-          L 0.22 0.92
-          Q 0.24 1.00 0.34 1.00
-          L 0.90 1.00
-          Q 1.00 1.00 1.00 0.90
-          L 1.00 0.10
-          Q 1.00 0.00 0.90 0.00
-          Z
-        "/>
+        <path d="M 0.14 0.00 Q 0.04 0.00 0.07 0.14 L 0.22 0.92 Q 0.24 1.00 0.34 1.00 L 0.90 1.00 Q 1.00 1.00 1.00 0.90 L 1.00 0.10 Q 1.00 0.00 0.90 0.00 Z"/>
       </clipPath>
     </defs>
   </svg>
@@ -282,42 +284,42 @@
       <h1>Create an account!</h1>
       <div class="subtitle">Create your CiteFlow account</div>
 
-      <form>
+      <form id="signup-form">
 
         <div class="form-grid">
 
           <div class="field">
             <label>First Name</label>
             <div class="input-wrapper">
-              <input type="text" placeholder="Juan" required>
+              <input type="text" id="first-name" placeholder="Juan" required>
             </div>
           </div>
 
           <div class="field">
             <label>Last Name</label>
             <div class="input-wrapper">
-              <input type="text" placeholder="Dela Cruz" required>
+              <input type="text" id="last-name" placeholder="Dela Cruz" required>
             </div>
           </div>
 
           <div class="field">
             <label>Email Address</label>
             <div class="input-wrapper">
-              <input type="email" placeholder="name@ctu.edu.ph" required autocomplete="email">
+              <input type="email" id="email" placeholder="name@ctu.edu.ph" required autocomplete="email">
             </div>
           </div>
 
           <div class="field">
             <label>ID Number</label>
             <div class="input-wrapper">
-              <input type="text" placeholder="2023-00123" required>
+              <input type="text" id="id-number" placeholder="2023-00123" required>
             </div>
           </div>
 
           <div class="field">
             <label>Password</label>
             <div class="input-wrapper password-field">
-              <input type="password" placeholder="••••••••" id="password" required autocomplete="new-password">
+              <input type="password" id="password" placeholder="••••••••" required autocomplete="new-password">
               <button type="button" class="eye-toggle" aria-label="Toggle password visibility">
                 <i class="far fa-eye"></i>
               </button>
@@ -327,7 +329,7 @@
           <div class="field">
             <label>Confirm Password</label>
             <div class="input-wrapper password-field">
-              <input type="password" placeholder="••••••••" id="confirm-password" required autocomplete="new-password">
+              <input type="password" id="confirm-password" placeholder="••••••••" required autocomplete="new-password">
               <button type="button" class="eye-toggle" aria-label="Toggle password visibility">
                 <i class="far fa-eye"></i>
               </button>
@@ -336,31 +338,9 @@
 
         </div>
 
-        <div class="field">
-          <label>Role</label>
-          <div class="select-wrapper">
-            <select required>
-              <option value="" disabled selected>Select your role</option>
-              <option value="faculty">Faculty</option>
-              <option value="staff">Staff</option>
-              <option value="admin">Administrator</option>
-            </select>
-          </div>
-        </div>
+        <button type="submit" id="create-btn" class="create-btn">Create Account</button>
 
-        <div class="field">
-          <label>Department / College</label>
-          <div class="select-wrapper">
-            <select required>
-              <option value="" disabled selected>Select department/college</option>
-              <option value="BSIT">BS Information Technology</option>
-              <option value="BIT">Bachelor Industrial Technology</option>
-              <option value="BSIE">BS Industrial Engineering</option>
-            </select>
-          </div>
-        </div>
-
-        <button type="submit" class="create-btn">Create Account</button>
+        <div id="message" class="message" style="display:none;"></div>
 
         <div class="login-prompt">
           Already have an account? <a href="login.html">Login</a>
@@ -384,6 +364,14 @@
   </div>
 
   <script>
+    // ================== SUPABASE CONFIG ==================
+    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+
+    const { createClient } = supabase;
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    // Password visibility toggle - FIXED
     document.addEventListener('DOMContentLoaded', function() {
       const eyeToggles = document.querySelectorAll('.eye-toggle');
 
@@ -404,6 +392,91 @@
         });
       });
     });
+
+    // Form submission with strong password validation
+    const form = document.getElementById('signup-form');
+    const createBtn = document.getElementById('create-btn');
+    const messageDiv = document.getElementById('message');
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      messageDiv.style.display = 'none';
+
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating account...';
+
+      const firstName = document.getElementById('first-name').value.trim();
+      const lastName = document.getElementById('last-name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const idNumber = document.getElementById('id-number').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
+      if (password !== confirmPassword) {
+        showMessage('Passwords do not match!', 'error');
+        resetButton();
+        return;
+      }
+      if (password.length < 8) {
+        showMessage('Password must be at least 8 characters long.', 'error');
+        resetButton();
+        return;
+      }
+      if (!passwordRegex.test(password)) {
+        showMessage('Password must contain uppercase, lowercase, number & special character.', 'error');
+        resetButton();
+        return;
+      }
+
+      try {
+        const { data, error } = await supabaseClient.auth.signUp({
+          email: email,
+          password: password,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              id_number: idNumber
+            }
+          }
+        });
+
+        if (error) throw error;
+
+        showMessage('Account created successfully! Please check your email (including spam) to confirm your account.', 'success');
+
+        setTimeout(() => {
+          window.location.href = 'login.html';
+        }, 4000);
+
+      } catch (err) {
+        console.error('Signup Error:', err);
+        let msg = 'Failed to create account. Please try again.';
+
+        if (err.message.includes('already registered') || err.message.includes('already exists')) {
+          msg = 'An account with this email already exists. Please login instead.';
+        } else if (err.message.includes('Failed to fetch')) {
+          msg = 'Network error. Please check your internet connection.';
+        }
+
+        showMessage(msg, 'error');
+      } finally {
+        resetButton();
+      }
+    });
+
+    function showMessage(text, type) {
+      messageDiv.textContent = text;
+      messageDiv.className = `message ${type}`;
+      messageDiv.style.display = 'block';
+    }
+
+    function resetButton() {
+      createBtn.disabled = false;
+      createBtn.textContent = 'Create Account';
+    }
   </script>
 
 </body>
