@@ -6,21 +6,21 @@ const PORT = 3000;
 
 // ================= STATIC FILES =================
 // Serve all files in frontend folder (for CSS, images, JS files, etc.)
-app.use(express.static(path.join(__dirname, "components", "frontend")));
+app.use(express.static(path.join(__dirname, "CITE-Flow-Management-System")));
 
 // Optional: Also serve admin folder directly under /admin (useful for future)
-app.use("/admin", express.static(path.join(__dirname, "components", "frontend", "admin")));
+app.use("/admin", express.static(path.join(__dirname, "CITE-Flow-Management-System", "admin")));
 
 // ================= CUSTOM ROUTES =================
 
 // Home → Login
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "components", "frontend", "login.html"));
+  res.sendFile(path.join(__dirname, "CITE-Flow-Management-System", "login.html"));
 });
 
 // Dashboard (clean URL)
 app.get("/dashboard", (req, res) => {
-  res.sendFile(path.join(__dirname, "components", "frontend", "admin", "dashboard.html"));
+  res.sendFile(path.join(__dirname, "CITE-Flow-Management-System", "admin", "dashboard.html"));
 });
 
 // Redirect /admin → dashboard
@@ -44,7 +44,12 @@ const adminPages = [
 
 adminPages.forEach(page => {
   app.get(`/${page}`, (req, res) => {
-    const filePath = path.join(__dirname, "components", "frontend", "admin", `${page}.html`);
+    const filePath = path.join(
+      __dirname,
+      "CITE-Flow-Management-System",
+      "admin",
+      `${page}.html`
+    );
     
     console.log("Serving:", filePath);
     
