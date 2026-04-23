@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document Vault - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -64,7 +65,7 @@
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                     Workload Tracker
                 </div>
-                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
+                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
                     Engagement Logs
                 </div>
@@ -72,7 +73,7 @@
 
             <div>
                 <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                     Document Vault
                 </div>
@@ -231,9 +232,16 @@
     const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
     const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
 
-    const supabase = Supabase.createClient(supabaseUrl, supabaseAnonKey);
+    let supabaseClient = null;
+    const supabaseLib = window.supabase || window.Supabase;
+    if (supabaseLib && typeof supabaseLib.createClient === 'function') {
+        supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseAnonKey);
+    } else {
+        console.error("Supabase client library failed to load.");
+        alert("❌ Supabase library failed to load. Please refresh the page.");
+    }
 
-    let folders = [];
+    var folders = [];
     let documents = [];
     let currentFolderId = null;
     let currentFolderView = 'large';
@@ -241,21 +249,40 @@
 
     // ==================== LOAD DATA ====================
     async function loadFolders() {
-        const { data, error } = await supabase
+        const { data: folderData, error: folderError } = await supabaseClient
             .from('folders')
             .select('*')
             .order('name');
 
-        if (error) {
-            console.error("Load Folders Error:", error);
-            alert("Error loading folders: " + error.message);
-        } else {
-            folders = data || [];
+        if (folderError) {
+            console.error("Load Folders Error:", folderError);
+            alert("Error loading folders: " + folderError.message);
+            return;
         }
+
+        const { data: documentData, error: documentError } = await supabaseClient
+            .from('documents')
+            .select('folder_id');
+
+        if (documentError) {
+            console.error("Load Document Counts Error:", documentError);
+            folders = folderData || [];
+            return;
+        }
+
+        const countMap = (documentData || []).reduce((acc, doc) => {
+            acc[doc.folder_id] = (acc[doc.folder_id] || 0) + 1;
+            return acc;
+        }, {});
+
+        folders = (folderData || []).map(folder => ({
+            ...folder,
+            count: countMap[folder.id] || 0
+        }));
     }
 
     async function loadDocumentsByFolder(folderId) {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('documents')
             .select('*')
             .eq('folder_id', folderId)
@@ -268,7 +295,8 @@
     // ==================== RENDER ====================
     function renderFolders() {
         const container = document.getElementById('folders-grid');
-        container.innerHTML = window.folders.map(f => `
+        const folderList = Array.isArray(folders) ? folders : [];
+        container.innerHTML = folderList.map(f => `
             <div onclick="openFolder(${f.id})" class="folder-card bg-white border border-gray-100 rounded-3xl p-6 cursor-pointer">
                 <div class="w-14 h-14 rounded-3xl flex items-center justify-center text-4xl mb-4" style="background-color: ${f.color}15; color: ${f.color}">
                     <i class="fa-solid ${f.icon}"></i>
@@ -294,6 +322,7 @@
         document.getElementById('folder-count').textContent = `${folder.count || 0} documents`;
 
         await loadDocumentsByFolder(folderId);
+        document.getElementById('folder-count').textContent = `${documents.length} documents`;
         renderFolderDocuments();
     }
 
@@ -319,10 +348,11 @@
     async function deleteSelectedDocuments() {
         if (!confirm(`Delete ${selectedDocs.size} document(s)?`)) return;
         for (let id of selectedDocs) {
-            await supabase.from('documents').delete().eq('id', id);
+            await supabaseClient.from('documents').delete().eq('id', id);
         }
         selectedDocs.clear();
         await loadDocumentsByFolder(currentFolderId);
+        await loadFolders();
         renderFolderDocuments();
         renderFolders();
         updateActionBar();
@@ -333,7 +363,7 @@
         if (!targetId) return;
         const tid = parseInt(targetId);
         for (let id of selectedDocs) {
-            await supabase.from('documents').update({ folder_id: tid }).eq('id', id);
+            await supabaseClient.from('documents').update({ folder_id: tid }).eq('id', id);
         }
         selectedDocs.clear();
         await loadDocumentsByFolder(currentFolderId);
@@ -403,18 +433,19 @@
     // Create New Folder (Now properly uses Supabase)
     async function createNewFolder() {
         const nameInput = document.getElementById('new-folder-name').value.trim();
+        const folderList = Array.isArray(folders) ? folders : [];
         
         if (!nameInput) {
             return alert("❌ Please enter a folder name");
         }
 
-        if (folders.some(f => f.name.toUpperCase() == nameInput.toUpperCase())) {
+        if (folderList.some(f => f.name.toUpperCase() == nameInput.toUpperCase())) {
             return alert("❌ Folder with this name already exists!");
         }
 
         console.log("Creating folder:", nameInput); // Debug
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('folders')
             .insert({
                 name: nameInput.toUpperCase(),
@@ -449,9 +480,9 @@
         for (let file of files) {
             const filePath = `documents/${folderId}/${Date.now()}-${file.name}`;
 
-            await supabase.storage.from('documents').upload(filePath, file);
+            await supabaseClient.storage.from('documents').upload(filePath, file);
 
-            await supabase.from('documents').insert({
+            await supabaseClient.from('documents').insert({
                 name: file.name,
                 folder_id: folderId,
                 file_path: filePath,
@@ -477,9 +508,9 @@
         for (let file of files) {
             const filePath = `documents/${currentFolderId}/${Date.now()}-${file.name}`;
 
-            await supabase.storage.from('documents').upload(filePath, file);
+            await supabaseClient.storage.from('documents').upload(filePath, file);
 
-            await supabase.from('documents').insert({
+            await supabaseClient.from('documents').insert({
                 name: file.name,
                 folder_id: currentFolderId,
                 file_path: filePath,
@@ -499,14 +530,14 @@
     async function viewDocument(id) {
         const doc = documents.find(d => d.id === id);
         if (!doc) return;
-        const { data } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 3600);
+        const { data } = await supabaseClient.storage.from('documents').createSignedUrl(doc.file_path, 3600);
         window.open(data.signedUrl, '_blank');
     }
 
     async function downloadDocument(id) {
         const doc = documents.find(d => d.id === id);
         if (!doc) return;
-        const { data } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 300);
+        const { data } = await supabaseClient.storage.from('documents').createSignedUrl(doc.file_path, 300);
         const a = document.createElement('a');
         a.href = data.signedUrl;
         a.download = doc.name;

@@ -281,6 +281,73 @@
     .success { background: #d4edda; color: #155724; }
     .error { background: #f8d7da; color: #721c24; }
 
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+      padding: 16px;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 600px;
+      background: #fff;
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #111827;
+    }
+
+    .modal-subtitle {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 16px;
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .modal-actions {
+      margin-top: 16px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .btn-primary {
+      background: #1e40af;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary:disabled {
+      background: #93c5fd;
+      cursor: not-allowed;
+    }
+
     @media (max-width: 1024px) {
       .layout {
         flex-direction: column;
@@ -333,6 +400,12 @@
         max-height: 45vh;
       }
     }
+
+    @media (max-width: 640px) {
+      .modal-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -368,10 +441,10 @@
 
       <form id="loginForm">
         <div class="field">
-          <label>Email</label>
+          <label>Email or ID Number</label>
           <div class="input-box">
             <div class="icon-square"><i class="far fa-envelope"></i></div>
-            <input type="email" id="email" placeholder="faculty@citeflow.edu.ph" required autocomplete="email">
+            <input type="text" id="identifier" placeholder="faculty@citeflow.edu.ph or 2023-00123" required autocomplete="username">
           </div>
         </div>
 
@@ -409,6 +482,62 @@
 
     </div>
 
+  </div>
+
+  <div id="firstLoginModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-title">Complete Your Profile</div>
+      <div class="modal-subtitle">First-time login requires profile completion and new password setup.</div>
+      <form id="firstLoginForm">
+        <div class="modal-grid">
+          <div class="field">
+            <label>Full Name</label>
+            <div class="input-box">
+              <input type="text" id="setup-full-name" required placeholder="Juan Dela Cruz">
+            </div>
+          </div>
+          <div class="field">
+            <label>ID Number</label>
+            <div class="input-box">
+              <input type="text" id="setup-employee-id" required placeholder="2023-00123">
+            </div>
+          </div>
+          <div class="field">
+            <label>Department</label>
+            <div class="input-box">
+              <input type="text" id="setup-department" required placeholder="BSIT">
+            </div>
+          </div>
+          <div class="field">
+            <label>Phone</label>
+            <div class="input-box">
+              <input type="text" id="setup-phone" placeholder="+63 9xx xxx xxxx">
+            </div>
+          </div>
+          <div class="field">
+            <label>Position</label>
+            <div class="input-box">
+              <input type="text" id="setup-position" placeholder="Instructor">
+            </div>
+          </div>
+          <div class="field">
+            <label>New Password</label>
+            <div class="input-box">
+              <input type="password" id="setup-password" required minlength="8" placeholder="At least 8 characters">
+            </div>
+          </div>
+          <div class="field">
+            <label>Confirm New Password</label>
+            <div class="input-box">
+              <input type="password" id="setup-confirm-password" required minlength="8" placeholder="Re-enter password">
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" id="firstLoginSubmitBtn" class="btn-primary">Save and Continue</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script>
@@ -450,6 +579,38 @@
     const loginForm = document.getElementById('loginForm');
     const loginBtn = document.getElementById('loginBtn');
     const messageDiv = document.getElementById('message');
+    const firstLoginModal = document.getElementById('firstLoginModal');
+    const firstLoginForm = document.getElementById('firstLoginForm');
+    const firstLoginSubmitBtn = document.getElementById('firstLoginSubmitBtn');
+    let pendingFirstLoginContext = null;
+
+    function openFirstLoginModal(user, profile) {
+      document.getElementById('setup-full-name').value = profile?.full_name || user?.user_metadata?.full_name || '';
+      document.getElementById('setup-employee-id').value = profile?.employee_id || user?.user_metadata?.employee_id || '';
+      document.getElementById('setup-department').value = profile?.department || '';
+      document.getElementById('setup-phone').value = profile?.phone || '';
+      document.getElementById('setup-position').value = profile?.position || 'Faculty';
+      document.getElementById('setup-password').value = '';
+      document.getElementById('setup-confirm-password').value = '';
+      firstLoginModal.classList.add('show');
+    }
+
+    async function resolveEmailFromIdentifier(identifier) {
+      if (identifier.includes('@')) {
+        return identifier.toLowerCase();
+      }
+
+      const { data, error } = await supabaseClient
+        .from('faculty')
+        .select('email')
+        .eq('employee_id', identifier)
+        .maybeSingle();
+
+      if (error || !data?.email) {
+        throw new Error('No faculty account found for the provided ID number.');
+      }
+      return String(data.email).toLowerCase();
+    }
 
     loginForm.addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -458,10 +619,12 @@
       loginBtn.disabled = true;
       loginBtn.textContent = 'Signing in...';
 
-      const email = document.getElementById('email').value.trim();
+      const identifier = document.getElementById('identifier').value.trim();
       const password = document.getElementById('password').value;
 
       try {
+        const email = await resolveEmailFromIdentifier(identifier);
+
         // Step 1: Sign in with Supabase Auth
         const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
           email: email,
@@ -472,16 +635,31 @@
 
         const user = authData.user;
 
-        // Step 2: Check if user exists in faculty_profiles table
+        // Step 2: Check if user exists in faculty table
         const { data: profile, error: profileError } = await supabaseClient
-          .from('faculty_profiles')
+          .from('faculty')
           .select('*')
-          .eq('id', user.id)
-          .single();
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
 
         if (profileError || !profile) {
           await supabaseClient.auth.signOut();
           throw new Error('This account is not registered as a faculty member. Please contact the administrator.');
+        }
+
+        if (String(profile.role || user.user_metadata?.role || '').toLowerCase() !== 'faculty') {
+          await supabaseClient.auth.signOut();
+          throw new Error('This account is not allowed to login as faculty.');
+        }
+
+        const profileCompleted = Boolean(profile.profile_completed ?? user.user_metadata?.profile_completed);
+        const mustChangePassword = Boolean(profile.must_change_password ?? user.user_metadata?.must_change_password);
+
+        if (!profileCompleted || mustChangePassword) {
+          pendingFirstLoginContext = { user, profile };
+          openFirstLoginModal(user, profile);
+          showMessage('Complete your profile and set a new password to continue.', 'success');
+          return;
         }
 
         // Successful faculty login
@@ -498,6 +676,8 @@
 
         if (err.message.includes('Invalid login credentials')) {
           msg = 'Incorrect email or password.';
+        } else if (err.message.includes('No faculty account found')) {
+          msg = err.message;
         } else if (err.message.includes('Email not confirmed')) {
           msg = 'Please confirm your email before logging in.';
         } else if (err.message.includes('not registered as a faculty')) {
@@ -518,6 +698,88 @@
       messageDiv.className = `message ${type}`;
       messageDiv.style.display = 'block';
     }
+
+    firstLoginForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      if (!pendingFirstLoginContext?.user) return;
+
+      const fullName = document.getElementById('setup-full-name').value.trim();
+      const employeeId = document.getElementById('setup-employee-id').value.trim();
+      const department = document.getElementById('setup-department').value.trim();
+      const phone = document.getElementById('setup-phone').value.trim();
+      const position = document.getElementById('setup-position').value.trim() || 'Faculty';
+      const newPassword = document.getElementById('setup-password').value;
+      const confirmNewPassword = document.getElementById('setup-confirm-password').value;
+
+      if (!fullName || !employeeId || !department) {
+        alert('Please complete all required profile details.');
+        return;
+      }
+      if (newPassword.length < 8) {
+        alert('New password must be at least 8 characters.');
+        return;
+      }
+      if (newPassword !== confirmNewPassword) {
+        alert('New passwords do not match.');
+        return;
+      }
+
+      firstLoginSubmitBtn.disabled = true;
+      firstLoginSubmitBtn.textContent = 'Saving...';
+
+      try {
+        const user = pendingFirstLoginContext.user;
+        const nowIso = new Date().toISOString();
+
+        const { error: updateUserError } = await supabaseClient.auth.updateUser({
+          password: newPassword,
+          data: {
+            role: 'Faculty',
+            full_name: fullName,
+            employee_id: employeeId,
+            profile_completed: true,
+            must_change_password: false,
+            first_login_completed_at: nowIso
+          }
+        });
+        if (updateUserError) throw updateUserError;
+
+        const profilePayload = {
+          auth_user_id: user.id,
+          name: fullName,
+          full_name: fullName,
+          employee_id: employeeId,
+          department,
+          phone,
+          position,
+          email: user.email || pendingFirstLoginContext.profile?.email || '',
+          status: 'Active',
+          role: 'Faculty',
+          profile_completed: true,
+          must_change_password: false,
+          updated_at: nowIso
+        };
+
+        const { error: profileUpdateError } = await supabaseClient
+          .from('faculty')
+          .upsert(profilePayload, { onConflict: 'auth_user_id' });
+        if (profileUpdateError) throw profileUpdateError;
+
+        firstLoginModal.classList.remove('show');
+        pendingFirstLoginContext = null;
+        showMessage('Profile completed. Redirecting to your dashboard...', 'success');
+
+        setTimeout(() => {
+          window.location.href = 'faculty/dashboard.html';
+        }, 900);
+      } catch (error) {
+        console.error('First login completion failed:', error);
+        alert(`Unable to complete first login setup: ${error.message}`);
+      } finally {
+        firstLoginSubmitBtn.disabled = false;
+        firstLoginSubmitBtn.textContent = 'Save and Continue';
+      }
+    });
   </script>
 
 </body>

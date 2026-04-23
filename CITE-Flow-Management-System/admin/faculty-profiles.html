@@ -570,17 +570,63 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-    let facultyData = [
-        {id:1, name:"Maria Santos", position:"Associate Professor", status:"Active", department:"BSIT", email:"maria.santos@cite.edu", phone:"+63 912 345 6789"},
-        {id:2, name:"Juan Cruz", position:"Full Professor", status:"Active", department:"BSIE", email:"juan.cruz@cite.edu", phone:"+63 923 456 7890"},
-        {id:3, name:"Ana Reyes", position:"Assistant Professor", status:"Active", department:"BIT", email:"ana.reyes@cite.edu", phone:"+63 934 567 8901"},
-        {id:4, name:"Carlos Garcia", position:"Instructor", status:"Active", department:"BSIT", email:"carlos.garcia@cite.edu", phone:"+63 945 678 9012"},
-        {id:5, name:"Elena Torres", position:"Associate Professor", status:"On Leave", department:"BSIE", email:"elena.torres@cite.edu", phone:"+63 956 789 0123"}
-    ];
+    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+    const { createClient } = supabase;
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    // Non-persistent client lets admin create faculty auth users without replacing admin session.
+    const onboardingClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
 
+    let facultyData = [];
     let currentEditSection = '';
     let currentStatus = 'Active';
+    let selectedFacultyId = null;
+
+    function normalizeFacultyRow(row) {
+        return {
+            id: row.id,
+            name: row.full_name || 'Unnamed Faculty',
+            position: row.position || 'Faculty',
+            status: row.status || 'Active',
+            department: row.department || 'N/A',
+            email: row.email || '-',
+            phone: row.phone || 'No contact number',
+            employeeId: row.employee_id || '-'
+        };
+    }
+
+    async function loadFacultyProfiles() {
+        const { data, error } = await supabaseClient
+            .from('faculty')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Failed loading faculty profiles:', error);
+            alert(`Unable to load faculty profiles: ${error.message}`);
+            facultyData = [];
+            renderFacultyCards([]);
+            updateStats([]);
+            return;
+        }
+
+        facultyData = (data || []).map(normalizeFacultyRow);
+        renderFacultyCards(facultyData);
+        updateStats(facultyData);
+    }
+
+    function updateStats(data) {
+        const total = data.length;
+        const active = data.filter(f => (f.status || '').toLowerCase() === 'active').length;
+        const onLeave = data.filter(f => (f.status || '').toLowerCase() === 'on leave').length;
+        document.getElementById('total-faculty').textContent = String(total);
+        document.getElementById('active-faculty').textContent = String(active);
+        document.getElementById('onleave-faculty').textContent = String(onLeave);
+    }
 
     function renderFacultyCards(data) {
         const grid = document.getElementById('faculty-grid');
@@ -613,6 +659,7 @@
     function openProfile(id) {
         const faculty = facultyData.find(f => f.id === id);
         if (!faculty) return;
+        selectedFacultyId = id;
 
         document.getElementById('list-view').classList.add('hidden');
         document.getElementById('profile-view').classList.remove('hidden');
@@ -622,6 +669,10 @@
         document.getElementById('profile-phone').textContent = faculty.phone;
         document.getElementById('profile-email').textContent = faculty.email;
         document.getElementById('profile-status').textContent = faculty.status;
+        document.getElementById('gen-employee-id').textContent = faculty.employeeId;
+        document.getElementById('gen-department').textContent = faculty.department;
+        document.getElementById('gen-academic-rank').textContent = faculty.position;
+        currentStatus = faculty.status === 'Inactive' ? 'Inactive' : 'Active';
 
         switchTab(0);
     }
@@ -629,6 +680,7 @@
     function backToList() {
         document.getElementById('profile-view').classList.add('hidden');
         document.getElementById('list-view').classList.remove('hidden');
+        selectedFacultyId = null;
     }
 
     function switchTab(tab) {
@@ -661,6 +713,26 @@
             statusEl.textContent = 'Active';
             statusEl.className = 'cursor-pointer px-6 py-1.5 rounded-3xl text-sm font-medium bg-emerald-100 text-emerald-700';
         }
+        persistSelectedFacultyStatus();
+    }
+
+    async function persistSelectedFacultyStatus() {
+        if (!selectedFacultyId) return;
+        const { error } = await supabaseClient
+            .from('faculty')
+            .update({ status: currentStatus, updated_at: new Date().toISOString() })
+            .eq('id', selectedFacultyId);
+
+        if (error) {
+            console.error('Status update failed:', error);
+            alert(`Unable to update status: ${error.message}`);
+            return;
+        }
+
+        const target = facultyData.find(f => f.id === selectedFacultyId);
+        if (target) target.status = currentStatus;
+        updateStats(facultyData);
+        renderFacultyCards(facultyData);
     }
 
     function openEditModal(section) {
@@ -833,21 +905,160 @@
 
     function generatePassword() {
         const passwordField = document.getElementById('add-password');
-        passwordField.value = "CITEfaculty" + Math.floor(100000 + Math.random() * 900000);
+        // Meets stricter password policies: upper, lower, number, special char.
+        passwordField.value = "CITEfaculty!" + Math.floor(100000 + Math.random() * 900000);
     }
 
-    function createFacultyAccount() {
-        const idEmail = document.getElementById('add-employee-id-email').value.trim();
-        if (!idEmail) {
-            alert("Please enter Employee ID or Email");
+    function isEmail(value) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    }
+
+    function clearAddFacultyForm() {
+        document.getElementById('add-employee-id-email').value = '';
+        document.getElementById('add-contract-type').value = 'Full-Time';
+        document.getElementById('add-employment-type').value = 'Regular';
+        document.getElementById('add-start-date').value = '';
+        document.getElementById('add-end-date').value = '';
+        document.getElementById('add-salary').value = '';
+        document.getElementById('add-renewal').value = 'For Renewal';
+        generatePassword();
+    }
+
+    function deriveNamePartsFromEmail(email) {
+        const local = email.split('@')[0] || 'faculty';
+        const tokens = local
+            .replace(/[^a-zA-Z0-9._-]/g, '')
+            .split(/[._-]+/)
+            .filter(Boolean);
+        if (!tokens.length) {
+            return { firstName: 'Faculty', lastName: 'User', fullName: 'Faculty User' };
+        }
+        const normalized = tokens.map((t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+        const firstName = normalized[0];
+        const lastName = normalized.slice(1).join(' ') || 'Faculty';
+        const fullName = `${firstName} ${lastName}`.trim();
+        return { firstName, lastName, fullName };
+    }
+
+    async function createFacultyAccount() {
+        const identifier = document.getElementById('add-employee-id-email').value.trim();
+        const tempPassword = document.getElementById('add-password').value.trim();
+        const contractType = document.getElementById('add-contract-type').value;
+        const employmentType = document.getElementById('add-employment-type').value;
+        const startDate = document.getElementById('add-start-date').value || null;
+        const endDate = document.getElementById('add-end-date').value || null;
+        const salary = document.getElementById('add-salary').value.trim();
+        const renewal = document.getElementById('add-renewal').value;
+
+        if (!identifier) {
+            alert('Please enter Employee ID or Email.');
             return;
         }
-        alert("Faculty account created successfully!");
-        closeAddFacultyModal();
+        if (!tempPassword || tempPassword.length < 8) {
+            alert('Please generate a valid temporary password first.');
+            return;
+        }
+
+        const isIdentifierEmail = isEmail(identifier);
+        if (!isIdentifierEmail) {
+            alert('Please enter a valid faculty email in this field (Employee ID can be updated in profile).');
+            return;
+        }
+
+        const email = identifier.toLowerCase();
+        const { firstName, lastName, fullName } = deriveNamePartsFromEmail(email);
+        const generatedEmployeeId = `FAC-${Date.now()}`;
+        const role = 'Faculty';
+        const parsedSalary = salary ? Number(String(salary).replace(/,/g, '')) : null;
+        if (salary && (Number.isNaN(parsedSalary) || parsedSalary < 0)) {
+            alert('Salary must be a valid non-negative number.');
+            return;
+        }
+
+        const buildFacultyPayload = (authUserId) => ({
+            auth_user_id: authUserId || null,
+            name: fullName,
+            full_name: fullName,
+            email,
+            employee_id: generatedEmployeeId,
+            position: 'Faculty',
+            status: 'Active',
+            department: 'N/A',
+            phone: '',
+            contract_type: contractType,
+            employment_type: employmentType,
+            start_date: startDate,
+            end_date: endDate,
+            salary: parsedSalary,
+            renewal,
+            role,
+            profile_completed: false,
+            must_change_password: true,
+            updated_at: new Date().toISOString()
+        });
+
+        const finalizeSuccess = async (messageText) => {
+            closeAddFacultyModal();
+            clearAddFacultyForm();
+            await loadFacultyProfiles();
+            alert(messageText);
+        };
+
+        try {
+            const { data: signUpData, error: signUpError } = await onboardingClient.auth.signUp({
+                email,
+                password: tempPassword,
+                options: {
+                    data: {
+                        first_name: firstName,
+                        last_name: lastName,
+                        id_number: generatedEmployeeId,
+                        full_name: fullName,
+                        role,
+                        employee_id: generatedEmployeeId,
+                        profile_completed: false,
+                        must_change_password: true
+                    }
+                }
+            });
+
+            if (signUpError) {
+                const loweredMessage = String(signUpError.message || '').toLowerCase();
+                const alreadyRegistered = loweredMessage.includes('already registered') || loweredMessage.includes('already exists');
+                if (!alreadyRegistered) throw signUpError;
+
+                // Auth account already exists (common after partial previous attempts). Still keep faculty table in sync by email.
+                const { error: existingProfileError } = await supabaseClient
+                    .from('faculty')
+                    .upsert(buildFacultyPayload(null), { onConflict: 'email' });
+                if (existingProfileError) throw existingProfileError;
+
+                await finalizeSuccess('Faculty record saved in database. Auth account already exists for this email; use Forgot Password if needed.');
+                return;
+            }
+            const userId = signUpData?.user?.id;
+            if (!userId) throw new Error('Account created but user id was not returned.');
+
+            const { error: profileError } = await supabaseClient
+                .from('faculty')
+                .upsert(buildFacultyPayload(userId), { onConflict: 'auth_user_id' });
+            if (profileError) throw profileError;
+
+            await finalizeSuccess('Faculty account created. They can now log in via faculty login and must complete profile on first sign-in.');
+        } catch (error) {
+            console.error('Create faculty account failed:', error);
+            if (String(error.message || '').toLowerCase().includes('database error saving new user')) {
+                alert('Failed to create faculty account: database trigger rejected the user insert. Please verify your Supabase auth trigger required fields and try again.');
+            } else {
+                alert(`Failed to create faculty account: ${error.message}`);
+            }
+        } finally {
+            await onboardingClient.auth.signOut();
+        }
     }
 
-    window.onload = () => {
-        renderFacultyCards(facultyData);
+    window.onload = async () => {
+        await loadFacultyProfiles();
     };
 </script>
 </body>

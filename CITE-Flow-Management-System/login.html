@@ -471,6 +471,19 @@
 
         if (authError) throw authError;
 
+        const user = authData?.user;
+        const role = String(user?.user_metadata?.role || '').toLowerCase();
+        const { data: facultyProfile } = await supabaseClient
+          .from('faculty')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+
+        if (role === 'faculty' || facultyProfile) {
+          await supabaseClient.auth.signOut();
+          throw new Error('Faculty accounts are not allowed in the admin portal. Please use Faculty Login.');
+        }
+
         window.location.href = 'admin/faculty-profiles.html';
 
       } catch (err) {
@@ -479,6 +492,8 @@
 
         if (err.message.includes('Invalid login credentials')) {
           msg = 'Incorrect email or password.';
+        } else if (err.message.includes('not allowed in the admin portal')) {
+          msg = err.message;
         } else if (err.message.includes('Email not confirmed')) {
           msg = 'Please confirm your email before logging in.';
         } else if (err.message.includes('Failed to fetch')) {

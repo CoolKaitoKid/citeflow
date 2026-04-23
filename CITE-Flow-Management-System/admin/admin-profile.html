@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Profile - CITE-Flow</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -61,6 +62,10 @@
             width: 120px;
             height: 120px;
             background-color: #e5e7eb;
+        }
+
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.6);
         }
     </style>
 </head>
@@ -140,10 +145,13 @@
         <!-- Bottom Profile Section -->
         <div onclick="window.location.href='admin-profile.html'" 
              class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer active">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
+            <div class="w-10 h-10 bg-white rounded-2xl overflow-hidden flex items-center justify-center text-[#621708] text-xl">
+                <img id="sidebar-avatar-image" src="" alt="Admin avatar" class="w-full h-full object-cover hidden">
+                <span id="sidebar-avatar-fallback">👤</span>
+            </div>
             <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Administrator • Dean</div>
+                <div id="sidebar-admin-name" class="font-semibold text-sm truncate">Loading...</div>
+                <div id="sidebar-admin-role" class="text-xs text-white/70">Administrator</div>
             </div>
         </div>
     </div>
@@ -165,8 +173,17 @@
                 <div class="flex flex-col md:flex-row gap-8">
                     <!-- Avatar -->
                     <div class="flex-shrink-0">
-                        <div class="profile-avatar w-32 h-32 rounded-3xl flex items-center justify-center text-6xl border-4 border-white shadow-inner">
-                            👨‍💼
+                        <div class="space-y-3">
+                            <div class="profile-avatar w-32 h-32 rounded-3xl flex items-center justify-center text-6xl border-4 border-white shadow-inner overflow-hidden">
+                                <img id="profile-avatar-image" src="" alt="Admin avatar" class="w-full h-full object-cover hidden">
+                                <span id="profile-avatar-fallback">👨‍💼</span>
+                            </div>
+                            <div>
+                                <input id="avatar-input" type="file" accept="image/*" class="hidden">
+                                <button id="avatar-upload-btn" type="button" onclick="openAvatarPicker()" class="w-full border border-gray-300 hover:bg-gray-100 text-gray-700 px-3 py-2 rounded-2xl text-xs font-medium">
+                                    Upload Photo
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -174,8 +191,8 @@
                     <div class="flex-1">
                         <div class="flex justify-between items-start">
                             <div>
-                                <h2 class="text-4xl font-semibold text-gray-900">Maria Santos</h2>
-                                <p class="text-xl text-gray-600 mt-1">Dean & System Administrator</p>
+                                <h2 id="hero-admin-name" class="text-4xl font-semibold text-gray-900">Loading...</h2>
+                                <p id="hero-admin-role" class="text-xl text-gray-600 mt-1">Administrator</p>
                             </div>
                             <button onclick="editProfile()" 
                                     class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 text-sm font-medium">
@@ -193,28 +210,28 @@
                                 <span class="text-gray-400">📞</span>
                                 <div>
                                     <div class="text-gray-500 text-xs">Phone Number</div>
-                                    <div class="font-medium">+63 912 345 6789</div>
+                                    <div id="hero-phone" class="font-medium">-</div>
                                 </div>
                             </div>
                             <div class="flex items-center gap-3">
                                 <span class="text-gray-400">✉️</span>
                                 <div>
                                     <div class="text-gray-500 text-xs">Email Address</div>
-                                    <div class="font-medium">maria.santos@cite.edu.ph</div>
+                                    <div id="hero-email" class="font-medium">-</div>
                                 </div>
                             </div>
                             <div class="flex items-center gap-3">
                                 <span class="text-gray-400">📍</span>
                                 <div>
                                     <div class="text-gray-500 text-xs">Address</div>
-                                    <div class="font-medium">Cebu City, Philippines</div>
+                                    <div id="hero-address" class="font-medium">-</div>
                                 </div>
                             </div>
                             <div class="flex items-center gap-3">
                                 <span class="text-gray-400">📅</span>
                                 <div>
                                     <div class="text-gray-500 text-xs">Hire Date</div>
-                                    <div class="font-medium">June 1, 2015</div>
+                                    <div id="hero-hire-date" class="font-medium">-</div>
                                 </div>
                             </div>
                         </div>
@@ -228,23 +245,23 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                         <div class="text-sm text-gray-500 mb-1">First Name</div>
-                        <div class="font-medium">Maria</div>
+                        <div id="pi-first-name" class="font-medium">-</div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Last Name</div>
-                        <div class="font-medium">Santos</div>
+                        <div id="pi-last-name" class="font-medium">-</div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Email Address</div>
-                        <div class="font-medium">maria.santos@cite.edu.ph</div>
+                        <div id="pi-email" class="font-medium">-</div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Phone Number</div>
-                        <div class="font-medium">+63 912 345 6789</div>
+                        <div id="pi-phone" class="font-medium">-</div>
                     </div>
                     <div class="md:col-span-2">
                         <div class="text-sm text-gray-500 mb-1">Address</div>
-                        <div class="font-medium">Cebu City, Philippines</div>
+                        <div id="pi-address" class="font-medium">-</div>
                     </div>
                 </div>
             </div>
@@ -255,23 +272,23 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Employee ID</div>
-                        <div class="font-medium">ADMIN-2025-001</div>
+                        <div id="ai-employee-id" class="font-medium">-</div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Role</div>
-                        <div class="font-medium">Dean & System Administrator</div>
+                        <div id="ai-role" class="font-medium">-</div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Department</div>
-                        <div class="font-medium">College of Technology and Engineering</div>
+                        <div id="ai-department" class="font-medium">-</div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Hire Date</div>
-                        <div class="font-medium">June 1, 2015</div>
+                        <div id="ai-hire-date" class="font-medium">-</div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Years of Service</div>
-                        <div class="font-medium">11 Years</div>
+                        <div id="ai-years-service" class="font-medium">-</div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-500 mb-1">Account Status</div>
@@ -299,9 +316,9 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <div class="font-medium">Two-Factor Authentication</div>
-                            <div class="text-sm text-gray-500">Add an extra layer of security to your account</div>
+                            <div id="twofa-status-text" class="text-sm text-gray-500">Add an extra layer of security to your account</div>
                         </div>
-                        <button onclick="toggle2FA()" 
+                        <button id="twofa-toggle-btn" onclick="toggle2FA()" 
                                 class="border border-gray-300 hover:bg-gray-50 px-8 py-3 rounded-2xl text-sm font-medium">
                             Enable
                         </button>
@@ -325,25 +342,632 @@
     </div>
 </div>
 
+<div id="edit-profile-modal" class="hidden fixed inset-0 modal-backdrop items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-3xl w-full max-w-2xl overflow-hidden">
+        <div class="px-8 py-6 border-b flex items-center justify-between bg-gray-50">
+            <h3 class="text-xl font-semibold">Edit Profile Details</h3>
+            <button type="button" onclick="closeEditModal()" class="text-3xl text-gray-400 hover:text-gray-700 leading-none">×</button>
+        </div>
+        <form id="edit-profile-form" class="p-8 grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+                <label class="block text-sm text-gray-600 mb-2">First Name</label>
+                <input id="edit-first-name" type="text" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-2">Last Name</label>
+                <input id="edit-last-name" type="text" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-2">Email</label>
+                <input id="edit-email" type="email" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-2">Phone Number</label>
+                <input id="edit-phone" type="text" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm text-gray-600 mb-2">Address</label>
+                <input id="edit-address" type="text" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-2">Employee ID</label>
+                <input id="edit-employee-id" type="text" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-2">Role</label>
+                <input id="edit-role" type="text" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-2">Department</label>
+                <input id="edit-department" type="text" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-2">Hire Date</label>
+                <input id="edit-hire-date" type="date" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
+            </div>
+            <div class="md:col-span-2 flex justify-end gap-3 pt-2">
+                <button type="button" onclick="closeEditModal()" class="px-6 py-3 border rounded-2xl font-medium">Cancel</button>
+                <button id="save-profile-btn" type="submit" class="px-6 py-3 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-2xl font-medium">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="twofa-modal" class="hidden fixed inset-0 modal-backdrop items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-3xl w-full max-w-xl overflow-hidden">
+        <div class="px-8 py-6 border-b flex items-center justify-between bg-gray-50">
+            <h3 class="text-xl font-semibold">Set Up Two-Factor Authentication</h3>
+            <button type="button" onclick="closeTwoFAModal()" class="text-3xl text-gray-400 hover:text-gray-700 leading-none">×</button>
+        </div>
+        <div class="p-8 space-y-5">
+            <p class="text-sm text-gray-600">1) Scan this QR code with Google Authenticator / Microsoft Authenticator, then enter the 6-digit code.</p>
+            <div id="twofa-qr-container" class="p-4 border rounded-2xl flex items-center justify-center min-h-[180px] bg-gray-50 text-sm text-gray-500">
+                Generating QR code...
+            </div>
+            <form id="twofa-verify-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-2">Authentication Code</label>
+                    <input id="twofa-code" type="text" inputmode="numeric" maxlength="6" placeholder="123456" class="w-full border border-gray-300 rounded-2xl px-4 py-3 tracking-widest">
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="closeTwoFAModal()" class="px-6 py-3 border rounded-2xl font-medium">Cancel</button>
+                    <button id="twofa-verify-btn" type="submit" class="px-6 py-3 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-2xl font-medium">Verify and Enable</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+    const { createClient } = supabase;
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    let currentUser = null;
+    let currentProfile = null;
+    let adminProfilesTableExists = true;
+    let currentTotpFactor = null;
+    let pendingTotpEnrollment = null;
+    let pendingTotpChallenge = null;
+    const avatarBucketName = 'avatars';
+
+    function formatFullName(firstName, lastName, fallback) {
+        const composed = [firstName, lastName].filter(Boolean).join(' ').trim();
+        return composed || fallback || 'Unknown User';
+    }
+
+    function formatDateDisplay(value) {
+        if (!value) return '-';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    function getYearsOfService(hireDate) {
+        if (!hireDate) return '-';
+        const start = new Date(hireDate);
+        if (Number.isNaN(start.getTime())) return '-';
+        const today = new Date();
+        let years = today.getFullYear() - start.getFullYear();
+        const monthDiff = today.getMonth() - start.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < start.getDate())) {
+            years--;
+        }
+        if (years < 0) years = 0;
+        return `${years} Year${years === 1 ? '' : 's'}`;
+    }
+
+    function getProfileFromAuthMetadata(user) {
+        const metadata = user?.user_metadata || {};
+        return {
+            first_name: metadata.first_name || '',
+            last_name: metadata.last_name || '',
+            email: user?.email || '',
+            phone_number: metadata.phone_number || '',
+            address: metadata.address || '',
+            employee_id: metadata.employee_id || '',
+            role: metadata.role || 'Administrator',
+            department: metadata.department || '',
+            hire_date: metadata.hire_date || '',
+            avatar_url: metadata.avatar_url || '',
+            avatar_path: metadata.avatar_path || ''
+        };
+    }
+
+    function isAdminProfilesMissingError(error) {
+        if (!error) return false;
+        const code = String(error.code || '').toUpperCase();
+        const message = String(error.message || '').toLowerCase();
+        return (
+            code === '42P01' ||
+            code === 'PGRST205' ||
+            message.includes('admin_profiles') && (
+                message.includes('schema cache') ||
+                message.includes('could not find the table') ||
+                message.includes('does not exist')
+            )
+        );
+    }
+
+    function renderProfile(profile, user) {
+        const fullName = formatFullName(profile.first_name, profile.last_name, user?.email);
+        const role = profile.role || 'Administrator';
+        const email = profile.email || user?.email || '-';
+        const hireDateFormatted = formatDateDisplay(profile.hire_date);
+        const yearsService = getYearsOfService(profile.hire_date);
+
+        document.getElementById('sidebar-admin-name').textContent = fullName;
+        document.getElementById('sidebar-admin-role').textContent = role;
+
+        document.getElementById('hero-admin-name').textContent = fullName;
+        document.getElementById('hero-admin-role').textContent = role;
+        document.getElementById('hero-phone').textContent = profile.phone_number || '-';
+        document.getElementById('hero-email').textContent = email;
+        document.getElementById('hero-address').textContent = profile.address || '-';
+        document.getElementById('hero-hire-date').textContent = hireDateFormatted;
+
+        document.getElementById('pi-first-name').textContent = profile.first_name || '-';
+        document.getElementById('pi-last-name').textContent = profile.last_name || '-';
+        document.getElementById('pi-email').textContent = email;
+        document.getElementById('pi-phone').textContent = profile.phone_number || '-';
+        document.getElementById('pi-address').textContent = profile.address || '-';
+
+        document.getElementById('ai-employee-id').textContent = profile.employee_id || '-';
+        document.getElementById('ai-role').textContent = role;
+        document.getElementById('ai-department').textContent = profile.department || '-';
+        document.getElementById('ai-hire-date').textContent = hireDateFormatted;
+        document.getElementById('ai-years-service').textContent = yearsService;
+
+        const avatarUrl = profile.avatar_url || '';
+        const profileAvatarImage = document.getElementById('profile-avatar-image');
+        const profileAvatarFallback = document.getElementById('profile-avatar-fallback');
+        const sidebarAvatarImage = document.getElementById('sidebar-avatar-image');
+        const sidebarAvatarFallback = document.getElementById('sidebar-avatar-fallback');
+
+        if (avatarUrl) {
+            profileAvatarImage.src = avatarUrl;
+            profileAvatarImage.classList.remove('hidden');
+            profileAvatarFallback.classList.add('hidden');
+            sidebarAvatarImage.src = avatarUrl;
+            sidebarAvatarImage.classList.remove('hidden');
+            sidebarAvatarFallback.classList.add('hidden');
+        } else {
+            profileAvatarImage.src = '';
+            profileAvatarImage.classList.add('hidden');
+            profileAvatarFallback.classList.remove('hidden');
+            sidebarAvatarImage.src = '';
+            sidebarAvatarImage.classList.add('hidden');
+            sidebarAvatarFallback.classList.remove('hidden');
+        }
+    }
+
+    async function loadAdminProfile() {
+        const { data: authData, error: authError } = await supabaseClient.auth.getUser();
+        if (authError || !authData?.user) {
+            window.location.href = '../login.html';
+            return;
+        }
+
+        currentUser = authData.user;
+        let profile = getProfileFromAuthMetadata(currentUser);
+
+        const { data: dbProfile, error: dbError } = await supabaseClient
+            .from('admin_profiles')
+            .select('*')
+            .eq('id', currentUser.id)
+            .maybeSingle();
+
+        if (dbError) {
+            if (isAdminProfilesMissingError(dbError)) {
+                adminProfilesTableExists = false;
+                console.warn('admin_profiles table not found. Using auth metadata only.');
+            } else {
+                console.error('Error loading admin profile:', dbError);
+                alert(`Unable to load admin profile: ${dbError.message}`);
+            }
+        } else if (dbProfile) {
+            profile = {
+                ...profile,
+                first_name: dbProfile.first_name || profile.first_name,
+                last_name: dbProfile.last_name || profile.last_name,
+                email: dbProfile.email || profile.email,
+                phone_number: dbProfile.phone_number || profile.phone_number,
+                address: dbProfile.address || profile.address,
+                employee_id: dbProfile.employee_id || profile.employee_id,
+                role: dbProfile.role || profile.role,
+                department: dbProfile.department || profile.department,
+                hire_date: dbProfile.hire_date || profile.hire_date,
+                avatar_url: dbProfile.avatar_url || profile.avatar_url,
+                avatar_path: dbProfile.avatar_path || profile.avatar_path
+            };
+        }
+
+        currentProfile = profile;
+        renderProfile(currentProfile, currentUser);
+        await refresh2FAStatus();
+    }
+
+    async function refresh2FAStatus() {
+        const toggleButton = document.getElementById('twofa-toggle-btn');
+        const statusText = document.getElementById('twofa-status-text');
+        currentTotpFactor = null;
+
+        try {
+            const { data, error } = await supabaseClient.auth.mfa.listFactors();
+            if (error) throw error;
+
+            const totpFactors = Array.isArray(data?.totp) ? data.totp : [];
+            currentTotpFactor = totpFactors.find((factor) => factor.status === 'verified') || null;
+
+            if (currentTotpFactor) {
+                toggleButton.textContent = 'Disable';
+                statusText.textContent = 'Two-factor authentication is enabled for your account.';
+            } else {
+                toggleButton.textContent = 'Enable';
+                statusText.textContent = 'Add an extra layer of security to your account';
+            }
+        } catch (error) {
+            console.error('2FA status error:', error);
+            toggleButton.textContent = 'Enable';
+            statusText.textContent = 'Unable to load 2FA status right now.';
+        }
+    }
+
     function editProfile() {
-        alert("✏️ Edit Profile modal would open here.");
+        if (!currentProfile) return;
+        document.getElementById('edit-first-name').value = currentProfile.first_name || '';
+        document.getElementById('edit-last-name').value = currentProfile.last_name || '';
+        document.getElementById('edit-email').value = currentProfile.email || currentUser?.email || '';
+        document.getElementById('edit-phone').value = currentProfile.phone_number || '';
+        document.getElementById('edit-address').value = currentProfile.address || '';
+        document.getElementById('edit-employee-id').value = currentProfile.employee_id || '';
+        document.getElementById('edit-role').value = currentProfile.role || 'Administrator';
+        document.getElementById('edit-department').value = currentProfile.department || '';
+        document.getElementById('edit-hire-date').value = currentProfile.hire_date || '';
+
+        const modal = document.getElementById('edit-profile-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeEditModal() {
+        const modal = document.getElementById('edit-profile-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    function closeTwoFAModal() {
+        const modal = document.getElementById('twofa-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.getElementById('twofa-code').value = '';
+        document.getElementById('twofa-qr-container').innerHTML = 'Generating QR code...';
+    }
+
+    async function saveProfile(event) {
+        event.preventDefault();
+        if (!currentUser) return;
+
+        const saveBtn = document.getElementById('save-profile-btn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+
+        const payload = {
+            first_name: document.getElementById('edit-first-name').value.trim(),
+            last_name: document.getElementById('edit-last-name').value.trim(),
+            email: document.getElementById('edit-email').value.trim(),
+            phone_number: document.getElementById('edit-phone').value.trim(),
+            address: document.getElementById('edit-address').value.trim(),
+            employee_id: document.getElementById('edit-employee-id').value.trim(),
+            role: document.getElementById('edit-role').value.trim(),
+            department: document.getElementById('edit-department').value.trim(),
+            hire_date: document.getElementById('edit-hire-date').value || null,
+            avatar_url: currentProfile?.avatar_url || '',
+            avatar_path: currentProfile?.avatar_path || ''
+        };
+
+        try {
+            const metadataUpdate = {
+                first_name: payload.first_name,
+                last_name: payload.last_name,
+                phone_number: payload.phone_number,
+                address: payload.address,
+                employee_id: payload.employee_id,
+                role: payload.role,
+                department: payload.department,
+                hire_date: payload.hire_date,
+                avatar_url: payload.avatar_url,
+                avatar_path: payload.avatar_path
+            };
+
+            const { error: authUpdateError } = await supabaseClient.auth.updateUser({
+                data: metadataUpdate
+            });
+            if (authUpdateError) throw authUpdateError;
+
+            if (adminProfilesTableExists) {
+                const { error: upsertError } = await supabaseClient
+                    .from('admin_profiles')
+                    .upsert(
+                        {
+                            id: currentUser.id,
+                            ...payload,
+                            updated_at: new Date().toISOString()
+                        },
+                        { onConflict: 'id' }
+                    );
+
+                if (upsertError) {
+                    if (isAdminProfilesMissingError(upsertError)) {
+                        adminProfilesTableExists = false;
+                        console.warn('admin_profiles table not found while saving. Stored in auth metadata only.');
+                    } else {
+                        throw upsertError;
+                    }
+                }
+            }
+
+            currentProfile = { ...payload };
+            renderProfile(currentProfile, currentUser);
+            closeEditModal();
+            alert('Profile updated successfully.');
+        } catch (error) {
+            console.error('Save profile error:', error);
+            alert(`Failed to save profile: ${error.message}`);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
+        }
     }
 
     function changePassword() {
-        alert("🔑 Change Password form would appear here.");
+        const email = currentUser?.email || '';
+        if (!email) {
+            alert('No signed-in account found.');
+            return;
+        }
+        const redirectUrl = `${window.location.origin}${window.location.pathname.includes('/admin/') ? '/forgot.html' : 'forgot.html'}`;
+        supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: redirectUrl })
+            .then(({ error }) => {
+                if (error) {
+                    alert(`Failed to send reset link: ${error.message}`);
+                    return;
+                }
+                alert('Password reset link sent to your email.');
+            });
     }
 
-    function toggle2FA() {
-        alert("🔐 Two-Factor Authentication setup started.");
-    }
+    async function toggle2FA() {
+        const toggleButton = document.getElementById('twofa-toggle-btn');
+        const originalLabel = toggleButton.textContent;
+        toggleButton.disabled = true;
 
-    function logout() {
-        if (confirm("Log out from all devices?")) {
-            alert("👋 You have been logged out successfully.");
-            // window.location.href = "/";
+        try {
+            if (currentTotpFactor) {
+                if (!confirm('Disable Two-Factor Authentication for this account?')) {
+                    return;
+                }
+                const { error } = await supabaseClient.auth.mfa.unenroll({
+                    factorId: currentTotpFactor.id
+                });
+                if (error) throw error;
+                alert('Two-factor authentication has been disabled.');
+                await refresh2FAStatus();
+                return;
+            }
+
+            const { data: enrollData, error: enrollError } = await supabaseClient.auth.mfa.enroll({
+                factorType: 'totp',
+                friendlyName: 'Admin Profile TOTP'
+            });
+            if (enrollError) throw enrollError;
+
+            pendingTotpEnrollment = enrollData;
+            const { data: challengeData, error: challengeError } = await supabaseClient.auth.mfa.challenge({
+                factorId: enrollData.id
+            });
+            if (challengeError) throw challengeError;
+            pendingTotpChallenge = challengeData;
+
+            const qrContainer = document.getElementById('twofa-qr-container');
+            if (enrollData?.totp?.qr_code) {
+                qrContainer.innerHTML = enrollData.totp.qr_code;
+            } else if (enrollData?.totp?.uri) {
+                qrContainer.innerHTML = `
+                    <div class="text-center space-y-2">
+                        <p class="text-sm text-gray-600">Manual setup URI:</p>
+                        <p class="text-xs break-all text-gray-700">${enrollData.totp.uri}</p>
+                    </div>
+                `;
+            } else {
+                qrContainer.textContent = 'QR code unavailable. Please retry setup.';
+            }
+
+            const modal = document.getElementById('twofa-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        } catch (error) {
+            console.error('2FA toggle error:', error);
+            alert(`Two-factor setup failed: ${error.message}`);
+        } finally {
+            toggleButton.disabled = false;
+            toggleButton.textContent = originalLabel;
         }
     }
+
+    function sanitizeFileName(fileName) {
+        return fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    }
+
+    function isStorageBucketMissingError(error) {
+        if (!error) return false;
+        const code = String(error.code || '').toUpperCase();
+        const message = String(error.message || '').toLowerCase();
+        return (
+            code === 'PGRST205' ||
+            message.includes('bucket') && message.includes('not found') ||
+            message.includes('does not exist')
+        );
+    }
+
+    function openAvatarPicker() {
+        document.getElementById('avatar-input').click();
+    }
+
+    async function handleAvatarSelected(event) {
+        const file = event.target.files?.[0];
+        if (!file || !currentUser) return;
+
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file.');
+            event.target.value = '';
+            return;
+        }
+
+        const maxSizeBytes = 5 * 1024 * 1024;
+        if (file.size > maxSizeBytes) {
+            alert('Image size must be 5MB or less.');
+            event.target.value = '';
+            return;
+        }
+
+        const uploadBtn = document.getElementById('avatar-upload-btn');
+        const originalText = uploadBtn.textContent;
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = 'Uploading...';
+
+        try {
+            const extSafeName = sanitizeFileName(file.name);
+            const filePath = `${currentUser.id}/${Date.now()}-${extSafeName}`;
+
+            const { error: uploadError } = await supabaseClient.storage
+                .from(avatarBucketName)
+                .upload(filePath, file, { upsert: false });
+            if (uploadError) throw uploadError;
+
+            const { data: publicData } = supabaseClient.storage
+                .from(avatarBucketName)
+                .getPublicUrl(filePath);
+            const avatarUrl = publicData?.publicUrl || '';
+
+            const profileForSave = {
+                ...(currentProfile || {}),
+                avatar_url: avatarUrl,
+                avatar_path: filePath
+            };
+
+            const metadataUpdate = {
+                first_name: profileForSave.first_name || '',
+                last_name: profileForSave.last_name || '',
+                phone_number: profileForSave.phone_number || '',
+                address: profileForSave.address || '',
+                employee_id: profileForSave.employee_id || '',
+                role: profileForSave.role || 'Administrator',
+                department: profileForSave.department || '',
+                hire_date: profileForSave.hire_date || null,
+                avatar_url: avatarUrl,
+                avatar_path: filePath
+            };
+
+            const { error: authUpdateError } = await supabaseClient.auth.updateUser({
+                data: metadataUpdate
+            });
+            if (authUpdateError) throw authUpdateError;
+
+            if (adminProfilesTableExists) {
+                const { error: upsertError } = await supabaseClient
+                    .from('admin_profiles')
+                    .upsert(
+                        {
+                            id: currentUser.id,
+                            ...profileForSave,
+                            updated_at: new Date().toISOString()
+                        },
+                        { onConflict: 'id' }
+                    );
+
+                if (upsertError) {
+                    if (isAdminProfilesMissingError(upsertError)) {
+                        adminProfilesTableExists = false;
+                        console.warn('admin_profiles table not found while saving avatar. Stored in auth metadata only.');
+                    } else {
+                        throw upsertError;
+                    }
+                }
+            }
+
+            currentProfile = profileForSave;
+            renderProfile(currentProfile, currentUser);
+            alert('Profile photo uploaded successfully.');
+        } catch (error) {
+            console.error('Avatar upload error:', error);
+            if (isStorageBucketMissingError(error)) {
+                alert("Avatar upload failed: storage bucket 'avatars' is missing. Create it in Supabase Storage first.");
+            } else {
+                alert(`Avatar upload failed: ${error.message}`);
+            }
+        } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = originalText;
+            event.target.value = '';
+        }
+    }
+
+    async function logout() {
+        if (!confirm("Log out from all devices?")) return;
+        const { error } = await supabaseClient.auth.signOut();
+        if (error) {
+            alert(`Logout failed: ${error.message}`);
+            return;
+        }
+        window.location.href = '../login.html';
+    }
+
+    async function verify2FA(event) {
+        event.preventDefault();
+        if (!pendingTotpEnrollment || !pendingTotpChallenge) {
+            alert('2FA setup session expired. Please try enabling again.');
+            closeTwoFAModal();
+            return;
+        }
+
+        const code = document.getElementById('twofa-code').value.trim();
+        if (!/^\d{6}$/.test(code)) {
+            alert('Please enter a valid 6-digit authentication code.');
+            return;
+        }
+
+        const verifyButton = document.getElementById('twofa-verify-btn');
+        verifyButton.disabled = true;
+        verifyButton.textContent = 'Verifying...';
+
+        try {
+            const { error } = await supabaseClient.auth.mfa.verify({
+                factorId: pendingTotpEnrollment.id,
+                challengeId: pendingTotpChallenge.id,
+                code
+            });
+            if (error) throw error;
+
+            alert('Two-factor authentication enabled successfully.');
+            pendingTotpEnrollment = null;
+            pendingTotpChallenge = null;
+            closeTwoFAModal();
+            await refresh2FAStatus();
+        } catch (error) {
+            console.error('2FA verify error:', error);
+            alert(`Verification failed: ${error.message}`);
+        } finally {
+            verifyButton.disabled = false;
+            verifyButton.textContent = 'Verify and Enable';
+        }
+    }
+
+    document.getElementById('edit-profile-form').addEventListener('submit', saveProfile);
+    document.getElementById('twofa-verify-form').addEventListener('submit', verify2FA);
+    document.getElementById('avatar-input').addEventListener('change', handleAvatarSelected);
+    window.addEventListener('DOMContentLoaded', loadAdminProfile);
 </script>
 </body>
 </html>
