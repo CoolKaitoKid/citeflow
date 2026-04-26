@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workload Tracker - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
@@ -140,10 +141,13 @@
         <!-- Bottom Profile -->
         <div onclick="window.location.href='admin-profile.html'" 
              class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
+            <div class="w-10 h-10 bg-white rounded-2xl overflow-hidden flex items-center justify-center text-[#621708] text-xl">
+                <img id="sidebarAvatar" src="" alt="Avatar" class="w-full h-full object-cover hidden">
+                <svg id="sidebarAvatarFallback" style="width:18px;height:18px;stroke:#621708;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
             <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Dean & Administrator</div>
+                <div id="profileName" class="font-semibold text-sm truncate">Loading...</div>
+                <div id="profileRole" class="text-xs text-white/70">Administrator</div>
             </div>
         </div>
     </div>
@@ -227,5 +231,110 @@
         </div>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+    const { createClient } = supabase;
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    let currentUser = null;
+    let currentProfile = null;
+
+    function formatFullName(firstName, lastName, fallback) {
+        const composed = [firstName, lastName].filter(Boolean).join(' ').trim();
+        return composed || fallback || 'Unknown User';
+    }
+
+    function getProfileFromAuthMetadata(user) {
+        const metadata = user?.user_metadata || {};
+        return {
+            first_name: metadata.first_name || '',
+            last_name: metadata.last_name || '',
+            email: user?.email || '',
+            role: metadata.role || 'Administrator',
+            avatar_url: metadata.avatar_url || ''
+        };
+    }
+
+    function isAdminProfilesMissingError(error) {
+        if (!error) return false;
+        const code = String(error.code || '').toUpperCase();
+        const message = String(error.message || '').toLowerCase();
+        return (
+            code === '42P01' ||
+            code === 'PGRST205' ||
+            message.includes('admin_profiles') && (message.includes('does not exist') || message.includes('relation'))
+        );
+    }
+
+    function renderProfile(profile, user) {
+        const fullName = formatFullName(profile.first_name, profile.last_name, user?.email);
+        const role = profile.role || 'Administrator';
+        const avatarUrl = profile.avatar_url || '';
+
+        const profileNameEl = document.getElementById('profileName');
+        const profileRoleEl = document.getElementById('profileRole');
+        const sidebarAvatar = document.getElementById('sidebarAvatar');
+        const sidebarAvatarFallback = document.getElementById('sidebarAvatarFallback');
+
+        if (profileNameEl) profileNameEl.textContent = fullName;
+        if (profileRoleEl) profileRoleEl.textContent = role;
+
+        if (avatarUrl) {
+            if (sidebarAvatar) {
+                sidebarAvatar.src = avatarUrl;
+                sidebarAvatar.classList.remove('hidden');
+            }
+            if (sidebarAvatarFallback) sidebarAvatarFallback.classList.add('hidden');
+        } else {
+            if (sidebarAvatar) {
+                sidebarAvatar.src = '';
+                sidebarAvatar.classList.add('hidden');
+            }
+            if (sidebarAvatarFallback) sidebarAvatarFallback.classList.remove('hidden');
+        }
+    }
+
+    async function loadAdminProfile() {
+        const { data: authData, error: authError } = await supabaseClient.auth.getUser();
+        if (authError || !authData?.user) {
+            return;
+        }
+
+        currentUser = authData.user;
+        let profile = getProfileFromAuthMetadata(currentUser);
+
+        const { data: dbProfile, error: dbError } = await supabaseClient
+            .from('admin_profiles')
+            .select('*')
+            .eq('id', currentUser.id)
+            .maybeSingle();
+
+        if (dbError) {
+            if (isAdminProfilesMissingError(dbError)) {
+                console.warn('admin_profiles table not found. Using auth metadata only.');
+            } else {
+                console.error('Error fetching admin profile:', dbError);
+            }
+        } else if (dbProfile) {
+            profile = {
+                first_name: dbProfile.first_name || profile.first_name,
+                last_name: dbProfile.last_name || profile.last_name,
+                email: dbProfile.email || profile.email,
+                role: dbProfile.role || profile.role,
+                avatar_url: dbProfile.avatar_url || profile.avatar_url
+            };
+        }
+
+        currentProfile = profile;
+        renderProfile(currentProfile, currentUser);
+    }
+
+    window.onload = async () => {
+        await loadAdminProfile();
+    };
+</script>
 </body>
 </html>

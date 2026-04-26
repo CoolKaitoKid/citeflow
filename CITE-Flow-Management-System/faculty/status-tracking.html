@@ -61,6 +61,12 @@
         .status-card:hover {
             transform: translateY(-2px);
         }
+        .notif-bell { position: relative; cursor: pointer; padding: 8px; border-radius: 10px; transition: background 0.2s; }
+        .notif-bell:hover { background: #f3f4f6; }
+        .notif-badge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; background: #dc2626; color: #fff; font-size: 10px; font-weight: 600; border-radius: 99px; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
+        .dropdown-menu { position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); min-width: 320px; z-index: 60; display: none; padding: 6px; max-height: 360px; overflow-y: auto; }
+        .dropdown-menu.open { display: block; }
+        .dropdown-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 13px; color: #374151; border-radius: 6px; }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -88,15 +94,18 @@
             <!-- DOCUMENT MANAGEMENT -->
             <div>
                 <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" 
+                <div onclick="window.location.href='document.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                     Document Vault
                 </div>
                 <div onclick="window.location.href='submissions.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Submissions
+                     class="nav-item flex items-center justify-between px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <span class="flex items-center gap-x-3">
+                        <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
+                        Submissions
+                    </span>
+                    <span id="sidebarNotifToggle" class="w-2.5 h-2.5 rounded-full bg-red-400" style="display:none;"></span>
                 </div>
                 <div onclick="window.location.href='status-tracking.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
@@ -142,36 +151,38 @@
     <!-- MAIN CONTENT -->
     <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
         <div class="max-w-4xl mx-auto">
-            <!-- Header -->
-            <div class="flex items-center gap-3 mb-8">
-                <button onclick="window.history.back()" class="text-2xl text-gray-600">←</button>
-                <div>
-                    <h1 class="text-3xl font-semibold">Status Tracking</h1>
-                    <p class="text-gray-500">Track detailed progress and view remarks</p>
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center gap-3">
+                    <button onclick="window.history.back()" class="text-2xl text-gray-600">←</button>
+                    <div>
+                        <h1 class="text-3xl font-semibold">Status Tracking</h1>
+                        <p class="text-gray-500">Track detailed progress and view remarks</p>
+                    </div>
+                </div>
+                <div class="relative">
+                    <div class="notif-bell" onclick="toggleNotifications()">
+                        <svg style="width:20px;height:20px;stroke:#6b7280;stroke-width:2;fill:none;" viewBox="0 0 24 24">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                        <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
+                    </div>
+                    <div id="notifDropdown" class="dropdown-menu">
+                        <div class="px-2 py-2 border-b border-gray-100 flex justify-between items-center">
+                            <span class="font-semibold text-sm">Notifications</span>
+                            <button onclick="markFacultyNotificationsRead()" class="text-xs text-[#621708] hover:underline">Mark all read</button>
+                        </div>
+                        <div id="notifList" class="py-1"></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Status Count Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-red-500 card-shadow">
-                    <div class="text-sm text-gray-500">Pending</div>
-                    <div class="text-5xl font-bold text-gray-900 mt-2">1</div>
-                </div>
-                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-blue-500 card-shadow">
-                    <div class="text-sm text-gray-500">Under Review</div>
-                    <div class="text-5xl font-bold text-gray-900 mt-2">1</div>
-                </div>
-                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-green-500 card-shadow">
-                    <div class="text-sm text-gray-500">Approved</div>
-                    <div class="text-5xl font-bold text-gray-900 mt-2">1</div>
-                </div>
-                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-red-600 card-shadow">
-                    <div class="text-sm text-gray-500">Rejected</div>
-                    <div class="text-5xl font-bold text-gray-900 mt-2">0</div>
-                </div>
+                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-red-500 card-shadow"><div class="text-sm text-gray-500">Pending</div><div id="count-pending" class="text-5xl font-bold text-gray-900 mt-2">0</div></div>
+                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-blue-500 card-shadow"><div class="text-sm text-gray-500">Under Review</div><div id="count-underreview" class="text-5xl font-bold text-gray-900 mt-2">0</div></div>
+                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-green-500 card-shadow"><div class="text-sm text-gray-500">Approved</div><div id="count-approved" class="text-5xl font-bold text-gray-900 mt-2">0</div></div>
+                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-red-600 card-shadow"><div class="text-sm text-gray-500">Rejected</div><div id="count-rejected" class="text-5xl font-bold text-gray-900 mt-2">0</div></div>
             </div>
 
-            <!-- All Submissions -->
             <div class="bg-white rounded-3xl p-6 card-shadow">
                 <div class="flex justify-between items-center mb-6">
                     <div>
@@ -179,129 +190,170 @@
                         <div class="text-sm text-gray-500">Track detailed progress and view remarks</div>
                     </div>
                     <div class="relative">
-                        <button onclick="toggleDropdown()" id="status-filter-btn"
-                                class="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 px-5 py-2.5 rounded-2xl text-sm font-medium">
-                            Pending 
-                            <span class="text-xs">▼</span>
+                        <button onclick="toggleDropdown()" id="status-filter-btn" class="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 px-5 py-2.5 rounded-2xl text-sm font-medium">
+                            All <span class="text-xs">▼</span>
                         </button>
-                        
-                        <!-- Dropdown -->
                         <div id="status-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl py-2 z-50 border">
-                            <a onclick="filterStatus('Pending')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Pending</a>
-                            <a onclick="filterStatus('Submitted')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Submitted</a>
-                            <a onclick="filterStatus('Approved')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Approved</a>
-                            <a onclick="filterStatus('Rejected')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Rejected</a>
+                            <a onclick="filterStatus('all')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">All</a>
+                            <a onclick="filterStatus('notsubmitted')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Not Submitted</a>
+                            <a onclick="filterStatus('underreview')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Under Review</a>
+                            <a onclick="filterStatus('approved')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Approved</a>
+                            <a onclick="filterStatus('rejected')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Rejected</a>
                         </div>
                     </div>
                 </div>
-
-                <!-- Research Paper Submission -->
-                <div class="border rounded-3xl p-6 mb-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <div class="font-semibold">Research Paper Submission</div>
-                            <div class="text-sm text-gray-600 mt-1">Submit your latest research paper for peer review</div>
-                        </div>
-                        <span class="px-5 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-2xl">pending</span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-6 mt-6 text-sm">
-                        <div>
-                            <div class="text-gray-500">Assigned</div>
-                            <div class="font-medium">2026-03-01</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-500">Due</div>
-                            <div class="font-medium">2026-03-30</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-500">Documents</div>
-                            <div class="font-medium">0 document(s)</div>
-                        </div>
-                    </div>
-
-                    <!-- Timeline -->
-                    <div class="mt-8">
-                        <div class="font-medium text-sm mb-4">Timeline</div>
-                        <div class="flex items-start gap-4">
-                            <div class="w-5 h-5 bg-blue-600 rounded-full flex-shrink-0 mt-0.5"></div>
-                            <div class="flex-1">
-                                <div class="font-medium">Assigned</div>
-                                <div class="text-sm text-gray-500">Submission assigned to faculty</div>
-                            </div>
-                            <div class="text-xs text-gray-500">3/1/2026</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Course Material Update -->
-                <div class="border rounded-3xl p-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <div class="font-semibold">Course Material Update</div>
-                            <div class="text-sm text-gray-600 mt-1">Update course syllabus and materials for the new semester</div>
-                        </div>
-                        <span class="px-5 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-2xl">submitted</span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-6 mt-6 text-sm">
-                        <div>
-                            <div class="text-gray-500">Assigned</div>
-                            <div class="font-medium">2026-03-01</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-500">Due</div>
-                            <div class="font-medium">2026-03-30</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-500">Documents</div>
-                            <div class="font-medium">1 document(s)</div>
-                        </div>
-                    </div>
-
-                    <div class="mt-8">
-                        <div class="font-medium text-sm mb-4">Timeline</div>
-                        <div class="flex items-start gap-4">
-                            <div class="w-5 h-5 bg-gray-400 rounded-full flex-shrink-0 mt-0.5"></div>
-                            <div class="flex-1">
-                                <div class="font-medium">Assigned</div>
-                                <div class="text-sm text-gray-500">Submission assigned to faculty</div>
-                            </div>
-                            <div class="text-xs text-gray-500">3/1/2026</div>
-                        </div>
-                        <div class="flex items-start gap-4 mt-6">
-                            <div class="w-5 h-5 bg-blue-600 rounded-full flex-shrink-0 mt-0.5"></div>
-                            <div class="flex-1">
-                                <div class="font-medium">Submitted</div>
-                                <div class="text-sm text-gray-500">Documents uploaded and submitted for review</div>
-                            </div>
-                            <div class="text-xs text-gray-500">3/15/2026</div>
-                        </div>
-                    </div>
-                </div>
+                <div id="statusList"></div>
             </div>
         </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-    function toggleDropdown() {
-        const dropdown = document.getElementById('status-dropdown');
-        dropdown.classList.toggle('hidden');
-    }
+const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined' ? window.__SUPABASE_URL__ : 'https://uforealazougjckepggc.supabase.co';
+const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined' ? window.__SUPABASE_ANON__ : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-    function filterStatus(status) {
-        document.getElementById('status-filter-btn').innerHTML = `${status} <span class="text-xs">▼</span>`;
-        document.getElementById('status-dropdown').classList.add('hidden');
-        alert(`Filtered to: ${status}`);
-    }
+const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [] };
+let currentFaculty = null;
+let activeFilter = 'all';
+let realtimeChannel = null;
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function(event) {
-        const dropdown = document.getElementById('status-dropdown');
-        const btn = document.getElementById('status-filter-btn');
-        if (!btn.contains(event.target) && !dropdown.contains(event.target)) {
-            dropdown.classList.add('hidden');
-        }
+function formatDate(iso) { return iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; }
+function resolveCurrentFaculty() {
+    if (currentFaculty) return currentFaculty;
+    const profileName = document.querySelector('.sidebar .font-semibold.text-sm.truncate')?.textContent?.trim() || '';
+    currentFaculty = state.faculty.find(f => f.full_name === profileName) || state.faculty.find(f => f.full_name === 'Dr. Maria Santos') || state.faculty[0] || null;
+    return currentFaculty;
+}
+function getFacultyNotifications() {
+    const faculty = resolveCurrentFaculty();
+    if (!faculty) return [];
+    return state.notifications.filter(n => (n.message || '').includes(faculty.full_name) || n.type === 'task');
+}
+function getStatusLabel(status) {
+    const map = { notsubmitted: 'Not Submitted', submitted: 'Submitted', late: 'Late', underreview: 'Under Review', approved: 'Approved', rejected: 'Rejected', revision: 'Returned for Revision', pending: 'Under Review' };
+    return map[status] || 'Not Submitted';
+}
+function getStatusChip(status) {
+    const map = {
+        notsubmitted: 'bg-gray-100 text-gray-700', submitted: 'bg-blue-100 text-blue-700', late: 'bg-red-100 text-red-700',
+        underreview: 'bg-indigo-100 text-indigo-700', approved: 'bg-green-100 text-green-700',
+        rejected: 'bg-gray-200 text-gray-700', revision: 'bg-amber-100 text-amber-700', pending: 'bg-indigo-100 text-indigo-700'
+    };
+    return map[status] || map.notsubmitted;
+}
+function computeRows() {
+    const faculty = resolveCurrentFaculty();
+    if (!faculty) return [];
+    return state.assignments.filter(a => a.faculty_id === faculty.id).map(a => {
+        const task = state.tasks.find(t => t.id === a.task_id);
+        const sub = state.submissions.find(s => s.task_id === a.task_id && s.faculty_id === faculty.id);
+        const files = sub ? state.files.filter(f => f.submission_id === sub.id) : [];
+        return { task, assignment: a, submission: sub, files };
+    }).filter(r => r.task);
+}
+function renderNotifications() {
+    const items = getFacultyNotifications();
+    const list = document.getElementById('notifList');
+    if (!items.length) { list.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No notifications yet</p>'; return; }
+    list.innerHTML = items.map(n => `<div class="dropdown-item ${n.is_read ? '' : 'bg-blue-50'}"><div class="flex-1"><div class="text-sm text-gray-800">${n.message}</div><div class="text-xs text-gray-400 mt-0.5">${formatDate(n.created_at)}</div></div>${n.is_read ? '' : '<div class="w-2 h-2 bg-blue-500 rounded-full"></div>'}</div>`).join('');
+    const unread = items.filter(i => !i.is_read).length;
+    const badge = document.getElementById('notifBadge');
+    const sidebarDot = document.getElementById('sidebarNotifToggle');
+    badge.style.display = unread ? 'flex' : 'none';
+    badge.textContent = unread;
+    if (sidebarDot) sidebarDot.style.display = unread ? 'block' : 'none';
+}
+async function markFacultyNotificationsRead() {
+    const ids = getFacultyNotifications().filter(n => !n.is_read).map(n => n.id);
+    if (!ids.length) return;
+    const { error } = await db.from('wf_notifications').update({ is_read: true }).in('id', ids);
+    if (!error) await fetchAllData();
+}
+function renderStats(rows) {
+    const counts = { pending: 0, underreview: 0, approved: 0, rejected: 0 };
+    rows.forEach(r => {
+        const st = r.submission?.status || 'notsubmitted';
+        if (st === 'notsubmitted' || st === 'late' || st === 'revision') counts.pending++;
+        else if (st === 'underreview' || st === 'submitted' || st === 'pending') counts.underreview++;
+        else if (st === 'approved') counts.approved++;
+        else if (st === 'rejected') counts.rejected++;
     });
+    document.getElementById('count-pending').textContent = counts.pending;
+    document.getElementById('count-underreview').textContent = counts.underreview;
+    document.getElementById('count-approved').textContent = counts.approved;
+    document.getElementById('count-rejected').textContent = counts.rejected;
+}
+function renderRows() {
+    const allRows = computeRows();
+    renderStats(allRows);
+    const rows = activeFilter === 'all' ? allRows : allRows.filter(r => ((r.submission?.status || 'notsubmitted') === activeFilter));
+    const container = document.getElementById('statusList');
+    if (!rows.length) { container.innerHTML = '<div class="text-sm text-gray-400 py-6">No submissions for selected filter.</div>'; return; }
+    container.innerHTML = rows.map(r => {
+        const status = r.submission?.status || 'notsubmitted';
+        return `<div class="border rounded-3xl p-6 mb-6">
+            <div class="flex justify-between items-start">
+                <div><div class="font-semibold">${r.task.title}</div><div class="text-sm text-gray-600 mt-1">${r.task.instructions || 'No instructions'}</div></div>
+                <span class="px-5 py-1 text-xs font-medium rounded-2xl ${getStatusChip(status)}">${getStatusLabel(status)}</span>
+            </div>
+            <div class="grid grid-cols-3 gap-6 mt-6 text-sm">
+                <div><div class="text-gray-500">Assigned</div><div class="font-medium">${formatDate(r.assignment.assigned_at)}</div></div>
+                <div><div class="text-gray-500">Due</div><div class="font-medium">${formatDate(r.task.due_at)}</div></div>
+                <div><div class="text-gray-500">Documents</div><div class="font-medium">${r.files.length} document(s)</div></div>
+            </div>
+            <div class="mt-4 text-xs text-gray-500">${r.submission?.review_remarks ? `Admin Remark: ${r.submission.review_remarks}` : 'No remark yet.'}</div>
+            <div class="mt-6">
+                <div class="font-medium text-sm mb-2">Timeline</div>
+                <div class="text-sm text-gray-600">Assigned: ${formatDate(r.assignment.assigned_at)}</div>
+                <div class="text-sm text-gray-600">Submitted: ${formatDate(r.submission?.submitted_at)}</div>
+                <div class="text-sm text-gray-600">Reviewed: ${formatDate(r.submission?.reviewed_at)}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+function toggleDropdown() { document.getElementById('status-dropdown').classList.toggle('hidden'); }
+function filterStatus(status) { activeFilter = status; document.getElementById('status-filter-btn').innerHTML = `${status === 'all' ? 'All' : getStatusLabel(status)} <span class="text-xs">▼</span>`; document.getElementById('status-dropdown').classList.add('hidden'); renderRows(); }
+function toggleNotifications() { document.getElementById('notifDropdown').classList.toggle('open'); }
+async function fetchAllData() {
+    const [faculty, tasks, assignments, submissions, files, notifications] = await Promise.all([
+        db.from('wf_faculty').select('*').eq('is_active', true).order('full_name'),
+        db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
+        db.from('wf_task_assignments').select('*'),
+        db.from('wf_submissions').select('*'),
+        db.from('wf_submission_files').select('*'),
+        db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(100)
+    ]);
+    if (faculty.error || tasks.error || assignments.error || submissions.error || files.error || notifications.error) return;
+    state.faculty = faculty.data || [];
+    state.tasks = tasks.data || [];
+    state.assignments = assignments.data || [];
+    state.submissions = submissions.data || [];
+    state.files = files.data || [];
+    state.notifications = notifications.data || [];
+    currentFaculty = null;
+    renderRows();
+    renderNotifications();
+}
+function initRealtime() {
+    if (realtimeChannel) db.removeChannel(realtimeChannel);
+    realtimeChannel = db.channel('wf-faculty-status-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submission_files' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, fetchAllData)
+        .subscribe();
+}
+document.addEventListener('click', (event) => {
+    const dropdown = document.getElementById('status-dropdown');
+    const btn = document.getElementById('status-filter-btn');
+    if (!btn.contains(event.target) && !dropdown.contains(event.target)) dropdown.classList.add('hidden');
+    if (!event.target.closest('.notif-bell') && !event.target.closest('#notifDropdown')) document.getElementById('notifDropdown').classList.remove('open');
+});
+window.onload = async () => { await fetchAllData(); initRealtime(); };
 </script>
 </body>
 </html>

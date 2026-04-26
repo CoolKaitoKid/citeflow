@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Submissions - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
@@ -65,6 +66,12 @@
             flex-shrink: 0;
             white-space: nowrap;
         }
+        .notif-bell { position: relative; cursor: pointer; padding: 8px; border-radius: 10px; transition: background 0.2s; }
+        .notif-bell:hover { background: #f3f4f6; }
+        .notif-badge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; background: #dc2626; color: #fff; font-size: 10px; font-weight: 600; border-radius: 99px; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
+        .dropdown-menu { position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); min-width: 320px; z-index: 60; display: none; padding: 6px; max-height: 360px; overflow-y: auto; }
+        .dropdown-menu.open { display: block; }
+        .dropdown-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 13px; color: #374151; border-radius: 6px; }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -91,15 +98,18 @@
 
             <div>
                 <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" 
+                <div onclick="window.location.href='document.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                     Document Vault
                 </div>
                 <div onclick="window.location.href='submissions.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Submissions
+                     class="nav-item flex items-center justify-between px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
+                    <span class="flex items-center gap-x-3">
+                        <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
+                        Submissions
+                    </span>
+                    <span id="sidebarNotifToggle" class="w-2.5 h-2.5 rounded-full bg-red-400" style="display:none;"></span>
                 </div>
                 <div onclick="window.location.href='status-tracking.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
@@ -143,11 +153,29 @@
     <!-- MAIN CONTENT -->
     <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
         <div class="max-w-4xl mx-auto">
-            <div class="flex items-center gap-3 mb-8">
-                <button onclick="window.history.back()" class="text-2xl">←</button>
-                <div>
-                    <h1 class="text-3xl font-semibold">Submissions</h1>
-                    <p class="text-gray-500">Manage your assigned submissions and documents</p>
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center gap-3">
+                    <button onclick="window.history.back()" class="text-2xl">←</button>
+                    <div>
+                        <h1 class="text-3xl font-semibold">Submissions</h1>
+                        <p class="text-gray-500">Manage your assigned submissions and documents</p>
+                    </div>
+                </div>
+                <div class="relative">
+                    <div class="notif-bell" onclick="toggleNotifications()">
+                        <svg style="width:20px;height:20px;stroke:#6b7280;stroke-width:2;fill:none;" viewBox="0 0 24 24">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                        <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
+                    </div>
+                    <div id="notifDropdown" class="dropdown-menu">
+                        <div class="px-2 py-2 border-b border-gray-100 flex justify-between items-center">
+                            <span class="font-semibold text-sm">Notifications</span>
+                            <button onclick="markFacultyNotificationsRead()" class="text-xs text-[#621708] hover:underline">Mark all read</button>
+                        </div>
+                        <div id="notifList" class="py-1"></div>
+                    </div>
                 </div>
             </div>
 
@@ -248,28 +276,328 @@
 </div>
 
 <script>
-    function switchTab(tab) {
-        document.getElementById('pending-content').classList.toggle('hidden', tab !== 0);
-        document.getElementById('submitted-content').classList.toggle('hidden', tab !== 1);
-        
-        document.getElementById('tab-pending').classList.toggle('tab-active', tab === 0);
-        document.getElementById('tab-submitted').classList.toggle('tab-active', tab === 1);
-    }
+const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined'
+    ? window.__SUPABASE_URL__
+    : 'https://uforealazougjckepggc.supabase.co';
+const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined'
+    ? window.__SUPABASE_ANON__
+    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-    function uploadFiles() {
-        alert("📤 File upload dialog would open here.");
-    }
+const state = {
+    faculty: [],
+    tasks: [],
+    assignments: [],
+    submissions: [],
+    submissionFiles: [],
+    notifications: []
+};
+const draftUploads = {};
+let currentFaculty = null;
+let realtimeChannel = null;
+let unreadNotifications = 0;
 
-    function submitForReview() {
-        if (confirm("Submit this for review?")) {
-            alert("✅ Submission sent for review successfully!");
-        }
-    }
+function formatDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
-    // Default to Pending tab
-    window.onload = () => {
-        switchTab(0);
+function isPastDue(iso) {
+    return new Date(iso).getTime() < Date.now();
+}
+
+function resolveCurrentFaculty() {
+    if (currentFaculty) return currentFaculty;
+    const profileName = document.querySelector('.sidebar .font-semibold.text-sm.truncate')?.textContent?.trim() || '';
+    currentFaculty = state.faculty.find(f => f.full_name === profileName)
+        || state.faculty.find(f => f.full_name === 'Dr. Maria Santos')
+        || state.faculty[0]
+        || null;
+    return currentFaculty;
+}
+
+function getTaskById(id) {
+    return state.tasks.find(t => t.id === id);
+}
+
+function getSubmission(taskId, facultyId) {
+    return state.submissions.find(s => s.task_id === taskId && s.faculty_id === facultyId);
+}
+
+function getSubmissionFiles(submissionId) {
+    return state.submissionFiles.filter(f => f.submission_id === submissionId).map(f => f.file_name);
+}
+
+function statusClass(status) {
+    const map = {
+        'Not Submitted': 'bg-gray-100 text-gray-700',
+        'Submitted': 'bg-blue-100 text-blue-700',
+        'Late': 'bg-red-100 text-red-700',
+        'Under Review': 'bg-indigo-100 text-indigo-700',
+        'Approved': 'bg-green-100 text-green-700',
+        'Rejected': 'bg-gray-200 text-gray-700',
+        'Returned for Revision': 'bg-amber-100 text-amber-700'
     };
+    return map[status] || map['Not Submitted'];
+}
+
+function effectiveStatus(task, sub) {
+    if (!sub) return isPastDue(task.due_at) ? 'Late' : 'Not Submitted';
+    if ((sub.status === 'submitted' || sub.status === 'notsubmitted') && isPastDue(task.due_at)) return 'Late';
+    const map = {
+        submitted: 'Submitted',
+        late: 'Late',
+        underreview: 'Under Review',
+        pending: 'Under Review',
+        approved: 'Approved',
+        rejected: 'Rejected',
+        revision: 'Returned for Revision',
+        notsubmitted: 'Not Submitted'
+    };
+    return map[sub.status] || 'Not Submitted';
+}
+
+function wireUploadInputs() {
+    document.querySelectorAll('.task-upload-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const taskId = e.target.dataset.task;
+            draftUploads[taskId] = Array.from(e.target.files || []).map(f => f.name);
+            renderPage();
+        });
+    });
+}
+
+function getFacultyNotifications() {
+    const faculty = resolveCurrentFaculty();
+    if (!faculty) return [];
+    return (state.notifications || []).filter(n => {
+        if (!n.message) return false;
+        return n.message.includes(faculty.full_name) || n.type === 'task';
+    });
+}
+
+function renderNotifications() {
+    const list = document.getElementById('notifList');
+    const items = getFacultyNotifications();
+    if (!items.length) {
+        list.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No notifications yet</p>';
+        return;
+    }
+    list.innerHTML = items.map(n => `
+        <div class="dropdown-item ${n.is_read ? '' : 'bg-blue-50'}">
+            <div class="flex-1">
+                <div class="text-sm text-gray-800">${n.message}</div>
+                <div class="text-xs text-gray-400 mt-0.5">${formatDate(n.created_at)}</div>
+            </div>
+            ${n.is_read ? '' : '<div class="w-2 h-2 bg-blue-500 rounded-full"></div>'}
+        </div>
+    `).join('');
+}
+
+function updateNotifBadge() {
+    unreadNotifications = getFacultyNotifications().filter(n => !n.is_read).length;
+    const badge = document.getElementById('notifBadge');
+    const sidebarDot = document.getElementById('sidebarNotifToggle');
+    if (unreadNotifications > 0) {
+        badge.style.display = 'flex';
+        badge.textContent = unreadNotifications;
+        if (sidebarDot) sidebarDot.style.display = 'block';
+    } else {
+        badge.style.display = 'none';
+        if (sidebarDot) sidebarDot.style.display = 'none';
+    }
+}
+
+function toggleNotifications() {
+    const dropdown = document.getElementById('notifDropdown');
+    dropdown.classList.toggle('open');
+}
+
+async function markFacultyNotificationsRead() {
+    const ids = getFacultyNotifications().filter(n => !n.is_read).map(n => n.id);
+    if (!ids.length) return;
+    const { error } = await db.from('wf_notifications').update({ is_read: true }).in('id', ids);
+    if (error) {
+        alert(error.message);
+        return;
+    }
+    await fetchAllData();
+}
+
+function renderTaskCard(task, sub, faculty) {
+    const status = effectiveStatus(task, sub);
+    const uploaded = draftUploads[task.id] || (sub ? getSubmissionFiles(sub.id) : []);
+    const disableSubmit = status === 'Approved' || status === 'Under Review';
+    return `
+        <div class="bg-white rounded-3xl p-6 card-shadow mb-6">
+            <div class="flex justify-between items-start gap-4">
+                <div class="flex-1">
+                    <div class="font-semibold text-lg">${task.title}</div>
+                    <div class="text-sm text-gray-600 mt-1">${task.instructions || 'No additional instructions.'}</div>
+                </div>
+                <span class="status-badge px-4 py-1.5 text-xs font-medium rounded-2xl ${statusClass(status)}">${status}</span>
+            </div>
+            <div class="mt-6 grid grid-cols-2 gap-8 text-sm">
+                <div>
+                    <div class="text-gray-500">Due Date</div>
+                    <div class="font-medium">${formatDate(task.due_at)}</div>
+                </div>
+                <div>
+                    <div class="text-gray-500">Submitted</div>
+                    <div class="font-medium">${sub?.submitted_at ? formatDate(sub.submitted_at) : 'Not yet'}</div>
+                </div>
+            </div>
+            <div class="mt-5">
+                <div class="text-xs text-gray-500 mb-2">Task Attachments</div>
+                <div class="text-sm text-gray-700">${(task.attachment_names || []).length ? task.attachment_names.join(', ') : 'No required attachment template'}</div>
+            </div>
+            <div class="mt-4">
+                <label class="text-xs text-gray-500 block mb-2">Upload Required Documents (${uploaded.length})</label>
+                <input type="file" multiple data-task="${task.id}" class="task-upload-input w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" ${disableSubmit ? 'disabled' : ''}>
+                ${uploaded.length ? `<div class="text-xs text-gray-500 mt-2">${uploaded.join(', ')}</div>` : ''}
+            </div>
+            <button onclick="submitTask('${task.id}')" class="mt-6 w-full bg-[#8c2a10] hover:bg-[#621708] text-white py-3 rounded-2xl font-medium disabled:opacity-60 disabled:cursor-not-allowed" ${disableSubmit ? 'disabled' : ''}>
+                Submit for Review
+            </button>
+            ${sub?.review_remarks ? `<div class="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"><strong>Admin Remark:</strong> ${sub.review_remarks}</div>` : ''}
+        </div>
+    `;
+}
+
+async function submitTask(taskId) {
+    const faculty = resolveCurrentFaculty();
+    if (!faculty) {
+        alert('No faculty profile found in wf_faculty.');
+        return;
+    }
+    const task = getTaskById(taskId);
+    if (!task) return;
+    const files = draftUploads[taskId] || [];
+    if (!files.length) {
+        alert('Please upload at least one file before submitting.');
+        return;
+    }
+    const existing = getSubmission(taskId, faculty.id);
+    const payload = {
+        task_id: taskId,
+        faculty_id: faculty.id,
+        submitted_at: new Date().toISOString(),
+        status: isPastDue(task.due_at) ? 'late' : 'submitted',
+        reviewed_by_name: null,
+        reviewed_at: null,
+        review_remarks: ''
+    };
+    let submissionId = existing?.id || null;
+    if (existing) {
+        const { error } = await db.from('wf_submissions').update(payload).eq('id', existing.id);
+        if (error) { alert(error.message); return; }
+        await db.from('wf_submission_files').delete().eq('submission_id', existing.id);
+        submissionId = existing.id;
+    } else {
+        const { data, error } = await db.from('wf_submissions').insert(payload).select('id').single();
+        if (error) { alert(error.message); return; }
+        submissionId = data.id;
+    }
+    const rows = files.map(fileName => ({ submission_id: submissionId, file_name: fileName }));
+    if (rows.length) {
+        const { error: filesError } = await db.from('wf_submission_files').insert(rows);
+        if (filesError) { alert(filesError.message); return; }
+    }
+    await db.from('wf_notifications').insert({
+        type: 'submission',
+        message: `New submission from ${faculty.full_name}: ${task.title}`,
+        is_read: false
+    });
+    await db.from('wf_activity_log').insert({
+        action: 'Submitted task',
+        actor_name: faculty.full_name,
+        target: task.title,
+        log_type: 'submission'
+    });
+    delete draftUploads[taskId];
+    await fetchAllData();
+}
+
+function renderPage() {
+    const faculty = resolveCurrentFaculty();
+    if (!faculty) {
+        document.getElementById('pending-content').innerHTML = '<div class="bg-white rounded-3xl p-6 card-shadow text-gray-500">No faculty profile found in realtime database.</div>';
+        document.getElementById('submitted-content').innerHTML = '<div class="bg-white rounded-3xl p-6 card-shadow text-gray-500">Please add your faculty profile in `wf_faculty`.</div>';
+        return;
+    }
+    const assignedTaskIds = state.assignments.filter(a => a.faculty_id === faculty.id).map(a => a.task_id);
+    const tasks = state.tasks.filter(t => assignedTaskIds.includes(t.id));
+    const pending = [];
+    const submitted = [];
+    tasks.forEach(task => {
+        const sub = getSubmission(task.id, faculty.id);
+        const status = effectiveStatus(task, sub);
+        const card = renderTaskCard(task, sub, faculty);
+        if (status === 'Not Submitted' || status === 'Returned for Revision' || status === 'Late') pending.push(card);
+        else submitted.push(card);
+    });
+    document.getElementById('tab-pending').textContent = `Pending (${pending.length})`;
+    document.getElementById('tab-submitted').textContent = `Submitted (${submitted.length})`;
+    document.getElementById('pending-content').innerHTML = pending.length ? pending.join('') : '<div class="bg-white rounded-3xl p-6 card-shadow text-gray-500">No pending assignments.</div>';
+    document.getElementById('submitted-content').innerHTML = submitted.length ? submitted.join('') : '<div class="bg-white rounded-3xl p-6 card-shadow text-gray-500">No submitted tasks yet.</div>';
+    wireUploadInputs();
+    renderNotifications();
+    updateNotifBadge();
+}
+
+function switchTab(tab) {
+    document.getElementById('pending-content').classList.toggle('hidden', tab !== 0);
+    document.getElementById('submitted-content').classList.toggle('hidden', tab !== 1);
+    document.getElementById('tab-pending').classList.toggle('tab-active', tab === 0);
+    document.getElementById('tab-submitted').classList.toggle('tab-active', tab === 1);
+}
+
+async function fetchAllData() {
+    const [faculty, tasks, assignments, submissions, files, notifications] = await Promise.all([
+        db.from('wf_faculty').select('*').eq('is_active', true).order('full_name'),
+        db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
+        db.from('wf_task_assignments').select('*'),
+        db.from('wf_submissions').select('*'),
+        db.from('wf_submission_files').select('*'),
+        db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(100)
+    ]);
+    if (faculty.error || tasks.error || assignments.error || submissions.error || files.error || notifications.error) {
+        const msg = faculty.error?.message || tasks.error?.message || assignments.error?.message || submissions.error?.message || files.error?.message || notifications.error?.message || 'Failed to load realtime data.';
+        document.getElementById('pending-content').innerHTML = `<div class="bg-white rounded-3xl p-6 card-shadow text-red-600">${msg}</div>`;
+        return;
+    }
+    state.faculty = faculty.data || [];
+    state.tasks = tasks.data || [];
+    state.assignments = assignments.data || [];
+    state.submissions = submissions.data || [];
+    state.submissionFiles = files.data || [];
+    state.notifications = notifications.data || [];
+    currentFaculty = null;
+    renderPage();
+}
+
+function initRealtime() {
+    if (realtimeChannel) db.removeChannel(realtimeChannel);
+    realtimeChannel = db.channel('wf-faculty-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submission_files' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, fetchAllData)
+        .subscribe();
+}
+
+window.onload = async () => {
+    switchTab(0);
+    await fetchAllData();
+    initRealtime();
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.notif-bell') && !e.target.closest('#notifDropdown')) {
+            document.getElementById('notifDropdown').classList.remove('open');
+        }
+    });
+};
 </script>
 </body>
 </html>

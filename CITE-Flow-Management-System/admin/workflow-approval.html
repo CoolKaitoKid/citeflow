@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workflow Approval - CITE-Flow</title>
+    <!-- Updated admin workflow page: .html navigation, task detail page, submission file preview/download, clickable notifications. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
         * { font-family: 'Inter', sans-serif; }
-
-        /* ─── Sidebar (original, untouched) ─────────────────────────── */
+        
+        /* ─── Sidebar ───────────────────────────────────────────────── */
         .sidebar { background-color: #621708; width: 280px; }
         .nav-item { transition: all 0.2s ease; }
         .nav-item:hover { background-color: #8c2a10; }
@@ -21,127 +21,70 @@
         .sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.3); border-radius: 20px; }
         .nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
-        /* ─── Main content ───────────────────────────────────────────── */
-        .main-surface {
-            background: #fff;
-            border-radius: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
-        }
-
-        .stat-card {
-            background: #fff;
-            border-radius: 14px;
-            border: 1px solid #f0f0f0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            transition: box-shadow 0.2s;
-        }
+        /* ─── Main Surface ──────────────────────────────────────────── */
+        .main-surface { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04); }
+        .stat-card { background: #fff; border-radius: 14px; border: 1px solid #f0f0f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.2s; }
         .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 
-        /* ─── Table ──────────────────────────────────────────────────── */
-        .data-table thead th {
-            background: #fafafa;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.04em;
-            color: #9ca3af;
-            text-transform: uppercase;
-            padding: 14px 20px;
-            border-bottom: 1px solid #f3f4f6;
-        }
-        .data-table tbody tr {
-            border-bottom: 1px solid #f9fafb;
-            transition: background 0.15s;
-        }
+        /* ─── Table ─────────────────────────────────────────────────── */
+        .data-table thead th { background: #fafafa; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af; text-transform: uppercase; padding: 14px 20px; border-bottom: 1px solid #f3f4f6; }
+        .data-table tbody tr { border-bottom: 1px solid #f9fafb; transition: background 0.15s; }
         .data-table tbody tr:last-child { border-bottom: none; }
         .data-table tbody tr:hover { background: #fafafa; }
         .data-table tbody td { padding: 16px 20px; font-size: 13.5px; color: #374151; vertical-align: middle; }
 
-        /* ─── Status badges ──────────────────────────────────────────── */
-        .badge {
-            display: inline-flex; align-items: center; gap: 5px;
-            font-size: 11.5px; font-weight: 500;
-            padding: 4px 10px; border-radius: 6px;
-        }
-        .badge-pending  { background: #fef3c7; color: #92400e; }
-        .badge-approved { background: #d1fae5; color: #065f46; }
-        .badge-revision { background: #fee2e2; color: #991b1b; }
-        .badge-declined { background: #f3f4f6; color: #4b5563; }
+        /* ─── 7 Status Badges ───────────────────────────────────────── */
+        .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; padding: 4px 10px; border-radius: 6px; }
         .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-        .badge-pending  .badge-dot { background: #d97706; }
-        .badge-approved .badge-dot { background: #10b981; }
-        .badge-revision .badge-dot { background: #ef4444; }
-        .badge-declined .badge-dot { background: #9ca3af; }
+        
+        .badge-notsubmitted { background: #f3f4f6; color: #6b7280; }
+        .badge-submitted    { background: #dbeafe; color: #1e40af; }
+        .badge-late         { background: #fee2e2; color: #991b1b; }
+        .badge-underreview  { background: #e0e7ff; color: #4338ca; }
+        .badge-pending      { background: #fef3c7; color: #92400e; }
+        .badge-approved     { background: #d1fae5; color: #065f46; }
+        .badge-revision     { background: #fee2e2; color: #991b1b; }
+        .badge-rejected     { background: #f3f4f6; color: #4b5563; }
+        
+        .badge-notsubmitted .badge-dot { background: #9ca3af; }
+        .badge-submitted    .badge-dot { background: #3b82f6; }
+        .badge-late         .badge-dot { background: #dc2626; }
+        .badge-underreview  .badge-dot { background: #6366f1; }
+        .badge-pending      .badge-dot { background: #d97706; }
+        .badge-approved     .badge-dot { background: #10b981; }
+        .badge-revision     .badge-dot { background: #f59e0b; }
+        .badge-rejected     .badge-dot { background: #6b7280; }
 
-        /* ─── Progress bars ──────────────────────────────────────────── */
+        /* ─── Progress Bars ─────────────────────────────────────────── */
         .prog-track { height: 6px; background: #f3f4f6; border-radius: 99px; overflow: hidden; }
-        .prog-fill   { height: 100%; border-radius: 99px; transition: width 0.5s cubic-bezier(.4,0,.2,1); }
+        .prog-fill  { height: 100%; border-radius: 99px; transition: width 0.5s cubic-bezier(.4,0,.2,1); }
+        .prog-clickable { cursor: pointer; transition: opacity 0.2s; }
+        .prog-clickable:hover { opacity: 0.8; }
 
-        /* ─── Deadline countdown ─────────────────────────────────────── */
+        /* ─── Countdown ─────────────────────────────────────────────── */
         .countdown-urgent { color: #dc2626; }
         .countdown-warn   { color: #d97706; }
         .countdown-ok     { color: #059669; }
 
         /* ─── Modals ─────────────────────────────────────────────────── */
-        .modal-backdrop {
-            position: fixed; inset: 0;
-            background: rgba(0,0,0,0.45);
-            backdrop-filter: blur(2px);
-            display: none; align-items: center; justify-content: center;
-            z-index: 50;
-        }
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); display: none; align-items: center; justify-content: center; z-index: 50; }
         .modal-backdrop.open { display: flex; }
+        .modal-panel { background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.18); width: 100%; max-height: 90vh; overflow-y: auto; animation: modal-in 0.2s cubic-bezier(.4,0,.2,1); }
+        @keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .modal-header { padding: 24px 28px 20px; border-bottom: 1px solid #f3f4f6; }
+        .modal-body { padding: 24px 28px; }
+        .modal-footer { padding: 20px 28px; border-top: 1px solid #f3f4f6; display: flex; gap: 10px; }
 
-        .modal-panel {
-            background: #fff;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.18);
-            width: 100%;
-            max-height: 90vh;
-            overflow-y: auto;
-            animation: modal-in 0.2s cubic-bezier(.4,0,.2,1);
-        }
-        @keyframes modal-in {
-            from { opacity: 0; transform: translateY(10px) scale(0.98); }
-            to   { opacity: 1; transform: translateY(0)  scale(1); }
-        }
-        .modal-header {
-            padding: 24px 28px 20px;
-            border-bottom: 1px solid #f3f4f6;
-        }
-        .modal-body   { padding: 24px 28px; }
-        .modal-footer {
-            padding: 20px 28px;
-            border-top: 1px solid #f3f4f6;
-            display: flex; gap: 10px;
-        }
-
-        /* ─── Form controls ──────────────────────────────────────────── */
+        /* ─── Form Controls ─────────────────────────────────────────── */
         .field-label { font-size: 12px; font-weight: 500; color: #6b7280; margin-bottom: 6px; display: block; }
-        .field-input {
-            width: 100%;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-size: 13.5px;
-            color: #111827;
-            outline: none;
-            transition: border-color 0.15s, box-shadow 0.15s;
-            background: #fff;
-        }
+        .field-input { width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; color: #111827; outline: none; transition: border-color 0.15s, box-shadow 0.15s; background: #fff; }
         .field-input:focus { border-color: #621708; box-shadow: 0 0 0 3px rgba(98,23,8,0.08); }
         .field-input::placeholder { color: #9ca3af; }
-
         textarea.field-input { resize: vertical; min-height: 90px; }
         select.field-input { appearance: none; cursor: pointer; }
 
         /* ─── Buttons ────────────────────────────────────────────────── */
-        .btn {
-            display: inline-flex; align-items: center; gap: 7px;
-            font-size: 13.5px; font-weight: 500;
-            padding: 9px 18px; border-radius: 8px;
-            cursor: pointer; transition: all 0.15s;
-            border: none; outline: none;
-        }
+        .btn { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 500; padding: 9px 18px; border-radius: 8px; cursor: pointer; transition: all 0.15s; border: none; outline: none; }
         .btn-primary { background: #621708; color: #fff; }
         .btn-primary:hover { background: #7c1e0a; }
         .btn-ghost { background: transparent; color: #374151; border: 1px solid #e5e7eb; }
@@ -155,24 +98,16 @@
         .btn-sm { padding: 6px 13px; font-size: 12.5px; }
         .btn-full { width: 100%; justify-content: center; }
 
-        /* ─── Realtime indicator ─────────────────────────────────────── */
-        @keyframes pulse-dot {
-            0%, 100% { opacity: 1; }
-            50%       { opacity: 0.4; }
-        }
+        /* ─── Realtime Indicator ─────────────────────────────────────── */
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .rt-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
 
         /* ─── Scrollbar ──────────────────────────────────────────────── */
         .modal-panel::-webkit-scrollbar { width: 5px; }
         .modal-panel::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 99px; }
 
-        /* ─── File chip ──────────────────────────────────────────────── */
-        .file-chip {
-            display: flex; align-items: center; justify-content: space-between;
-            background: #f9fafb; border: 1px solid #f0f0f0;
-            border-radius: 8px; padding: 10px 14px;
-            font-size: 13px;
-        }
+        /* ─── File Chip ──────────────────────────────────────────────── */
+        .file-chip { display: flex; align-items: center; justify-content: space-between; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
         .file-chip-name { display: flex; align-items: center; gap: 9px; color: #374151; }
         .file-chip-dl { font-size: 12px; color: #621708; font-weight: 500; cursor: pointer; }
         .file-chip-dl:hover { text-decoration: underline; }
@@ -180,29 +115,77 @@
         /* ─── Divider ────────────────────────────────────────────────── */
         .section-divider { border: none; border-top: 1px solid #f3f4f6; margin: 0; }
 
-        /* ─── Approval record ────────────────────────────────────────── */
-        .approval-record {
-            background: #f0fdf4; border: 1px solid #bbf7d0;
-            border-radius: 8px; padding: 12px 16px;
-            font-size: 12.5px; color: #166534;
-        }
-        .decline-record {
-            background: #fef2f2; border: 1px solid #fecaca;
-            border-radius: 8px; padding: 12px 16px;
-            font-size: 12.5px; color: #991b1b;
-        }
-        .revision-record {
-            background: #fffbeb; border: 1px solid #fde68a;
-            border-radius: 8px; padding: 12px 16px;
-            font-size: 12.5px; color: #92400e;
-        }
+        /* ─── Review Records ─────────────────────────────────────────── */
+        .approval-record { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; font-size: 12.5px; color: #166534; }
+        .decline-record { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; font-size: 12.5px; color: #991b1b; }
+        .revision-record { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; font-size: 12.5px; color: #92400e; }
 
-        /* ─── Delegate row ───────────────────────────────────────────── */
-        .delegate-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 16px; border: 1px solid #f0f0f0;
-            border-radius: 10px; background: #fafafa;
-        }
+        /* ─── Delegate Row ───────────────────────────────────────────── */
+        .delegate-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid #f0f0f0; border-radius: 10px; background: #fafafa; }
+
+        /* ─── Notification Bell ──────────────────────────────────────── */
+        .notif-bell { position: relative; cursor: pointer; padding: 8px; border-radius: 10px; transition: background 0.2s; }
+        .notif-bell:hover { background: #f3f4f6; }
+        .notif-badge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; background: #dc2626; color: #fff; font-size: 10px; font-weight: 600; border-radius: 99px; display: flex; align-items: center; justify-content: center; padding: 0 5px; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+
+        /* ─── Activity Log ───────────────────────────────────────────── */
+        .activity-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f3f4f6; }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+        .activity-content { flex: 1; }
+        .activity-time { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+        /* ─── Timeline View ──────────────────────────────────────────── */
+        .timeline { position: relative; padding-left: 24px; }
+        .timeline::before { content: ''; position: absolute; left: 7px; top: 4px; bottom: 4px; width: 2px; background: #e5e7eb; }
+        .timeline-item { position: relative; padding-bottom: 16px; }
+        .timeline-item:last-child { padding-bottom: 0; }
+        .timeline-dot { position: absolute; left: -24px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; }
+        .timeline-dot.active { border-color: #621708; background: #621708; }
+        .timeline-dot svg { width: 8px; height: 8px; stroke: #fff; stroke-width: 3; }
+
+        /* ─── Comment Thread ─────────────────────────────────────────── */
+        .comment { background: #f9fafb; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+        .comment-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .comment-author { font-size: 12.5px; font-weight: 600; color: #374151; }
+        .comment-time { font-size: 11px; color: #9ca3af; }
+        .comment-body { font-size: 13px; color: #4b5563; line-height: 1.5; }
+
+        /* ─── Tabs ───────────────────────────────────────────────────── */
+        .tab-btn { padding: 8px 16px; font-size: 13px; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; transition: all 0.2s; cursor: pointer; }
+        .tab-btn:hover { color: #374151; }
+        .tab-btn.active { color: #621708; border-bottom-color: #621708; }
+
+        /* ─── Dropdown Menu ──────────────────────────────────────────── */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); min-width: 180px; z-index: 60; display: none; padding: 6px; }
+        .dropdown-menu.open { display: block; }
+        .dropdown-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 13px; color: #374151; border-radius: 6px; cursor: pointer; transition: background 0.15s; }
+        .dropdown-item:hover { background: #f3f4f6; }
+        .dropdown-item.danger { color: #dc2626; }
+
+        /* ─── Action Menu ───────────────────────────────────────────── */
+        .action-menu { position: relative; }
+        .action-dropdown { position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); min-width: 160px; z-index: 60; display: none; padding: 6px; margin-top: 4px; }
+        .action-dropdown.open { display: block; }
+
+
+        /* --- Task detail page and file preview actions --- */
+        .detail-card { background:#fff; border:1px solid #f0f0f0; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+        .submission-card { border:1px solid #eef0f3; border-radius:14px; background:#fff; padding:16px; transition:border-color .2s, box-shadow .2s, background .2s; }
+        .submission-card:hover { border-color:#e5e7eb; box-shadow:0 4px 14px rgba(0,0,0,0.05); }
+        .submission-card.highlighted { border-color:#621708; background:#fff7ed; box-shadow:0 0 0 3px rgba(98,23,8,0.10); }
+        .file-chip-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+        .file-action-btn { font-size:12px; color:#621708; font-weight:600; cursor:pointer; background:transparent; border:0; padding:2px 0; }
+        .file-action-btn:hover { text-decoration:underline; }
+        .file-action-btn:disabled { color:#9ca3af; cursor:not-allowed; text-decoration:none; }
+        .detail-muted { color:#6b7280; font-size:12.5px; }
+        .notif-target { cursor:pointer; }
+        .notif-target:hover .text-sm { color:#621708; }
+        .task-row-clickable { cursor:pointer; }
+        .task-row-clickable:hover .task-row-title { text-decoration:underline; }
+        .preview-frame { width:100%; height:68vh; border:1px solid #e5e7eb; border-radius:10px; background:#f9fafb; }
     </style>
 </head>
 <body class="bg-[#f5f5f5] text-gray-900">
@@ -213,7 +196,7 @@
          SIDEBAR — original, untouched
     ═══════════════════════════════════════════════════════════════ -->
     <div class="sidebar text-white flex flex-col h-full">
-        <div onclick="window.location.href='/dashboard'"
+        <div onclick="window.location.href='dashboard.html'"
              class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
             <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3">
             <div class="text-center">
@@ -225,15 +208,15 @@
         <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
             <div>
                 <div class="section-header text-white/70">FACULTIES & PROFILES</div>
-                <div onclick="window.location.href='/faculty-profiles'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='faculty-profiles.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     Faculty Profiles
                 </div>
-                <div onclick="window.location.href='/workload-tracker'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='workload-tracker.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                     Workload Tracker
                 </div>
-                <div onclick="window.location.href='/engagement-logs'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
                     Engagement Logs
                 </div>
@@ -241,19 +224,22 @@
 
             <div>
                 <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='/document-vault'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                     Document Vault
                 </div>
-                <div onclick="window.location.href='/workflow-approval'" class="nav-item active flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='workflow-approval.html'" class="nav-item active flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer justify-between">
+                    <span class="flex items-center gap-x-3">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
                     Workflow Approval
+                    </span>
+                    <span id="sidebarNotifToggle" class="w-2.5 h-2.5 rounded-full bg-red-400" style="display:none;"></span>
                 </div>
             </div>
 
             <div>
                 <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='/calendar'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     Calendar
                 </div>
@@ -261,28 +247,32 @@
 
             <div>
                 <div class="section-header text-white/70">ADMINISTRATION</div>
-                <div onclick="window.location.href='/reports-analytics'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='reports-analytics.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
                     Reports and Analytics
                 </div>
-                <div onclick="window.location.href='/system-settings'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='feedback-summary.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
+                    Seminar Feedback Summary
+                </div>
+                <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     System Settings
                 </div>
-                <div onclick="window.location.href='/user-management'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     User Management
                 </div>
             </div>
         </div>
 
-        <div onclick="window.location.href = '/admin/admin-profile.html'"
+        <div onclick="window.location.href='admin-profile.html'"
              class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
             <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">
                 <svg style="width:18px;height:18px;stroke:#621708;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">PROFILE NAME</div>
+                <div id="profileName" class="font-semibold text-sm truncate">PROFILE NAME</div>
                 <div class="text-xs text-white/70">Administrator</div>
             </div>
         </div>
@@ -292,7 +282,7 @@
          MAIN CONTENT
     ═══════════════════════════════════════════════════════════════ -->
     <div class="flex-1 overflow-y-auto">
-        <div class="max-w-6xl mx-auto px-8 py-8">
+        <div id="workflowMainView" class="max-w-6xl mx-auto px-8 py-8">
 
             <!-- Page Header -->
             <div class="flex items-start justify-between mb-8">
@@ -307,6 +297,13 @@
                     <p class="text-sm text-gray-500">Review and manage faculty document submissions in real time</p>
                 </div>
                 <div class="flex items-center gap-2.5">
+                    <div class="notif-bell" onclick="toggleNotifications()">
+                        <svg style="width:20px;height:20px;stroke:#6b7280;stroke-width:2;fill:none;" viewBox="0 0 24 24">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                        <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
+                    </div>
                     <button onclick="openAccessModal()" class="btn btn-ghost">
                         <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -365,43 +362,6 @@
                 </div>
             </div>
 
-            <!-- Real-time Submission Progress -->
-            <div class="main-surface p-6 mb-6">
-                <div class="flex items-center justify-between mb-5">
-                    <h2 class="text-sm font-semibold text-gray-700">Submission Progress by Department</h2>
-                    <span class="text-xs text-gray-400">Updates in real time</span>
-                </div>
-                <div class="grid grid-cols-3 gap-6">
-                    <div>
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs font-medium text-gray-600">BSIT</span>
-                            <span id="prog-bsit-label" class="text-xs text-gray-500">—</span>
-                        </div>
-                        <div class="prog-track">
-                            <div id="prog-bsit" class="prog-fill bg-emerald-500" style="width:0%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs font-medium text-gray-600">BSIE</span>
-                            <span id="prog-bsie-label" class="text-xs text-gray-500">—</span>
-                        </div>
-                        <div class="prog-track">
-                            <div id="prog-bsie" class="prog-fill bg-blue-500" style="width:0%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs font-medium text-gray-600">BIT</span>
-                            <span id="prog-bit-label" class="text-xs text-gray-500">—</span>
-                        </div>
-                        <div class="prog-track">
-                            <div id="prog-bit" class="prog-fill bg-orange-500" style="width:0%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Filter bar -->
             <div class="flex gap-3 mb-4">
                 <div class="relative flex-1">
@@ -413,11 +373,10 @@
                            class="field-input pl-10">
                 </div>
                 <select id="statusFilter" onchange="filterSubmissions()" class="field-input" style="width:180px;">
-                    <option value="">All Statuses</option>
-                    <option value="pending">Pending Review</option>
-                    <option value="approved">Approved</option>
-                    <option value="revision">Needs Revision</option>
-                    <option value="declined">Declined</option>
+                    <option value="">All Task Status</option>
+                    <option value="notsubmitted">No Submission</option>
+                    <option value="underreview">In Progress</option>
+                    <option value="approved">Completed</option>
                 </select>
                 <select id="deptFilter" onchange="filterSubmissions()" class="field-input" style="width:160px;">
                     <option value="">All Departments</option>
@@ -432,30 +391,108 @@
                 <table class="data-table w-full">
                     <thead>
                         <tr>
-                            <th class="text-left" style="width:30%">Task</th>
-                            <th class="text-left">Submitted By</th>
-                            <th class="text-left">Department</th>
+                            <th class="text-left" style="width:36%">Task</th>
+                            <th class="text-left">Assigned To</th>
                             <th class="text-left">Deadline</th>
-                            <th class="text-left">Date Submitted</th>
                             <th class="text-left">Status</th>
                             <th class="text-left">Action</th>
                         </tr>
                     </thead>
                     <tbody id="submissionsTableBody">
                         <tr>
-                            <td colspan="7" class="text-center text-gray-400 py-12 text-sm">Loading submissions...</td>
+                            <td colspan="5" class="text-center text-gray-400 py-12 text-sm">Loading tasks...</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
         </div>
+
+        <!-- TASK DETAIL PAGE -->
+        <div id="taskDetailPage" class="hidden max-w-6xl mx-auto px-8 py-8">
+            <div class="flex items-start justify-between mb-6">
+                <div>
+                    <button onclick="returnToWorkflowMain()" class="btn btn-ghost btn-sm mb-4">
+                        <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+                        Back to Tasks
+                    </button>
+                    <div class="flex items-center gap-3">
+                        <h1 id="detailTaskTitle" class="text-[22px] font-semibold text-gray-900 tracking-tight">Task Details</h1>
+                        <span id="detailTaskStatusBadge"></span>
+                    </div>
+                    <p id="detailTaskMeta" class="text-sm text-gray-500 mt-1"></p>
+                </div>
+                <div class="flex items-center gap-2.5">
+                    <button onclick="openActivityLogModal()" class="btn btn-ghost btn-sm">Activity Log</button>
+                    <button onclick="openAssignModal()" class="btn btn-primary btn-sm">Assign New Task</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-4 gap-4 mb-6">
+                <div class="detail-card p-5">
+                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Assigned</div>
+                    <div id="detailAssignedCount" class="text-2xl font-semibold text-gray-900">0</div>
+                    <div id="detailAssignedLabel" class="detail-muted mt-1"></div>
+                </div>
+                <div class="detail-card p-5">
+                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Submitted</div>
+                    <div id="detailSubmittedCount" class="text-2xl font-semibold text-gray-900">0</div>
+                    <div class="detail-muted mt-1">Faculty with uploads</div>
+                </div>
+                <div class="detail-card p-5">
+                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Pending</div>
+                    <div id="detailPendingCount" class="text-2xl font-semibold text-gray-900">0</div>
+                    <div class="detail-muted mt-1">No submission yet</div>
+                </div>
+                <div class="detail-card p-5">
+                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Progress</div>
+                    <div id="detailProgressPercent" class="text-2xl font-semibold text-gray-900">0%</div>
+                    <div class="prog-track mt-3"><div id="detailProgressFill" class="prog-fill bg-emerald-500" style="width:0%"></div></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-6">
+                <div class="col-span-2 space-y-6">
+                    <div class="main-surface p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-sm font-semibold text-gray-700">Submitted Part</h2>
+                            <span id="detailSubmittedSummary" class="text-xs text-gray-400"></span>
+                        </div>
+                        <div id="detailSubmissionList" class="space-y-3"></div>
+                    </div>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="main-surface p-6">
+                        <h2 class="text-sm font-semibold text-gray-700 mb-3">Task Information</h2>
+                        <div class="space-y-3 text-sm">
+                            <div>
+                                <div class="field-label">Deadline</div>
+                                <div id="detailTaskDeadline" class="text-gray-800"></div>
+                            </div>
+                            <div>
+                                <div class="field-label">Instructions</div>
+                                <div id="detailTaskInstructions" class="text-gray-700 leading-relaxed whitespace-pre-wrap"></div>
+                            </div>
+                            <div>
+                                <div class="field-label">Task Attachments</div>
+                                <div id="detailTaskAttachments" class="space-y-2"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="main-surface p-6">
+                        <h2 class="text-sm font-semibold text-gray-700 mb-3">Submission Progress</h2>
+                        <div id="detailDepartmentProgress" class="space-y-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════
-     MODAL: Assign New Task
-═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Assign New Task -->
 <div id="assignModal" class="modal-backdrop">
     <div class="modal-panel" style="max-width:560px; margin:0 16px;">
         <div class="modal-header">
@@ -519,6 +556,27 @@
                 <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
                 Assign Task
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- DEPARTMENT DETAILS MODAL -->
+<div id="deptModal" class="modal-backdrop">
+    <div class="modal-panel" style="max-width:500px;">
+        <div class="modal-header">
+            <h2 id="deptTitle" class="text-base font-semibold">Department Details</h2>
+        </div>
+
+        <div class="modal-body">
+            <h3 class="text-sm font-medium mb-2">Submitted</h3>
+            <div id="submittedList" class="mb-4 text-sm text-gray-600"></div>
+
+            <h3 class="text-sm font-medium mb-2">Not Submitted</h3>
+            <div id="notSubmittedList" class="text-sm text-gray-600"></div>
+        </div>
+
+        <div class="modal-footer">
+            <button onclick="closeDeptModal()" class="btn btn-ghost w-full">Close</button>
         </div>
     </div>
 </div>
@@ -587,6 +645,33 @@
                 <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
                 Approve
             </button>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- MODAL: File Preview -->
+<div id="filePreviewModal" class="modal-backdrop">
+    <div class="modal-panel" style="max-width:960px; margin:0 16px;">
+        <div class="modal-header">
+            <div class="flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                    <h2 class="text-base font-semibold text-gray-900">File Preview</h2>
+                    <p id="filePreviewTitle" class="text-xs text-gray-500 mt-0.5 truncate"></p>
+                </div>
+                <button onclick="closeFilePreviewModal()" class="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                    <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="modal-body">
+            <iframe id="filePreviewFrame" class="preview-frame" title="Submitted file preview"></iframe>
+            <p class="text-xs text-gray-400 mt-3">Some Office files may download instead of rendering in the browser. Use Download if the preview is blank.</p>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeFilePreviewModal()" class="btn btn-ghost flex-1 justify-center">Close</button>
+            <a id="filePreviewDownloadLink" href="#" target="_blank" rel="noopener" download class="btn btn-primary flex-1 justify-center">Download</a>
         </div>
     </div>
 </div>
@@ -669,153 +754,334 @@
 </div>
 
 <!-- ════════════════════════════════════════════════════
+     NOTIFICATION DROPDOWN
+═══════════════════════════════════════════════════════ -->
+<div id="notifDropdown" class="dropdown-menu" style="top:45px;right:0;width:320px;max-height:400px;overflow-y:auto;">
+    <div class="px-3 py-2 border-b border-gray-100">
+        <div class="flex items-center justify-between">
+            <span class="font-semibold text-sm text-gray-900">Notifications</span>
+            <button onclick="markAllRead()" class="text-xs text-[#621708] hover:underline">Mark all read</button>
+        </div>
+    </div>
+    <div id="notifList" class="py-2">
+        <p class="text-sm text-gray-400 text-center py-4">No new notifications</p>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     MODAL: Activity Log
+═══════════════════════════════════════════════════════ -->
+<div id="activityLogModal" class="modal-backdrop">
+    <div class="modal-panel" style="max-width:500px; margin:0 16px;">
+        <div class="modal-header">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900">Activity Log</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Recent actions on this submission</p>
+                </div>
+                <button onclick="closeActivityLogModal()" class="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                    <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="modal-body" style="max-height:400px;overflow-y:auto;">
+            <div id="activityLogContent" class="activity-list"></div>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeActivityLogModal()" class="btn btn-ghost flex-1 justify-center">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     MODAL: Timeline View
+═══════════════════════════════════════════════════════ -->
+<div id="timelineModal" class="modal-backdrop">
+    <div class="modal-panel" style="max-width:500px; margin:0 16px;">
+        <div class="modal-header">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900">Submission Timeline</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Complete history</p>
+                </div>
+                <button onclick="closeTimelineModal()" class="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                    <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="modal-body">
+            <div id="timelineContent" class="timeline"></div>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeTimelineModal()" class="btn btn-ghost flex-1 justify-center">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     MODAL: Comments Thread
+═══════════════════════════════════════════════════════ -->
+<div id="commentsModal" class="modal-backdrop">
+    <div class="modal-panel" style="max-width:500px; margin:0 16px;">
+        <div class="modal-header">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900">Discussion</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Comments on this submission</p>
+                </div>
+                <button onclick="closeCommentsModal()" class="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                    <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="modal-body" style="max-height:350px;overflow-y:auto;">
+            <div id="commentsList" class="comments-list"></div>
+        </div>
+        <div class="modal-footer flex-col gap-3" style="align-items:stretch;">
+            <textarea id="newComment" class="field-input" placeholder="Write a comment..." rows="2"></textarea>
+            <button onclick="addComment()" class="btn btn-primary justify-center">
+                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                Post Comment
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
      TOAST
 ═══════════════════════════════════════════════════════ -->
 <div id="toast" style="position:fixed;bottom:28px;right:28px;z-index:100;display:none;"></div>
 
 <script>
-/* ──────────────────────────────────────────────────────────────
-   Supabase client — replace with your actual URL + anon key
-   or wire up via environment variables
-   ────────────────────────────────────────────────────────────── */
-const SUPABASE_URL  = typeof window.__SUPABASE_URL__  !== 'undefined' ? window.__SUPABASE_URL__  : 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined' ? window.__SUPABASE_ANON__ : 'YOUR_ANON_KEY';
-
+const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined'
+    ? window.__SUPABASE_URL__
+    : 'https://uforealazougjckepggc.supabase.co';
+const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined'
+    ? window.__SUPABASE_ANON__
+    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+const ADMIN_NAME = 'Administrator';
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-/* ──────────────────────────────────────────────────────────────
-   Local state
-   ────────────────────────────────────────────────────────────── */
-let allSubmissions  = [];
-let allTasks        = [];
-let delegatedAccess = [];
-let activeReviewId  = null;
-const ADMIN_NAME    = 'Administrator'; // Replace with actual session user name
+var workflowState = window.workflowState || {
+    faculty: [],
+    tasks: [],
+    assignments: [],
+    submissions: [],
+    submissionFiles: [],
+    notifications: [],
+    activity: [],
+    comments: [],
+    delegatedAccess: []
+};
+window.workflowState = workflowState;
 
-/* ──────────────────────────────────────────────────────────────
-   TOAST
-   ────────────────────────────────────────────────────────────── */
+function ensureWorkflowState() {
+    if (!window.workflowState) {
+        window.workflowState = {
+            faculty: [],
+            tasks: [],
+            assignments: [],
+            submissions: [],
+            submissionFiles: [],
+            notifications: [],
+            activity: [],
+            comments: [],
+            delegatedAccess: []
+        };
+    }
+    workflowState = window.workflowState;
+    return workflowState;
+}
+
+let allSubmissions = [];
+let activeReviewId = null;
+let currentTimelineSub = null;
+let realtimeChannel = null;
+let activeTaskDetailId = null;
+let fileActionSeq = 0;
+window.workflowFileActionCache = window.workflowFileActionCache || {};
+
 function showToast(message, type = 'success') {
     const colors = {
         success: 'background:#064e3b;color:#d1fae5;border-color:#065f46;',
-        error:   'background:#7f1d1d;color:#fee2e2;border-color:#991b1b;',
-        warn:    'background:#78350f;color:#fef3c7;border-color:#92400e;',
+        error: 'background:#7f1d1d;color:#fee2e2;border-color:#991b1b;',
+        warn: 'background:#78350f;color:#fef3c7;border-color:#92400e;'
     };
     const el = document.getElementById('toast');
-    el.style.cssText = `position:fixed;bottom:28px;right:28px;z-index:100;
-        padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;
-        border:1px solid;max-width:360px;line-height:1.4;
-        box-shadow:0 8px 24px rgba(0,0,0,0.18);
-        animation:fadein .2s ease;
-        ${colors[type]}`;
+    el.style.cssText = `position:fixed;bottom:28px;right:28px;z-index:100;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;border:1px solid;max-width:360px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,0.18);${colors[type]}`;
     el.textContent = message;
     el.style.display = 'block';
-    setTimeout(() => { el.style.display = 'none'; }, 3500);
+    setTimeout(() => { el.style.display = 'none'; }, 2600);
 }
 
-/* ──────────────────────────────────────────────────────────────
-   DEMO DATA (shown when Supabase not connected)
-   ────────────────────────────────────────────────────────────── */
-function loadDemoData() {
-    const now = new Date();
-    const soon = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
-    const past = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-
-    allTasks = [
-        { id: 't1', title: 'Mid-Year Faculty Performance Report', due_at: soon.toISOString() },
-        { id: 't2', title: 'Department Budget Proposal 2026-2027', due_at: past.toISOString() },
-        { id: 't3', title: 'Updated Course Syllabus - AI Fundamentals', due_at: soon.toISOString() },
-        { id: 't4', title: 'Laboratory Equipment Inventory', due_at: soon.toISOString() },
-    ];
-
-    allSubmissions = [
-        {
-            id: 's1', task_id: 't1',
-            submitter_name: 'Dr. Elena Reyes', department_code: 'BSIT',
-            submitted_at: '2026-03-28T09:14:00Z',
-            status: 'pending',
-            reviewed_by_name: null, reviewed_at: null, review_remarks: '',
-            files: ['performance_report.pdf', 'supporting_docs.zip'],
-        },
-        {
-            id: 's2', task_id: 't2',
-            submitter_name: 'Prof. Marco Santos', department_code: 'BSIE',
-            submitted_at: '2026-03-27T11:45:00Z',
-            status: 'pending',
-            reviewed_by_name: null, reviewed_at: null, review_remarks: '',
-            files: ['budget_proposal.xlsx'],
-        },
-        {
-            id: 's3', task_id: 't3',
-            submitter_name: 'Engr. Anna Lopez', department_code: 'BIT',
-            submitted_at: '2026-03-25T14:00:00Z',
-            status: 'approved',
-            reviewed_by_name: 'Administrator', reviewed_at: '2026-03-26T10:30:00Z',
-            review_remarks: 'Well-structured syllabus. Approved.',
-            files: ['syllabus_ai.pdf'],
-        },
-        {
-            id: 's4', task_id: 't4',
-            submitter_name: 'Prof. Jose Cruz', department_code: 'BSIT',
-            submitted_at: '2026-03-24T08:22:00Z',
-            status: 'revision',
-            reviewed_by_name: 'Administrator', reviewed_at: '2026-03-25T09:00:00Z',
-            review_remarks: 'Please include serial numbers for all equipment.',
-            files: ['inventory.xlsx'],
-        },
-    ];
-
-    renderAll();
+function formatDate(iso) {
+    if (!iso) return 'N/A';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-/* ──────────────────────────────────────────────────────────────
-   RENDER
-   ────────────────────────────────────────────────────────────── */
+function formatDateTime(iso) {
+    if (!iso) return 'N/A';
+    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function isPastDeadline(dueIso) {
+    return new Date(dueIso).getTime() < Date.now();
+}
+
+function normalizeText(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function normalizeArray(value) {
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (!value) return [];
+    if (typeof value === 'string') {
+        return value.split(',').map(v => v.trim()).filter(Boolean);
+    }
+    return [];
+}
+
+function normalizeFileRecord(file) {
+    if (!file) return { id: '', name: 'Submitted file', url: '' };
+    if (typeof file === 'string') return { id: '', name: file, url: '' };
+    return {
+        id: file.id || '',
+        name: file.file_name || file.name || file.filename || 'Submitted file',
+        url: file.file_url || file.public_url || file.url || file.signed_url || file.path || ''
+    };
+}
+
+function getFacultyById(id) {
+    return workflowState.faculty.find(f => f.id === id);
+}
+
+function getTaskById(id) {
+    return workflowState.tasks.find(t => t.id === id);
+}
+
+function getSubmission(taskId, facultyId) {
+    return workflowState.submissions.find(s => s.task_id === taskId && s.faculty_id === facultyId);
+}
+
+function getSubmissionFiles(submissionId) {
+    return workflowState.submissionFiles
+        .filter(f => f.submission_id === submissionId)
+        .map(normalizeFileRecord);
+}
+
+function getTaskAttachments(task) {
+    return normalizeArray(task?.attachment_names).map(name => normalizeFileRecord({ file_name: name }));
+}
+
+function computeEffectiveStatus(task, sub) {
+    if (!sub || sub.status === 'notsubmitted') {
+        return isPastDeadline(task?.due_at) ? 'late' : 'notsubmitted';
+    }
+    if (sub.status === 'submitted' && sub.submitted_at && task?.due_at && new Date(sub.submitted_at) > new Date(task.due_at)) {
+        return 'late';
+    }
+    return sub.status;
+}
+
+function recomputeSubmissionMatrix() {
+    allSubmissions = [];
+    workflowState.assignments.forEach(assign => {
+        const faculty = getFacultyById(assign.faculty_id);
+        const task = getTaskById(assign.task_id);
+        if (!faculty || !task) return;
+        const sub = getSubmission(assign.task_id, assign.faculty_id);
+        const effectiveStatus = computeEffectiveStatus(task, sub);
+        allSubmissions.push({
+            id: `${assign.task_id}|${assign.faculty_id}`,
+            task_id: assign.task_id,
+            faculty_id: assign.faculty_id,
+            faculty_name: faculty.full_name,
+            department_code: faculty.department_code,
+            submitted_at: sub?.submitted_at || null,
+            status: effectiveStatus,
+            review_remarks: sub?.review_remarks || '',
+            reviewed_by_name: sub?.reviewed_by_name || null,
+            reviewed_at: sub?.reviewed_at || null,
+            files: sub ? getSubmissionFiles(sub.id) : [],
+            submission_id: sub?.id || null
+        });
+    });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDER FUNCTIONS
+   ═══════════════════════════════════════════════════════════════ */
 function renderAll() {
+    recomputeSubmissionMatrix();
     updateStats();
     updateProgress();
     filterSubmissions();
+    renderNotifications();
+    renderDelegates();
+    if (activeTaskDetailId && !document.getElementById('taskDetailPage').classList.contains('hidden')) {
+        renderTaskDetailPage(activeTaskDetailId);
+    }
 }
 
 function updateStats() {
-    const counts = { pending: 0, approved: 0, revision: 0, declined: 0 };
+    const counts = { pending: 0, submitted: 0, underreview: 0, approved: 0, revision: 0, rejected: 0, late: 0 };
     allSubmissions.forEach(s => counts[s.status] = (counts[s.status] || 0) + 1);
-    document.getElementById('stat-pending').textContent  = counts.pending;
+    document.getElementById('stat-pending').textContent  = counts.pending + counts.submitted + counts.underreview + counts.late;
     document.getElementById('stat-approved').textContent = counts.approved;
     document.getElementById('stat-revision').textContent = counts.revision;
-    document.getElementById('stat-declined').textContent = counts.declined;
+    document.getElementById('stat-declined').textContent = counts.rejected;
 }
 
 function updateProgress() {
-    const depts = { BSIT: { submitted: 0, total: 15 }, BSIE: { submitted: 0, total: 11 }, BIT: { submitted: 0, total: 9 } };
+    const progressIds = ['prog-bsit', 'prog-bsie', 'prog-bit'];
+    if (!progressIds.some(id => document.getElementById(id))) return;
+
+    const depts = { BSIT: { submitted: 0, total: 0 }, BSIE: { submitted: 0, total: 0 }, BIT: { submitted: 0, total: 0 } };
     allSubmissions.forEach(s => {
-        if (depts[s.department_code]) depts[s.department_code].submitted++;
+        if (depts[s.department_code]) {
+            depts[s.department_code].total++;
+            if (s.submission_id) depts[s.department_code].submitted++;
+        }
     });
     ['BSIT', 'BSIE', 'BIT'].forEach(code => {
         const key = code.toLowerCase();
         const d = depts[code];
-        const pct = Math.round((d.submitted / d.total) * 100);
-        document.getElementById(`prog-${key}`).style.width = pct + '%';
-        document.getElementById(`prog-${key}-label`).textContent = `${d.submitted} of ${d.total} submitted`;
+        const pct = d.total ? Math.round((d.submitted / d.total) * 100) : 0;
+        const fill = document.getElementById(`prog-${key}`);
+        const label = document.getElementById(`prog-${key}-label`);
+        if (fill) fill.style.width = pct + '%';
+        if (label) label.textContent = `${d.submitted}/${d.total} submitted`;
     });
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   STATUS BADGE - 7 STATUS TYPES
+   ═══════════════════════════════════════════════════════════════ */
 function statusBadge(status) {
     const map = {
-        pending:  ['badge-pending',  'Pending Review'],
-        approved: ['badge-approved', 'Approved'],
-        revision: ['badge-revision', 'Needs Revision'],
-        declined: ['badge-declined', 'Declined'],
+        notsubmitted: ['badge-notsubmitted', 'Not Submitted'],
+        submitted:    ['badge-submitted',    'Submitted'],
+        late:         ['badge-late',         'Late'],
+        underreview:  ['badge-underreview',  'Under Review'],
+        pending:      ['badge-pending',      'Pending Review'],
+        approved:     ['badge-approved',     'Approved'],
+        revision:     ['badge-revision',     'Revision'],
+        rejected:     ['badge-rejected',     'Rejected'],
     };
-    const [cls, label] = map[status] || map.pending;
+    const [cls, label] = map[status] || map.notsubmitted;
     return `<span class="badge ${cls}"><span class="badge-dot"></span>${label}</span>`;
 }
 
-function formatDate(iso) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function deadlineCountdown(dueIso) {
     if (!dueIso) return '';
@@ -828,65 +1094,354 @@ function deadlineCountdown(dueIso) {
     return `<span class="countdown-ok text-xs font-medium">${days}d left</span>`;
 }
 
+function deriveAssignedLabel(taskId) {
+    const task = getTaskById(taskId);
+    if (task?.assigned_label) return task.assigned_label;
+    const rows = workflowState.assignments.filter(a => a.task_id === taskId);
+    const faculties = rows.map(r => getFacultyById(r.faculty_id)).filter(Boolean);
+    const depts = [...new Set(faculties.map(f => f.department_code))];
+    if (!rows.length) return 'No assignees';
+    if (rows.length === workflowState.faculty.length) return 'All Faculty';
+    if (depts.length === 1 && faculties.length === workflowState.faculty.filter(f => f.department_code === depts[0]).length) return depts[0];
+    return `${rows.length} specific faculty`;
+}
+
+function taskSummaryStatus(submittedCount, totalAssigned) {
+    if (submittedCount === 0) return { label: 'No Submission', className: 'badge-notsubmitted' };
+    if (submittedCount >= totalAssigned && totalAssigned > 0) return { label: 'Completed', className: 'badge-approved' };
+    return { label: 'In Progress', className: 'badge-underreview' };
+}
+
 function filterSubmissions() {
     const search  = (document.getElementById('searchInput').value || '').toLowerCase();
     const status  = document.getElementById('statusFilter').value;
     const dept    = document.getElementById('deptFilter').value;
 
-    const filtered = allSubmissions.filter(s => {
-        const task = allTasks.find(t => t.id === s.task_id);
-        const matchSearch = !search ||
-            (task && task.title.toLowerCase().includes(search)) ||
-            s.submitter_name.toLowerCase().includes(search);
-        const matchStatus = !status || s.status === status;
-        const matchDept   = !dept   || s.department_code === dept;
-        return matchSearch && matchStatus && matchDept;
+    const taskRows = workflowState.tasks.map(task => {
+        const assigns = workflowState.assignments.filter(a => a.task_id === task.id);
+        const assignees = assigns.map(a => getFacultyById(a.faculty_id)).filter(Boolean);
+        const submittedCount = assigns.filter(a => {
+            const s = getSubmission(task.id, a.faculty_id);
+            return !!s && s.status !== 'notsubmitted';
+        }).length;
+        const totalAssigned = assigns.length;
+        const summary = taskSummaryStatus(submittedCount, totalAssigned);
+        return { task, assignees, submittedCount, totalAssigned, summary, assignedLabel: deriveAssignedLabel(task.id) };
+    });
+
+    const filtered = taskRows.filter(r => {
+        const task = r.task;
+        const matchSearch = !search || normalizeText(task.title).includes(search) || r.assignees.some(a => normalizeText(a.full_name).includes(search));
+        const matchDept = !dept || r.assignees.some(a => a.department_code === dept);
+        const statusKey = r.submittedCount === 0 ? 'notsubmitted' : (r.submittedCount >= r.totalAssigned && r.totalAssigned > 0 ? 'approved' : 'underreview');
+        const matchStatus = !status || statusKey === status;
+        return matchSearch && matchDept && matchStatus;
     });
 
     const tbody = document.getElementById('submissionsTableBody');
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-gray-400 py-12 text-sm">No submissions found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-gray-400 py-12 text-sm">No tasks found.</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = filtered.map(s => {
-        const task = allTasks.find(t => t.id === s.task_id);
-        const countdown = task ? deadlineCountdown(task.due_at) : '';
-        const deadline  = task ? formatDate(task.due_at) : '—';
+    tbody.innerHTML = filtered.map(r => {
+        const task = r.task;
+        const countdown = deadlineCountdown(task.due_at);
+        const deadline  = formatDate(task.due_at);
         return `
-            <tr>
+            <tr class="task-row-clickable" onclick="openTaskDetailsPage('${task.id}')">
                 <td>
-                    <div class="font-medium text-gray-900 text-sm leading-snug">${task ? task.title : '—'}</div>
+                    <div class="task-row-title font-medium text-[#621708] text-sm leading-snug">${escapeHtml(task.title)}</div>
+                    <div class="text-xs text-gray-400 mt-1">Click to view task details and submission progress</div>
                 </td>
-                <td class="text-gray-600 text-sm">${s.submitter_name}</td>
-                <td>
-                    <span class="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-1 rounded-md">${s.department_code}</span>
-                </td>
+                <td class="text-gray-600 text-sm">${escapeHtml(r.assignedLabel)}</td>
                 <td>
                     <div class="text-xs text-gray-500">${deadline}</div>
                     <div class="mt-0.5">${countdown}</div>
                 </td>
-                <td class="text-xs text-gray-500">${formatDate(s.submitted_at)}</td>
-                <td>${statusBadge(s.status)}</td>
-                <td>
-                    <button onclick="openReviewModal('${s.id}')"
-                            class="btn btn-ghost btn-sm">
-                        <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                            <circle cx="12" cy="12" r="3"/>
-                        </svg>
-                        Review
-                    </button>
+                <td><span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span></td>
+                <td onclick="event.stopPropagation()">
+                    <div class="action-menu">
+                        <button onclick="event.stopPropagation(); toggleActionMenu('${task.id}')" class="btn btn-ghost btn-sm">
+                            <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                        </button>
+                        <div id="action-${task.id}" class="action-dropdown">
+                            <div class="dropdown-item" onclick="event.stopPropagation(); openTaskDetailsPage('${task.id}')">
+                                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                View Details
+                            </div>
+                        </div>
+                    </div>
                 </td>
             </tr>
         `;
     }).join('');
 }
 
-/* ──────────────────────────────────────────────────────────────
-   ASSIGN MODAL
-   ────────────────────────────────────────────────────────────── */
-function openAssignModal() {
+function getTaskSubmissionRows(taskId) {
+    return allSubmissions
+        .filter(s => s.task_id === taskId)
+        .sort((a, b) => {
+            const aSubmitted = a.submission_id ? 0 : 1;
+            const bSubmitted = b.submission_id ? 0 : 1;
+            if (aSubmitted !== bSubmitted) return aSubmitted - bSubmitted;
+            return a.faculty_name.localeCompare(b.faculty_name);
+        });
+}
+
+function renderFileList(files, emptyMessage = 'No files attached.') {
+    const normalized = (files || []).map(normalizeFileRecord).filter(f => f.name || f.url);
+    if (!normalized.length) return `<p class="text-sm text-gray-400">${escapeHtml(emptyMessage)}</p>`;
+    return normalized.map(renderFileChip).join('');
+}
+
+function resolveFileUrl(file) {
+    const normalized = normalizeFileRecord(file);
+    return normalized.url || '';
+}
+
+function registerFileAction(file) {
+    const normalized = normalizeFileRecord(file);
+    const key = `wf_file_${++fileActionSeq}`;
+    window.workflowFileActionCache[key] = normalized;
+    return key;
+}
+
+function renderFileChip(file) {
+    const normalized = normalizeFileRecord(file);
+    const key = registerFileAction(normalized);
+    const hasUrl = !!resolveFileUrl(normalized);
+    return `
+        <div class="file-chip">
+            <div class="file-chip-name min-w-0">
+                <svg style="width:14px;height:14px;stroke:#6b7280;stroke-width:2;fill:none;flex-shrink:0;" viewBox="0 0 24 24">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <span class="truncate">${escapeHtml(normalized.name)}</span>
+            </div>
+            <div class="file-chip-actions">
+                <button type="button" class="file-action-btn" ${hasUrl ? `onclick="previewFileByKey('${key}')"` : 'disabled title="No file URL saved"'}>Preview</button>
+                <button type="button" class="file-action-btn" ${hasUrl ? `onclick="downloadFileByKey('${key}')"` : 'disabled title="No file URL saved"'}>Download</button>
+            </div>
+        </div>
+    `;
+}
+
+function previewFileByKey(key) {
+    const file = window.workflowFileActionCache[key];
+    if (!file || !resolveFileUrl(file)) {
+        showToast('This file does not have a preview URL saved.', 'warn');
+        return;
+    }
+    previewFile(resolveFileUrl(file), file.name);
+}
+
+function downloadFileByKey(key) {
+    const file = window.workflowFileActionCache[key];
+    if (!file || !resolveFileUrl(file)) {
+        showToast('This file does not have a download URL saved.', 'warn');
+        return;
+    }
+    downloadFile(resolveFileUrl(file), file.name);
+}
+
+function previewFile(url, fileName) {
+    document.getElementById('filePreviewTitle').textContent = fileName || 'Submitted file';
+    document.getElementById('filePreviewFrame').src = url;
+    const link = document.getElementById('filePreviewDownloadLink');
+    link.href = url;
+    link.download = fileName || '';
+    document.getElementById('filePreviewModal').classList.add('open');
+}
+
+function closeFilePreviewModal() {
+    document.getElementById('filePreviewModal').classList.remove('open');
+    document.getElementById('filePreviewFrame').src = '';
+}
+
+function downloadFile(url, fileName) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || '';
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
+function openTaskDetailsPage(taskId, options = {}) {
+    const task = getTaskById(taskId);
+    if (!task) {
+        showToast('Task not found or not loaded yet.', 'error');
+        return;
+    }
+    activeTaskDetailId = taskId;
+    document.getElementById('workflowMainView').classList.add('hidden');
+    document.getElementById('taskDetailPage').classList.remove('hidden');
+    renderTaskDetailPage(taskId, options);
+    document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
+
+    if (options.updateHash !== false) {
+        const focus = options.focusFacultyId ? `&faculty=${encodeURIComponent(options.focusFacultyId)}` : '';
+        history.pushState(null, '', `#task=${encodeURIComponent(taskId)}${focus}`);
+    }
+}
+
+function returnToWorkflowMain(updateHash = true) {
+    activeTaskDetailId = null;
+    document.getElementById('taskDetailPage').classList.add('hidden');
+    document.getElementById('workflowMainView').classList.remove('hidden');
+    if (updateHash) history.pushState(null, '', window.location.pathname + window.location.search);
+}
+
+function renderTaskDetailPage(taskId, options = {}) {
+    const task = getTaskById(taskId);
+    if (!task) return;
+    const rows = getTaskSubmissionRows(taskId);
+    const total = rows.length;
+    const submitted = rows.filter(s => s.submission_id).length;
+    const pending = total - submitted;
+    const pct = total ? Math.round((submitted / total) * 100) : 0;
+    const summary = taskSummaryStatus(submitted, total);
+
+    document.getElementById('detailTaskTitle').textContent = task.title;
+    document.getElementById('detailTaskMeta').textContent = `Assigned to ${deriveAssignedLabel(taskId)} | Due ${formatDate(task.due_at)} | Created ${formatDateTime(task.created_at)}`;
+    document.getElementById('detailTaskStatusBadge').innerHTML = `<span class="badge ${summary.className}"><span class="badge-dot"></span>${escapeHtml(summary.label)}</span>`;
+    document.getElementById('detailAssignedCount').textContent = total;
+    document.getElementById('detailAssignedLabel').textContent = deriveAssignedLabel(taskId);
+    document.getElementById('detailSubmittedCount').textContent = submitted;
+    document.getElementById('detailPendingCount').textContent = pending;
+    document.getElementById('detailProgressPercent').textContent = pct + '%';
+    document.getElementById('detailProgressFill').style.width = pct + '%';
+    document.getElementById('detailSubmittedSummary').textContent = `${submitted}/${total} submitted`;
+    document.getElementById('detailTaskDeadline').innerHTML = `${formatDateTime(task.due_at)} <span class="ml-2">${deadlineCountdown(task.due_at)}</span>`;
+    document.getElementById('detailTaskInstructions').textContent = task.instructions || 'No instructions provided.';
+    document.getElementById('detailTaskAttachments').innerHTML = renderFileList(getTaskAttachments(task), 'No task attachments.');
+
+    renderDetailDepartmentProgress(rows);
+    renderDetailSubmissionList(rows);
+
+    if (options.focusFacultyId) {
+        setTimeout(() => focusSubmissionCard(options.focusFacultyId), 80);
+    }
+}
+
+function renderDetailDepartmentProgress(rows) {
+    const byDept = { BSIT: { total: 0, submitted: 0 }, BSIE: { total: 0, submitted: 0 }, BIT: { total: 0, submitted: 0 } };
+    rows.forEach(s => {
+        if (!byDept[s.department_code]) byDept[s.department_code] = { total: 0, submitted: 0 };
+        byDept[s.department_code].total++;
+        if (s.submission_id) byDept[s.department_code].submitted++;
+    });
+    document.getElementById('detailDepartmentProgress').innerHTML = Object.entries(byDept).map(([dept, item]) => {
+        const pct = item.total ? Math.round((item.submitted / item.total) * 100) : 0;
+        return `
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-medium text-gray-600">${escapeHtml(dept)}</span>
+                    <span class="text-xs text-gray-500">${item.submitted}/${item.total}</span>
+                </div>
+                <div class="prog-track"><div class="prog-fill bg-emerald-500" style="width:${pct}%"></div></div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderDetailSubmissionList(rows) {
+    const list = document.getElementById('detailSubmissionList');
+    if (!rows.length) {
+        list.innerHTML = '<p class="text-sm text-gray-400 text-center py-8">No faculty assigned to this task yet.</p>';
+        return;
+    }
+    list.innerHTML = rows.map(s => {
+        const hasSubmission = !!s.submission_id;
+        const submittedText = hasSubmission ? `Submitted ${formatDateTime(s.submitted_at)}` : 'No uploaded submission yet';
+        const filesHtml = hasSubmission ? renderFileList(s.files, 'No submitted files saved.') : '<p class="text-sm text-gray-400">No files uploaded yet.</p>';
+        const reviewButtons = hasSubmission ? `
+            <button onclick="openReviewModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-primary btn-sm">Review / View Submission</button>
+            <button onclick="openTimelineModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-ghost btn-sm">Timeline</button>
+            <button onclick="openCommentsModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-ghost btn-sm">Comments</button>
+        ` : `
+            <button disabled class="btn btn-ghost btn-sm opacity-60 cursor-not-allowed">Waiting for Submission</button>
+        `;
+        const reviewRecord = s.reviewed_at ? `
+            <div class="mt-3 text-xs text-gray-500">
+                Reviewed by ${escapeHtml(s.reviewed_by_name || ADMIN_NAME)} on ${formatDateTime(s.reviewed_at)}
+                ${s.review_remarks ? `<div class="mt-1 text-gray-700">${escapeHtml(s.review_remarks)}</div>` : ''}
+            </div>
+        ` : '';
+        return `
+            <div id="submission-card-${s.faculty_id}" class="submission-card">
+                <div class="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                        <div class="font-semibold text-gray-900">${escapeHtml(s.faculty_name)}</div>
+                        <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(s.department_code)} | ${submittedText}</div>
+                    </div>
+                    ${statusBadge(s.status)}
+                </div>
+                <div class="space-y-2 mb-4">${filesHtml}</div>
+                <div class="flex flex-wrap gap-2">${reviewButtons}</div>
+                ${reviewRecord}
+            </div>
+        `;
+    }).join('');
+}
+
+function focusSubmissionCard(facultyId) {
+    const card = document.getElementById(`submission-card-${facultyId}`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('highlighted');
+    setTimeout(() => card.classList.remove('highlighted'), 3200);
+}
+
+function openTaskDetailsModal(taskId, focusFacultyId = null) {
+    openTaskDetailsPage(taskId, { focusFacultyId });
+}
+
+function closeTaskDetailsModal() {
+    const modal = document.getElementById('taskDetailsModal');
+    if (modal) modal.classList.remove('open');
+}
+
+function openTaskFromHash() {
+    const raw = window.location.hash.replace(/^#/, '');
+    if (!raw) return;
+    const params = new URLSearchParams(raw);
+    const taskId = params.get('task');
+    const facultyId = params.get('faculty');
+    if (taskId && getTaskById(taskId)) {
+        openTaskDetailsPage(taskId, { focusFacultyId: facultyId, updateHash: false });
+    }
+}
+
+function toggleActionMenu(subId) {
+    const menu = document.getElementById(`action-${subId}`);
+    menu.classList.toggle('open');
+}
+
+// Close action menus when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.action-menu')) {
+        document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
+    }
+    if (!e.target.closest('.notif-bell') && !e.target.closest('.dropdown-menu')) {
+        document.getElementById('notifDropdown').classList.remove('open');
+    }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ASSIGN TASK MODAL
+   ═══════════════════════════════════════════════════════════════ */
+async function openAssignModal() {
+    const ws = ensureWorkflowState();
+    if (!ws.faculty.length) {
+        await fetchAllData();
+    }
+    renderSpecificUsers();
+    toggleSpecificUsers();
     document.getElementById('assignModal').classList.add('open');
 }
 function closeAssignModal() {
@@ -896,7 +1451,9 @@ function toggleSpecificUsers() {
     const val = document.getElementById('targetGroup').value;
     document.getElementById('specificUsersContainer').classList.toggle('hidden', val !== 'specific');
 }
+
 function createNewTask() {
+    const ws = ensureWorkflowState();
     const title   = document.getElementById('taskTitle').value.trim();
     const dueDate = document.getElementById('dueDate').value;
     const dueTime = document.getElementById('dueTime').value;
@@ -907,69 +1464,148 @@ function createNewTask() {
     if (!dueDate) { showToast('Please select a due date.', 'error'); return; }
 
     const dueAt = new Date(`${dueDate}T${dueTime || '17:00'}`).toISOString();
+    const selected = Array.from(document.getElementById('specificUsers').selectedOptions).map(o => o.value);
+    let assigned = [];
+    if (group === 'all_bsit') assigned = ws.faculty.filter(f => f.department_code === 'BSIT');
+    if (group === 'all_bsie') assigned = ws.faculty.filter(f => f.department_code === 'BSIE');
+    if (group === 'all_bit') assigned = ws.faculty.filter(f => f.department_code === 'BIT');
+    if (group === 'all') assigned = ws.faculty.slice();
+    if (group === 'specific') {
+        assigned = ws.faculty.filter(f => selected.includes(f.full_name));
+        if (!assigned.length) { showToast('Select at least one faculty member.', 'error'); return; }
+    }
+    const files = Array.from(document.getElementById('taskAttachments').files || []).map(f => f.name);
 
-    const newTask = { id: 'demo-' + Date.now(), title, instructions: desc, target_group: group, due_at: dueAt };
-    allTasks.push(newTask);
+    let assignedLabel = 'Specific Faculty';
+    if (group === 'all') assignedLabel = 'All Faculty';
+    if (group === 'all_bsit') assignedLabel = 'BSIT';
+    if (group === 'all_bsie') assignedLabel = 'BSIE';
+    if (group === 'all_bit') assignedLabel = 'BIT';
+    if (group === 'specific') assignedLabel = `${assigned.length} specific faculty`;
 
-    showToast(`Task "${title}" assigned. Faculty will be notified.`);
-    closeAssignModal();
-    document.getElementById('taskTitle').value = '';
-    document.getElementById('taskDesc').value  = '';
-    document.getElementById('dueDate').value   = '';
+    upsertTaskRealtime({ title, instructions: desc, dueAt, assigned, files, assignedLabel, assignedScope: group });
 }
 
-/* ──────────────────────────────────────────────────────────────
+async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files, assignedLabel, assignedScope }) {
+    const { data: task, error: taskError } = await db
+        .from('wf_tasks')
+        .insert({ title, instructions, due_at: dueAt, created_by_name: ADMIN_NAME, attachment_names: files, assigned_label: assignedLabel, assigned_scope: assignedScope })
+        .select('id')
+        .single();
+    if (taskError) {
+        showToast(taskError.message || 'Failed to create task.', 'error');
+        return;
+    }
+    const assignmentRows = assigned.map(f => ({ task_id: task.id, faculty_id: f.id, assigned_by_name: ADMIN_NAME }));
+    const { error: assignError } = await db.from('wf_task_assignments').insert(assignmentRows);
+    if (assignError) {
+        showToast(assignError.message || 'Task created, but assigning failed.', 'warn');
+        return;
+    }
+    await createNotification({
+        type: 'task',
+        message: `New task "${title}" assigned to ${assigned.length} faculty`,
+        is_read: false
+    }, { task_id: task.id });
+    await db.from('wf_activity_log').insert({
+        action: 'Task created',
+        actor_name: ADMIN_NAME,
+        target: title,
+        log_type: 'created'
+    });
+
+    showToast(`Task "${title}" assigned to ${assigned.length} faculty.`);
+    closeAssignModal();
+    document.getElementById('taskTitle').value = '';
+    document.getElementById('taskDesc').value = '';
+    document.getElementById('dueDate').value = '';
+    document.getElementById('taskAttachments').value = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DEPARTMENT DETAILS MODAL
+   ═══════════════════════════════════════════════════════════════ */
+function openDeptDetails(dept) {
+    document.getElementById('deptModal').classList.add('open');
+    document.getElementById('deptTitle').textContent = dept + " Department";
+
+    const submitted = [];
+    const notSubmitted = [];
+
+    allSubmissions.forEach(s => {
+        if (s.department_code === dept && s.status !== 'notsubmitted') {
+            submitted.push(s.faculty_name);
+        }
+    });
+
+    const totalFaculty = workflowState.faculty
+        .filter(f => f.department_code === dept)
+        .map(f => f.full_name);
+
+    totalFaculty.forEach(name => {
+        if (!submitted.includes(name)) {
+            notSubmitted.push(name);
+        }
+    });
+
+    document.getElementById('submittedList').innerHTML = submitted.length > 0 
+        ? submitted.map(n => `<div class="flex items-center gap-2 py-1"><span class="text-green-500">✓</span> ${n}</div>`).join('') 
+        : '<span class="text-gray-400">None yet</span>';
+
+    document.getElementById('notSubmittedList').innerHTML = notSubmitted.length > 0 
+        ? notSubmitted.map(n => `<div class="flex items-center gap-2 py-1"><span class="text-red-400">○</span> ${n}</div>`).join('') 
+        : '<span class="text-green-500">All submitted!</span>';
+}
+
+function closeDeptModal() {
+    document.getElementById('deptModal').classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════════════════════════
    REVIEW MODAL
-   ────────────────────────────────────────────────────────────── */
-function openReviewModal(subId) {
-    activeReviewId = subId;
-    const sub  = allSubmissions.find(s => s.id === subId);
-    const task = allTasks.find(t => t.id === sub.task_id);
+   ═══════════════════════════════════════════════════════════════ */
+function openReviewModal(taskId, facultyRef) {
+    const sub = allSubmissions.find(s => s.task_id === taskId && (s.faculty_id === facultyRef || s.faculty_name === facultyRef));
+    if (!sub) {
+        showToast('Submission record not found.', 'error');
+        return;
+    }
+    if (!sub.submission_id) {
+        showToast('This faculty member has not submitted a file yet.', 'warn');
+        return;
+    }
+    activeReviewId = `${taskId}|${sub.faculty_id}`;
+    const task = getTaskById(sub.task_id);
 
     document.getElementById('modalTaskTitle').textContent = task ? task.title : 'Submission Review';
     document.getElementById('modalSubmitter').textContent =
-        `${sub.submitter_name}  •  ${sub.department_code}  •  Submitted ${formatDate(sub.submitted_at)}`;
+        `${sub.faculty_name} | ${sub.department_code} | Submitted ${formatDateTime(sub.submitted_at)}`;
 
-    // Deadline
     if (task) {
         document.getElementById('deadlineBlock').classList.remove('hidden');
         document.getElementById('modalDeadline').textContent = formatDate(task.due_at);
-        document.getElementById('modalCountdown').innerHTML   = deadlineCountdown(task.due_at);
+        document.getElementById('modalCountdown').innerHTML = deadlineCountdown(task.due_at);
     } else {
         document.getElementById('deadlineBlock').classList.add('hidden');
     }
 
-    // Prior review record
     const recEl = document.getElementById('reviewRecord');
     if (sub.reviewed_at) {
         recEl.classList.remove('hidden');
-        const cls = sub.status === 'approved' ? 'approval-record' : sub.status === 'declined' ? 'decline-record' : 'revision-record';
-        const label = sub.status === 'approved' ? 'Approved' : sub.status === 'declined' ? 'Declined' : 'Revision Requested';
+        const cls = sub.status === 'approved' ? 'approval-record' : sub.status === 'rejected' ? 'decline-record' : 'revision-record';
+        const label = sub.status === 'approved' ? 'Approved' : sub.status === 'rejected' ? 'Rejected' : 'Revision Requested';
         recEl.innerHTML = `<div class="${cls}">
-            <div class="font-medium mb-1">${label} by ${sub.reviewed_by_name} on ${formatDate(sub.reviewed_at)}</div>
-            ${sub.review_remarks ? `<div>${sub.review_remarks}</div>` : ''}
+            <div class="font-medium mb-1">${label} by ${escapeHtml(sub.reviewed_by_name || ADMIN_NAME)} on ${formatDate(sub.reviewed_at)}</div>
+            ${sub.review_remarks ? `<div>${escapeHtml(sub.review_remarks)}</div>` : ''}
         </div>`;
     } else {
         recEl.classList.add('hidden');
     }
 
-    // Files
-    const filesHtml = (sub.files || []).map(f => `
-        <div class="file-chip">
-            <div class="file-chip-name">
-                <svg style="width:14px;height:14px;stroke:#6b7280;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                </svg>
-                ${f}
-            </div>
-            <span class="file-chip-dl" onclick="alert('Downloading ${f} (demo)')">Download</span>
-        </div>
-    `).join('');
-    document.getElementById('modalFiles').innerHTML = filesHtml || `<p class="text-sm text-gray-400">No files attached.</p>`;
-
+    document.getElementById('modalFiles').innerHTML = renderFileList(sub.files, 'No submitted files saved.');
     document.getElementById('adminComment').value = '';
     document.getElementById('reviewModal').classList.add('open');
+    document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
 }
 function closeReviewModal() {
     document.getElementById('reviewModal').classList.remove('open');
@@ -978,34 +1614,59 @@ function closeReviewModal() {
 
 function applyReview(newStatus) {
     const comment = document.getElementById('adminComment').value.trim();
-    if ((newStatus === 'revision' || newStatus === 'declined') && !comment) {
+    if ((newStatus === 'revision' || newStatus === 'rejected') && !comment) {
         showToast('Please provide remarks before submitting.', 'error');
         return;
     }
-    const sub = allSubmissions.find(s => s.id === activeReviewId);
-    if (!sub) return;
-
-    sub.status           = newStatus;
-    sub.reviewed_by_name = ADMIN_NAME;
-    sub.reviewed_at      = new Date().toISOString();
-    sub.review_remarks   = comment;
-
-    const labels = { approved: 'Approved', revision: 'Revision requested', declined: 'Declined' };
-    const types  = { approved: 'success', revision: 'warn', declined: 'error' };
-    showToast(`${labels[newStatus]} — ${sub.submitter_name}'s submission.`, types[newStatus]);
-
+    const sub = allSubmissions.find(s => `${s.task_id}|${s.faculty_id}` === activeReviewId);
+    if (!sub || !sub.submission_id) return;
+    const labels = { approved: 'Approved', revision: 'Revision requested', rejected: 'Rejected' };
+    const types  = { approved: 'success', revision: 'warn', rejected: 'error' };
+    applyReviewRealtime(sub.submission_id, newStatus, comment, labels, types, sub);
+}
+async function applyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
+    const { error } = await db
+        .from('wf_submissions')
+        .update({
+            status: newStatus,
+            reviewed_by_name: ADMIN_NAME,
+            reviewed_at: new Date().toISOString(),
+            review_remarks: comment
+        })
+        .eq('id', submissionId);
+    if (error) {
+        showToast(error.message || 'Failed to update review.', 'error');
+        return;
+    }
+    await createNotification({
+        type: 'review',
+        message: `${labels[newStatus]}: ${sub.faculty_name} - ${getTaskById(sub.task_id)?.title || 'Submission'}`,
+        is_read: false
+    }, {
+        task_id: sub.task_id,
+        faculty_id: sub.faculty_id,
+        submission_id: sub.submission_id
+    });
+    await db.from('wf_activity_log').insert({
+        action: labels[newStatus],
+        actor_name: ADMIN_NAME,
+        target: `${sub.faculty_name} - ${getTaskById(sub.task_id)?.title || 'Submission'}`,
+        log_type: newStatus
+    });
+    showToast(`${labels[newStatus]} - ${sub.faculty_name}'s submission.`, types[newStatus]);
     closeReviewModal();
-    renderAll();
+    if (activeTaskDetailId) renderTaskDetailPage(activeTaskDetailId, { focusFacultyId: sub.faculty_id });
 }
 function approveSubmission()  { applyReview('approved'); }
 function requestRevision()    { applyReview('revision'); }
-function declineSubmission()  { applyReview('declined'); }
+function declineSubmission()  { applyReview('rejected'); }
 
-/* ──────────────────────────────────────────────────────────────
-   ACCESS MODAL
-   ────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   ACCESS / DELEGATION MODAL
+   ═══════════════════════════════════════════════════════════════ */
 function renderDelegates() {
     const el = document.getElementById('currentDelegates');
+    const delegatedAccess = workflowState.delegatedAccess || [];
     if (delegatedAccess.length === 0) {
         el.innerHTML = '<p class="text-sm text-gray-400">No delegated access configured.</p>';
         return;
@@ -1013,17 +1674,11 @@ function renderDelegates() {
     el.innerHTML = delegatedAccess.map((d, i) => `
         <div class="delegate-row">
             <div>
-                <div class="text-sm font-medium text-gray-800">${d.user}</div>
-                <div class="text-xs text-gray-500 mt-0.5">Access: ${d.departments.join(', ')}</div>
+                <div class="text-sm font-medium text-gray-800">${d.grantee_name}</div>
+                <div class="text-xs text-gray-500 mt-0.5">Access: ${(d.department_codes || []).join(', ')}</div>
             </div>
             <button onclick="removeAccess(${i})" class="btn btn-ghost btn-sm text-red-600 border-red-200 hover:bg-red-50">
-                <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6l-1 14H6L5 6"/>
-                    <path d="M10 11v6"/>
-                    <path d="M14 11v6"/>
-                    <path d="M9 6V4h6v2"/>
-                </svg>
+                <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                 Remove
             </button>
         </div>
@@ -1031,6 +1686,10 @@ function renderDelegates() {
 }
 
 function openAccessModal() {
+    const ws = ensureWorkflowState();
+    const select = document.getElementById('accessUserSelect');
+    const options = ws.faculty.map(f => `<option value="${f.full_name}">${f.full_name} (${f.department_code})</option>`).join('');
+    select.innerHTML = `<option value="">Select a user...</option>${options}`;
     renderDelegates();
     document.getElementById('accessModal').classList.add('open');
 }
@@ -1045,89 +1704,420 @@ function grantAccess() {
     if (document.getElementById('deptBSIE').checked) depts.push('BSIE');
     if (document.getElementById('deptBIT').checked)  depts.push('BIT');
     if (!depts.length) { showToast('Please select at least one department.', 'error'); return; }
-    if (delegatedAccess.find(d => d.user === user)) {
+    if ((workflowState.delegatedAccess || []).find(d => d.grantee_name === user)) {
         showToast(`${user} already has an access grant.`, 'warn'); return;
     }
-    delegatedAccess.push({ user, departments: depts });
+    grantAccessRealtime(user, depts);
+}
+async function grantAccessRealtime(user, depts) {
+    const { error } = await db.from('wf_delegated_access').insert({
+        grantee_name: user,
+        department_codes: depts,
+        granted_by_name: ADMIN_NAME,
+        is_active: true
+    });
+    if (error) {
+        showToast(error.message || 'Failed to grant access.', 'error');
+        return;
+    }
     showToast(`Access granted to ${user} for ${depts.join(', ')}.`);
-    renderDelegates();
     document.getElementById('accessUserSelect').value = '';
     document.getElementById('deptBSIT').checked = false;
     document.getElementById('deptBSIE').checked = false;
-    document.getElementById('deptBIT').checked  = false;
+    document.getElementById('deptBIT').checked = false;
+    await fetchAllData();
 }
-function removeAccess(index) {
-    const user = delegatedAccess[index].user;
-    delegatedAccess.splice(index, 1);
-    showToast(`Access removed for ${user}.`, 'warn');
-    renderDelegates();
+async function removeAccess(index) {
+    const row = workflowState.delegatedAccess[index];
+    if (!row) return;
+    const { error } = await db.from('wf_delegated_access').update({ is_active: false }).eq('id', row.id);
+    if (error) {
+        showToast(error.message || 'Failed to remove access.', 'error');
+        return;
+    }
+    showToast(`Access removed for ${row.grantee_name}.`, 'warn');
+    await fetchAllData();
 }
 
-/* ──────────────────────────────────────────────────────────────
-   REALTIME (Supabase)
-   ────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   NOTIFICATIONS
+   ═══════════════════════════════════════════════════════════════ */
+function toggleNotifications() {
+    const dropdown = document.getElementById('notifDropdown');
+    dropdown.classList.toggle('open');
+}
+
+async function createNotification(row, meta = {}) {
+    const payload = { ...row, ...meta };
+    let { error } = await db.from('wf_notifications').insert(payload);
+    if (error && /column|schema|cache/i.test(error.message || '')) {
+        const fallback = { ...row };
+        const retry = await db.from('wf_notifications').insert(fallback);
+        error = retry.error;
+    }
+    if (error) console.warn('Notification insert failed:', error.message || error);
+}
+
+function renderNotifications() {
+    const notifications = workflowState.notifications || [];
+    const list = document.getElementById('notifList');
+    if (notifications.length === 0) {
+        list.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No new notifications</p>';
+        return;
+    }
+    list.innerHTML = notifications.map(n => `
+        <div class="dropdown-item notif-target ${n.is_read ? '' : 'bg-blue-50'}" onclick="openNotificationTarget('${n.id}')">
+            <div class="flex-1">
+                <div class="text-sm text-gray-800">${escapeHtml(n.message)}</div>
+                <div class="text-xs text-gray-400 mt-0.5">${formatDateTime(n.created_at)}</div>
+            </div>
+            ${n.is_read ? '' : '<div class="w-2 h-2 bg-blue-500 rounded-full"></div>'}
+        </div>
+    `).join('');
+}
+
+function findTaskByTitle(title) {
+    const wanted = normalizeText(title).replace(/^"|"$/g, '');
+    return workflowState.tasks.find(t => normalizeText(t.title) === wanted)
+        || workflowState.tasks.find(t => normalizeText(t.title).includes(wanted) || wanted.includes(normalizeText(t.title)));
+}
+
+function findFacultyByName(name) {
+    const wanted = normalizeText(name).replace(/^engr\.\s+|^prof\.\s+|^dr\.\s+/i, '');
+    return workflowState.faculty.find(f => normalizeText(f.full_name) === normalizeText(name))
+        || workflowState.faculty.find(f => normalizeText(f.full_name).includes(wanted) || wanted.includes(normalizeText(f.full_name)));
+}
+
+function findLatestSubmissionForFaculty(facultyId) {
+    return allSubmissions
+        .filter(s => s.faculty_id === facultyId && s.submission_id)
+        .sort((a, b) => new Date(b.submitted_at || 0) - new Date(a.submitted_at || 0))[0];
+}
+
+function resolveNotificationTarget(notification) {
+    if (!notification) return null;
+    let taskId = notification.task_id || notification.target_task_id || notification.related_task_id || null;
+    let facultyId = notification.faculty_id || notification.target_faculty_id || notification.related_faculty_id || null;
+    let submissionId = notification.submission_id || notification.target_submission_id || notification.related_submission_id || null;
+
+    if (submissionId) {
+        const sub = workflowState.submissions.find(s => s.id === submissionId);
+        if (sub) {
+            taskId = taskId || sub.task_id;
+            facultyId = facultyId || sub.faculty_id;
+        }
+    }
+
+    const message = notification.message || '';
+    if (!taskId || !facultyId) {
+        let match = message.match(/new\s+submission\s+from\s+(.+?):\s*(.+)$/i);
+        if (match) {
+            const faculty = findFacultyByName(match[1]);
+            const task = findTaskByTitle(match[2]);
+            taskId = taskId || task?.id || null;
+            facultyId = facultyId || faculty?.id || null;
+            const sub = taskId && facultyId ? getSubmission(taskId, facultyId) : null;
+            submissionId = submissionId || sub?.id || null;
+        }
+    }
+
+    if (!taskId) {
+        let match = message.match(/new\s+task\s+"(.+?)"/i) || message.match(/task\s+"(.+?)"/i);
+        if (match) taskId = findTaskByTitle(match[1])?.id || null;
+    }
+
+    if (!facultyId) {
+        let match = message.match(/^(approved|revision requested|rejected|declined):\s*(.+?)(?:\s+-\s+(.+))?$/i);
+        if (match) {
+            const faculty = findFacultyByName(match[2]);
+            facultyId = faculty?.id || null;
+            if (!taskId && match[3]) taskId = findTaskByTitle(match[3])?.id || null;
+            if (!taskId && facultyId) {
+                const latest = findLatestSubmissionForFaculty(facultyId);
+                taskId = latest?.task_id || null;
+                submissionId = latest?.submission_id || null;
+            }
+        }
+    }
+
+    if (!submissionId && taskId && facultyId) {
+        submissionId = getSubmission(taskId, facultyId)?.id || null;
+    }
+    return taskId ? { taskId, facultyId, submissionId } : null;
+}
+
+async function openNotificationTarget(notificationId) {
+    const notification = (workflowState.notifications || []).find(n => n.id === notificationId);
+    if (!notification) return;
+    await markNotificationRead(notificationId, true);
+    document.getElementById('notifDropdown').classList.remove('open');
+
+    const target = resolveNotificationTarget(notification);
+    if (!target) {
+        showToast('Could not connect this notification to a task or submission.', 'warn');
+        return;
+    }
+    openTaskDetailsPage(target.taskId, { focusFacultyId: target.facultyId || null });
+}
+
+function updateNotificationBadge() {
+    const unreadCount = (workflowState.notifications || []).filter(n => !n.is_read).length;
+    const badge = document.getElementById('notifBadge');
+    const sidebarDot = document.getElementById('sidebarNotifToggle');
+    if (unreadCount > 0) {
+        badge.style.display = 'flex';
+        badge.textContent = unreadCount;
+        if (sidebarDot) sidebarDot.style.display = 'block';
+    } else {
+        badge.style.display = 'none';
+        if (sidebarDot) sidebarDot.style.display = 'none';
+    }
+}
+
+async function markNotificationRead(notificationId, silent = false) {
+    const notification = (workflowState.notifications || []).find(n => n.id === notificationId);
+    if (!notification || notification.is_read) return;
+    await db.from('wf_notifications').update({ is_read: true }).eq('id', notificationId);
+    notification.is_read = true;
+    renderNotifications();
+    updateNotificationBadge();
+    if (!silent) showToast('Notification marked as read.', 'success');
+}
+
+async function markAllRead() {
+    const unread = (workflowState.notifications || []).filter(n => !n.is_read);
+    if (!unread.length) return;
+    await db.from('wf_notifications').update({ is_read: true }).eq('is_read', false);
+    workflowState.notifications = workflowState.notifications.map(n => ({ ...n, is_read: true }));
+    renderNotifications();
+    updateNotificationBadge();
+    showToast('All notifications marked as read.', 'success');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ACTIVITY LOG MODAL
+   ═══════════════════════════════════════════════════════════════ */
+function openActivityLogModal() {
+    document.getElementById('activityLogModal').classList.add('open');
+    renderActivityLog();
+    document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
+}
+
+function closeActivityLogModal() {
+    document.getElementById('activityLogModal').classList.remove('open');
+}
+
+function renderActivityLog() {
+    const activityLog = workflowState.activity || [];
+    const list = document.getElementById('activityLogContent');
+    const colors = {
+        submission: '#3b82f6',
+        review: '#6366f1',
+        approved: '#10b981',
+        revision: '#f59e0b',
+        rejected: '#6b7280',
+        created: '#8b5cf6'
+    };
+    list.innerHTML = activityLog.map(a => `
+        <div class="activity-item">
+            <div class="activity-dot" style="background: ${colors[a.log_type] || '#9ca3af'}"></div>
+            <div class="activity-content">
+                <div class="text-sm text-gray-800"><strong>${a.actor_name}</strong> ${a.action}</div>
+                <div class="text-xs text-gray-500">${a.target}</div>
+                <div class="activity-time">${formatDateTime(a.created_at)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TIMELINE MODAL
+   ═══════════════════════════════════════════════════════════════ */
+function findSubmissionByTaskAndFaculty(taskId, facultyRef) {
+    return allSubmissions.find(s => s.task_id === taskId && (s.faculty_id === facultyRef || s.faculty_name === facultyRef));
+}
+
+function openTimelineModal(taskId, facultyRef) {
+    const sub = findSubmissionByTaskAndFaculty(taskId, facultyRef);
+    if (!sub) return;
+    currentTimelineSub = `${taskId}|${sub.faculty_id}`;
+    document.getElementById('timelineModal').classList.add('open');
+    renderTimeline();
+    document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
+}
+
+function closeTimelineModal() {
+    document.getElementById('timelineModal').classList.remove('open');
+    currentTimelineSub = null;
+}
+
+function renderTimeline() {
+    const sub = allSubmissions.find(s => `${s.task_id}|${s.faculty_id}` === currentTimelineSub);
+    if (!sub) return;
+    const task = getTaskById(sub.task_id);
+    const list = document.getElementById('timelineContent');
+    const events = [
+        { time: task?.created_at, label: 'Task assigned', active: true },
+        { time: task?.due_at, label: 'Deadline', active: true }
+    ];
+    if (sub.submitted_at) events.push({ time: sub.submitted_at, label: 'Submitted', active: true });
+    if (sub.reviewed_at) {
+        events.push({ time: sub.reviewed_at, label: sub.status === 'approved' ? 'Approved' : sub.status === 'rejected' ? 'Rejected' : 'Revision Requested', active: true });
+    }
+
+    list.innerHTML = events.map((e, i) => `
+        <div class="timeline-item">
+            <div class="timeline-dot ${e.active ? 'active' : ''}">
+                ${i === events.length - 1 ? '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+            </div>
+            <div class="text-sm">
+                <div class="font-medium text-gray-800">${escapeHtml(e.label)}</div>
+                <div class="text-xs text-gray-500">${formatDateTime(e.time)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COMMENTS MODAL
+   ═══════════════════════════════════════════════════════════════ */
+function openCommentsModal(taskId, facultyRef) {
+    const sub = findSubmissionByTaskAndFaculty(taskId, facultyRef);
+    if (!sub) return;
+    activeReviewId = `${taskId}|${sub.faculty_id}`;
+    document.getElementById('commentsModal').classList.add('open');
+    renderComments();
+    document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
+}
+
+function closeCommentsModal() {
+    document.getElementById('commentsModal').classList.remove('open');
+}
+
+function renderComments() {
+    const list = document.getElementById('commentsList');
+    const subComments = workflowState.comments.filter(c => `${c.task_id}|${c.faculty_id}` === activeReviewId);
+    if (subComments.length === 0) {
+        list.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No comments yet.</p>';
+        return;
+    }
+    list.innerHTML = subComments.map(c => `
+        <div class="comment">
+            <div class="comment-header">
+                <span class="comment-author">${escapeHtml(c.author_name)}</span>
+                <span class="comment-time">${formatDateTime(c.created_at)}</span>
+            </div>
+            <div class="comment-body">${escapeHtml(c.body)}</div>
+        </div>
+    `).join('');
+}
+
+function addComment() {
+    const text = document.getElementById('newComment').value.trim();
+    if (!text) { showToast('Please enter a comment.', 'error'); return; }
+    document.getElementById('newComment').value = '';
+    addCommentRealtime(activeReviewId, text);
+}
+async function addCommentRealtime(pair, text) {
+    const [taskId, facultyId] = pair.split('|');
+    const { error } = await db.from('wf_comments').insert({
+        task_id: taskId,
+        faculty_id: facultyId,
+        author_name: ADMIN_NAME,
+        body: text
+    });
+    if (error) {
+        showToast(error.message || 'Failed to add comment.', 'error');
+        return;
+    }
+    await db.from('wf_activity_log').insert({
+        action: 'Comment added',
+        actor_name: ADMIN_NAME,
+        target: pair,
+        log_type: 'review'
+    });
+    showToast('Comment added.', 'success');
+    renderComments();
+}
+function renderSpecificUsers() {
+    const ws = ensureWorkflowState();
+    const select = document.getElementById('specificUsers');
+    const list = ws.faculty || [];
+    select.innerHTML = list.map(f => `<option value="${escapeHtml(f.full_name)}">${escapeHtml(f.full_name)} (${escapeHtml(f.department_code)})</option>`).join('');
+}
+
+async function fetchAllData() {
+    const [faculty, tasks, assignments, submissions, files, notifications, activity, comments, delegates] = await Promise.all([
+        db.from('wf_faculty').select('*').order('full_name'),
+        db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
+        db.from('wf_task_assignments').select('*'),
+        db.from('wf_submissions').select('*'),
+        db.from('wf_submission_files').select('*'),
+        db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(50),
+        db.from('wf_activity_log').select('*').order('created_at', { ascending: false }).limit(100),
+        db.from('wf_comments').select('*').order('created_at', { ascending: false }),
+        db.from('wf_delegated_access').select('*').eq('is_active', true)
+    ]);
+    if (faculty.error || tasks.error || assignments.error || submissions.error || files.error || notifications.error || activity.error || comments.error || delegates.error) {
+        showToast('Failed to fetch realtime data. Check Supabase credentials.', 'error');
+        return;
+    }
+    workflowState.faculty = faculty.data || [];
+    workflowState.tasks = tasks.data || [];
+    workflowState.assignments = assignments.data || [];
+    workflowState.submissions = submissions.data || [];
+    workflowState.submissionFiles = files.data || [];
+    workflowState.notifications = notifications.data || [];
+    workflowState.activity = activity.data || [];
+    workflowState.comments = comments.data || [];
+    workflowState.delegatedAccess = delegates.data || [];
+    renderAll();
+    updateNotificationBadge();
+}
+
 function initRealtime() {
-    db.channel('submissions-channel')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, () => {
-            fetchSubmissions();
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-            fetchTasks();
-        })
+    if (realtimeChannel) db.removeChannel(realtimeChannel);
+    realtimeChannel = db
+        .channel('wf-admin-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submission_files' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_comments' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_delegated_access' }, fetchAllData)
         .subscribe();
 }
 
-async function fetchTasks() {
-    const { data, error } = await db.from('tasks').select('id, title, due_at');
-    if (!error && data) allTasks = data;
-}
-
-async function fetchSubmissions() {
-    const { data, error } = await db
-        .from('submissions')
-        .select(`
-            id, task_id, submitted_at, status, reviewed_at, review_remarks,
-            submitted_by_profile:faculty_profiles!submitted_by(full_name),
-            reviewed_by_profile:faculty_profiles!reviewed_by(full_name),
-            department:departments(code),
-            submission_files(file_name)
-        `);
-    if (!error && data) {
-        allSubmissions = data.map(s => ({
-            id:               s.id,
-            task_id:          s.task_id,
-            submitter_name:   s.submitted_by_profile?.full_name || 'Unknown',
-            department_code:  s.department?.code || '—',
-            submitted_at:     s.submitted_at,
-            status:           s.status,
-            reviewed_by_name: s.reviewed_by_profile?.full_name || null,
-            reviewed_at:      s.reviewed_at,
-            review_remarks:   s.review_remarks || '',
-            files:            (s.submission_files || []).map(f => f.file_name),
-        }));
-        renderAll();
-    }
-}
-
-/* ──────────────────────────────────────────────────────────────
-   INIT
-   ────────────────────────────────────────────────────────────── */
 async function init() {
-    if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
-        loadDemoData();
+    if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON === 'YOUR_ANON_KEY') {
+        showToast('Set __SUPABASE_URL__ and __SUPABASE_ANON__ to enable realtime.', 'warn');
         return;
     }
-    await Promise.all([fetchTasks(), fetchSubmissions()]);
-    renderAll();
+    const targetGroup = document.getElementById('targetGroup');
+    if (targetGroup && targetGroup.options.length === 4) {
+        targetGroup.insertAdjacentHTML('afterbegin', '<option value="all">All Faculty Members</option>');
+    }
+    const textarea = document.getElementById('taskDesc');
+    if (textarea && !document.getElementById('taskAttachments')) {
+        textarea.insertAdjacentHTML('afterend', `
+            <div class="mt-4">
+                <label class="field-label">Task Attachments</label>
+                <input id="taskAttachments" type="file" multiple class="field-input">
+            </div>
+        `);
+    }
+    await fetchAllData();
+    renderSpecificUsers();
+    openTaskFromHash();
     initRealtime();
 }
-
+window.addEventListener('hashchange', () => {
+    if (window.location.hash.startsWith('#task=')) openTaskFromHash();
+    else if (activeTaskDetailId) returnToWorkflowMain(false);
+});
 init();
-
-/* Countdown ticker — update every minute */
-setInterval(() => {
-    if (allSubmissions.length > 0) filterSubmissions();
-}, 60000);
 </script>
 </body>
 </html>

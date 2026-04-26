@@ -495,9 +495,10 @@
                 <h3 class="font-semibold text-lg mb-4">Login Credentials (Set by Admin)</h3>
                 <div class="space-y-6">
                     <div>
-                        <label class="block text-sm text-gray-600 mb-1">Employee ID / Email</label>
-                        <input id="add-employee-id-email" type="text" placeholder="e.g. 123456 or faculty@ctu.edu.ph" 
+                        <label class="block text-sm text-gray-600 mb-1">Faculty Email</label>
+                        <input id="add-employee-id-email" type="email" placeholder="e.g. faculty@ctu.edu.ph" 
                                class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
+                        <p class="text-xs text-gray-500 mt-1">A Faculty ID will be generated automatically and shown after saving.</p>
                     </div>
                     <div>
                         <label class="block text-sm text-gray-600 mb-1">Temporary Password</label>
@@ -564,8 +565,41 @@
 
         <div class="border-t px-8 py-6 flex justify-end gap-4 bg-gray-50">
             <button onclick="closeAddFacultyModal()" class="px-8 py-3 text-gray-700 hover:bg-gray-100 rounded-2xl">Cancel</button>
-            <button onclick="createFacultyAccount()" 
-                    class="bg-[#621708] hover:bg-[#8c2a10] text-white px-10 py-3 rounded-2xl">Create Faculty Account</button>
+            <button id="createFacultyAccountBtn" onclick="createFacultyAccount()" 
+                    class="bg-[#621708] hover:bg-[#8c2a10] disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-10 py-3 rounded-2xl">Create Faculty Account</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- GENERATED FACULTY CREDENTIALS MODAL -->
+<div id="facultyCredentialsModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
+    <div class="bg-white rounded-3xl w-full max-w-md mx-4 overflow-hidden shadow-2xl">
+        <div class="px-6 py-5 border-b bg-emerald-50">
+            <h3 class="text-xl font-semibold text-gray-900">Faculty Account Created</h3>
+            <p class="text-sm text-gray-600 mt-1">Give these login credentials to the faculty member.</p>
+        </div>
+        <div class="p-6 space-y-4">
+            <div class="bg-gray-50 rounded-2xl p-4 border">
+                <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Faculty ID</div>
+                <div class="flex items-center justify-between gap-3">
+                    <div id="credentialFacultyId" class="font-semibold text-lg text-gray-900 break-all">-</div>
+                    <button onclick="copyCredential('credentialFacultyId')" class="text-xs px-3 py-2 rounded-xl bg-[#621708] text-white hover:bg-[#8c2a10]">Copy</button>
+                </div>
+            </div>
+            <div class="bg-gray-50 rounded-2xl p-4 border">
+                <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Generated Password</div>
+                <div class="flex items-center justify-between gap-3">
+                    <div id="credentialPassword" class="font-semibold text-lg text-gray-900 break-all">-</div>
+                    <button onclick="copyCredential('credentialPassword')" class="text-xs px-3 py-2 rounded-xl bg-[#621708] text-white hover:bg-[#8c2a10]">Copy</button>
+                </div>
+            </div>
+            <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl p-3">
+                This password is shown only now. The faculty member must change it during the first login setup.
+            </p>
+        </div>
+        <div class="border-t px-6 py-4 flex justify-end bg-gray-50">
+            <button onclick="closeFacultyCredentialsModal()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-3 rounded-2xl font-medium">Done</button>
         </div>
     </div>
 </div>
@@ -905,8 +939,22 @@
 
     function generatePassword() {
         const passwordField = document.getElementById('add-password');
-        // Meets stricter password policies: upper, lower, number, special char.
-        passwordField.value = "CITEfaculty!" + Math.floor(100000 + Math.random() * 900000);
+        const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+        const lower = 'abcdefghijkmnopqrstuvwxyz';
+        const nums = '23456789';
+        const special = '!@#$%';
+        const all = upper + lower + nums + special;
+        const pick = (chars) => chars[Math.floor(Math.random() * chars.length)];
+        const raw = [pick(upper), pick(lower), pick(nums), pick(special)];
+        while (raw.length < 12) raw.push(pick(all));
+        passwordField.value = raw.sort(() => Math.random() - 0.5).join('');
+    }
+
+    function generateFacultyId() {
+        const year = new Date().getFullYear();
+        const uniquePart = String(Date.now()).slice(-6);
+        const randomPart = Math.floor(10 + Math.random() * 90);
+        return `FAC-${year}-${uniquePart}${randomPart}`;
     }
 
     function isEmail(value) {
@@ -922,6 +970,28 @@
         document.getElementById('add-salary').value = '';
         document.getElementById('add-renewal').value = 'For Renewal';
         generatePassword();
+    }
+
+    function showFacultyCredentialsModal(credentials) {
+        document.getElementById('credentialFacultyId').textContent = credentials.facultyId;
+        document.getElementById('credentialPassword').textContent = credentials.password;
+        document.getElementById('facultyCredentialsModal').classList.remove('hidden');
+        document.getElementById('facultyCredentialsModal').classList.add('flex');
+    }
+
+    function closeFacultyCredentialsModal() {
+        document.getElementById('facultyCredentialsModal').classList.add('hidden');
+        document.getElementById('facultyCredentialsModal').classList.remove('flex');
+    }
+
+    async function copyCredential(elementId) {
+        const text = document.getElementById(elementId).textContent.trim();
+        try {
+            await navigator.clipboard.writeText(text);
+            alert('Copied to clipboard.');
+        } catch (error) {
+            prompt('Copy this value:', text);
+        }
     }
 
     function deriveNamePartsFromEmail(email) {
@@ -941,7 +1011,8 @@
     }
 
     async function createFacultyAccount() {
-        const identifier = document.getElementById('add-employee-id-email').value.trim();
+        const createBtn = document.getElementById('createFacultyAccountBtn');
+        const emailInput = document.getElementById('add-employee-id-email').value.trim();
         const tempPassword = document.getElementById('add-password').value.trim();
         const contractType = document.getElementById('add-contract-type').value;
         const employmentType = document.getElementById('add-employment-type').value;
@@ -950,8 +1021,8 @@
         const salary = document.getElementById('add-salary').value.trim();
         const renewal = document.getElementById('add-renewal').value;
 
-        if (!identifier) {
-            alert('Please enter Employee ID or Email.');
+        if (!emailInput || !isEmail(emailInput)) {
+            alert('Please enter a valid faculty email. This is used by Supabase Auth behind the Faculty ID login.');
             return;
         }
         if (!tempPassword || tempPassword.length < 8) {
@@ -959,15 +1030,9 @@
             return;
         }
 
-        const isIdentifierEmail = isEmail(identifier);
-        if (!isIdentifierEmail) {
-            alert('Please enter a valid faculty email in this field (Employee ID can be updated in profile).');
-            return;
-        }
-
-        const email = identifier.toLowerCase();
+        const email = emailInput.toLowerCase();
         const { firstName, lastName, fullName } = deriveNamePartsFromEmail(email);
-        const generatedEmployeeId = `FAC-${Date.now()}`;
+        const generatedEmployeeId = generateFacultyId();
         const role = 'Faculty';
         const parsedSalary = salary ? Number(String(salary).replace(/,/g, '')) : null;
         if (salary && (Number.isNaN(parsedSalary) || parsedSalary < 0)) {
@@ -976,15 +1041,18 @@
         }
 
         const buildFacultyPayload = (authUserId) => ({
-            auth_user_id: authUserId || null,
+            auth_user_id: authUserId,
             name: fullName,
             full_name: fullName,
             email,
+            existing_email: email,
             employee_id: generatedEmployeeId,
             position: 'Faculty',
             status: 'Active',
             department: 'N/A',
             phone: '',
+            birthdate: null,
+            profile_photo_url: null,
             contract_type: contractType,
             employment_type: employmentType,
             start_date: startDate,
@@ -997,12 +1065,8 @@
             updated_at: new Date().toISOString()
         });
 
-        const finalizeSuccess = async (messageText) => {
-            closeAddFacultyModal();
-            clearAddFacultyForm();
-            await loadFacultyProfiles();
-            alert(messageText);
-        };
+        createBtn.disabled = true;
+        createBtn.textContent = 'Creating...';
 
         try {
             const { data: signUpData, error: signUpError } = await onboardingClient.auth.signUp({
@@ -1022,20 +1086,13 @@
                 }
             });
 
-            if (signUpError) {
-                const loweredMessage = String(signUpError.message || '').toLowerCase();
-                const alreadyRegistered = loweredMessage.includes('already registered') || loweredMessage.includes('already exists');
-                if (!alreadyRegistered) throw signUpError;
+            if (signUpError) throw signUpError;
 
-                // Auth account already exists (common after partial previous attempts). Still keep faculty table in sync by email.
-                const { error: existingProfileError } = await supabaseClient
-                    .from('faculty')
-                    .upsert(buildFacultyPayload(null), { onConflict: 'email' });
-                if (existingProfileError) throw existingProfileError;
-
-                await finalizeSuccess('Faculty record saved in database. Auth account already exists for this email; use Forgot Password if needed.');
-                return;
+            // Supabase may return an empty identities array when the email is already registered.
+            if (signUpData?.user && Array.isArray(signUpData.user.identities) && signUpData.user.identities.length === 0) {
+                throw new Error('This email is already registered. Please use a different email or reset the existing account password.');
             }
+
             const userId = signUpData?.user?.id;
             if (!userId) throw new Error('Account created but user id was not returned.');
 
@@ -1044,7 +1101,10 @@
                 .upsert(buildFacultyPayload(userId), { onConflict: 'auth_user_id' });
             if (profileError) throw profileError;
 
-            await finalizeSuccess('Faculty account created. They can now log in via faculty login and must complete profile on first sign-in.');
+            closeAddFacultyModal();
+            clearAddFacultyForm();
+            await loadFacultyProfiles();
+            showFacultyCredentialsModal({ facultyId: generatedEmployeeId, password: tempPassword });
         } catch (error) {
             console.error('Create faculty account failed:', error);
             if (String(error.message || '').toLowerCase().includes('database error saving new user')) {
@@ -1054,6 +1114,8 @@
             }
         } finally {
             await onboardingClient.auth.signOut();
+            createBtn.disabled = false;
+            createBtn.textContent = 'Create Faculty Account';
         }
     }
 
