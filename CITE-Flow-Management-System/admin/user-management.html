@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Management - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
@@ -137,126 +138,263 @@
         <!-- Bottom Profile -->
         <div onclick="window.location.href='admin-profile.html'" 
              class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
+            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708]"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
             <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Dean & Administrator</div>
+                <div id="profileName" class="font-semibold text-sm truncate">Loading...</div>
+                <div id="profileRole" class="text-xs text-white/70">Administrator</div>
             </div>
         </div>
     </div>
 
+
     <!-- MAIN CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8">
-        <h1 class="text-3xl font-semibold mb-2">User Management</h1>
-        <p class="text-gray-500 mb-8">Manage system users and access permissions</p>
+    <main class="flex-1 overflow-y-auto bg-slate-50">
+        <div class="max-w-[1500px] mx-auto px-8 py-7">
+            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-7">
+                <div>
+                    <p class="text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase">Administration</p>
+                    <h1 class="text-3xl font-semibold text-slate-950 mt-2">User Management</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage system users, faculty accounts, access roles, and account status.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="openAddUserModal()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-5 py-3 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-sm" data-theme-primary="true">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>
+                        Add Faculty User
+                    </button>
+                </div>
+            </header>
 
-        <div class="grid grid-cols-3 gap-6 mb-10">
-            <div class="bg-white rounded-3xl p-6 card-shadow text-center">
-                <div class="text-5xl font-bold text-gray-900">5</div>
-                <div class="text-sm text-gray-500">Total Users</div>
+            <section class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-7">
+                <div class="bg-white border border-slate-200 rounded-[1.75rem] p-6 shadow-sm">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm text-slate-500">Total Users</p>
+                            <p id="total-users" class="text-4xl font-semibold text-slate-950 mt-2">0</p>
+                        </div>
+                        <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path stroke-linecap="round" stroke-linejoin="round" d="M22 21v-2a4 4 0 0 0-3-3.87M17 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-[1.75rem] p-6 shadow-sm">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm text-slate-500">Active Users</p>
+                            <p id="active-users" class="text-4xl font-semibold text-emerald-600 mt-2">0</p>
+                        </div>
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-[1.75rem] p-6 shadow-sm">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm text-slate-500">Faculty Members</p>
+                            <p id="faculty-users" class="text-4xl font-semibold text-[#621708] mt-2">0</p>
+                        </div>
+                        <div class="w-12 h-12 rounded-2xl bg-amber-50 text-[#621708] flex items-center justify-center">
+                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l6.16-3.42A12.08 12.08 0 0 1 18 13c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-.83.06-1.63.16-2.42L12 14Z"/></svg>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bg-white border border-slate-200 rounded-[2rem] p-5 shadow-sm mb-7">
+                <div class="grid grid-cols-1 lg:grid-cols-[1fr_180px_180px_180px] gap-3">
+                    <div class="relative">
+                        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35"/></svg>
+                        <input id="search-input" oninput="applyFilters()" type="text" placeholder="Search by name, email, role, or department" class="w-full border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:border-[#621708] focus:ring-4 focus:ring-[#621708]/10">
+                    </div>
+                    <select id="role-filter" onchange="applyFilters()" class="border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]"><option value="">All Roles</option></select>
+                    <select id="department-filter" onchange="applyFilters()" class="border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]"><option value="">All Departments</option></select>
+                    <select id="status-filter" onchange="applyFilters()" class="border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#621708]"><option value="">All Statuses</option><option>Active</option><option>Inactive</option><option>On Leave</option></select>
+                </div>
+                <div class="flex justify-between items-center gap-3 mt-4">
+                    <button onclick="resetFilters()" class="text-sm font-semibold text-[#621708] hover:underline">Reset filters</button>
+                    <p id="result-count" class="text-sm text-slate-500">0 users displayed</p>
+                </div>
+            </section>
+
+            <section class="bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-950">System Users</h2>
+                        <p class="text-sm text-slate-500">Name, email, role, department, last login, status, and account actions.</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[1120px] text-sm">
+                        <thead class="bg-slate-50 text-slate-500 border-b border-slate-100">
+                            <tr>
+                                <th class="py-4 px-6 text-left font-semibold">Name</th>
+                                <th class="py-4 px-6 text-left font-semibold">Email</th>
+                                <th class="py-4 px-6 text-left font-semibold">Role</th>
+                                <th class="py-4 px-6 text-left font-semibold">Department</th>
+                                <th class="py-4 px-6 text-left font-semibold w-[150px]">Last Login</th>
+                                <th class="py-4 px-6 text-center font-semibold">Status</th>
+                                <th class="py-4 px-6 text-right font-semibold">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <div id="empty-state" class="hidden py-16 text-center">
+                    <div class="w-14 h-14 mx-auto rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mb-4">
+                        <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72A9.1 9.1 0 0 0 12 17a9.1 9.1 0 0 0-6 1.72"/><circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="9"/></svg>
+                    </div>
+                    <h3 class="font-semibold text-slate-900">No users found</h3>
+                    <p class="text-sm text-slate-500 mt-1">Try adjusting the search or filters.</p>
+                </div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<!-- ADD USER MODAL -->
+<div id="add-user-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-50 items-center justify-center p-4">
+    <div class="bg-white rounded-[2rem] w-full max-w-3xl shadow-2xl overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">New Faculty User</p>
+                <h2 class="text-xl font-semibold text-slate-950 mt-1">Create Faculty Account</h2>
+                <p class="text-sm text-slate-500 mt-1">Create a faculty profile and login credentials using the onboarding details.</p>
             </div>
-            <div class="bg-white rounded-3xl p-6 card-shadow text-center">
-                <div class="text-5xl font-bold text-emerald-600">5</div>
-                <div class="text-sm text-gray-500">Active Users</div>
+            <button onclick="closeAddUserModal()" class="icon-btn" aria-label="Close"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button>
+        </div>
+        <div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[72vh] overflow-y-auto">
+            <div>
+                <label class="field-label">Faculty Email</label>
+                <input id="add-email" type="email" placeholder="faculty@ctu.edu.ph" class="field-input">
             </div>
-            <div class="bg-white rounded-3xl p-6 card-shadow text-center">
-                <div class="text-5xl font-bold text-emerald-600">3</div>
-                <div class="text-sm text-gray-500">Faculty Members</div>
+            <div>
+                <label class="field-label">Temporary Password</label>
+                <div class="flex gap-2">
+                    <input id="add-password" type="text" readonly class="field-input bg-slate-50">
+                    <button onclick="generatePassword()" class="px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-semibold">Generate</button>
+                </div>
+            </div>
+            <div>
+                <label class="field-label">Department</label>
+                <select id="add-department" class="field-input"><option value="BSIT">BSIT</option><option value="BSIE">BSIE</option><option value="BIT">BIT</option><option value="All">All</option><option value="N/A">N/A</option></select>
+            </div>
+            <div>
+                <label class="field-label">Status</label>
+                <select id="add-status" class="field-input"><option>Active</option><option>Inactive</option><option>On Leave</option></select>
+            </div>
+            <div>
+                <label class="field-label">Contract Type</label>
+                <select id="add-contract-type" class="field-input"><option value="Full-Time">Full-Time</option><option value="Part-Time">Part-Time</option><option value="Temporary">Temporary</option><option value="Visiting">Visiting</option><option value="Research Faculty">Research Faculty</option><option value="Administrative Faculty">Administrative Faculty</option></select>
+            </div>
+            <div>
+                <label class="field-label">Employment Type</label>
+                <select id="add-employment-type" class="field-input"><option value="Regular">Regular</option><option value="Probationary">Probationary</option><option value="Contractual">Contractual</option><option value="Job Order">Job Order</option><option value="Part-Time">Part-Time</option><option value="Project Based">Project Based</option></select>
+            </div>
+            <div>
+                <label class="field-label">Start Date</label>
+                <input id="add-start-date" type="date" class="field-input">
+            </div>
+            <div>
+                <label class="field-label">End Date</label>
+                <input id="add-end-date" type="date" class="field-input">
+            </div>
+            <div>
+                <label class="field-label">Salary</label>
+                <input id="add-salary" type="text" placeholder="00,000" class="field-input">
+            </div>
+            <div>
+                <label class="field-label">Renewal</label>
+                <select id="add-renewal" class="field-input"><option value="For Renewal">For Renewal</option><option value="Renewed">Renewed</option><option value="Not Renewed">Not Renewed</option><option value="N/A (Permanent)">N/A (Permanent)</option></select>
             </div>
         </div>
-
-        <div class="flex gap-4 mb-8">
-            <input type="text" placeholder="Search users..." 
-                   class="flex-1 bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm focus:outline-none">
-            <select class="bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm">
-                <option>All Roles</option>
-                <option>Dean</option>
-                <option>Secretary</option>
-                <option>Faculty</option>
-            </select>
-            <select class="bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm">
-                <option>All Departments</option>
-                <option>BSIT</option>
-                <option>BSIE</option>
-                <option>BIT</option>
-            </select>
-        </div>
-
-        <div class="bg-white rounded-3xl overflow-hidden card-shadow">
-            <table class="w-full">
-                <thead class="bg-[#621708] text-white">
-                    <tr>
-                        <th class="py-4 px-6 text-left">User</th>
-                        <th class="py-4 px-6 text-left">Email</th>
-                        <th class="py-4 px-6 text-left">Role</th>
-                        <th class="py-4 px-6 text-left">Department</th>
-                        <th class="py-4 px-6 text-left">Last Login</th>
-                        <th class="py-4 px-6 text-center">Status</th>
-                        <th class="py-4 px-6 text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="text-sm divide-y">
-                    <tr>
-                        <td class="py-4 px-6">
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">👨‍💼</div>
-                                <div>
-                                    <div class="font-medium">Dr. Roberto Fernandez</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="py-4 px-6">dean@cite.edu</td>
-                        <td class="py-4 px-6"><span class="px-4 py-1 bg-purple-100 text-purple-700 text-xs rounded-2xl">Dean</span></td>
-                        <td class="py-4 px-6">All</td>
-                        <td class="py-4 px-6 text-xs text-gray-500">2026-02-27 08:30 AM</td>
-                        <td class="py-4 px-6 text-center"><span class="px-4 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-2xl">Active</span></td>
-                        <td class="py-4 px-6 text-center">
-                            <button class="text-gray-600 hover:text-gray-900 mr-3">✏️</button>
-                            <button class="text-red-600 hover:text-red-700">🗑</button>
-                        </td>
-                    </tr>
-                    <tr class="bg-gray-50">
-                        <td class="py-4 px-6">
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">👩‍💼</div>
-                                <div>
-                                    <div class="font-medium">Ms. Carmen Reyes</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="py-4 px-6">secretary@cite.edu</td>
-                        <td class="py-4 px-6"><span class="px-4 py-1 bg-blue-100 text-blue-700 text-xs rounded-2xl">Secretary</span></td>
-                        <td class="py-4 px-6">All</td>
-                        <td class="py-4 px-6 text-xs text-gray-500">2026-02-27 09:15 AM</td>
-                        <td class="py-4 px-6 text-center"><span class="px-4 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-2xl">Active</span></td>
-                        <td class="py-4 px-6 text-center">
-                            <button class="text-gray-600 hover:text-gray-900 mr-3">✏️</button>
-                            <button class="text-red-600 hover:text-red-700">🗑</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td class="py-4 px-6">
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">👩‍🏫</div>
-                                <div>
-                                    <div class="font-medium">Maria Santos</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="py-4 px-6">maria.santos@cite.edu</td>
-                        <td class="py-4 px-6"><span class="px-4 py-1 bg-green-100 text-green-700 text-xs rounded-2xl">Faculty</span></td>
-                        <td class="py-4 px-6">BSIT</td>
-                        <td class="py-4 px-6 text-xs text-gray-500">2026-02-26 03:45 PM</td>
-                        <td class="py-4 px-6 text-center"><span class="px-4 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-2xl">Active</span></td>
-                        <td class="py-4 px-6 text-center">
-                            <button class="text-gray-600 hover:text-gray-900 mr-3">✏️</button>
-                            <button class="text-red-600 hover:text-red-700">🗑</button>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="border-t border-slate-100 bg-slate-50 px-7 py-5 flex justify-end gap-3">
+            <button onclick="closeAddUserModal()" class="px-6 py-3 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button id="create-user-btn" onclick="createFacultyAccount()" class="px-6 py-3 rounded-2xl bg-[#621708] hover:bg-[#8c2a10] text-white text-sm font-semibold disabled:bg-slate-400" data-theme-primary="true">Create Account</button>
         </div>
     </div>
 </div>
+
+<!-- EDIT USER MODAL -->
+<div id="edit-user-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-50 items-center justify-center p-4">
+    <div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Edit User</p>
+                <h2 id="edit-modal-title" class="text-xl font-semibold text-slate-950 mt-1">Update Account</h2>
+            </div>
+            <button onclick="closeEditUserModal()" class="icon-btn" aria-label="Close"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button>
+        </div>
+        <div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div class="md:col-span-2"><label class="field-label">Full Name</label><input id="edit-name" type="text" class="field-input"></div>
+            <div><label class="field-label">Email</label><input id="edit-email" type="email" class="field-input"></div>
+            <div><label class="field-label">Role</label><select id="edit-role" class="field-input"><option>Dean</option><option>Secretary</option><option>Faculty</option><option>Administrator</option></select></div>
+            <div><label class="field-label">Department</label><select id="edit-department" class="field-input"><option>All</option><option>BSIT</option><option>BSIE</option><option>BIT</option><option>N/A</option><option>Administration</option></select></div>
+            <div><label class="field-label">Status</label><select id="edit-status" class="field-input"><option>Active</option><option>Inactive</option><option>On Leave</option></select></div>
+        </div>
+        <div class="border-t border-slate-100 bg-slate-50 px-7 py-5 flex justify-end gap-3">
+            <button onclick="closeEditUserModal()" class="px-6 py-3 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button onclick="saveUserChanges()" class="px-6 py-3 rounded-2xl bg-[#621708] hover:bg-[#8c2a10] text-white text-sm font-semibold" data-theme-primary="true">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- CREDENTIALS MODAL -->
+<div id="credentials-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[60] items-center justify-center p-4">
+    <div class="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100"><h2 class="text-xl font-semibold text-slate-950">Faculty Account Created</h2><p class="text-sm text-slate-500 mt-1">Share these credentials with the faculty member.</p></div>
+        <div class="p-7 space-y-4">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Faculty ID</div><div class="flex items-center justify-between gap-3"><div id="credential-id" class="font-semibold text-slate-950 break-all">-</div><button onclick="copyText('credential-id')" class="px-3 py-2 rounded-xl bg-[#621708] text-white text-xs font-semibold" data-theme-primary="true">Copy</button></div></div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Temporary Password</div><div class="flex items-center justify-between gap-3"><div id="credential-password" class="font-semibold text-slate-950 break-all">-</div><button onclick="copyText('credential-password')" class="px-3 py-2 rounded-xl bg-[#621708] text-white text-xs font-semibold" data-theme-primary="true">Copy</button></div></div>
+        </div>
+        <div class="border-t border-slate-100 bg-slate-50 px-7 py-5 flex justify-end"><button onclick="closeCredentialsModal()" class="px-6 py-3 rounded-2xl bg-[#621708] text-white text-sm font-semibold" data-theme-primary="true">Done</button></div>
+    </div>
+</div>
+
+<script src="../shared/system-ui.js"></script>
+<script>
+const SUPABASE_URL='https://uforealazougjckepggc.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const onboardingClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+let allUsers=[],filteredUsers=[],currentEditingUser=null,currentAdminUser=null;
+function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function fmtDate(v){
+    if(!v) return '<div class="last-login-muted">Never logged in</div>';
+    let d=new Date(v);
+    if(Number.isNaN(d.getTime())) return '<div class="last-login-muted">Never logged in</div>';
+    const date=d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const time=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    return `<div class="last-login-wrap"><span class="last-login-date">${date}</span><span class="last-login-time">${time}</span></div>`;
+}
+function initials(name){return String(name||'U').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0].toUpperCase()).join('')||'U'}
+function normalizeFaculty(row){return{source:'faculty',id:row.id,authUserId:row.auth_user_id||null,name:row.full_name||row.name||row.email||'Faculty User',email:row.email||row.existing_email||'',role:row.role||row.position||'Faculty',department:row.department||'N/A',lastLogin:row.last_login_at||row.last_login||row.updated_at||row.created_at,status:row.status||'Active',raw:row}}
+function normalizeAdmin(row){let name=[row.first_name,row.last_name].filter(Boolean).join(' ').trim()||row.full_name||row.name||row.email||'Administrator';return{source:'admin_profiles',id:row.id||row.user_id,name,email:row.email||'',role:row.role||'Administrator',department:row.department||'Administration',lastLogin:row.last_login_at||row.updated_at||row.created_at,status:row.status||'Active',raw:row}}
+async function loadUsers(){let users=[];let f=await supabaseClient.from('faculty').select('*').order('created_at',{ascending:false});if(!f.error)users.push(...(f.data||[]).map(normalizeFaculty));else console.warn('Faculty load failed:',f.error.message);let a=await supabaseClient.from('admin_profiles').select('*');if(!a.error)users.push(...(a.data||[]).map(normalizeAdmin));else console.warn('Admin profile load skipped:',a.error.message);allUsers=dedupeUsers(users);populateFilters();applyFilters();setRealtimeStatus('Realtime user list connected.')}
+function dedupeUsers(list){let seen=new Set();return list.filter(u=>{let k=(u.source+'-'+u.id)||u.email;if(seen.has(k))return false;seen.add(k);return true})}
+function setRealtimeStatus(text){let el=document.getElementById('realtime-status');if(el)el.textContent=text}
+function subscribeRealtime(){supabaseClient.channel('user-management-realtime').on('postgres_changes',{event:'*',schema:'public',table:'faculty'},loadUsers).on('postgres_changes',{event:'*',schema:'public',table:'admin_profiles'},loadUsers).subscribe(s=>{if(s==='SUBSCRIBED')setRealtimeStatus('Realtime user list connected.')})}
+function populateFilters(){let roles=[...new Set(allUsers.map(u=>u.role).filter(Boolean))].sort();let deps=[...new Set(allUsers.map(u=>u.department).filter(Boolean))].sort();document.getElementById('role-filter').innerHTML='<option value="">All Roles</option>'+roles.map(r=>`<option>${esc(r)}</option>`).join('');document.getElementById('department-filter').innerHTML='<option value="">All Departments</option>'+deps.map(d=>`<option>${esc(d)}</option>`).join('')}
+function applyFilters(){let q=document.getElementById('search-input').value.toLowerCase().trim(),role=document.getElementById('role-filter').value,dep=document.getElementById('department-filter').value,status=document.getElementById('status-filter').value;filteredUsers=allUsers.filter(u=>{let hay=[u.name,u.email,u.role,u.department,u.status].join(' ').toLowerCase();return(!q||hay.includes(q))&&(!role||u.role===role)&&(!dep||u.department===dep)&&(!status||u.status===status)});renderStats();renderTable()}
+function resetFilters(){document.getElementById('search-input').value='';document.getElementById('role-filter').value='';document.getElementById('department-filter').value='';document.getElementById('status-filter').value='';applyFilters()}
+function renderStats(){document.getElementById('total-users').textContent=allUsers.length;document.getElementById('active-users').textContent=allUsers.filter(u=>String(u.status).toLowerCase()==='active').length;document.getElementById('faculty-users').textContent=allUsers.filter(u=>String(u.role).toLowerCase().includes('faculty')||u.source==='faculty').length;document.getElementById('result-count').textContent=`${filteredUsers.length} user${filteredUsers.length===1?'':'s'} displayed`}
+function badge(value,type){let map={role:'bg-slate-100 text-slate-700',status:'bg-slate-100 text-slate-700'};if(type==='status'){let v=String(value).toLowerCase();if(v==='active')map.status='bg-emerald-50 text-emerald-700 border border-emerald-100';else if(v==='inactive')map.status='bg-red-50 text-red-700 border border-red-100';else map.status='bg-amber-50 text-amber-700 border border-amber-100'}if(type==='role'){let v=String(value).toLowerCase();if(v.includes('faculty'))map.role='bg-green-50 text-green-700 border border-green-100';else if(v.includes('secretary'))map.role='bg-blue-50 text-blue-700 border border-blue-100';else if(v.includes('dean')||v.includes('admin'))map.role='bg-purple-50 text-purple-700 border border-purple-100'}return `<span class="inline-flex px-3 py-1 rounded-full text-xs font-semibold ${map[type]}">${esc(value)}</span>`}
+function renderTable(){let body=document.getElementById('users-table'),empty=document.getElementById('empty-state');if(!filteredUsers.length){body.innerHTML='';empty.classList.remove('hidden');return}empty.classList.add('hidden');body.innerHTML=filteredUsers.map(u=>`<tr class="hover:bg-slate-50 transition"><td class="py-4 px-6"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-sm font-semibold">${esc(initials(u.name))}</div><div><div class="font-semibold text-slate-900">${esc(u.name)}</div><div class="text-xs text-slate-500">${u.source==='faculty'?'Faculty account':'Admin profile'}</div></div></div></td><td class="py-4 px-6 text-slate-600">${esc(u.email||'No email')}</td><td class="py-4 px-6">${badge(u.role,'role')}</td><td class="py-4 px-6 text-slate-600">${esc(u.department)}</td><td class="py-4 px-6 text-slate-600 align-middle w-[150px]">${fmtDate(u.lastLogin)}</td><td class="py-4 px-6 text-center">${badge(u.status,'status')}</td><td class="py-4 px-6"><div class="flex justify-end gap-2"><button onclick="openEditUserModal('${u.source}','${u.id}')" class="action-btn" title="Edit user"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9"/><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button><button onclick="deleteUser('${u.source}','${u.id}')" class="action-btn text-red-600 hover:border-red-200 hover:bg-red-50" title="Delete user"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg></button></div></td></tr>`).join('')}
+function openEditUserModal(source,id){let u=allUsers.find(x=>x.source===source&&String(x.id)===String(id));if(!u)return;currentEditingUser=u;document.getElementById('edit-modal-title').textContent=`Update ${u.name}`;document.getElementById('edit-name').value=u.name;document.getElementById('edit-email').value=u.email;document.getElementById('edit-role').value=['Dean','Secretary','Faculty','Administrator'].includes(u.role)?u.role:'Faculty';document.getElementById('edit-department').value=['All','BSIT','BSIE','BIT','N/A','Administration'].includes(u.department)?u.department:'N/A';document.getElementById('edit-status').value=['Active','Inactive','On Leave'].includes(u.status)?u.status:'Active';document.getElementById('edit-user-modal').classList.remove('hidden');document.getElementById('edit-user-modal').classList.add('flex')}
+function closeEditUserModal(){document.getElementById('edit-user-modal').classList.add('hidden');document.getElementById('edit-user-modal').classList.remove('flex');currentEditingUser=null}
+async function saveUserChanges(){if(!currentEditingUser)return;let name=document.getElementById('edit-name').value.trim(),email=document.getElementById('edit-email').value.trim(),role=document.getElementById('edit-role').value,department=document.getElementById('edit-department').value,status=document.getElementById('edit-status').value;if(!name)return alert('Name is required.');let error=null;if(currentEditingUser.source==='faculty'){let payload={name,full_name:name,email,existing_email:email,role,position:role==='Faculty'?'Faculty':role,department,status,updated_at:new Date().toISOString()};let res=await supabaseClient.from('faculty').update(payload).eq('id',currentEditingUser.id);error=res.error}else{let [first_name,...rest]=name.split(/\s+/);let payload={first_name:first_name||name,last_name:rest.join(' '),email,role,department,status,updated_at:new Date().toISOString()};let res=await supabaseClient.from('admin_profiles').update(payload).eq('id',currentEditingUser.id);error=res.error}if(error){console.error(error);return alert('Unable to update user: '+error.message)}closeEditUserModal();await logActivity('Updated','Updated user account for '+name);await loadUsers()}
+async function deleteUser(source,id){let u=allUsers.find(x=>x.source===source&&String(x.id)===String(id));if(!u)return;if(!confirm(`Delete ${u.name} from the user list? This removes the profile record, not the Supabase Auth account.`))return;let res=await supabaseClient.from(source).delete().eq('id',id);if(res.error){console.error(res.error);return alert('Unable to delete user: '+res.error.message)}await logActivity('Deleted','Deleted user profile for '+u.name);await loadUsers()}
+function openAddUserModal(){document.getElementById('add-user-modal').classList.remove('hidden');document.getElementById('add-user-modal').classList.add('flex');generatePassword()}function closeAddUserModal(){document.getElementById('add-user-modal').classList.add('hidden');document.getElementById('add-user-modal').classList.remove('flex')}
+function generatePassword(){const f=document.getElementById('add-password'),upper='ABCDEFGHJKLMNPQRSTUVWXYZ',lower='abcdefghijkmnopqrstuvwxyz',nums='23456789',special='!@#$%',all=upper+lower+nums+special,pick=s=>s[Math.floor(Math.random()*s.length)],raw=[pick(upper),pick(lower),pick(nums),pick(special)];while(raw.length<12)raw.push(pick(all));f.value=raw.sort(()=>Math.random()-.5).join('')}
+function generateFacultyId(){return `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}${Math.floor(10+Math.random()*90)}`}
+function isEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)}function deriveNamePartsFromEmail(email){let parts=(email.split('@')[0]||'faculty').split(/[._-]+/).filter(Boolean).map(t=>t[0].toUpperCase()+t.slice(1).toLowerCase());let firstName=parts[0]||'Faculty',lastName=parts.slice(1).join(' ')||'User';return{firstName,lastName,fullName:`${firstName} ${lastName}`}}
+async function createFacultyAccount(){let btn=document.getElementById('create-user-btn'),email=document.getElementById('add-email').value.trim().toLowerCase(),password=document.getElementById('add-password').value.trim();if(!isEmail(email))return alert('Please enter a valid faculty email.');if(!password||password.length<8)return alert('Please generate a temporary password.');let facultyId=generateFacultyId(),names=deriveNamePartsFromEmail(email),salaryRaw=document.getElementById('add-salary').value.trim(),salary=salaryRaw?Number(salaryRaw.replace(/,/g,'')):null;if(salaryRaw&&(Number.isNaN(salary)||salary<0))return alert('Salary must be a valid non-negative number.');btn.disabled=true;btn.textContent='Creating...';try{let sign=await onboardingClient.auth.signUp({email,password,options:{data:{first_name:names.firstName,last_name:names.lastName,id_number:facultyId,full_name:names.fullName,role:'Faculty',employee_id:facultyId,profile_completed:false,must_change_password:true}}});if(sign.error)throw sign.error;if(sign.data?.user&&Array.isArray(sign.data.user.identities)&&sign.data.user.identities.length===0)throw new Error('This email is already registered.');let userId=sign.data?.user?.id;if(!userId)throw new Error('Account created but no user id was returned.');let payload={auth_user_id:userId,name:names.fullName,full_name:names.fullName,email,existing_email:email,employee_id:facultyId,position:'Faculty',status:document.getElementById('add-status').value,department:document.getElementById('add-department').value,phone:'',contract_type:document.getElementById('add-contract-type').value,employment_type:document.getElementById('add-employment-type').value,start_date:document.getElementById('add-start-date').value||null,end_date:document.getElementById('add-end-date').value||null,salary,renewal:document.getElementById('add-renewal').value,role:'Faculty',profile_completed:false,must_change_password:true,updated_at:new Date().toISOString()};let up=await supabaseClient.from('faculty').upsert(payload,{onConflict:'auth_user_id'});if(up.error)throw up.error;closeAddUserModal();document.getElementById('credential-id').textContent=facultyId;document.getElementById('credential-password').textContent=password;document.getElementById('credentials-modal').classList.remove('hidden');document.getElementById('credentials-modal').classList.add('flex');await logActivity('Created','Created faculty user account for '+names.fullName);await loadUsers()}catch(e){console.error(e);alert('Failed to create account: '+e.message)}finally{await onboardingClient.auth.signOut();btn.disabled=false;btn.textContent='Create Account'}}
+function closeCredentialsModal(){document.getElementById('credentials-modal').classList.add('hidden');document.getElementById('credentials-modal').classList.remove('flex')}async function copyText(id){let t=document.getElementById(id).textContent.trim();try{await navigator.clipboard.writeText(t);alert('Copied to clipboard.')}catch(e){prompt('Copy this value:',t)}}
+async function logActivity(action,details){try{let user=currentAdminUser,meta=user?.user_metadata||{},userName=[meta.first_name,meta.last_name].filter(Boolean).join(' ').trim()||user?.email||'Administrator';await supabaseClient.from('system_activity_logs').insert({user_id:user?.id||null,user_name:userName,user_role:'Administrator',module:'User Management',action,details_text:details,metadata:{source:'user-management'}})}catch(e){console.warn('Activity log skipped:',e.message)}}
+function formatFullName(firstName,lastName,fallback){return [firstName,lastName].filter(Boolean).join(' ').trim()||fallback||'User'}async function loadAdminProfile(){try{let {data,error}=await supabaseClient.auth.getUser();currentAdminUser=data?.user||null;if(error||!currentAdminUser){document.getElementById('profileName').textContent='Administrator';return}let meta=currentAdminUser.user_metadata||{},name=formatFullName(meta.first_name,meta.last_name,meta.full_name||meta.name||currentAdminUser.email),role=meta.role||'Administrator';let res=await supabaseClient.from('admin_profiles').select('*').eq('id',currentAdminUser.id).maybeSingle();if(res.data){name=formatFullName(res.data.first_name,res.data.last_name,name);role=res.data.role||role}document.getElementById('profileName').textContent=name;document.getElementById('profileRole').textContent=role}catch(e){console.warn(e)}}
+window.addEventListener('load',async()=>{await loadAdminProfile();await loadUsers();subscribeRealtime()});
+</script>
+<style>
+.icon-btn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:14px;background:#fff;color:#334155}.icon-btn:hover{background:#f8fafc}.field-label{display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:8px}.field-input{width:100%;border:1px solid #d1d5db;border-radius:18px;padding:12px 14px;font-size:14px;outline:none;background:white}.field-input:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}.action-btn{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:13px;background:#fff;color:#475569}.action-btn:hover{background:#f8fafc;border-color:#cbd5e1}.last-login-wrap{display:inline-flex;flex-direction:column;gap:2px;min-width:116px;line-height:1.25}.last-login-date{font-size:13px;font-weight:600;color:#334155;white-space:nowrap}.last-login-time{font-size:12px;color:#64748b;white-space:nowrap}.last-login-muted{display:inline-flex;align-items:center;justify-content:center;min-width:116px;border-radius:999px;background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;font-size:12px;font-weight:600;padding:7px 10px;white-space:nowrap}
+</style>
 </body>
 </html>

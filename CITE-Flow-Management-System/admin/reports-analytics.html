@@ -5,250 +5,260 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reports and Analytics - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
-        }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
-        }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
-        }
-
-        .section-header {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
-
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
-        }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
-        }
-
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
-        }
-
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
-        }
+        .sidebar { background-color: #621708; width: 280px; }
+        .nav-item { transition: all .25s ease; }
+        .nav-item:hover { background-color: #8c2a10; }
+        .nav-item.active { background-color: #8c2a10; border-left: 4px solid #f5e8c7; }
+        .section-header { font-size: 11px; font-weight: 600; letter-spacing: .8px; opacity: .75; padding-left: 20px; margin-bottom: 10px; text-transform: uppercase; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,.35); border-radius: 20px; }
+        .nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.25; }
+        .app-surface { background: linear-gradient(135deg, #f8fafc 0%, #f9fafb 50%, #f7f7fb 100%); }
+        .panel { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 18px 45px rgba(15, 23, 42, .06); }
+        .soft-card { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 10px 28px rgba(15, 23, 42, .045); }
+        .field { width: 100%; border: 1px solid #dbe1ea; border-radius: 16px; padding: 11px 14px; font-size: 13px; outline: none; background: #fff; color: #0f172a; }
+        .field:focus { border-color: #621708; box-shadow: 0 0 0 4px rgba(98, 23, 8, .08); }
+        .btn-primary { background: #621708; color: white; border-radius: 16px; padding: 11px 16px; font-size: 13px; font-weight: 700; }
+        .btn-primary:hover { background: #8c2a10; }
+        .btn-secondary { background: #fff; color: #334155; border: 1px solid #dbe1ea; border-radius: 16px; padding: 11px 16px; font-size: 13px; font-weight: 700; }
+        .btn-secondary:hover { background: #f8fafc; }
+        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+        .action-approved { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        .action-requested-edit { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+        .action-rejected { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .action-created { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .action-updated { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+        .action-download { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+        .action-other { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+        .table-row:hover { background: #f8fafc; }
     </style>
 </head>
 <body class="bg-gray-50">
-
 <div class="flex h-screen overflow-hidden">
-    <!-- IMPROVED SIDEBAR -->
     <div class="sidebar text-white flex flex-col h-full">
-        <!-- Logo -->
-        <div onclick="window.location.href='dashboard.html'" 
-             class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <div class="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-3">
-                <span class="text-[#621708] text-4xl font-bold">CTU</span>
-            </div>
+        <div onclick="window.location.href='dashboard.html'" class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
+            <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3" onerror="this.classList.add('hidden'); document.getElementById('logoFallback').classList.remove('hidden');">
+            <div id="logoFallback" class="hidden w-16 h-16 bg-white rounded-2xl items-center justify-center mb-3 text-[#621708] text-2xl font-bold">CTU</div>
             <div class="text-center">
-                <div class="font-semibold text-base leading-tight">CITE-Flow</div>
                 <div class="font-semibold text-base leading-tight">College of Technology</div>
                 <div class="font-semibold text-base leading-tight">and Engineering</div>
             </div>
         </div>
 
-        <!-- Navigation -->
         <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
             <div>
                 <div class="section-header text-white/70">FACULTIES & PROFILES</div>
-                <div onclick="window.location.href='faculty-profiles.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Faculty Profiles
-                </div>
-                <div onclick="window.location.href='workload-tracker.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Workload Tracker
-                </div>
-                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                    Engagement Logs
-                </div>
+                <div onclick="window.location.href='faculty-profiles.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Faculty Profiles</div>
+                <div onclick="window.location.href='workload-tracker.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>Workload Tracker</div>
+                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>Engagement Logs</div>
             </div>
-
             <div>
                 <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Workflow Approval
-                </div>
+                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>Document Vault</div>
+                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>Workflow Approval</div>
             </div>
-
             <div>
                 <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
+                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Calendar</div>
             </div>
-
             <div>
                 <div class="section-header text-white/70">ADMINISTRATION</div>
-                <div onclick="window.location.href='reports-analytics.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
-                    Reports and Analytics
-                </div>
-                <div onclick="window.location.href='feedback-summary.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
-                    Seminar Feedback Summary
-                </div>
-                <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-                <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    User Management
-                </div>
+                <div onclick="window.location.href='reports-analytics.html'" class="nav-item active flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>Reports and Analytics</div>
+                <div onclick="window.location.href='feedback-summary.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>Seminar Feedback Summary</div>
+                <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>System Settings</div>
+                <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>User Management</div>
             </div>
         </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Dean & Administrator</div>
-            </div>
+        <div onclick="window.location.href='admin-profile.html'" class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
+            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708]"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+            <div class="flex-1 min-w-0"><div id="profileName" class="font-semibold text-sm truncate">Loading...</div><div id="profileRole" class="text-xs text-white/70">Administrator</div></div>
         </div>
     </div>
 
-    <!-- MAIN CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8">
-        <h1 class="text-3xl font-semibold mb-2">Reports and Analytics</h1>
-        <p class="text-gray-500 mb-8">View system activity and performance reports</p>
+    <main class="flex-1 overflow-y-auto app-surface p-6 lg:p-8">
+        <div class="max-w-[1500px] mx-auto">
+            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-7">
+                <div>
+                    <p class="text-xs font-bold tracking-[0.22em] text-[#621708] uppercase">A.9 Reports and Analytics Module</p>
+                    <h1 class="text-3xl font-semibold tracking-tight text-slate-950 mt-2">Reports and Analytics</h1>
+                    <p class="text-sm text-slate-500 mt-1">Monitor realtime system activity logs, action distribution, module activity, filtered reports, and exportable analytics.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="soft-card rounded-2xl px-4 py-3 min-w-[170px]"><div class="text-xs text-slate-500">Realtime Status</div><div id="realtime-status" class="text-sm font-bold text-slate-900 mt-1">Connecting...</div></div>
+                    <button onclick="refreshReports()" class="btn-secondary flex items-center gap-2"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0 0 19 5M19 5v6h-6"/></svg>Refresh</button>
+                    <button onclick="exportReport('excel')" class="btn-primary flex items-center gap-2"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>Export Reports</button>
+                </div>
+            </header>
 
-        <div class="flex justify-between items-center mb-8">
-            <select id="module-filter" onchange="filterReports()" class="bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-[#621708]">
-                <option value="">All Modules</option>
-                <option value="workload">Workload Tracker</option>
-                <option value="document">Document Vault</option>
-                <option value="capstone">Capstone</option>
-                <option value="engagement">Engagement Logs</option>
-            </select>
-            <input type="text" id="search-reports" placeholder="Search User Details..." 
-                   class="bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm w-80 focus:outline-none focus:border-[#621708]">
-        </div>
+            <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6" id="summary-cards"></section>
 
-        <div class="bg-white rounded-3xl overflow-hidden card-shadow mb-10">
-            <div class="bg-[#621708] text-white px-6 py-4 font-medium">Recent Activity Log</div>
-            <table class="w-full">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="py-4 px-6 text-left text-sm">Date and Time</th>
-                        <th class="py-4 px-6 text-left text-sm">User</th>
-                        <th class="py-4 px-6 text-left text-sm">Module</th>
-                        <th class="py-4 px-6 text-left text-sm">Action</th>
-                    </tr>
-                </thead>
-                <tbody class="text-sm divide-y">
-                    <tr>
-                        <td class="py-4 px-6">2026-02-24 10:15</td>
-                        <td class="py-4 px-6">Prof. Maria Santos</td>
-                        <td class="py-4 px-6">Workload Tracker</td>
-                        <td class="py-4 px-6 text-emerald-600 font-medium">Approved<br><span class="text-xs text-gray-500">Adjusted teaching load from 18 → 20 units</span></td>
-                    </tr>
-                    <tr>
-                        <td class="py-4 px-6">2026-02-23 14:30</td>
-                        <td class="py-4 px-6">Prof. John Dela Cruz</td>
-                        <td class="py-4 px-6">Document Vault</td>
-                        <td class="py-4 px-6 text-amber-600 font-medium">Requested Edit<br><span class="text-xs text-gray-500">Uploaded Capstone Proposal (needs revision)</span></td>
-                    </tr>
-                    <tr>
-                        <td class="py-4 px-6">2026-02-22 09:45</td>
-                        <td class="py-4 px-6">Prof. Ana Lopez</td>
-                        <td class="py-4 px-6">Capstone</td>
-                        <td class="py-4 px-6 text-red-600 font-medium">Rejected<br><span class="text-xs text-gray-500">Capstone Final Report rejected - missing sections</span></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+            <section class="panel rounded-[2rem] p-5 lg:p-6 mb-6">
+                <div class="flex flex-col lg:flex-row lg:items-end gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+                        <div><label class="text-xs font-semibold text-slate-500 uppercase">Filter by Module</label><select id="module-filter" onchange="applyFilters()" class="field mt-2"><option value="">All Modules</option></select></div>
+                        <div><label class="text-xs font-semibold text-slate-500 uppercase">From Date</label><input id="from-date" type="date" onchange="applyFilters()" class="field mt-2"></div>
+                        <div><label class="text-xs font-semibold text-slate-500 uppercase">To Date</label><input id="to-date" type="date" onchange="applyFilters()" class="field mt-2"></div>
+                        <div><label class="text-xs font-semibold text-slate-500 uppercase">Search Details</label><input id="search-reports" type="text" oninput="applyFilters()" placeholder="Search user, action, details..." class="field mt-2"></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="resetFilters()" class="btn-secondary">Reset</button>
+                        <button onclick="exportReport('pdf')" class="btn-secondary">PDF</button>
+                        <button onclick="exportReport('word')" class="btn-secondary">Word</button>
+                        <button onclick="exportReport('excel')" class="btn-primary">Excel</button>
+                    </div>
+                </div>
+            </section>
 
-        <div class="grid grid-cols-2 gap-6">
-            <div class="bg-white rounded-3xl p-6 card-shadow">
-                <h3 class="font-semibold mb-4">Action Distribution</h3>
-                <canvas id="actionChart" height="180"></canvas>
-            </div>
-            <div class="bg-white rounded-3xl p-6 card-shadow">
-                <h3 class="font-semibold mb-4">Modules Activity</h3>
-                <canvas id="moduleChart" height="180"></canvas>
-            </div>
+            <section class="grid grid-cols-1 xl:grid-cols-12 gap-6 mb-6">
+                <div class="panel rounded-[2rem] p-6 xl:col-span-5">
+                    <div class="flex items-start justify-between gap-4 mb-5"><div><h2 class="text-lg font-semibold text-slate-950">Action Distribution</h2><p class="text-sm text-slate-500 mt-1">A.9.2 Pie chart based on filtered activity logs.</p></div><span id="action-total" class="badge action-other">0 actions</span></div>
+                    <div class="h-[320px] flex items-center justify-center"><canvas id="actionChart"></canvas></div>
+                </div>
+                <div class="panel rounded-[2rem] p-6 xl:col-span-7">
+                    <div class="flex items-start justify-between gap-4 mb-5"><div><h2 class="text-lg font-semibold text-slate-950">Modules Activity</h2><p class="text-sm text-slate-500 mt-1">A.9.3 Bar chart grouped by active CITE-Flow module.</p></div><span id="module-total" class="badge action-other">0 modules</span></div>
+                    <div class="h-[320px]"><canvas id="moduleChart"></canvas></div>
+                </div>
+            </section>
+
+            <section class="panel rounded-[2rem] overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div><h2 class="text-lg font-semibold text-slate-950">System Activity Logs</h2><p class="text-sm text-slate-500 mt-1">A.9.1 Realtime record of user activity, module actions, and detailed changes.</p></div>
+                    <div class="flex items-center gap-2 text-xs text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-[#621708]"></span><span id="log-count-label">0 records</span></div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-500">
+                            <tr>
+                                <th class="px-6 py-4 text-left font-semibold">Date and Time</th>
+                                <th class="px-6 py-4 text-left font-semibold">User</th>
+                                <th class="px-6 py-4 text-left font-semibold">Module</th>
+                                <th class="px-6 py-4 text-left font-semibold">Action</th>
+                                <th class="px-6 py-4 text-left font-semibold">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activity-table" class="divide-y divide-slate-100 bg-white"></tbody>
+                    </table>
+                </div>
+                <div id="empty-state" class="hidden px-6 py-16 text-center"><div class="mx-auto w-14 h-14 rounded-3xl bg-slate-100 text-slate-500 flex items-center justify-center mb-4"><svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7 15l4-4 3 3 5-7"/></svg></div><h3 class="font-semibold text-slate-900">No activity found</h3><p class="text-sm text-slate-500 mt-1">Try changing the module or date filters.</p></div>
+            </section>
         </div>
-    </div>
+    </main>
 </div>
 
 <script>
-    let actionChart, moduleChart;
+const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+const { createClient } = supabase;
+const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+window.supabaseClient = supabaseClient;
 
-    function initCharts() {
-        const actionCtx = document.getElementById('actionChart');
-        actionChart = new Chart(actionCtx, {
-            type: 'pie',
-            data: {
-                labels: ['Approved', 'Requested Edit', 'Rejected'],
-                datasets: [{
-                    data: [45, 30, 25],
-                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444']
-                }]
-            },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-        });
+let currentUser = null, currentProfile = null, actionChart = null, moduleChart = null;
+let allLogs = [], filteredLogs = [];
+const modules = ['Workload Tracker','Document Vault','Capstone','Engagement Logs','Calendar','Feedback Summary','User Management','System Settings','Reports and Analytics'];
+const actionColors = ['#621708','#0f766e','#b45309','#991b1b','#4338ca','#7c3aed','#475569','#15803d'];
 
-        const moduleCtx = document.getElementById('moduleChart');
-        moduleChart = new Chart(moduleCtx, {
-            type: 'bar',
-            data: {
-                labels: ['Workload', 'Document', 'Capstone', 'Engagement'],
-                datasets: [{
-                    label: 'Activities',
-                    data: [28, 15, 22, 12],
-                    backgroundColor: '#621708'
-                }]
-            },
-            options: { responsive: true, scales: { y: { beginAtZero: true } } }
-        });
+function esc(v){ return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function formatDate(v){ return v ? new Date(v).toLocaleString([], {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '—'; }
+function actionClass(action){ const a=String(action||'').toLowerCase().replace(/\s+/g,'-'); if(['approved','requested-edit','rejected','created','updated','download'].includes(a)) return 'action-'+a; return 'action-other'; }
+function status(text){ const el=document.getElementById('realtime-status'); if(el) el.textContent=text; }
+function normalize(row){ return { id: row.id, created_at: row.created_at || row.activity_at || new Date().toISOString(), user_name: row.user_name || row.created_by_name || 'System', user_role: row.user_role || '', module: row.module || row.source_module || 'System', action: row.action || row.activity_type || 'Recorded', details: row.details_text || row.description || '', metadata: row.metadata || {} }; }
+
+async function loadReports(){
+    const { data, error } = await supabaseClient.from('system_activity_logs').select('*').order('created_at', { ascending:false }).limit(500);
+    if(error){ console.error(error); status('Table not ready. Run the SQL first.'); allLogs=[]; }
+    else { allLogs=(data||[]).map(normalize); status('Realtime reports connected.'); }
+    populateModuleFilter(); applyFilters();
+}
+function refreshReports(){ loadReports(); }
+function populateModuleFilter(){
+    const select=document.getElementById('module-filter'); const current=select.value;
+    const names=[...new Set([...modules, ...allLogs.map(l=>l.module).filter(Boolean)])].sort();
+    select.innerHTML='<option value="">All Modules</option>'+names.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    select.value=current;
+}
+function applyFilters(){
+    const module=document.getElementById('module-filter').value;
+    const from=document.getElementById('from-date').value;
+    const to=document.getElementById('to-date').value;
+    const q=document.getElementById('search-reports').value.toLowerCase().trim();
+    filteredLogs=allLogs.filter(log=>{
+        const d=new Date(log.created_at);
+        const matchesModule=!module || log.module===module;
+        const matchesFrom=!from || d>=new Date(from+'T00:00:00');
+        const matchesTo=!to || d<=new Date(to+'T23:59:59');
+        const hay=[log.user_name, log.user_role, log.module, log.action, log.details].join(' ').toLowerCase();
+        const matchesQ=!q || hay.includes(q);
+        return matchesModule && matchesFrom && matchesTo && matchesQ;
+    });
+    renderAll();
+}
+function resetFilters(){ document.getElementById('module-filter').value=''; document.getElementById('from-date').value=''; document.getElementById('to-date').value=''; document.getElementById('search-reports').value=''; applyFilters(); }
+function countBy(list, key){ return list.reduce((acc,item)=>{ const k=item[key]||'Unknown'; acc[k]=(acc[k]||0)+1; return acc; },{}); }
+function renderAll(){ renderSummary(); renderTable(); renderCharts(); }
+function renderSummary(){
+    const todayKey=new Date().toISOString().slice(0,10);
+    const total=filteredLogs.length;
+    const today=filteredLogs.filter(l=>String(l.created_at).slice(0,10)===todayKey).length;
+    const activeModules=Object.keys(countBy(filteredLogs,'module')).length;
+    const exports=filteredLogs.filter(l=>String(l.action).toLowerCase().includes('export')).length;
+    const cards=[
+        {label:'Total Activities', value:total, sub:'Filtered realtime logs', icon:'M3 3v18h18M7 15l4-4 3 3 5-7'},
+        {label:'Today', value:today, sub:'Activities recorded today', icon:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2'},
+        {label:'Active Modules', value:activeModules, sub:'Modules with activity', icon:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'},
+        {label:'Export Actions', value:exports, sub:'Report export records', icon:'M12 3v12m0 0 4-4m-4 4-4-4M4 21h16'}
+    ];
+    document.getElementById('summary-cards').innerHTML=cards.map(c=>`<div class="soft-card rounded-[1.6rem] p-5"><div class="flex items-start justify-between"><div><div class="text-sm text-slate-500">${c.label}</div><div class="text-3xl font-semibold text-slate-950 mt-2">${c.value}</div></div><div class="w-11 h-11 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="${c.icon}"/></svg></div></div><div class="text-xs text-slate-400 mt-4">${c.sub}</div></div>`).join('');
+}
+function renderTable(){
+    const body=document.getElementById('activity-table'); const empty=document.getElementById('empty-state');
+    document.getElementById('log-count-label').textContent=`${filteredLogs.length} record${filteredLogs.length===1?'':'s'}`;
+    if(!filteredLogs.length){ body.innerHTML=''; empty.classList.remove('hidden'); return; }
+    empty.classList.add('hidden');
+    body.innerHTML=filteredLogs.map(log=>`<tr class="table-row"><td class="px-6 py-4 whitespace-nowrap text-slate-600">${formatDate(log.created_at)}</td><td class="px-6 py-4"><div class="font-semibold text-slate-900">${esc(log.user_name)}</div><div class="text-xs text-slate-400">${esc(log.user_role || 'User')}</div></td><td class="px-6 py-4"><span class="badge action-other">${esc(log.module)}</span></td><td class="px-6 py-4"><span class="badge ${actionClass(log.action)}">${esc(log.action)}</span></td><td class="px-6 py-4 min-w-[300px]"><div class="text-slate-700">${esc(log.details)}</div></td></tr>`).join('');
+}
+function renderCharts(){
+    const actionCounts=countBy(filteredLogs,'action'); const moduleCounts=countBy(filteredLogs,'module');
+    const actionLabels=Object.keys(actionCounts); const moduleLabels=Object.keys(moduleCounts);
+    document.getElementById('action-total').textContent=`${filteredLogs.length} actions`;
+    document.getElementById('module-total').textContent=`${moduleLabels.length} modules`;
+    if(actionChart) actionChart.destroy(); if(moduleChart) moduleChart.destroy();
+    actionChart=new Chart(document.getElementById('actionChart'),{type:'pie',data:{labels:actionLabels.length?actionLabels:['No Data'],datasets:[{data:actionLabels.length?Object.values(actionCounts):[1],backgroundColor:actionLabels.length?actionColors:['#e5e7eb'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,usePointStyle:true,font:{size:11}}}}}});
+    moduleChart=new Chart(document.getElementById('moduleChart'),{type:'bar',data:{labels:moduleLabels.length?moduleLabels:['No Data'],datasets:[{label:'Activities',data:moduleLabels.length?Object.values(moduleCounts):[0],backgroundColor:'#621708',borderRadius:10}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:11}}},y:{beginAtZero:true,ticks:{precision:0},grid:{color:'#eef2f7'}}}}});
+}
+function exportRows(){ return filteredLogs.map(l=>({'Date and Time':formatDate(l.created_at),'User':l.user_name,'Role':l.user_role,'Module':l.module,'Action':l.action,'Details':l.details})); }
+function downloadBlob(content, filename, type){ const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+async function recordExport(format, count){ try{ await supabaseClient.from('system_activity_logs').insert({user_name: currentProfile ? formatFullName(currentProfile.first_name,currentProfile.last_name,currentUser?.email) : 'Administrator', user_role:'Administrator', module:'Reports and Analytics', action:'Exported', details_text:`Exported ${count} filtered report record(s) as ${format.toUpperCase()}.`, metadata:{format, count}}); }catch(e){ console.warn(e); } }
+async function exportReport(format){
+    const rows=exportRows(); if(!rows.length) return alert('No filtered activity logs available to export.');
+    const stamp=new Date().toISOString().slice(0,10);
+    if(format==='excel'){
+        const ws=XLSX.utils.json_to_sheet(rows); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Activity Logs'); XLSX.writeFile(wb,`reports-analytics-${stamp}.xlsx`); await recordExport(format, rows.length); return;
     }
-
-    function filterReports() {
-        alert("🔍 Filtering reports... (Demo)");
+    if(format==='pdf'){
+        const doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'}); doc.setFontSize(16); doc.text('Reports and Analytics - System Activity Logs',40,40); doc.setFontSize(9); doc.text(`Generated: ${new Date().toLocaleString()} | Records: ${rows.length}`,40,58); doc.autoTable({startY:76,head:[['Date and Time','User','Module','Action','Details']],body:rows.map(r=>[r['Date and Time'],r.User,r.Module,r.Action,r.Details]),styles:{fontSize:8,cellPadding:4,overflow:'linebreak'},headStyles:{fillColor:[98,23,8]},columnStyles:{4:{cellWidth:260}}}); doc.save(`reports-analytics-${stamp}.pdf`); await recordExport(format, rows.length); return;
     }
-
-    window.onload = () => {
-        initCharts();
-    };
+    if(format==='word'){
+        const trs=rows.map(r=>`<tr><td>${esc(r['Date and Time'])}</td><td>${esc(r.User)}</td><td>${esc(r.Module)}</td><td>${esc(r.Action)}</td><td>${esc(r.Details)}</td></tr>`).join('');
+        const html=`<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#111827}h1{font-size:22px}table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top;font-size:12px}th{background:#f3f4f6}</style></head><body><h1>Reports and Analytics - System Activity Logs</h1><p>Generated: ${new Date().toLocaleString()}<br>Records: ${rows.length}</p><table><thead><tr><th>Date and Time</th><th>User</th><th>Module</th><th>Action</th><th>Details</th></tr></thead><tbody>${trs}</tbody></table></body></html>`;
+        downloadBlob('\ufeff'+html,`reports-analytics-${stamp}.doc`,'application/msword'); await recordExport(format, rows.length); return;
+    }
+}
+function subscribeReports(){ supabaseClient.channel('reports-analytics-realtime').on('postgres_changes',{event:'*',schema:'public',table:'system_activity_logs'},loadReports).subscribe(s=>{ if(s==='SUBSCRIBED') status('Realtime reports connected.'); }); }
+function formatFullName(firstName,lastName,fallback){ return [firstName,lastName].filter(Boolean).join(' ').trim() || fallback || 'Unknown User'; }
+function getProfileFromAuthMetadata(user){ const m=user?.user_metadata||{}; return {first_name:m.first_name||'',last_name:m.last_name||'',email:user?.email||'',role:m.role||'Administrator',avatar_url:m.avatar_url||''}; }
+function isAdminProfilesMissingError(error){ if(!error)return false; const code=String(error.code||'').toUpperCase(); const message=String(error.message||'').toLowerCase(); return code==='42P01'||code==='PGRST205'||(message.includes('admin_profiles')&&(message.includes('does not exist')||message.includes('relation'))); }
+function renderProfile(profile,user){ document.getElementById('profileName').textContent=formatFullName(profile.first_name,profile.last_name,user?.email); document.getElementById('profileRole').textContent=profile.role||'Administrator'; }
+async function loadAdminProfile(){ const {data:authData,error:authError}=await supabaseClient.auth.getUser(); if(authError||!authData?.user)return; currentUser=authData.user; let profile=getProfileFromAuthMetadata(currentUser); const {data:dbProfile,error:dbError}=await supabaseClient.from('admin_profiles').select('*').eq('id',currentUser.id).maybeSingle(); if(dbError){ if(!isAdminProfilesMissingError(dbError)) console.error('Error fetching admin profile:',dbError); } else if(dbProfile){ profile={first_name:dbProfile.first_name||profile.first_name,last_name:dbProfile.last_name||profile.last_name,email:dbProfile.email||profile.email,role:dbProfile.role||profile.role,avatar_url:dbProfile.avatar_url||profile.avatar_url}; } currentProfile=profile; renderProfile(profile,currentUser); }
+window.addEventListener('load', async()=>{ await loadAdminProfile(); await loadReports(); subscribeReports(); });
 </script>
+<script src="../shared/system-ui.js"></script>
 </body>
 </html>
