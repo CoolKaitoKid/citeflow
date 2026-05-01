@@ -281,6 +281,109 @@
     .success { background: #d4edda; color: #155724; }
     .error { background: #f8d7da; color: #721c24; }
 
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+      padding: 16px;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 600px;
+      background: #fff;
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #111827;
+    }
+
+    .modal-subtitle {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 16px;
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .modal-actions {
+      margin-top: 16px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .profile-photo-row {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 4px;
+    }
+
+    .profile-preview {
+      width: 74px;
+      height: 74px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #6b7280;
+      font-size: 1.8rem;
+      overflow: hidden;
+    }
+
+    .file-input {
+      border: 1px dashed #9ca3af;
+      border-radius: 12px;
+      padding: 10px;
+      width: 100%;
+      font-size: 0.82rem;
+    }
+
+    .readonly-input {
+      color: #6b7280;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: #1e40af;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary:disabled {
+      background: #93c5fd;
+      cursor: not-allowed;
+    }
+
     @media (max-width: 1024px) {
       .layout {
         flex-direction: column;
@@ -333,6 +436,12 @@
         max-height: 45vh;
       }
     }
+
+    @media (max-width: 640px) {
+      .modal-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -368,10 +477,10 @@
 
       <form id="loginForm">
         <div class="field">
-          <label>Email</label>
+          <label>Faculty ID or Email</label>
           <div class="input-box">
             <div class="icon-square"><i class="far fa-envelope"></i></div>
-            <input type="email" id="email" placeholder="faculty@citeflow.edu.ph" required autocomplete="email">
+            <input type="text" id="identifier" placeholder="FAC-2026-000001 or faculty@ctu.edu.ph" required autocomplete="username">
           </div>
         </div>
 
@@ -411,6 +520,83 @@
 
   </div>
 
+  <div id="firstLoginModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-title">Complete Your Profile</div>
+      <div class="modal-subtitle">First-time login requires profile completion and a new password before you can enter the faculty dashboard.</div>
+      <form id="firstLoginForm">
+        <div class="modal-grid">
+          <div class="profile-photo-row">
+            <div id="setup-photo-preview" class="profile-preview"><i class="fas fa-user"></i></div>
+            <div style="flex: 1; text-align: left;">
+              <label>Profile Photo <span style="color:#6b7280; font-weight:400;">(optional)</span></label>
+              <input type="file" id="setup-photo" class="file-input" accept="image/png,image/jpeg,image/webp">
+              <div style="font-size:0.75rem; color:#6b7280; margin-top:4px;">PNG, JPG, or WEBP. You may leave this blank.</div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Complete Name</label>
+            <div class="input-box">
+              <input type="text" id="setup-full-name" required placeholder="Juan Dela Cruz">
+            </div>
+          </div>
+          <div class="field">
+            <label>Birthdate</label>
+            <div class="input-box">
+              <input type="date" id="setup-birthdate" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>ID Number / Faculty ID</label>
+            <div class="input-box">
+              <input type="text" id="setup-employee-id" required placeholder="FAC-2026-000001">
+            </div>
+          </div>
+          <div class="field">
+            <label>Existing Email</label>
+            <div class="input-box">
+              <input type="email" id="setup-existing-email" required placeholder="faculty@ctu.edu.ph">
+            </div>
+          </div>
+          <div class="field">
+            <label>Department</label>
+            <div class="input-box">
+              <input type="text" id="setup-department" required placeholder="BSIT">
+            </div>
+          </div>
+          <div class="field">
+            <label>Phone</label>
+            <div class="input-box">
+              <input type="text" id="setup-phone" placeholder="+63 9xx xxx xxxx">
+            </div>
+          </div>
+          <div class="field">
+            <label>Position</label>
+            <div class="input-box">
+              <input type="text" id="setup-position" placeholder="Instructor">
+            </div>
+          </div>
+          <div class="field">
+            <label>New Password</label>
+            <div class="input-box">
+              <input type="password" id="setup-password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="field">
+            <label>Confirm New Password</label>
+            <div class="input-box">
+              <input type="password" id="setup-confirm-password" required minlength="8" placeholder="Re-enter password" autocomplete="new-password">
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" id="firstLoginSubmitBtn" class="btn-primary">Save and Continue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     // ================== SUPABASE CONFIG ==================
     const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
@@ -419,7 +605,7 @@
     const { createClient } = supabase;
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Password visibility toggle
+    // Password visibility toggle and first-login profile photo preview
     document.addEventListener('DOMContentLoaded', function() {
       const eyeBtns = document.querySelectorAll('.eye-btn');
       eyeBtns.forEach(btn => {
@@ -439,6 +625,27 @@
         });
       });
 
+      const setupPhotoInput = document.getElementById('setup-photo');
+      const setupPhotoPreview = document.getElementById('setup-photo-preview');
+      setupPhotoInput.addEventListener('change', function() {
+        const file = this.files?.[0];
+        if (!file) {
+          setupPhotoPreview.innerHTML = '<i class="fas fa-user"></i>';
+          return;
+        }
+        if (!file.type.startsWith('image/')) {
+          alert('Please choose a valid image file.');
+          this.value = '';
+          setupPhotoPreview.innerHTML = '<i class="fas fa-user"></i>';
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setupPhotoPreview.innerHTML = `<img src="${event.target.result}" alt="Profile preview" style="width:100%;height:100%;object-fit:cover;">`;
+        };
+        reader.readAsDataURL(file);
+      });
+
       // Faculty Icon Click - Redirect to Admin Login
       const facultyIcon = document.getElementById('facultyIcon');
       facultyIcon.addEventListener('click', function() {
@@ -450,6 +657,111 @@
     const loginForm = document.getElementById('loginForm');
     const loginBtn = document.getElementById('loginBtn');
     const messageDiv = document.getElementById('message');
+    const firstLoginModal = document.getElementById('firstLoginModal');
+    const firstLoginForm = document.getElementById('firstLoginForm');
+    const firstLoginSubmitBtn = document.getElementById('firstLoginSubmitBtn');
+    let pendingFirstLoginContext = null;
+
+    function openFirstLoginModal(user, profile) {
+      document.getElementById('setup-full-name').value = profile?.full_name || user?.user_metadata?.full_name || '';
+      document.getElementById('setup-birthdate').value = profile?.birthdate || user?.user_metadata?.birthdate || '';
+      document.getElementById('setup-employee-id').value = profile?.employee_id || user?.user_metadata?.employee_id || '';
+      document.getElementById('setup-existing-email').value = profile?.existing_email || profile?.email || user?.email || '';
+      document.getElementById('setup-department').value = profile?.department || '';
+      document.getElementById('setup-phone').value = profile?.phone || '';
+      document.getElementById('setup-position').value = profile?.position || 'Faculty';
+      document.getElementById('setup-password').value = '';
+      document.getElementById('setup-confirm-password').value = '';
+      document.getElementById('setup-photo').value = '';
+
+      const preview = document.getElementById('setup-photo-preview');
+      if (profile?.profile_photo_url) {
+        preview.innerHTML = `<img src="${profile.profile_photo_url}" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;">`;
+      } else {
+        preview.innerHTML = '<i class="fas fa-user"></i>';
+      }
+
+      firstLoginModal.classList.add('show');
+    }
+
+    async function resolveEmailFromIdentifier(identifier) {
+      const cleanedIdentifier = identifier.trim();
+      if (cleanedIdentifier.includes('@')) {
+        return cleanedIdentifier.toLowerCase();
+      }
+
+      const { data, error } = await supabaseClient
+        .from('faculty')
+        .select('email')
+        .eq('employee_id', cleanedIdentifier)
+        .maybeSingle();
+
+      if (error || !data?.email) {
+        throw new Error('No faculty account found for the provided Faculty ID.');
+      }
+      return String(data.email).toLowerCase();
+    }
+
+    async function getFacultyProfileForUser(user) {
+      let { data: profile, error: profileError } = await supabaseClient
+        .from('faculty')
+        .select('*')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+
+      // Fallback for older rows created before auth_user_id was saved.
+      if (!profile && user.email) {
+        const fallback = await supabaseClient
+          .from('faculty')
+          .select('*')
+          .eq('email', user.email.toLowerCase())
+          .maybeSingle();
+
+        if (fallback.error) throw fallback.error;
+        profile = fallback.data;
+
+        if (profile && !profile.auth_user_id) {
+          await supabaseClient
+            .from('faculty')
+            .update({ auth_user_id: user.id, updated_at: new Date().toISOString() })
+            .eq('id', profile.id);
+          profile.auth_user_id = user.id;
+        }
+      }
+
+      return profile;
+    }
+
+    async function uploadProfilePhotoIfSelected(userId) {
+      const fileInput = document.getElementById('setup-photo');
+      const file = fileInput.files?.[0];
+      if (!file) return null;
+
+      if (!file.type.startsWith('image/')) {
+        throw new Error('Profile photo must be an image file.');
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error('Profile photo must be 2 MB or smaller.');
+      }
+
+      const extension = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const filePath = `${userId}/${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from('faculty-profile-photos')
+        .upload(filePath, file, { upsert: true, contentType: file.type });
+
+      if (uploadError) {
+        throw new Error(`Profile photo upload failed. Make sure the faculty-profile-photos storage bucket exists. ${uploadError.message}`);
+      }
+
+      const { data } = supabaseClient.storage
+        .from('faculty-profile-photos')
+        .getPublicUrl(filePath);
+
+      return data?.publicUrl || null;
+    }
 
     loginForm.addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -458,10 +770,12 @@
       loginBtn.disabled = true;
       loginBtn.textContent = 'Signing in...';
 
-      const email = document.getElementById('email').value.trim();
+      const identifier = document.getElementById('identifier').value.trim();
       const password = document.getElementById('password').value;
 
       try {
+        const email = await resolveEmailFromIdentifier(identifier);
+
         // Step 1: Sign in with Supabase Auth
         const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
           email: email,
@@ -472,16 +786,27 @@
 
         const user = authData.user;
 
-        // Step 2: Check if user exists in faculty_profiles table
-        const { data: profile, error: profileError } = await supabaseClient
-          .from('faculty_profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
+        // Step 2: Check if user exists in faculty table
+        const profile = await getFacultyProfileForUser(user);
 
-        if (profileError || !profile) {
+        if (!profile) {
           await supabaseClient.auth.signOut();
           throw new Error('This account is not registered as a faculty member. Please contact the administrator.');
+        }
+
+        if (String(profile.role || user.user_metadata?.role || '').toLowerCase() !== 'faculty') {
+          await supabaseClient.auth.signOut();
+          throw new Error('This account is not allowed to login as faculty.');
+        }
+
+        const profileCompleted = Boolean(profile.profile_completed ?? user.user_metadata?.profile_completed);
+        const mustChangePassword = Boolean(profile.must_change_password ?? user.user_metadata?.must_change_password);
+
+        if (!profileCompleted || mustChangePassword) {
+          pendingFirstLoginContext = { user, profile };
+          openFirstLoginModal(user, profile);
+          showMessage('Complete your profile and set a new password to continue.', 'success');
+          return;
         }
 
         // Successful faculty login
@@ -498,6 +823,8 @@
 
         if (err.message.includes('Invalid login credentials')) {
           msg = 'Incorrect email or password.';
+        } else if (err.message.includes('No faculty account found')) {
+          msg = err.message;
         } else if (err.message.includes('Email not confirmed')) {
           msg = 'Please confirm your email before logging in.';
         } else if (err.message.includes('not registered as a faculty')) {
@@ -518,6 +845,113 @@
       messageDiv.className = `message ${type}`;
       messageDiv.style.display = 'block';
     }
+
+    firstLoginForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      if (!pendingFirstLoginContext?.user) return;
+
+      const fullName = document.getElementById('setup-full-name').value.trim();
+      const birthdate = document.getElementById('setup-birthdate').value;
+      const employeeId = document.getElementById('setup-employee-id').value.trim();
+      const existingEmail = document.getElementById('setup-existing-email').value.trim().toLowerCase();
+      const department = document.getElementById('setup-department').value.trim();
+      const phone = document.getElementById('setup-phone').value.trim();
+      const position = document.getElementById('setup-position').value.trim() || 'Faculty';
+      const newPassword = document.getElementById('setup-password').value;
+      const confirmNewPassword = document.getElementById('setup-confirm-password').value;
+
+      if (!fullName || !birthdate || !employeeId || !existingEmail || !department) {
+        alert('Please complete all required profile details.');
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(existingEmail)) {
+        alert('Please enter a valid existing email address.');
+        return;
+      }
+      if (newPassword.length < 8) {
+        alert('New password must be at least 8 characters.');
+        return;
+      }
+      if (newPassword !== confirmNewPassword) {
+        alert('New passwords do not match.');
+        return;
+      }
+
+      firstLoginSubmitBtn.disabled = true;
+      firstLoginSubmitBtn.textContent = 'Saving...';
+
+      try {
+        const user = pendingFirstLoginContext.user;
+        const currentProfile = pendingFirstLoginContext.profile || {};
+        const nowIso = new Date().toISOString();
+        const uploadedPhotoUrl = await uploadProfilePhotoIfSelected(user.id);
+        const profilePhotoUrl = uploadedPhotoUrl || currentProfile.profile_photo_url || null;
+
+        const { error: updateUserError } = await supabaseClient.auth.updateUser({
+          password: newPassword,
+          data: {
+            role: 'Faculty',
+            full_name: fullName,
+            birthdate,
+            employee_id: employeeId,
+            existing_email: existingEmail,
+            profile_photo_url: profilePhotoUrl,
+            profile_completed: true,
+            must_change_password: false,
+            first_login_completed_at: nowIso
+          }
+        });
+        if (updateUserError) throw updateUserError;
+
+        const profilePayload = {
+          auth_user_id: user.id,
+          name: fullName,
+          full_name: fullName,
+          birthdate,
+          employee_id: employeeId,
+          department,
+          phone,
+          position,
+          email: currentProfile.email || user.email || existingEmail,
+          existing_email: existingEmail,
+          profile_photo_url: profilePhotoUrl,
+          status: 'Active',
+          role: 'Faculty',
+          profile_completed: true,
+          must_change_password: false,
+          updated_at: nowIso
+        };
+
+        let profileUpdateError = null;
+        if (currentProfile.id) {
+          const { error } = await supabaseClient
+            .from('faculty')
+            .update(profilePayload)
+            .eq('id', currentProfile.id);
+          profileUpdateError = error;
+        } else {
+          const { error } = await supabaseClient
+            .from('faculty')
+            .upsert(profilePayload, { onConflict: 'auth_user_id' });
+          profileUpdateError = error;
+        }
+        if (profileUpdateError) throw profileUpdateError;
+
+        firstLoginModal.classList.remove('show');
+        pendingFirstLoginContext = null;
+        showMessage('Profile completed. Redirecting to your dashboard...', 'success');
+
+        setTimeout(() => {
+          window.location.href = 'faculty/dashboard.html';
+        }, 900);
+      } catch (error) {
+        console.error('First login completion failed:', error);
+        alert(`Unable to complete first login setup: ${error.message}`);
+      } finally {
+        firstLoginSubmitBtn.disabled = false;
+        firstLoginSubmitBtn.textContent = 'Save and Continue';
+      }
+    });
   </script>
 
 </body>

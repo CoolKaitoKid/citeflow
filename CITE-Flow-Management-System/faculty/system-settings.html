@@ -94,7 +94,7 @@
             <!-- DOCUMENT MANAGEMENT -->
             <div>
                 <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" 
+                <div onclick="window.location.href='document.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                     Document Vault
@@ -230,10 +230,11 @@
                     <div class="mb-6">
                         <div class="text-sm font-medium text-gray-700 mb-3">Theme Color</div>
                         <div class="flex gap-4">
-                            <div onclick="changeTheme(this, '#621708')" class="color-swatch bg-[#621708] active"></div>
-                            <div onclick="changeTheme(this, '#1f2937')" class="color-swatch bg-gray-800"></div>
-                            <div onclick="changeTheme(this, '#2563eb')" class="color-swatch bg-blue-600"></div>
-                            <div onclick="changeTheme(this, '#ea580c')" class="color-swatch bg-orange-600"></div>
+                            <div data-theme-color="#740A03" onclick="changeTheme(this, '#740A03')" class="color-swatch" style="background:#740A03;"></div>
+                            <div data-theme-color="#BB1919" onclick="changeTheme(this, '#BB1919')" class="color-swatch" style="background:#BB1919;"></div>
+                            <div data-theme-color="#250505" onclick="changeTheme(this, '#250505')" class="color-swatch" style="background:#250505;"></div>
+                            <div data-theme-color="#000000" onclick="changeTheme(this, '#000000')" class="color-swatch" style="background:#000000;"></div>
+                            <div data-theme-color="#E2E2B6" onclick="changeTheme(this, '#E2E2B6')" class="color-swatch" style="background:#E2E2B6;"></div>
                         </div>
                     </div>
                     <button onclick="saveSettings()" 
@@ -247,15 +248,34 @@
 </div>
 
 <script>
+    let selectedThemeColor = '#740A03';
+
+    function syncThemeSelection() {
+        const current = (window.CiteFlowUI && window.CiteFlowUI.getTheme) ? window.CiteFlowUI.getTheme() : '#740A03';
+        selectedThemeColor = current;
+        document.querySelectorAll('.color-swatch').forEach((el) => {
+            el.classList.toggle('active', el.getAttribute('data-theme-color') === current);
+        });
+    }
+
     function saveSettings() {
+        if (window.CiteFlowUI && window.CiteFlowUI.setTheme) {
+            window.CiteFlowUI.setTheme(selectedThemeColor);
+        }
         alert("✅ Settings saved successfully!");
     }
 
     function changeTheme(el, color) {
         document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
         el.classList.add('active');
-        alert(`Theme color changed to ${color}`);
+        selectedThemeColor = color;
+        if (window.CiteFlowUI && window.CiteFlowUI.setTheme) {
+            window.CiteFlowUI.setTheme(color);
+        }
     }
+
+    window.addEventListener('DOMContentLoaded', syncThemeSelection);
 </script>
+<script src="../shared/system-ui.js"></script>
 </body>
 </html>

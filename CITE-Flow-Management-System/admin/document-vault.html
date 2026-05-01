@@ -5,283 +5,524 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document Vault - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
-        }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
-        }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
-        }
+        body { background: #f8fafc; }
+        .sidebar { background-color: #621708; width: 280px; min-width: 280px; }
+        .nav-item { transition: all 0.22s ease; }
+        .nav-item:hover { background-color: #8c2a10; }
+        .nav-item.active { background-color: #8c2a10; border-left: 4px solid #f5e8c7; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.35); border-radius: 20px; }
+        .section-header { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; opacity: 0.75; padding-left: 20px; margin-bottom: 10px; text-transform: uppercase; }
+        .nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
+        .folder-card, .doc-card { transition: all 0.2s ease; }
+        .folder-card:hover, .doc-card:hover { transform: translateY(-4px); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
+        .view-btn.active { background-color: #621708; color: white; }
+        .soft-shadow { box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06); }
+        .modal-panel { animation: modalIn 0.18s ease-out; }
+        @keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .document-modal-backdrop { background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); }
+        .document-modal-panel { box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35); animation: modalIn 0.2s ease-out; }
+        .document-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; border-radius: 1rem; font-size: 0.875rem; font-weight: 700; transition: all 0.18s ease; }
+        .document-primary-btn { background: #621708; color: #fff; }
+        .document-primary-btn:hover:not(:disabled) { background: #8c2a10; }
+        .document-secondary-btn { background: #fff; color: #334155; border: 1px solid #e2e8f0; }
+        .document-secondary-btn:hover:not(:disabled) { border-color: #cbd5e1; background: #f8fafc; }
+        .document-toast { position: fixed; right: 24px; bottom: 24px; z-index: 90; background: #0f172a; color: white; border-radius: 18px; padding: 14px 18px; box-shadow: 0 18px 45px rgba(15,23,42,0.28); font-size: 0.875rem; font-weight: 700; display: none; align-items: center; gap: 10px; }
+        .document-toast.show { display: flex; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .context-menu { position: absolute; right: 16px; top: 52px; min-width: 190px; z-index: 30; }
+        .color-choice.active { outline: 3px solid rgba(98, 23, 8, 0.22); outline-offset: 3px; }
+        .drop-zone { border: 2px dashed #d1d5db; transition: all 0.2s ease; }
+        .drop-zone.drag-over { border-color: #621708; background: rgba(98, 23, 8, 0.04); }
 
-        .section-header {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
 
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
-        }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
-        }
-
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
-        }
-
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
-        }
-
-        .doc-name {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            line-clamp: 2;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            word-break: break-all;
+        /* Compact professional layout refinements */
+        main { font-size: 14px; }
+        .folder-card:hover, .doc-card:hover { transform: translateY(-2px); }
+        .view-btn { width: 44px; height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 0.9rem; }
+        .compact-action-bar { width: fit-content; max-width: 100%; margin-left: auto; padding: 0.55rem 0.65rem 0.55rem 0.9rem; border-radius: 1rem; }
+        .compact-doc-button { min-height: 38px; }
+        .doc-card { border-radius: 1.25rem; }
+        .doc-checkbox { width: 18px; height: 18px; accent-color: #621708; }
+        @media (max-width: 768px) {
+            .compact-action-bar { width: 100%; margin-left: 0; }
         }
     </style>
 </head>
-<body class="bg-gray-50">
-
+<body>
 <div class="flex h-screen overflow-hidden">
-
-    <!-- UPDATED SIDEBAR (New Navigation) -->
-    <div class="sidebar text-white flex flex-col h-full">
-        
-        <!-- CTU Logo -->
-        <div onclick="window.location.href='dashboard.html'" 
-             class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
+    <aside class="sidebar text-white flex flex-col h-full">
+        <div onclick="window.location.href='dashboard.html'" class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 flex flex-col items-center border-b border-white/10">
             <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3">
-            <div class="text-center">
-                <div class="font-semibold text-base leading-tight">College of Technology</div>
-                <div class="font-semibold text-base leading-tight">and Engineering</div>
-            </div>
+            <div class="text-center"><div class="font-semibold text-base leading-tight">College of Technology</div><div class="font-semibold text-base leading-tight">and Engineering</div></div>
         </div>
-
-        <!-- Navigation -->
         <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
-
             <div>
                 <div class="section-header text-white/70">FACULTIES & PROFILES</div>
-                <div onclick="window.location.href='faculty-profiles.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Faculty Profiles
-                </div>
-                <div onclick="window.location.href='workload-tracker.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Workload Tracker
-                </div>
-                <div onclick="window.location.href='engagement-logs.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                    Engagement Logs
-                </div>
+                <div onclick="window.location.href='faculty-profiles.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Faculty Profiles</div>
+                <div onclick="window.location.href='workload-tracker.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>Workload Tracker</div>
+                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>Engagement Logs</div>
             </div>
-
             <div>
                 <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='workflow-approval.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Workflow Approval
-                </div>
+                <div onclick="window.location.href='document-vault.html'" class="nav-item active flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>Document Vault</div>
+                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>Workflow Approval</div>
             </div>
-
             <div>
                 <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
+                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Calendar</div>
             </div>
-
             <div>
                 <div class="section-header text-white/70">ADMINISTRATION</div>
-                <div onclick="window.location.href='reports-analytics.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
-                    Reports and Analytics
-                </div>
-                <div onclick="window.location.href='feedback-summary.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
-                    Seminar Feedback Summary
-                </div>
-                <div onclick="window.location.href='system-settings.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-                <div onclick="window.location.href='user-management.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    User Management
-                </div>
-            </div>
-
-        </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Dean & Administrator</div>
+                <div onclick="window.location.href='reports-analytics.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>Reports and Analytics</div>
+                <div onclick="window.location.href='feedback-summary.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>Seminar Feedback Summary</div>
+                <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>System Settings</div>
+                <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer"><svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>User Management</div>
             </div>
         </div>
+        <div onclick="window.location.href='admin-profile.html'" class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer"><div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl"><i class="fa-solid fa-user-tie"></i></div><div class="flex-1 min-w-0"><div class="font-semibold text-sm truncate">Maria Santos</div><div class="text-xs text-white/70">Dean & Administrator</div></div></div>
+    </aside>
 
-    </div>
-
-    <!-- MAIN DOCUMENT VAULT CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
-        <div class="max-w-5xl mx-auto">
-            <div class="flex items-center justify-between mb-8">
+    <main class="flex-1 overflow-y-auto">
+        <section id="main-view" class="max-w-7xl mx-auto p-8">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
                 <div>
-                    <h1 class="text-3xl font-semibold">Document Vault</h1>
-                    <p class="text-gray-500">Store, organize, and access all your academic documents</p>
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#621708]/10 text-[#621708] text-xs font-bold mb-3"><i class="fa-solid fa-shield-halved"></i> Administrator Workspace</div>
+                    <h1 class="text-3xl font-extrabold text-slate-900">Document Vault</h1>
+                    <p class="text-slate-500 mt-1">Organize, preview, download, and maintain academic documents.</p>
                 </div>
-                <button onclick="uploadNewDocument()" 
-                        class="flex items-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-3 rounded-2xl text-sm font-medium">
-                    📤 Upload New Document
-                </button>
+                <div class="flex gap-3">
+                    <button onclick="openFolderEditor()" class="inline-flex items-center gap-2 bg-white border border-slate-200 hover:border-[#621708] hover:text-[#621708] text-slate-700 px-5 py-3 rounded-2xl font-bold transition-colors"><i class="fa-solid fa-folder-plus"></i> New Folder</button>
+                    <button onclick="showMainUploadModal()" class="inline-flex items-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-5 py-3 rounded-2xl font-bold transition-colors"><i class="fa-solid fa-upload"></i> Upload Document</button>
+                </div>
             </div>
 
-            <!-- Search & Filter -->
-            <div class="flex gap-4 mb-8">
-                <div class="flex-1 relative">
-                    <input type="text" id="search-input" 
-                           onkeyup="filterDocuments()" 
-                           placeholder="Search documents..." 
-                           class="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 pl-12 focus:outline-none focus:border-[#621708]">
-                    <span class="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-                </div>
-                <select id="category-filter" onchange="filterDocuments()" 
-                        class="bg-white border border-gray-200 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
-                    <option value="">All Categories</option>
-                    <option value="Research">Research</option>
-                    <option value="Syllabus">Syllabus</option>
-                    <option value="Lecture">Lecture Notes</option>
-                    <option value="Report">Reports</option>
-                    <option value="Certificate">Certificates</option>
-                </select>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+                <div class="bg-white rounded-3xl p-6 border border-slate-100 soft-shadow"><div class="text-xs font-bold uppercase tracking-wide text-slate-400">Folders</div><div id="stat-folders" class="text-3xl font-extrabold text-slate-900 mt-2">0</div></div>
+                <div class="bg-white rounded-3xl p-6 border border-slate-100 soft-shadow"><div class="text-xs font-bold uppercase tracking-wide text-slate-400">Documents</div><div id="stat-documents" class="text-3xl font-extrabold text-slate-900 mt-2">0</div></div>
+                <div class="bg-white rounded-3xl p-6 border border-slate-100 soft-shadow"><div class="text-xs font-bold uppercase tracking-wide text-slate-400">Storage Bucket</div><div id="stat-bucket" class="text-lg font-extrabold text-[#621708] mt-3">documents</div></div>
             </div>
 
-            <!-- Documents Grid -->
-            <div id="documents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Populated by JavaScript -->
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-extrabold text-slate-900 flex items-center gap-2"><i class="fa-solid fa-folder-tree text-[#621708]"></i> Folders</h2>
+                <button onclick="refreshVault()" class="text-sm font-bold text-slate-500 hover:text-[#621708]"><i class="fa-solid fa-rotate-right mr-2"></i>Refresh</button>
             </div>
+            <div id="folders-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-6"></div>
+        </section>
+
+        <section id="folder-view" class="hidden max-w-6xl mx-auto px-6 py-5">
+            <button onclick="goBackToMain()" class="inline-flex items-center gap-2 text-slate-500 hover:text-[#621708] mb-4 text-sm font-semibold">
+                <i class="fa-solid fa-arrow-left"></i> Back to Document Vault
+            </button>
+
+            <div class="bg-white rounded-[1.5rem] border border-slate-100 soft-shadow px-5 py-4 mb-5">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div class="flex items-center gap-4 min-w-0">
+                        <div id="folder-icon" class="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0"></div>
+                        <div class="min-w-0">
+                            <h1 id="folder-title" class="text-2xl font-extrabold text-slate-900 truncate leading-tight"></h1>
+                            <p id="folder-count" class="text-sm text-slate-500 mt-1"></p>
+                        </div>
+                    </div>
+                    <button onclick="showSimpleUploadModal()" class="inline-flex items-center justify-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors">
+                        <i class="fa-solid fa-plus"></i> Add Document
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+                <div class="relative w-full lg:w-80">
+                    <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" id="folder-search" placeholder="Search documents..." onkeyup="filterFolderDocuments()" class="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-[#621708] focus:ring-4 focus:ring-[#621708]/5">
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="hidden md:block text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Layout</div>
+                    <div class="flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                        <button title="Compact cards" onclick="setFolderView('large')" id="folder-btn-large" class="view-btn active"><i class="fa-solid fa-grip"></i></button>
+                        <button title="Tiles" onclick="setFolderView('tiles')" id="folder-btn-tiles" class="view-btn"><i class="fa-solid fa-table-cells-large"></i></button>
+                        <button title="List" onclick="setFolderView('list')" id="folder-btn-list" class="view-btn"><i class="fa-solid fa-list"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="action-bar" class="hidden compact-action-bar bg-white border border-[#621708]/20 flex items-center justify-between gap-3 shadow-sm mb-4">
+                <div class="text-sm text-slate-700 whitespace-nowrap"><span id="selected-count" class="font-extrabold text-[#621708]">0</span> selected</div>
+                <div class="flex gap-2">
+                    <button onclick="moveSelectedDocuments()" class="px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-sm font-bold">Move</button>
+                    <button onclick="deleteSelectedDocuments()" class="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-bold">Delete</button>
+                </div>
+            </div>
+            <div id="folder-documents-container"></div>
+        </section>
+    </main>
+</div>
+
+<!-- Folder Editor Modal -->
+<div id="folder-editor-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-50 p-5">
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-xl overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center"><div><h3 id="folder-editor-title" class="text-xl font-extrabold text-slate-900">New Folder</h3><p class="text-sm text-slate-500">Manage folder details and appearance.</p></div><button onclick="closeFolderEditor()" class="w-10 h-10 rounded-full hover:bg-slate-100 text-slate-500"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="p-7 space-y-5">
+            <input type="hidden" id="edit-folder-id">
+            <div><label class="block text-sm font-bold text-slate-700 mb-2">Folder Name</label><input id="edit-folder-name" type="text" class="w-full border border-slate-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]" placeholder="e.g. SAMPLE FORMS"></div>
+            <div><label class="block text-sm font-bold text-slate-700 mb-2">Description</label><textarea id="edit-folder-description" class="w-full border border-slate-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]" rows="3" placeholder="Optional description"></textarea></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div><label class="block text-sm font-bold text-slate-700 mb-2">Icon</label><select id="edit-folder-icon" class="w-full border border-slate-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]"><option value="fa-folder">Folder</option><option value="fa-folder-open">Open Folder</option><option value="fa-file-lines">Documents</option><option value="fa-graduation-cap">Academic</option><option value="fa-book">Book</option><option value="fa-clipboard-list">Checklist</option><option value="fa-landmark">Official</option></select></div>
+                <div><label class="block text-sm font-bold text-slate-700 mb-2">Color</label><select id="edit-folder-color" class="w-full border border-slate-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]"><option value="#6b21a8">Purple</option><option value="#2563eb">Blue</option><option value="#059669">Green</option><option value="#dc2626">Red</option><option value="#d97706">Amber</option><option value="#0891b2">Cyan</option><option value="#475569">Slate</option></select></div>
+            </div>
+        </div>
+        <div class="px-7 py-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3"><button onclick="closeFolderEditor()" class="px-6 py-3 rounded-2xl bg-white border border-slate-200 font-bold text-slate-600">Cancel</button><button onclick="saveFolder()" class="px-6 py-3 rounded-2xl bg-[#621708] hover:bg-[#8c2a10] text-white font-bold">Save Folder</button></div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div id="main-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-50 p-5">
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-lg overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center"><div><h3 class="text-xl font-extrabold text-slate-900">Upload Documents</h3><p class="text-sm text-slate-500">Choose files and destination folder.</p></div><button onclick="hideMainUploadModal()" class="w-10 h-10 rounded-full hover:bg-slate-100 text-slate-500"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="p-7 space-y-5"><div id="main-drop-zone" class="drop-zone rounded-3xl p-8 text-center"><i class="fa-solid fa-cloud-arrow-up text-4xl text-[#621708]"></i><div class="font-extrabold text-slate-900 mt-3">Select or drop files</div><p class="text-sm text-slate-500 mt-1">PDF, Word, Excel, PowerPoint, images, and text files.</p><input type="file" id="main-file-input" multiple class="mt-5 block w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-2xl file:border-0 file:text-sm file:font-bold file:bg-[#621708] file:text-white"></div><div><label class="block text-sm font-bold mb-2 text-slate-700">Upload to Folder</label><select id="doc-folder-select" class="w-full border border-slate-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]"></select></div></div>
+        <div class="px-7 py-5 bg-slate-50 border-t border-slate-100 flex gap-3"><button onclick="hideMainUploadModal()" class="flex-1 py-3 bg-white border border-slate-200 rounded-2xl font-bold text-slate-600">Cancel</button><button onclick="uploadMainFiles()" class="flex-1 py-3 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-2xl font-bold">Upload</button></div>
+    </div>
+</div>
+
+<div id="simple-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-50 p-5">
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-md overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center"><div><h3 class="text-xl font-extrabold text-slate-900">Add Documents</h3><p class="text-sm text-slate-500">Upload files to the current folder.</p></div><button onclick="hideSimpleUploadModal()" class="w-10 h-10 rounded-full hover:bg-slate-100 text-slate-500"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="p-7"><input type="file" id="simple-file-input" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-2xl file:border-0 file:text-sm file:font-bold file:bg-[#621708] file:text-white"></div>
+        <div class="px-7 py-5 bg-slate-50 border-t border-slate-100 flex gap-3"><button onclick="hideSimpleUploadModal()" class="flex-1 py-3 bg-white border border-slate-200 rounded-2xl font-bold text-slate-600">Cancel</button><button onclick="uploadToCurrentFolder()" class="flex-1 py-3 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-2xl font-bold">Upload</button></div>
+    </div>
+</div>
+
+<!-- Professional Document Preview Modal -->
+<div id="documentPreviewModal" class="hidden fixed inset-0 document-modal-backdrop items-center justify-center z-[70] p-5">
+    <div class="document-modal-panel bg-white rounded-[2rem] w-full max-w-6xl h-[88vh] overflow-hidden flex flex-col">
+        <div class="px-7 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
+            <div class="flex items-center gap-4 min-w-0"><div id="previewFileIcon" class="w-12 h-12 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-file-lines"></i></div><div class="min-w-0"><h3 id="previewDocumentTitle" class="text-lg font-extrabold text-slate-900 truncate">Document Preview</h3><p id="previewDocumentMeta" class="text-sm text-slate-500 truncate">Preparing document...</p></div></div>
+            <button onclick="closeDocumentPreviewModal()" class="w-10 h-10 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800" aria-label="Close preview"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="flex-1 grid grid-cols-1 lg:grid-cols-[280px_1fr] min-h-0">
+            <aside class="border-r border-slate-100 bg-slate-50/90 p-6 overflow-y-auto"><div class="text-xs font-extrabold uppercase tracking-wide text-slate-400 mb-3">Document Details</div><div class="space-y-4"><div><div class="text-xs text-slate-500 mb-1">File Name</div><div id="previewSideName" class="text-sm font-bold text-slate-800 break-words">-</div></div><div><div class="text-xs text-slate-500 mb-1">File Type</div><div id="previewSideType" class="text-sm font-bold text-slate-800">-</div></div><div><div class="text-xs text-slate-500 mb-1">File Size</div><div id="previewSideSize" class="text-sm font-bold text-slate-800">-</div></div><div><div class="text-xs text-slate-500 mb-1">Uploaded</div><div id="previewSideDate" class="text-sm font-bold text-slate-800">-</div></div></div><div class="mt-7 space-y-3"><button onclick="downloadCurrentPreviewDocument()" class="document-action-btn document-primary-btn w-full px-4 py-3"><i class="fa-solid fa-download"></i>Download</button><button onclick="openPreviewInNewTab()" class="document-action-btn document-secondary-btn w-full px-4 py-3"><i class="fa-solid fa-arrow-up-right-from-square"></i>Open in New Tab</button></div><div class="mt-7 rounded-2xl bg-white border border-slate-200 p-4 text-xs leading-relaxed text-slate-500">Office files may download instead of rendering in the browser. Use Open in New Tab or Download when needed.</div></aside>
+            <main class="bg-slate-100 min-h-0 relative"><div id="previewLoading" class="absolute inset-0 flex items-center justify-center bg-slate-100 z-10"><div class="bg-white rounded-3xl px-7 py-5 shadow-sm border border-slate-100 flex items-center gap-3"><i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i><span class="text-sm font-bold text-slate-700">Loading preview...</span></div></div><iframe id="documentPreviewFrame" title="Document preview" class="w-full h-full bg-white" src="about:blank"></iframe></main>
         </div>
     </div>
 </div>
 
+<div id="documentToast" class="document-toast"><i class="fa-solid fa-circle-check"></i><span id="documentToastText">Done</span></div>
+
 <script>
-    const documents = [
-        { id: 1, name: "Research_Paper_ML_Education.pdf", category: "Research", date: "2026-01-15", size: "2.4 MB", type: "PDF" },
-        { id: 2, name: "BSIT_Syllabus_2025-2026.docx", category: "Syllabus", date: "2025-12-20", size: "1.1 MB", type: "DOCX" },
-        { id: 3, name: "Lecture_Notes_Data_Structures.pdf", category: "Lecture", date: "2026-02-10", size: "3.8 MB", type: "PDF" },
-        { id: 4, name: "Annual_Performance_Report_2025.pdf", category: "Report", date: "2026-01-05", size: "890 KB", type: "PDF" },
-        { id: 5, name: "Teaching_Certificate_2024.pdf", category: "Certificate", date: "2025-11-30", size: "450 KB", type: "PDF" }
-    ];
+const DEFAULT_SUPABASE_URL = 'https://uforealazougjckepggc.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
 
-    function renderDocuments(filteredDocs) {
-        const grid = document.getElementById('documents-grid');
-        grid.innerHTML = '';
-
-        filteredDocs.forEach(doc => {
-            const card = document.createElement('div');
-            card.className = "bg-white rounded-3xl p-6 card-shadow hover:shadow-lg transition-shadow";
-            card.innerHTML = `
-                <div class="flex justify-between items-start">
-                    <div class="flex-1 min-w-0">
-                        <div class="doc-name font-medium text-base text-gray-900 leading-tight">${doc.name}</div>
-                        <div class="text-xs text-gray-500 mt-1">${doc.category} • ${doc.date}</div>
-                    </div>
-                    <span class="ml-3 px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded-xl flex-shrink-0">${doc.type}</span>
-                </div>
-                <div class="mt-6 text-sm text-gray-500">${doc.size}</div>
-                <div class="mt-8 flex gap-3">
-                    <button onclick="viewDocument(${doc.id})" 
-                            class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-2xl text-sm font-medium">
-                        View
-                    </button>
-                    <button onclick="downloadDocument(${doc.id})" 
-                            class="flex-1 bg-[#621708] hover:bg-[#8c2a10] text-white py-3 rounded-2xl text-sm font-medium">
-                        Download
-                    </button>
-                </div>
-            `;
-            grid.appendChild(card);
-        });
-    }
-
-    function filterDocuments() {
-        const searchTerm = document.getElementById('search-input').value.toLowerCase();
-        const category = document.getElementById('category-filter').value;
-
-        let filtered = documents;
-
-        if (searchTerm) {
-            filtered = filtered.filter(doc => 
-                doc.name.toLowerCase().includes(searchTerm)
-            );
-        }
-
-        if (category) {
-            filtered = filtered.filter(doc => doc.category === category);
-        }
-
-        renderDocuments(filtered);
-    }
-
-    function viewDocument(id) {
-        alert(`📄 Opening document #${id} in preview mode...`);
-    }
-
-    function downloadDocument(id) {
-        alert(`⬇️ Downloading document #${id}...`);
-    }
-
-    function uploadNewDocument() {
-        alert("📤 Upload new document dialog would open here.\n\nYou can add file upload functionality later.");
-    }
-
-    window.onload = () => {
-        renderDocuments(documents);
+function getSupabaseCredentials(){
+    const win = window || {};
+    const savedUrl = localStorage.getItem('citeflow.supabase.url') || localStorage.getItem('SUPABASE_URL');
+    const savedKey = localStorage.getItem('citeflow.supabase.anonKey') || localStorage.getItem('SUPABASE_ANON_KEY');
+    return {
+        url: win.SUPABASE_URL || savedUrl || DEFAULT_SUPABASE_URL,
+        anonKey: win.SUPABASE_ANON_KEY || savedKey || DEFAULT_SUPABASE_ANON_KEY
     };
+}
+
+function saveSupabaseAnonKey(value){
+    if(!value) return;
+    localStorage.setItem('citeflow.supabase.anonKey', value.trim());
+}
+
+const STORAGE_BUCKET = 'documents';
+
+let supabaseClient = null;
+let supabaseConfig = getSupabaseCredentials();
+let hasPromptedForApiKey = false;
+
+if (window.supabase && typeof window.supabase.createClient === 'function') {
+    supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false
+        }
+    });
+} else {
+    alert('Supabase library failed to load. Please refresh the page.');
+}
+let folders = [];
+let documents = [];
+let allDocuments = [];
+let currentFolderId = null;
+let currentFolderView = localStorage.getItem('documentVaultView') || 'large';
+let selectedDocs = new Set();
+let currentPreviewDocument = null;
+let currentPreviewAccess = null;
+
+function ensureSupabaseReady(){ if(!supabaseClient){ alert('Supabase is not initialized. Please refresh the page.'); return false; } return true; }
+function isInvalidApiKeyError(error){
+    if(!error) return false;
+    const msg = String(error.message || '').toLowerCase();
+    const details = String(error.details || '').toLowerCase();
+    return msg.includes('invalid api key') || details.includes('invalid api key') || msg.includes('apikey');
+}
+function recreateSupabaseClient(){
+    supabaseConfig = getSupabaseCredentials();
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') return false;
+    supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false
+        }
+    });
+    return true;
+}
+async function recoverFromInvalidApiKey(error){
+    if(hasPromptedForApiKey || !isInvalidApiKeyError(error)) return false;
+    hasPromptedForApiKey = true;
+    const pastedKey = prompt('Supabase rejected the API key for Document Vault.\nPaste your latest Supabase anon public key to continue:');
+    if(!pastedKey){ hasPromptedForApiKey = false; return false; }
+    saveSupabaseAnonKey(pastedKey);
+    if(!recreateSupabaseClient()){
+        alert('Supabase library failed to reinitialize. Please refresh the page.');
+        hasPromptedForApiKey = false;
+        return false;
+    }
+    hasPromptedForApiKey = false;
+    await refreshVault();
+    return true;
+}
+function normalizeColor(value){ const map = {'text-purple-600':'#6b21a8','text-blue-600':'#2563eb','text-emerald-600':'#059669','text-red-600':'#dc2626','text-rose-600':'#e11d48','text-orange-600':'#ea580c','text-amber-600':'#d97706','text-cyan-600':'#0891b2','text-gray-600':'#475569'}; if(!value) return '#6b21a8'; if(String(value).startsWith('#')) return value; return map[value] || '#6b21a8'; }
+function normalizeIcon(value){ return value || 'fa-folder'; }
+function escapeHtml(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+function jsArg(value){ return JSON.stringify(String(value ?? '')); }
+function selectedKey(value){ return String(value ?? ''); }
+function isSelected(value){ return selectedDocs.has(selectedKey(value)); }
+function sanitizeFileName(name){ return String(name || 'file').replace(/[^\w.\- ]+/g,'_').replace(/\s+/g,'_'); }
+function buildFilePath(folderId, originalName){ return `${folderId}/${Date.now()}-${sanitizeFileName(originalName)}`; }
+function formatFileSize(bytes){ if(!bytes) return '0 B'; const sizes=['B','KB','MB','GB']; const i=Math.min(Math.floor(Math.log(bytes)/Math.log(1024)), sizes.length-1); return Math.round(bytes/Math.pow(1024,i)*100)/100+' '+sizes[i]; }
+function getFileExtension(filename){ return String(filename || '').split('.').pop().toLowerCase(); }
+function getFileTypeLabel(filename,mimeType=''){ const ext=getFileExtension(filename); return ext ? ext.toUpperCase() : (mimeType || 'FILE'); }
+function getFileIconClass(filename,mimeType=''){ const ext=getFileExtension(filename); const type=String(mimeType||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'fa-file-pdf'; if(['doc','docx'].includes(ext)||type.includes('word')) return 'fa-file-word'; if(['xls','xlsx','csv'].includes(ext)||type.includes('spreadsheet')||type.includes('excel')) return 'fa-file-excel'; if(['ppt','pptx'].includes(ext)||type.includes('presentation')||type.includes('powerpoint')) return 'fa-file-powerpoint'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'fa-file-image'; if(['zip','rar','7z'].includes(ext)) return 'fa-file-zipper'; if(['txt','md'].includes(ext)||type.includes('text')) return 'fa-file-lines'; return 'fa-file-lines'; }
+function getFilePreviewKind(doc){ const ext=getFileExtension(doc.name); const type=String(doc.mime_type||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'direct'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'direct'; if(['txt','md','csv'].includes(ext)||type.includes('text')) return 'direct'; if(['doc','docx','xls','xlsx','ppt','pptx'].includes(ext)) return 'office'; return 'direct'; }
+function showDocumentToast(message, icon='fa-circle-check'){ const toast=document.getElementById('documentToast'); const text=document.getElementById('documentToastText'); if(!toast||!text) return; toast.querySelector('i').className=`fa-solid ${icon}`; text.textContent=message; toast.classList.add('show'); clearTimeout(window.__documentToastTimer); window.__documentToastTimer=setTimeout(()=>toast.classList.remove('show'),2600); }
+
+async function refreshVault(){ await loadFolders(); renderFolders(); if(currentFolderId){ await loadDocumentsByFolder(currentFolderId); renderFolderDocuments(); } }
+async function loadFolders(){ if(!ensureSupabaseReady()) return; const {data:folderData,error:folderError}=await supabaseClient.from('folders').select('*').order('name'); if(folderError){ if(await recoverFromInvalidApiKey(folderError)) return; console.error(folderError); alert('Error loading folders: '+folderError.message); return; } const {data:documentData,error:documentError}=await supabaseClient.from('documents').select('*'); if(documentError){ if(await recoverFromInvalidApiKey(documentError)) return; console.error(documentError); allDocuments=[]; folders=folderData||[]; return; } allDocuments=documentData||[]; const countMap=allDocuments.reduce((acc,doc)=>{ acc[doc.folder_id]=(acc[doc.folder_id]||0)+1; return acc; },{}); folders=(folderData||[]).map(folder=>({...folder, color: normalizeColor(folder.color), icon: normalizeIcon(folder.icon), count: countMap[folder.id]||0})); document.getElementById('stat-folders').textContent=folders.length; document.getElementById('stat-documents').textContent=allDocuments.length; document.getElementById('stat-bucket').textContent=STORAGE_BUCKET; }
+async function loadDocumentsByFolder(folderId){ if(!ensureSupabaseReady()) return; const {data,error}=await supabaseClient.from('documents').select('*').eq('folder_id',folderId).order('uploaded_at',{ascending:false}); if(error){ console.error(error); documents=[]; } else documents=data||[]; }
+
+function renderFolders(){
+    const container=document.getElementById('folders-grid');
+    if(!folders.length){
+        container.innerHTML=`<div class="col-span-full bg-white rounded-2xl p-8 text-center border border-slate-100"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-folder-open"></i></div><h3 class="text-base font-extrabold text-slate-700">No folders yet</h3><p class="text-sm text-slate-500 mt-1">Create a folder and upload documents to get started.</p></div>`;
+        return;
+    }
+    container.innerHTML=folders.map(f=>{
+        const description=f.description ? `<div class="text-xs text-slate-500 mt-1 line-clamp-2">${escapeHtml(f.description)}</div>` : '';
+        return `<div onclick='openFolder(${jsArg(f.id)})' class="folder-card bg-white border border-slate-100 rounded-2xl p-4 cursor-pointer relative soft-shadow group"><button onclick='event.stopPropagation(); openFolderMenu(${jsArg(f.id)})' class="absolute top-3 right-3 w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-ellipsis"></i></button><div id="folder-menu-${escapeHtml(f.id)}" class="context-menu hidden bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden"><button onclick='event.stopPropagation(); openFolderEditor(${jsArg(f.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-slate-50"><i class="fa-solid fa-pen-to-square mr-2 text-slate-400"></i>Edit Folder</button><button onclick='event.stopPropagation(); deleteFolderById(${jsArg(f.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-red-50 text-red-600"><i class="fa-solid fa-trash-can mr-2"></i>Delete Folder</button></div><div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-3" style="background-color:${f.color}16;color:${f.color}"><i class="fa-solid ${f.icon}"></i></div><div class="font-extrabold text-base text-slate-900 line-clamp-2 leading-snug">${escapeHtml(f.name)}</div>${description}<div class="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 text-[11px] font-bold rounded-xl"><i class="fa-solid fa-file-lines"></i>${f.count||0} document${(f.count||0)!==1?'s':''}</div></div>`;
+    }).join('');
+}
+function openFolderMenu(id){ document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')); document.getElementById(`folder-menu-${id}`)?.classList.toggle('hidden'); }
+document.addEventListener('click',()=>document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')));
+
+async function openFolder(folderId){ currentFolderId=folderId; selectedDocs.clear(); updateActionBar(); const folder=folders.find(f=>String(f.id)===String(folderId)); if(!folder) return; document.getElementById('main-view').classList.add('hidden'); document.getElementById('folder-view').classList.remove('hidden'); document.getElementById('folder-icon').innerHTML=`<i class="fa-solid ${folder.icon}"></i>`; document.getElementById('folder-icon').style.color=folder.color; document.getElementById('folder-icon').style.backgroundColor=`${folder.color}16`; document.getElementById('folder-title').textContent=folder.name; await loadDocumentsByFolder(folderId); document.getElementById('folder-count').textContent=`${documents.length} document${documents.length!==1?'s':''}`; setFolderView(currentFolderView, false); renderFolderDocuments(); }
+function goBackToMain(){ document.getElementById('folder-view').classList.add('hidden'); document.getElementById('main-view').classList.remove('hidden'); currentFolderId=null; selectedDocs.clear(); updateActionBar(); }
+function editCurrentFolder(){ if(currentFolderId) openFolderEditor(currentFolderId); }
+async function deleteCurrentFolder(){ if(currentFolderId) await deleteFolderById(currentFolderId); }
+function setFolderView(mode, render=true){ currentFolderView=mode; localStorage.setItem('documentVaultView',mode); document.querySelectorAll('#folder-view .view-btn').forEach(b=>b.classList.remove('active')); document.getElementById(`folder-btn-${mode}`)?.classList.add('active'); if(render) renderFolderDocuments(); }
+function filterFolderDocuments(){ renderFolderDocuments(); }
+function toggleSelect(id){ const key=selectedKey(id); isSelected(key)?selectedDocs.delete(key):selectedDocs.add(key); updateActionBar(); renderFolderDocuments(); }
+function updateActionBar(){ const bar=document.getElementById('action-bar'); const count=document.getElementById('selected-count'); if(count) count.textContent=selectedDocs.size; if(bar) bar.classList.toggle('hidden', selectedDocs.size===0); }
+
+function renderFolderDocuments(){
+    const q=(document.getElementById('folder-search')?.value||'').toLowerCase().trim();
+    const filtered=documents.filter(d=>String(d.folder_id)===String(currentFolderId)).filter(d=>!q||String(d.name||'').toLowerCase().includes(q));
+    const container=document.getElementById('folder-documents-container');
+    if(!filtered.length){
+        container.innerHTML=`<div class="bg-white rounded-2xl p-8 text-center border border-slate-100"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-file-circle-xmark"></i></div><h3 class="text-base font-extrabold text-slate-700">No documents found</h3><p class="text-sm text-slate-500 mt-1">Try a different search or upload a new file.</p></div>`;
+        return;
+    }
+    if(currentFolderView==='list'){
+        container.innerHTML=`<div class="bg-white rounded-2xl border border-slate-100 overflow-hidden soft-shadow"><div class="grid grid-cols-[38px_1fr_95px_95px_130px] gap-3 px-4 py-2.5 text-[11px] font-extrabold uppercase tracking-wide text-slate-400 bg-slate-50"><div></div><div>Name</div><div>Type</div><div>Size</div><div class="text-right">Actions</div></div>${filtered.map(doc=>`<div class="grid grid-cols-[38px_1fr_95px_95px_130px] gap-3 items-center px-4 py-3 border-t border-slate-100 hover:bg-slate-50"><input type="checkbox" class="doc-checkbox" ${isSelected(doc.id)?'checked':''} onchange='toggleSelect(${jsArg(doc.id)})'><div class="flex items-center gap-2 min-w-0"><div class="w-9 h-9 rounded-lg bg-slate-100 text-[#621708] flex items-center justify-center"><i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i></div><div class="font-bold text-sm text-slate-800 truncate">${escapeHtml(doc.name)}</div></div><div class="text-xs text-slate-500">${getFileTypeLabel(doc.name,doc.mime_type)}</div><div class="text-xs text-slate-500">${formatFileSize(doc.size_bytes)}</div><div class="flex justify-end gap-1.5"><button onclick='viewDocument(${jsArg(doc.id)})' class="w-9 h-9 rounded-lg border border-slate-200 hover:bg-white text-slate-600 font-bold" title="Preview"><i class="fa-solid fa-eye"></i></button><button onclick='downloadDocument(${jsArg(doc.id)})' class="w-9 h-9 rounded-lg bg-[#621708] hover:bg-[#8c2a10] text-white font-bold" title="Download"><i class="fa-solid fa-download"></i></button><button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="w-9 h-9 rounded-lg border border-red-200 hover:bg-red-50 text-red-600 font-bold" title="Delete"><i class="fa-solid fa-trash-can"></i></button></div></div>`).join('')}</div>`;
+        return;
+    }
+    const isTiles=currentFolderView==='tiles';
+    const grid=isTiles?'grid-cols-1 md:grid-cols-2 xl:grid-cols-3':'grid-cols-2 md:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6';
+    container.innerHTML=`<div class="grid ${grid} gap-4">${filtered.map(doc=> isTiles ? renderTileDoc(doc) : renderLargeDoc(doc)).join('')}</div>`;
+}
+function docMeta(doc){ const date=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; return `${getFileTypeLabel(doc.name,doc.mime_type)} • ${formatFileSize(doc.size_bytes)} • ${date}`; }
+function renderLargeDoc(doc){
+    return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow"><input type="checkbox" class="doc-checkbox absolute top-3 right-3" ${isSelected(doc.id)?'checked':''} onchange='toggleSelect(${jsArg(doc.id)})'><div class="h-24 rounded-2xl mb-3 flex items-center justify-center text-4xl bg-slate-100 text-[#621708]"><i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i></div><div class="font-extrabold text-sm leading-snug line-clamp-2 text-slate-900 min-h-[38px]">${escapeHtml(doc.name)}</div><div class="text-[11px] text-slate-500 mt-1.5 truncate">${docMeta(doc)}</div><div class="grid grid-cols-2 gap-2 mt-3"><button onclick='viewDocument(${jsArg(doc.id)})' class="compact-doc-button text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-xl font-bold text-slate-700"><i class="fa-solid fa-eye mr-1"></i>Preview</button><button onclick='downloadDocument(${jsArg(doc.id)})' class="compact-doc-button text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl font-bold"><i class="fa-solid fa-download mr-1"></i>Download</button></div><button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="mt-2 w-full py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-xl font-bold"><i class="fa-solid fa-trash-can mr-1"></i>Delete</button></div>`;
+}
+function renderTileDoc(doc){
+    return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow flex gap-3 items-start"><input type="checkbox" class="doc-checkbox absolute top-3 right-3" ${isSelected(doc.id)?'checked':''} onchange='toggleSelect(${jsArg(doc.id)})'><div class="w-14 h-14 rounded-2xl bg-slate-100 text-[#621708] flex items-center justify-center text-2xl shrink-0"><i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i></div><div class="flex-1 min-w-0 pr-7"><div class="font-extrabold text-sm text-slate-900 truncate">${escapeHtml(doc.name)}</div><div class="text-[11px] text-slate-500 mt-1 truncate">${docMeta(doc)}</div><div class="flex flex-wrap gap-2 mt-3"><button onclick='viewDocument(${jsArg(doc.id)})' class="px-3 py-2 text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-lg font-bold text-slate-700"><i class="fa-solid fa-eye mr-1"></i>Preview</button><button onclick='downloadDocument(${jsArg(doc.id)})' class="px-3 py-2 text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-lg font-bold"><i class="fa-solid fa-download mr-1"></i>Download</button><button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="px-3 py-2 text-xs border border-red-200 hover:bg-red-50 text-red-600 rounded-lg font-bold"><i class="fa-solid fa-trash-can"></i></button></div></div></div>`;
+}
+
+function openFolderEditor(folderId=null){ const folder=folderId?folders.find(f=>String(f.id)===String(folderId)):null; document.getElementById('folder-editor-title').textContent=folder?'Edit Folder':'New Folder'; document.getElementById('edit-folder-id').value=folder?.id||''; document.getElementById('edit-folder-name').value=folder?.name||''; document.getElementById('edit-folder-description').value=folder?.description||''; document.getElementById('edit-folder-icon').value=folder?.icon||'fa-folder'; document.getElementById('edit-folder-color').value=folder?.color||'#6b21a8'; document.getElementById('folder-editor-modal').classList.remove('hidden'); document.getElementById('folder-editor-modal').classList.add('flex'); }
+function closeFolderEditor(){ document.getElementById('folder-editor-modal').classList.add('hidden'); document.getElementById('folder-editor-modal').classList.remove('flex'); }
+async function saveFolder(){ if(!ensureSupabaseReady()) return; const id=document.getElementById('edit-folder-id').value; const payload={ name: document.getElementById('edit-folder-name').value.trim().toUpperCase(), description: document.getElementById('edit-folder-description').value.trim(), icon: document.getElementById('edit-folder-icon').value, color: document.getElementById('edit-folder-color').value }; if(!payload.name){ alert('Please enter a folder name.'); return; } const existing=folders.find(f=>f.name.toUpperCase()===payload.name && String(f.id)!==String(id)); if(existing){ alert('A folder with this name already exists.'); return; } const result=id? await supabaseClient.from('folders').update(payload).eq('id',id) : await supabaseClient.from('folders').insert(payload); if(result.error){ console.error(result.error); alert('Unable to save folder: '+result.error.message); return; } closeFolderEditor(); await loadFolders(); renderFolders(); if(currentFolderId && String(currentFolderId)===String(id)){ await openFolder(currentFolderId); } showDocumentToast('Folder saved.'); }
+async function deleteFolderById(folderId){ if(!ensureSupabaseReady()) return; const folder=folders.find(f=>String(f.id)===String(folderId)); if(!folder) return; const docs=allDocuments.filter(d=>String(d.folder_id)===String(folderId)); const message=docs.length?`Delete folder "${folder.name}" and its ${docs.length} document(s)? This cannot be undone.`:`Delete folder "${folder.name}"?`; if(!confirm(message)) return; for(const doc of docs){ await removeStorageObject(doc); } const {error:docErr}=await supabaseClient.from('documents').delete().eq('folder_id',folderId); if(docErr){ console.error(docErr); alert('Unable to delete folder documents: '+docErr.message); return; } const {error}=await supabaseClient.from('folders').delete().eq('id',folderId); if(error){ console.error(error); alert('Unable to delete folder: '+error.message); return; } if(String(currentFolderId)===String(folderId)) goBackToMain(); await loadFolders(); renderFolders(); showDocumentToast('Folder deleted.'); }
+
+function showMainUploadModal(){ const select=document.getElementById('doc-folder-select'); select.innerHTML='<option value="">Choose folder</option>'+folders.map(f=>`<option value="${f.id}" ${String(f.id)===String(currentFolderId)?'selected':''}>${escapeHtml(f.name)}</option>`).join(''); document.getElementById('main-upload-modal').classList.remove('hidden'); document.getElementById('main-upload-modal').classList.add('flex'); }
+function hideMainUploadModal(){ document.getElementById('main-upload-modal').classList.add('hidden'); document.getElementById('main-upload-modal').classList.remove('flex'); document.getElementById('main-file-input').value=''; }
+function showSimpleUploadModal(){ document.getElementById('simple-upload-modal').classList.remove('hidden'); document.getElementById('simple-upload-modal').classList.add('flex'); }
+function hideSimpleUploadModal(){ document.getElementById('simple-upload-modal').classList.add('hidden'); document.getElementById('simple-upload-modal').classList.remove('flex'); document.getElementById('simple-file-input').value=''; }
+async function uploadFilesToFolder(files, folderId){ if(!ensureSupabaseReady()) return; if(!files.length){ alert('Please select at least one file.'); return; } if(!folderId){ alert('Please select a folder.'); return; } for(const file of files){ const filePath=buildFilePath(folderId,file.name); const {error:uploadError}=await supabaseClient.storage.from(STORAGE_BUCKET).upload(filePath,file,{upsert:false,contentType:file.type||undefined}); if(uploadError){ console.error(uploadError); alert(`Failed to upload "${file.name}": ${uploadError.message}`); continue; } const {error:insertError}=await supabaseClient.from('documents').insert({name:file.name,folder_id:folderId,file_path:filePath,mime_type:file.type,size_bytes:file.size}); if(insertError){ console.error(insertError); alert(`Uploaded file but failed saving record for "${file.name}": ${insertError.message}`); } } showDocumentToast('Upload complete.'); await refreshVault(); }
+async function uploadMainFiles(){ const files=document.getElementById('main-file-input').files; const folderId=parseInt(document.getElementById('doc-folder-select').value); await uploadFilesToFolder(files,folderId); hideMainUploadModal(); }
+async function uploadToCurrentFolder(){ const files=document.getElementById('simple-file-input').files; await uploadFilesToFolder(files,currentFolderId); hideSimpleUploadModal(); }
+
+async function removeStorageObject(doc){ const paths=getCandidatePaths(doc.file_path, doc); for(const path of paths){ await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]); } }
+async function deleteSingleDocument(id){ const doc=documents.find(d=>String(d.id)===String(id)); if(!doc) return; if(!confirm(`Delete "${doc.name}"?`)) return; await removeStorageObject(doc); const {error}=await supabaseClient.from('documents').delete().eq('id',id); if(error){ alert('Unable to delete document: '+error.message); return; } await refreshVault(); showDocumentToast('Document deleted.'); }
+async function deleteSelectedDocuments(){
+    if(!selectedDocs.size) return;
+    const selectedList=documents.filter(doc=>isSelected(doc.id));
+    if(!selectedList.length) return;
+    if(!confirm(`Delete ${selectedList.length} selected document(s)?`)) return;
+    for(const doc of selectedList){
+        await removeStorageObject(doc);
+        await supabaseClient.from('documents').delete().eq('id',doc.id);
+    }
+    selectedDocs.clear();
+    updateActionBar();
+    await refreshVault();
+    showDocumentToast('Selected documents deleted.');
+}
+async function moveSelectedDocuments(){
+    if(!selectedDocs.size) return;
+    const selectedList=documents.filter(doc=>isSelected(doc.id));
+    if(!selectedList.length) return;
+    const targetId=prompt('Enter target Folder ID:\n'+folders.map(f=>`${f.id} - ${f.name}`).join('\n'));
+    if(!targetId) return;
+    const target=folders.find(f=>String(f.id)===String(targetId));
+    if(!target){ alert('Folder ID not found.'); return; }
+    const ids=selectedList.map(doc=>doc.id);
+    const {error}=await supabaseClient.from('documents').update({folder_id:target.id}).in('id',ids);
+    if(error){ alert('Unable to move documents: '+error.message); return; }
+    selectedDocs.clear();
+    updateActionBar();
+    await refreshVault();
+    showDocumentToast('Documents moved.');
+}
+
+function isExternalUrl(value){ return /^https?:\/\//i.test(String(value||'')); }
+function getCandidatePaths(originalPath, doc={}){
+    const raw=String(originalPath||'').trim();
+    if(!raw || isExternalUrl(raw)) return raw ? [raw] : [];
+    const filename=raw.split('/').pop() || doc.name || '';
+    const candidates=[];
+    candidates.push(raw);
+    if(raw.startsWith(`${STORAGE_BUCKET}/`)) candidates.push(raw.replace(new RegExp(`^${STORAGE_BUCKET}/`),''));
+    if(raw.startsWith('documents/')) candidates.push(raw.replace(/^documents\//,''));
+    const parts=raw.split('/').filter(Boolean);
+    if(parts.length>=2) candidates.push(parts.slice(-2).join('/'));
+    const folderId=doc.folder_id||currentFolderId;
+    if(filename&&folderId){ candidates.push(`${folderId}/${filename}`); }
+    return [...new Set(candidates.filter(Boolean))];
+}
+async function resolveDocumentAccessUrl(doc, expiresInSeconds=3600, download=false){
+    if(!doc?.file_path) return null;
+    if(isExternalUrl(doc.file_path)) return {url:doc.file_path,path:doc.file_path,revoke:null};
+    const paths=getCandidatePaths(doc.file_path, doc);
+    console.log('Trying document paths:', {bucket:STORAGE_BUCKET, databaseFilePath:doc.file_path, candidatePaths:paths});
+    let lastError=null;
+    for(const path of paths){
+        const options=download ? {download: doc.name || true} : undefined;
+        const {data,error}=await supabaseClient.storage.from(STORAGE_BUCKET).createSignedUrl(path,expiresInSeconds,options);
+        if(!error&&data?.signedUrl) return {url:data.signedUrl,path,revoke:null};
+        lastError=error||lastError;
+    }
+    if(!download){
+        for(const path of paths){
+            const {data,error}=await supabaseClient.storage.from(STORAGE_BUCKET).download(path);
+            if(!error&&data){
+                const url=URL.createObjectURL(data);
+                return {url,path,revoke:()=>URL.revokeObjectURL(url)};
+            }
+            lastError=error||lastError;
+        }
+        for(const path of paths){
+            const {data}=supabaseClient.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+            if(data?.publicUrl) return {url:data.publicUrl,path,revoke:null};
+        }
+    }
+    console.error('Document access failed:', {doc,paths,lastError});
+    return null;
+}
+async function resolveDocumentBlob(doc){
+    if(!doc?.file_path) return null;
+    if(isExternalUrl(doc.file_path)){
+        const response=await fetch(doc.file_path);
+        if(response.ok) return await response.blob();
+        return null;
+    }
+    const paths=getCandidatePaths(doc.file_path, doc);
+    for(const path of paths){
+        const {data,error}=await supabaseClient.storage.from(STORAGE_BUCKET).download(path);
+        if(!error&&data) return data;
+    }
+    return null;
+}
+function saveBlobAsFile(blob, filename){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=filename||'document';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+function makePreviewUrl(doc, access){
+    const kind=getFilePreviewKind(doc);
+    if(kind==='office' && access?.url && !access.url.startsWith('blob:')) return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(access.url)}`;
+    return access.url;
+}
+function openDocumentPreviewModal(doc,access){ currentPreviewDocument=doc; currentPreviewAccess=access; const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); const loader=document.getElementById('previewLoading'); const fileSize=formatFileSize(doc.size_bytes); const fileType=getFileTypeLabel(doc.name,doc.mime_type); const uploadedDate=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; document.getElementById('previewFileIcon').innerHTML=`<i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i>`; document.getElementById('previewDocumentTitle').textContent=doc.name||'Document Preview'; document.getElementById('previewDocumentMeta').textContent=`${fileType} • ${fileSize} • Uploaded ${uploadedDate}`; document.getElementById('previewSideName').textContent=doc.name||'-'; document.getElementById('previewSideType').textContent=fileType; document.getElementById('previewSideSize').textContent=fileSize; document.getElementById('previewSideDate').textContent=uploadedDate; loader.style.display='flex'; frame.src='about:blank'; modal.classList.remove('hidden'); modal.classList.add('flex'); setTimeout(()=>{ frame.src=makePreviewUrl(doc,access); },80); frame.onload=()=>{ loader.style.display='none'; }; setTimeout(()=>{ loader.style.display='none'; },4000); }
+function closeDocumentPreviewModal(){ const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); modal.classList.add('hidden'); modal.classList.remove('flex'); frame.src='about:blank'; if(currentPreviewAccess&&typeof currentPreviewAccess.revoke==='function') currentPreviewAccess.revoke(); currentPreviewDocument=null; currentPreviewAccess=null; }
+function openPreviewInNewTab(){ if(!currentPreviewDocument||!currentPreviewAccess?.url) return; window.open(makePreviewUrl(currentPreviewDocument,currentPreviewAccess),'_blank'); }
+async function viewDocument(id){
+    const doc=documents.find(d=>String(d.id)===String(id));
+    if(!doc){ alert('Document not found.'); return; }
+    try{
+        showDocumentToast('Preparing preview...','fa-circle-notch fa-spin');
+        const access=await resolveDocumentAccessUrl(doc,3600,false);
+        if(!access?.url){ alert('Unable to preview this document. Check bucket name, file path, and storage policy.'); return; }
+        openDocumentPreviewModal(doc,access);
+    }catch(err){
+        console.error(err);
+        alert('Unable to preview this document.');
+    }
+}
+async function downloadDocument(id){
+    const doc=documents.find(d=>String(d.id)===String(id));
+    if(!doc){ alert('Document not found.'); return; }
+    try{
+        showDocumentToast('Preparing download...','fa-circle-notch fa-spin');
+        const blob=await resolveDocumentBlob(doc);
+        if(blob){
+            saveBlobAsFile(blob,doc.name||'document');
+            showDocumentToast('Download started.');
+            return;
+        }
+        const access=await resolveDocumentAccessUrl(doc,300,true);
+        if(!access?.url){ alert('Unable to download this document. Check bucket name, file path, and storage policy.'); return; }
+        const response=await fetch(access.url);
+        if(response.ok){
+            saveBlobAsFile(await response.blob(),doc.name||'document');
+        }else{
+            window.open(access.url,'_blank');
+        }
+        showDocumentToast('Download started.');
+    }catch(err){
+        console.error(err);
+        alert('Unable to download this document.');
+    }
+}
+async function downloadCurrentPreviewDocument(){ if(currentPreviewDocument) await downloadDocument(currentPreviewDocument.id); }
+
+function setupDropZone(){ const dz=document.getElementById('main-drop-zone'); if(!dz) return; ['dragenter','dragover'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.add('drag-over'); })); ['dragleave','drop'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.remove('drag-over'); })); dz.addEventListener('drop',e=>{ document.getElementById('main-file-input').files=e.dataTransfer.files; }); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeDocumentPreviewModal(); closeFolderEditor(); hideMainUploadModal(); hideSimpleUploadModal(); } });
+window.onload=async()=>{ setupDropZone(); await refreshVault(); setFolderView(currentFolderView,false); };
 </script>
+<!-- <script src="../shared/system-ui.js"></script> -->
 </body>
 </html>

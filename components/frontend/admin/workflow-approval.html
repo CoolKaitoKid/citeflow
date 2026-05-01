@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document Submissions - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
@@ -405,18 +406,94 @@
 </div>
 
 <script>
-    let submissions = [
-        { id: 1, title: "Mid-Year Faculty Performance Report", submitter: "Dr. Elena Reyes", department: "BSIT", submittedDate: "March 28, 2026", status: "pending", files: ["performance_report.pdf", "supporting_docs.zip"] },
-        { id: 2, title: "Department Budget Proposal 2026-2027", submitter: "Prof. Marco Santos", department: "BSIE", submittedDate: "March 27, 2026", status: "pending", files: ["budget_proposal.xlsx"] },
-        { id: 3, title: "Updated Course Syllabus - AI Fundamentals", submitter: "Engr. Anna Lopez", department: "BIT", submittedDate: "March 25, 2026", status: "approved", files: ["syllabus_ai.pdf"] },
-        { id: 4, title: "Laboratory Equipment Inventory", submitter: "Prof. Jose Cruz", department: "BSIT", submittedDate: "March 24, 2026", status: "revision", files: ["inventory.xlsx"] }
-    ];
+    // ======================== SUPABASE CONFIG ========================
+    const SUPABASE_URL = 'https://uforealazougjckepggc.supabase.co';
+    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-    // Simulated delegated access (admin can add/remove)
-    let delegatedAccess = [
-        { user: "Dr. Elena Reyes", departments: ["BSIT"] },
-        { user: "Prof. Marco Santos", departments: ["BSIE"] }
-    ];
+    // ======================== STATE ========================
+    let tasks = [];
+    let faculty = [];
+    let assignments = [];
+    let submissions = [];
+    let delegatedAccess = [];
+    let selectedTaskId = null;
+
+    // ======================== HELPER FUNCTIONS ========================
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    function formatDate(date) {
+        if (!date) return 'N/A';
+        return new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    async function loadData() {
+        try {
+            // Load all data from Supabase
+            const [tasksRes, facultyRes, assignmentsRes, submissionsRes] = await Promise.all([
+                db.from('wf_tasks').select('*'),
+                db.from('wf_faculty').select('*'),
+                db.from('wf_task_assignments').select('*'),
+                db.from('wf_submissions').select('*')
+            ]);
+
+            if (tasksRes.error) throw tasksRes.error;
+            if (facultyRes.error) throw facultyRes.error;
+            if (assignmentsRes.error) throw assignmentsRes.error;
+            if (submissionsRes.error) throw submissionsRes.error;
+
+            tasks = tasksRes.data || [];
+            faculty = facultyRes.data || [];
+            assignments = assignmentsRes.data || [];
+            submissions = submissionsRes.data || [];
+
+            // Build submissions display data
+            buildSubmissionsArray();
+            renderSubmissions(submissions);
+        } catch (err) {
+            console.error('Error loading data:', err);
+            alert('Error loading data from database');
+        }
+    }
+
+    function buildSubmissionsArray() {
+        submissions = tasks.map(task => {
+            const assignment = assignments.find(a => a.task_id === task.id);
+            const submission = submissions.find(s => s.task_id === task.id);
+            const facultyMember = faculty.find(f => f.id === assignment?.faculty_id);
+
+            return {
+                id: task.id,
+                title: task.title,
+                submitter: facultyMember?.full_name || 'Unknown',
+                department: facultyMember?.department_code || 'N/A',
+                submittedDate: submission?.submitted_at ? formatDate(submission.submitted_at) : 'Not submitted',
+                status: mapSubmissionStatus(submission?.status),
+                files: submission?.files || [],
+                taskData: task,
+                submissionData: submission
+            };
+        });
+    }
+
+    function mapSubmissionStatus(status) {
+        const map = {
+            'submitted': 'pending',
+            'underreview': 'pending',
+            'notsubmitted': 'pending',
+            'approved': 'approved',
+            'revision': 'revision',
+            'rejected': 'revision',
+            'late': 'pending'
+        };
+        return map[status] || 'pending';
+    }
 
     function renderSubmissions(filtered) {
         const tbody = document.getElementById('submissionsTable');
@@ -441,7 +518,7 @@
                 <td class="py-5 px-6 text-gray-500">${sub.submittedDate}</td>
                 <td class="py-5 px-6 text-center">${statusHTML}</td>
                 <td class="py-5 px-6 text-center">
-                    <button onclick="openReviewModal(${sub.id})" 
+                    <button onclick="openReviewModal('${sub.id}')" 
                             class="bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-2 rounded-3xl text-sm font-medium transition-colors">
                         Review
                     </button>
@@ -464,7 +541,7 @@
         renderSubmissions(filtered);
     }
 
-    // === ACCESS MANAGEMENT FUNCTIONS ===
+    // ======================== ACCESS MANAGEMENT ========================
     function renderDelegates() {
         const container = document.getElementById('currentDelegates');
         container.innerHTML = '';
@@ -482,8 +559,8 @@
                     <div class="font-medium">${delegate.user}</div>
                     <div class="text-xs text-gray-500">Can view: ${delegate.departments.join(' • ')}</div>
                 </div>
-                <button onclick="removeAccess(${index}); event.stopImmediatePropagation();" 
-                        class="text-red-600 hover:text-red-700 text-xs font-medium px-4 py-2 rounded-2xl hover:bg-red-50">
+                <button class="text-red-600 hover:text-red-700 text-xs font-medium px-4 py-2 rounded-2xl hover:bg-red-50" 
+                        onclick="removeAccess(${index})">
                     Remove Access
                 </button>
             `;
@@ -549,7 +626,7 @@
         }
     }
 
-    // === EXISTING FUNCTIONS (unchanged) ===
+    // ======================== TASK MANAGEMENT ========================
     function assignNewTask() {
         document.getElementById('assignModal').classList.remove('hidden');
         document.getElementById('assignModal').classList.add('flex');
@@ -566,34 +643,131 @@
         document.getElementById('specificUsersContainer').classList.toggle('hidden', group !== 'specific');
     }
 
-    function createNewTask() {
+    async function createNewTask() {
         const title = document.getElementById('taskTitle').value || "New Task";
+        const targetGroup = document.getElementById('targetGroup').value;
         const dueDate = document.getElementById('dueDate').value;
         const dueTime = document.getElementById('dueTime').value;
+        const instructions = document.getElementById('taskDesc').value;
+
         if (!dueDate) {
             alert("Please select a due date.");
             return;
         }
-        alert(`✅ Task "${title}" assigned successfully!\nDue: ${dueDate} at ${dueTime}`);
-        hideAssignModal();
+
+        try {
+            // Convert to ISO datetime
+            const dueDateTime = new Date(`${dueDate}T${dueTime}`).toISOString();
+
+            // Create new task
+            const newTask = {
+                id: generateUUID(),  // Generate UUID instead of using integer ID
+                title: title,
+                instructions: instructions,
+                attachment_names: [],
+                assigned_scope: targetGroup === 'specific' ? 'specific' : 'department',
+                assigned_label: getDepartmentLabel(targetGroup),
+                due_at: dueDateTime,
+                created_by_name: 'Admin'
+            };
+
+            // Insert into database
+            const { data, error } = await db.from('wf_tasks').insert([newTask]);
+
+            if (error) {
+                console.error('Insert error:', error);
+                alert('Error creating task: ' + error.message);
+                return;
+            }
+
+            // If specific users, create assignments
+            if (targetGroup === 'specific') {
+                const userSelect = document.getElementById('specificUsers');
+                const selectedOptions = Array.from(userSelect.selectedOptions).map(o => o.textContent);
+                
+                if (selectedOptions.length === 0) {
+                    alert("Please select at least one faculty member for specific assignment.");
+                    return;
+                }
+
+                // Create assignments for each selected faculty
+                for (const facultyName of selectedOptions) {
+                    const faculty_id = faculty.find(f => f.full_name.includes(facultyName))?.id;
+                    if (faculty_id) {
+                        await db.from('wf_task_assignments').insert({
+                            task_id: newTask.id,
+                            faculty_id: faculty_id,
+                            assigned_by_name: 'Admin'
+                        });
+                    }
+                }
+            } else {
+                // Create assignments for department
+                const deptCode = getDepartmentCode(targetGroup);
+                const deptFaculty = faculty.filter(f => f.department_code === deptCode);
+                
+                for (const fac of deptFaculty) {
+                    await db.from('wf_task_assignments').insert({
+                        task_id: newTask.id,
+                        faculty_id: fac.id,
+                        assigned_by_name: 'Admin'
+                    });
+                }
+            }
+
+            alert(`✅ Task "${title}" assigned successfully!\nDue: ${dueDate} at ${dueTime}`);
+            hideAssignModal();
+            
+            // Clear form
+            document.getElementById('taskTitle').value = '';
+            document.getElementById('dueDate').value = '';
+            document.getElementById('dueTime').value = '17:00';
+            document.getElementById('taskDesc').value = '';
+
+            // Reload data
+            await loadData();
+        } catch (err) {
+            console.error('Error creating task:', err);
+            alert('Error: ' + err.message);
+        }
     }
 
-    function openReviewModal(id) {
-        const sub = submissions.find(s => s.id === id);
+    function getDepartmentCode(scope) {
+        const map = {
+            'all_bsit': 'BSIT',
+            'all_bsie': 'BSIE',
+            'all_bit': 'BIT'
+        };
+        return map[scope] || 'BSIT';
+    }
+
+    function getDepartmentLabel(scope) {
+        const map = {
+            'all_bsit': 'All BSIT Faculty',
+            'all_bsie': 'All BSIE Faculty',
+            'all_bit': 'All BIT Faculty',
+            'specific': 'Specific Faculty'
+        };
+        return map[scope] || 'Specific Faculty';
+    }
+
+    function openReviewModal(taskId) {
+        selectedTaskId = taskId;
+        const sub = submissions.find(s => s.id === taskId);
         if (!sub) return;
 
         document.getElementById('modalTaskTitle').textContent = sub.title;
         document.getElementById('modalSubmitter').textContent = `${sub.submitter} • ${sub.department} • Submitted on ${sub.submittedDate}`;
 
-        const filesHTML = sub.files.map(file => `
+        const filesHTML = (sub.files || []).map(file => `
             <div class="flex justify-between items-center bg-gray-50 px-5 py-3.5 rounded-2xl text-sm border border-gray-100">
                 <span class="flex items-center gap-2">📎 ${file}</span>
-                <button onclick="alert('Downloading ${file}... (demo)'); event.stopImmediatePropagation();" 
+                <button onclick="alert('Downloading ${file}... (demo)'); event.stopPropagation();" 
                         class="text-[#621708] hover:underline text-xs font-medium">Download</button>
             </div>
         `).join('');
 
-        document.getElementById('modalFiles').innerHTML = filesHTML;
+        document.getElementById('modalFiles').innerHTML = filesHTML || '<p class="text-gray-400">No files submitted</p>';
         document.getElementById('reviewModal').classList.remove('hidden');
         document.getElementById('reviewModal').classList.add('flex');
     }
@@ -605,24 +779,76 @@
         document.getElementById('adminComment').value = '';
     }
 
-    function approveSubmission() {
+    async function approveSubmission() {
         const comment = document.getElementById('adminComment').value.trim();
-        alert(comment ? `✅ Submission Approved!\n\nRemark: ${comment}` : '✅ Submission Approved!');
-        hideReviewModal();
+        
+        try {
+            const sub = submissions.find(s => s.id === selectedTaskId);
+            if (!sub || !sub.submissionData) {
+                alert('Submission not found');
+                return;
+            }
+
+            // Update submission status in database
+            const { error } = await db.from('wf_submissions')
+                .update({
+                    status: 'approved',
+                    review_remarks: comment,
+                    reviewed_by_name: 'Admin',
+                    reviewed_at: new Date().toISOString()
+                })
+                .eq('id', sub.submissionData.id);
+
+            if (error) throw error;
+
+            alert(comment ? `✅ Submission Approved!\n\nRemark: ${comment}` : '✅ Submission Approved!');
+            hideReviewModal();
+            await loadData();
+        } catch (err) {
+            console.error('Error approving submission:', err);
+            alert('Error: ' + err.message);
+        }
     }
 
-    function requestRevision() {
+    async function requestRevision() {
         const comment = document.getElementById('adminComment').value.trim();
         if (!comment) {
             alert("Please write remarks when requesting revision.");
             return;
         }
-        alert(`🔄 Revision requested.\n\nRemarks sent:\n${comment}`);
-        hideReviewModal();
+
+        try {
+            const sub = submissions.find(s => s.id === selectedTaskId);
+            if (!sub || !sub.submissionData) {
+                alert('Submission not found');
+                return;
+            }
+
+            // Update submission status in database
+            const { error } = await db.from('wf_submissions')
+                .update({
+                    status: 'revision',
+                    review_remarks: comment,
+                    reviewed_by_name: 'Admin',
+                    reviewed_at: new Date().toISOString()
+                })
+                .eq('id', sub.submissionData.id);
+
+            if (error) throw error;
+
+            alert(`🔄 Revision requested.\n\nRemarks sent:\n${comment}`);
+            hideReviewModal();
+            await loadData();
+        } catch (err) {
+            console.error('Error requesting revision:', err);
+            alert('Error: ' + err.message);
+        }
     }
 
-    // Initial render
-    renderSubmissions(submissions);
+    // ======================== INITIALIZATION ========================
+    document.addEventListener('DOMContentLoaded', function() {
+        loadData();
+    });
 </script>
 </body>
 </html>

@@ -4,29 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Profile - CITE-Flow</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
-        * { 
-            font-family: 'Inter', sans-serif; 
-        }
 
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
-        }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
-        }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
-        }
+        * { font-family: 'Inter', sans-serif; }
+        body { background: #f8fafc; color: #0f172a; }
+
+        .sidebar { background-color: #621708; width: 280px; }
+        .nav-item { transition: all 0.2s ease; }
+        .nav-item:hover, .nav-item.active { background-color: #8c2a10; }
+        .nav-item.active { border-left: 4px solid #f5e8c7; }
 
         .section-header {
             font-size: 11px;
@@ -38,17 +27,8 @@
             text-transform: uppercase;
         }
 
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
-        }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
-        }
-
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
-        }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.35); border-radius: 20px; }
 
         .nav-icon {
             width: 20px;
@@ -57,15 +37,231 @@
             stroke-width: 2.25;
         }
 
-        .profile-avatar {
-            width: 120px;
-            height: 120px;
-            background-color: #e5e7eb;
+        .card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 28px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
         }
+
+        .field {
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 16px;
+            padding: 12px 14px;
+            font-size: 14px;
+            outline: none;
+            background: #ffffff;
+        }
+
+        .field:focus {
+            border-color: #621708;
+            box-shadow: 0 0 0 4px rgba(98, 23, 8, 0.08);
+        }
+
+        .field-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 8px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px 11px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .icon-btn {
+            height: 38px;
+            width: 38px;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            color: #334155;
+        }
+
+        .icon-btn:hover { background: #f8fafc; }
+
+        .primary-btn {
+            background: #621708;
+            color: #ffffff;
+            border-radius: 16px;
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            transition: background-color 0.2s ease;
+        }
+
+        .primary-btn:hover { background: #8c2a10; }
+
+        .secondary-btn {
+            background: #ffffff;
+            color: #334155;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+
+        .secondary-btn:hover {
+            background: #f8fafc;
+            border-color: #d1d5db;
+        }
+
+        .danger-btn {
+        background: #dc2626;
+        color: #ffffff;
+        border-radius: 16px;
+        padding: 12px 18px;
+        font-size: 14px;
+        font-weight: 700;
+        transition: background-color 0.2s ease;
+    }
+
+    .danger-btn:hover { background: #b91c1c; }
+
+    .security-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 20px;
+        border: 1px solid #e2e8f0;
+        border-radius: 22px;
+        background: #ffffff;
+    }
+
+    .security-item-danger {
+        border-color: #fecaca;
+        background: #fef2f2;
+    }
+
+    .security-item-content {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        min-width: 0;
+        flex: 1;
+    }
+
+    .security-item-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #334155;
+    }
+
+    .security-item-danger .security-item-icon {
+        border-color: #fecaca;
+        background: #fff5f5;
+        color: #dc2626;
+    }
+
+    .security-item-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .security-item-meta {
+        font-size: 14px;
+        color: #64748b;
+        margin-top: 4px;
+        line-height: 1.5;
+    }
+
+    .security-item-danger .security-item-title {
+        color: #b91c1c;
+    }
+
+    .security-item-danger .security-item-meta {
+        color: #dc2626;
+    }
+
+    .action-btn {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 0 18px;
+        border-radius: 14px;
+        font-size: 14px;
+        font-weight: 700;
+        white-space: nowrap;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+        flex-shrink: 0;
+    }
+
+    .action-btn svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+    }
+
+    .action-btn-primary {
+        background: #621708;
+        color: #ffffff;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+
+    .action-btn-primary:hover {
+        background: #7b220d;
+    }
+
+    .action-btn-secondary {
+        background: #ffffff;
+        color: #334155;
+        border-color: #cbd5e1;
+    }
+
+    .action-btn-secondary:hover {
+        background: #f8fafc;
+        border-color: #94a3b8;
+    }
+
+    .action-btn-danger {
+        background: #dc2626;
+        color: #ffffff;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+
+    .action-btn-danger:hover {
+        background: #b91c1c;
+    }
+
+    @media (max-width: 767px) {
+        .security-item {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .action-btn {
+            width: 100%;
+        }
+    }
     </style>
 </head>
-<body class="bg-gray-50">
 
+<body class="bg-slate-50">
 <div class="flex h-screen overflow-hidden">
     <!-- SIDEBAR -->
     <div class="sidebar text-white flex flex-col h-full">
@@ -140,210 +336,841 @@
         <!-- Bottom Profile Section -->
         <div onclick="window.location.href='admin-profile.html'" 
              class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer active">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
+            <div class="w-10 h-10 bg-white rounded-2xl overflow-hidden flex items-center justify-center text-[#621708] text-xl">
+                <img id="sidebar-avatar-image" src="" alt="Admin avatar" class="w-full h-full object-cover hidden">
+                <span id="sidebar-avatar-fallback">👤</span>
+            </div>
             <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Administrator • Dean</div>
+                <div id="sidebar-admin-name" class="font-semibold text-sm truncate">Loading...</div>
+                <div id="sidebar-admin-role" class="text-xs text-white/70">Administrator</div>
             </div>
         </div>
     </div>
 
+
     <!-- MAIN CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
-        <div class="max-w-4xl mx-auto">
-            
-            <!-- Header -->
-            <div class="flex items-center justify-between mb-10">
+    <main class="flex-1 overflow-y-auto">
+        <div class="max-w-[1300px] mx-auto px-8 py-7">
+
+            <!-- HEADER -->
+            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-7">
                 <div>
-                    <h1 class="text-3xl font-semibold text-gray-900">Admin Profile</h1>
-                    <p class="text-gray-500">Manage your account information and security</p>
+                    <h1 class="text-3xl font-semibold text-slate-950 mt-2">Admin Profile</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage your account information and security.</p>
                 </div>
-            </div>
 
-            <!-- Profile Card -->
-            <div class="bg-white rounded-3xl p-8 card-shadow mb-8">
-                <div class="flex flex-col md:flex-row gap-8">
-                    <!-- Avatar -->
-                    <div class="flex-shrink-0">
-                        <div class="profile-avatar w-32 h-32 rounded-3xl flex items-center justify-center text-6xl border-4 border-white shadow-inner">
-                            👨‍💼
+                <button onclick="editProfile()" class="primary-btn flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                    </svg>
+                    Edit Profile
+                </button>
+            </header>
+
+            <!-- PROFILE CARD -->
+            <section class="card p-7 mb-7">
+                <div class="flex flex-col lg:flex-row lg:items-center gap-6">
+                    <div class="flex flex-col items-start gap-3">
+                        <div class="avatar w-24 h-24 rounded-3xl text-2xl font-semibold">
+                            <img id="profile-avatar-image" src="" alt="Admin avatar" class="hidden">
+                            <span id="profile-avatar-fallback">AD</span>
                         </div>
+                        <input id="avatar-input" type="file" accept="image/*" class="hidden">
+                        <button id="avatar-upload-btn" type="button" onclick="openAvatarPicker()" class="secondary-btn !py-2 !px-4 text-xs">
+                            Upload Photo
+                        </button>
                     </div>
 
-                    <!-- Info -->
                     <div class="flex-1">
-                        <div class="flex justify-between items-start">
+                        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                             <div>
-                                <h2 class="text-4xl font-semibold text-gray-900">Maria Santos</h2>
-                                <p class="text-xl text-gray-600 mt-1">Dean & System Administrator</p>
+                                <h2 id="hero-admin-name" class="text-2xl font-semibold text-slate-950">Loading...</h2>
+                                <p id="hero-admin-role" class="text-sm text-slate-500 mt-1">Administrator</p>
                             </div>
-                            <button onclick="editProfile()" 
-                                    class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 text-sm font-medium">
-                                ✏️ Edit Profile
-                            </button>
+
+                            <span class="badge bg-emerald-50 text-emerald-700 border border-emerald-100">Active</span>
                         </div>
 
-                        <div class="mt-4 inline-flex items-center gap-2 bg-emerald-100 text-emerald-700 px-4 py-1 rounded-3xl text-sm font-medium">
-                            <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                            Active Now
-                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-5 text-sm">
+                            <div class="flex items-center gap-2 text-slate-600">
+                                <svg class="w-4 h-4 text-[#621708]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 11.19 19a19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.08 4.18 2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.12.9.32 1.77.6 2.6a2 2 0 0 1-.45 2.11L8 9.64a16 16 0 0 0 6.36 6.36l1.21-1.21a2 2 0 0 1 2.11-.45c.83.28 1.7.48 2.6.6A2 2 0 0 1 22 16.92z"/>
+                                </svg>
+                                <span id="hero-phone">-</span>
+                            </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6 mt-8 text-sm">
-                            <div class="flex items-center gap-3">
-                                <span class="text-gray-400">📞</span>
-                                <div>
-                                    <div class="text-gray-500 text-xs">Phone Number</div>
-                                    <div class="font-medium">+63 912 345 6789</div>
-                                </div>
+                            <div class="flex items-center gap-2 text-slate-600">
+                                <svg class="w-4 h-4 text-[#621708]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 4h16v16H4z"/>
+                                    <path d="m22 6-10 7L2 6"/>
+                                </svg>
+                                <span id="hero-email">-</span>
                             </div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-gray-400">✉️</span>
-                                <div>
-                                    <div class="text-gray-500 text-xs">Email Address</div>
-                                    <div class="font-medium">maria.santos@cite.edu.ph</div>
-                                </div>
+
+                            <div class="flex items-center gap-2 text-slate-600">
+                                <svg class="w-4 h-4 text-[#621708]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 1 1 18 0Z"/>
+                                    <circle cx="12" cy="10" r="3"/>
+                                </svg>
+                                <span id="hero-address">-</span>
                             </div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-gray-400">📍</span>
-                                <div>
-                                    <div class="text-gray-500 text-xs">Address</div>
-                                    <div class="font-medium">Cebu City, Philippines</div>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-gray-400">📅</span>
-                                <div>
-                                    <div class="text-gray-500 text-xs">Hire Date</div>
-                                    <div class="font-medium">June 1, 2015</div>
-                                </div>
+
+                            <div class="flex items-center gap-2 text-slate-600">
+                                <svg class="w-4 h-4 text-[#621708]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="4" width="18" height="18" rx="2"/>
+                                    <path d="M16 2v4"/>
+                                    <path d="M8 2v4"/>
+                                    <path d="M3 10h18"/>
+                                </svg>
+                                <span id="hero-hire-date">-</span>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <!-- Personal Information -->
-            <div class="bg-white rounded-3xl p-8 card-shadow mb-8">
-                <h3 class="text-lg font-semibold mb-6">Personal Information</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">First Name</div>
-                        <div class="font-medium">Maria</div>
+            <!-- ADMIN DETAILS -->
+            <section class="grid grid-cols-1 xl:grid-cols-2 gap-7 mb-7">
+                <div class="card p-6">
+                    <div class="mb-6">
+                        <h2 class="text-lg font-semibold text-slate-950">Personal Information</h2>
+                        <p class="text-sm text-slate-500 mt-1">Basic profile and contact details.</p>
                     </div>
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Last Name</div>
-                        <div class="font-medium">Santos</div>
-                    </div>
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Email Address</div>
-                        <div class="font-medium">maria.santos@cite.edu.ph</div>
-                    </div>
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Phone Number</div>
-                        <div class="font-medium">+63 912 345 6789</div>
-                    </div>
-                    <div class="md:col-span-2">
-                        <div class="text-sm text-gray-500 mb-1">Address</div>
-                        <div class="font-medium">Cebu City, Philippines</div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="info-card"><p class="info-label">First Name</p><p id="pi-first-name" class="info-value">-</p></div>
+                        <div class="info-card"><p class="info-label">Last Name</p><p id="pi-last-name" class="info-value">-</p></div>
+                        <div class="info-card"><p class="info-label">Email Address</p><p id="pi-email" class="info-value">-</p></div>
+                        <div class="info-card"><p class="info-label">Phone Number</p><p id="pi-phone" class="info-value">-</p></div>
+                        <div class="info-card md:col-span-2"><p class="info-label">Address</p><p id="pi-address" class="info-value">-</p></div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Account Information -->
-            <div class="bg-white rounded-3xl p-8 card-shadow mb-8">
-                <h3 class="text-lg font-semibold mb-6">Account Information</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Employee ID</div>
-                        <div class="font-medium">ADMIN-2025-001</div>
+                <div class="card p-6">
+                    <div class="mb-6">
+                        <h2 class="text-lg font-semibold text-slate-950">Account Information</h2>
+                        <p class="text-sm text-slate-500 mt-1">Administrative role and employment details.</p>
                     </div>
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Role</div>
-                        <div class="font-medium">Dean & System Administrator</div>
-                    </div>
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Department</div>
-                        <div class="font-medium">College of Technology and Engineering</div>
-                    </div>
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Hire Date</div>
-                        <div class="font-medium">June 1, 2015</div>
-                    </div>
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Years of Service</div>
-                        <div class="font-medium">11 Years</div>
-                    </div>
-                    <div>
-                        <div class="text-sm text-gray-500 mb-1">Account Status</div>
-                        <div class="font-medium text-emerald-600">Active</div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="info-card"><p class="info-label">Employee ID</p><p id="ai-employee-id" class="info-value">-</p></div>
+                        <div class="info-card"><p class="info-label">Role</p><p id="ai-role" class="info-value">-</p></div>
+                        <div class="info-card"><p class="info-label">Department</p><p id="ai-department" class="info-value">-</p></div>
+                        <div class="info-card"><p class="info-label">Hire Date</p><p id="ai-hire-date" class="info-value">-</p></div>
+                        <div class="info-card"><p class="info-label">Years of Service</p><p id="ai-years-service" class="info-value">-</p></div>
+                        <div class="info-card"><p class="info-label">Account Status</p><p class="info-value text-emerald-700">Active</p></div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <!-- Security Settings -->
-            <div class="bg-white rounded-3xl p-8 card-shadow">
-                <h3 class="text-lg font-semibold mb-6">Security Settings</h3>
-                
-                <div class="space-y-8">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="font-medium">Password</div>
-                            <div class="text-sm text-gray-500">Last changed 3 months ago</div>
+            <!-- SECURITY SETTINGS -->
+            <section class="card p-6 mb-7">
+                <div class="mb-6">
+                    <h2 class="text-lg font-semibold text-slate-950">Security Settings</h2>
+                    <p class="text-sm text-slate-500 mt-1">Control password, multi-factor authentication, and account sessions.</p>
+                </div>
+            
+                <div class="space-y-4">
+                    <div class="security-item">
+                        <div class="security-item-content">
+                            <div class="security-item-icon" aria-hidden="true">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.9">
+                                    <rect x="4" y="11" width="16" height="9" rx="2"></rect>
+                                    <path d="M8 11V8a4 4 0 1 1 8 0v3"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="security-item-title">Password</div>
+                                <div class="security-item-meta">Last changed 3 months ago</div>
+                            </div>
                         </div>
-                        <button onclick="changePassword()" 
-                                class="bg-[#621708] hover:bg-[#8c2a10] text-white px-8 py-3 rounded-2xl text-sm font-medium">
-                            Change Password
+            
+                        <button onclick="changePassword()" class="action-btn action-btn-primary">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path d="M12 20h9"></path>
+                                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                            </svg>
+                            <span>Change Password</span>
                         </button>
                     </div>
-
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="font-medium">Two-Factor Authentication</div>
-                            <div class="text-sm text-gray-500">Add an extra layer of security to your account</div>
+            
+                    <div class="security-item">
+                        <div class="security-item-content">
+                            <div class="security-item-icon" aria-hidden="true">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.9">
+                                    <path d="M9 12a3 3 0 1 1 6 0c0 1.657-1.343 3-3 3"></path>
+                                    <path d="M12 15v2"></path>
+                                    <path d="M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="security-item-title">Two-Factor Authentication</div>
+                                <div id="twofa-status-text" class="security-item-meta">Add an extra layer of security to your account</div>
+                            </div>
                         </div>
-                        <button onclick="toggle2FA()" 
-                                class="border border-gray-300 hover:bg-gray-50 px-8 py-3 rounded-2xl text-sm font-medium">
-                            Enable
+            
+                        <button id="twofa-toggle-btn" onclick="toggle2FA()" class="action-btn action-btn-secondary">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path d="M12 5v14"></path>
+                                <path d="M5 12h14"></path>
+                            </svg>
+                            <span>Enable</span>
                         </button>
                     </div>
-
-                    <div class="pt-6 border-t">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="font-medium text-red-600">Log Out from All Devices</div>
-                                <div class="text-sm text-gray-500">Sign out of all active sessions</div>
+            
+                    <div class="security-item security-item-danger">
+                        <div class="security-item-content">
+                            <div class="security-item-icon" aria-hidden="true">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.9">
+                                    <path d="M17 16l4-4m0 0l-4-4m4 4H9"></path>
+                                    <path d="M13 20H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6"></path>
+                                </svg>
                             </div>
-                            <button onclick="logout()" 
-                                    class="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-2xl text-sm font-medium flex items-center gap-2">
-                                <span>↪️</span> Log Out
-                            </button>
+                            <div>
+                                <div class="security-item-title">Log Out from All Devices</div>
+                                <div class="security-item-meta">Sign out of all active sessions</div>
+                            </div>
                         </div>
+            
+                        <button onclick="logout()" class="action-btn action-btn-danger">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path d="M17 16l4-4m0 0l-4-4m4 4H9"></path>
+                                <path d="M13 20H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6"></path>
+                            </svg>
+                            <span>Log Out</span>
+                        </button>
                     </div>
                 </div>
-            </div>
+            </section>
         </div>
+    </main>
+</div>
+
+<!-- EDIT PROFILE MODAL -->
+<div id="edit-profile-modal" class="hidden fixed inset-0 modal-backdrop items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Profile</p>
+                <h2 class="text-xl font-semibold text-slate-950 mt-1">Edit Profile Details</h2>
+            </div>
+
+            <button type="button" onclick="closeEditModal()" class="icon-btn" aria-label="Close">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M6 18L18 6"/>
+                    <path d="M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <form id="edit-profile-form" class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[72vh] overflow-y-auto">
+            <div><label class="field-label">First Name</label><input id="edit-first-name" type="text" class="field"></div>
+            <div><label class="field-label">Last Name</label><input id="edit-last-name" type="text" class="field"></div>
+            <div><label class="field-label">Email</label><input id="edit-email" type="email" class="field"></div>
+            <div><label class="field-label">Phone Number</label><input id="edit-phone" type="text" class="field"></div>
+            <div class="md:col-span-2"><label class="field-label">Address</label><input id="edit-address" type="text" class="field"></div>
+            <div><label class="field-label">Employee ID</label><input id="edit-employee-id" type="text" class="field"></div>
+            <div><label class="field-label">Role</label><input id="edit-role" type="text" class="field"></div>
+            <div><label class="field-label">Department</label><input id="edit-department" type="text" class="field"></div>
+            <div><label class="field-label">Hire Date</label><input id="edit-hire-date" type="date" class="field"></div>
+
+            <div class="md:col-span-2 flex justify-end gap-3 pt-2 border-t border-slate-100 mt-2">
+                <button type="button" onclick="closeEditModal()" class="secondary-btn">Cancel</button>
+                <button id="save-profile-btn" type="submit" class="primary-btn">Save Changes</button>
+            </div>
+        </form>
     </div>
 </div>
 
+<!-- TWO FACTOR MODAL -->
+<div id="twofa-modal" class="hidden fixed inset-0 modal-backdrop items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-[2rem] w-full max-w-xl shadow-2xl overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Security</p>
+                <h2 class="text-xl font-semibold text-slate-950 mt-1">Set Up Two-Factor Authentication</h2>
+            </div>
+
+            <button type="button" onclick="closeTwoFAModal()" class="icon-btn" aria-label="Close">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M6 18L18 6"/>
+                    <path d="M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="p-7 space-y-5">
+            <p class="text-sm text-slate-600">1) Scan this QR code with Google Authenticator / Microsoft Authenticator, then enter the 6-digit code.</p>
+            <div id="twofa-qr-container" class="p-4 border border-slate-200 rounded-2xl flex items-center justify-center min-h-[180px] bg-slate-50 text-sm text-slate-500">
+                Generating QR code...
+            </div>
+            <form id="twofa-verify-form" class="space-y-4">
+                <div>
+                    <label class="field-label">Authentication Code</label>
+                    <input id="twofa-code" type="text" inputmode="numeric" maxlength="6" placeholder="123456" class="field tracking-widest">
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="closeTwoFAModal()" class="secondary-btn">Cancel</button>
+                    <button id="twofa-verify-btn" type="submit" class="primary-btn">Verify and Enable</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 <script>
+    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+    const { createClient } = supabase;
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    let currentUser = null;
+    let currentProfile = null;
+    let adminProfilesTableExists = true;
+    let currentTotpFactor = null;
+    let pendingTotpEnrollment = null;
+    let pendingTotpChallenge = null;
+    const avatarBucketName = 'avatars';
+
+    function formatFullName(firstName, lastName, fallback) {
+        const composed = [firstName, lastName].filter(Boolean).join(' ').trim();
+        return composed || fallback || 'Unknown User';
+    }
+
+    function formatDateDisplay(value) {
+        if (!value) return '-';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    function getYearsOfService(hireDate) {
+        if (!hireDate) return '-';
+        const start = new Date(hireDate);
+        if (Number.isNaN(start.getTime())) return '-';
+        const today = new Date();
+        let years = today.getFullYear() - start.getFullYear();
+        const monthDiff = today.getMonth() - start.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < start.getDate())) {
+            years--;
+        }
+        if (years < 0) years = 0;
+        return `${years} Year${years === 1 ? '' : 's'}`;
+    }
+
+    function getProfileFromAuthMetadata(user) {
+        const metadata = user?.user_metadata || {};
+        return {
+            first_name: metadata.first_name || '',
+            last_name: metadata.last_name || '',
+            email: user?.email || '',
+            phone_number: metadata.phone_number || '',
+            address: metadata.address || '',
+            employee_id: metadata.employee_id || '',
+            role: metadata.role || 'Administrator',
+            department: metadata.department || '',
+            hire_date: metadata.hire_date || '',
+            avatar_url: metadata.avatar_url || '',
+            avatar_path: metadata.avatar_path || ''
+        };
+    }
+
+    function isAdminProfilesMissingError(error) {
+        if (!error) return false;
+        const code = String(error.code || '').toUpperCase();
+        const message = String(error.message || '').toLowerCase();
+        return (
+            code === '42P01' ||
+            code === 'PGRST205' ||
+            message.includes('admin_profiles') && (
+                message.includes('schema cache') ||
+                message.includes('could not find the table') ||
+                message.includes('does not exist')
+            )
+        );
+    }
+
+    function renderProfile(profile, user) {
+        const fullName = formatFullName(profile.first_name, profile.last_name, user?.email);
+        const role = profile.role || 'Administrator';
+        const email = profile.email || user?.email || '-';
+        const hireDateFormatted = formatDateDisplay(profile.hire_date);
+        const yearsService = getYearsOfService(profile.hire_date);
+
+        document.getElementById('sidebar-admin-name').textContent = fullName;
+        document.getElementById('sidebar-admin-role').textContent = role;
+
+        document.getElementById('hero-admin-name').textContent = fullName;
+        document.getElementById('hero-admin-role').textContent = role;
+        document.getElementById('hero-phone').textContent = profile.phone_number || '-';
+        document.getElementById('hero-email').textContent = email;
+        document.getElementById('hero-address').textContent = profile.address || '-';
+        document.getElementById('hero-hire-date').textContent = hireDateFormatted;
+
+        document.getElementById('pi-first-name').textContent = profile.first_name || '-';
+        document.getElementById('pi-last-name').textContent = profile.last_name || '-';
+        document.getElementById('pi-email').textContent = email;
+        document.getElementById('pi-phone').textContent = profile.phone_number || '-';
+        document.getElementById('pi-address').textContent = profile.address || '-';
+
+        document.getElementById('ai-employee-id').textContent = profile.employee_id || '-';
+        document.getElementById('ai-role').textContent = role;
+        document.getElementById('ai-department').textContent = profile.department || '-';
+        document.getElementById('ai-hire-date').textContent = hireDateFormatted;
+        document.getElementById('ai-years-service').textContent = yearsService;
+
+        const avatarUrl = profile.avatar_url || '';
+        const profileAvatarImage = document.getElementById('profile-avatar-image');
+        const profileAvatarFallback = document.getElementById('profile-avatar-fallback');
+        const sidebarAvatarImage = document.getElementById('sidebar-avatar-image');
+        const sidebarAvatarFallback = document.getElementById('sidebar-avatar-fallback');
+
+        if (avatarUrl) {
+            profileAvatarImage.src = avatarUrl;
+            profileAvatarImage.classList.remove('hidden');
+            profileAvatarFallback.classList.add('hidden');
+            sidebarAvatarImage.src = avatarUrl;
+            sidebarAvatarImage.classList.remove('hidden');
+            sidebarAvatarFallback.classList.add('hidden');
+        } else {
+            profileAvatarImage.src = '';
+            profileAvatarImage.classList.add('hidden');
+            profileAvatarFallback.classList.remove('hidden');
+            sidebarAvatarImage.src = '';
+            sidebarAvatarImage.classList.add('hidden');
+            sidebarAvatarFallback.classList.remove('hidden');
+        }
+    }
+
+    async function loadAdminProfile() {
+        const { data: authData, error: authError } = await supabaseClient.auth.getUser();
+        if (authError || !authData?.user) {
+            window.location.href = '../login.html';
+            return;
+        }
+
+        const role = String(authData.user.user_metadata?.role || '').toLowerCase();
+        if (role === 'faculty') {
+            await supabaseClient.auth.signOut();
+            window.location.href = '../faculty-login.html';
+            return;
+        }
+
+        currentUser = authData.user;
+        let profile = getProfileFromAuthMetadata(currentUser);
+
+        const { data: dbProfile, error: dbError } = await supabaseClient
+            .from('admin_profiles')
+            .select('*')
+            .eq('id', currentUser.id)
+            .maybeSingle();
+
+        if (dbError) {
+            if (isAdminProfilesMissingError(dbError)) {
+                adminProfilesTableExists = false;
+                console.warn('admin_profiles table not found. Using auth metadata only.');
+            } else {
+                console.error('Error loading admin profile:', dbError);
+                alert(`Unable to load admin profile: ${dbError.message}`);
+            }
+        } else if (dbProfile) {
+            profile = {
+                ...profile,
+                first_name: dbProfile.first_name || profile.first_name,
+                last_name: dbProfile.last_name || profile.last_name,
+                email: dbProfile.email || profile.email,
+                phone_number: dbProfile.phone_number || profile.phone_number,
+                address: dbProfile.address || profile.address,
+                employee_id: dbProfile.employee_id || profile.employee_id,
+                role: dbProfile.role || profile.role,
+                department: dbProfile.department || profile.department,
+                hire_date: dbProfile.hire_date || profile.hire_date,
+                avatar_url: dbProfile.avatar_url || profile.avatar_url,
+                avatar_path: dbProfile.avatar_path || profile.avatar_path
+            };
+        }
+
+        currentProfile = profile;
+        renderProfile(currentProfile, currentUser);
+        await refresh2FAStatus();
+    }
+
+    async function refresh2FAStatus() {
+        const toggleButton = document.getElementById('twofa-toggle-btn');
+        const statusText = document.getElementById('twofa-status-text');
+        currentTotpFactor = null;
+
+        try {
+            const { data, error } = await supabaseClient.auth.mfa.listFactors();
+            if (error) throw error;
+
+            const totpFactors = Array.isArray(data?.totp) ? data.totp : [];
+            currentTotpFactor = totpFactors.find((factor) => factor.status === 'verified') || null;
+
+            if (currentTotpFactor) {
+                toggleButton.textContent = 'Disable';
+                statusText.textContent = 'Two-factor authentication is enabled for your account.';
+            } else {
+                toggleButton.textContent = 'Enable';
+                statusText.textContent = 'Add an extra layer of security to your account';
+            }
+        } catch (error) {
+            console.error('2FA status error:', error);
+            toggleButton.textContent = 'Enable';
+            statusText.textContent = 'Unable to load 2FA status right now.';
+        }
+    }
+
     function editProfile() {
-        alert("✏️ Edit Profile modal would open here.");
+        if (!currentProfile) return;
+        document.getElementById('edit-first-name').value = currentProfile.first_name || '';
+        document.getElementById('edit-last-name').value = currentProfile.last_name || '';
+        document.getElementById('edit-email').value = currentProfile.email || currentUser?.email || '';
+        document.getElementById('edit-phone').value = currentProfile.phone_number || '';
+        document.getElementById('edit-address').value = currentProfile.address || '';
+        document.getElementById('edit-employee-id').value = currentProfile.employee_id || '';
+        document.getElementById('edit-role').value = currentProfile.role || 'Administrator';
+        document.getElementById('edit-department').value = currentProfile.department || '';
+        document.getElementById('edit-hire-date').value = currentProfile.hire_date || '';
+
+        const modal = document.getElementById('edit-profile-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeEditModal() {
+        const modal = document.getElementById('edit-profile-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    function closeTwoFAModal() {
+        const modal = document.getElementById('twofa-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.getElementById('twofa-code').value = '';
+        document.getElementById('twofa-qr-container').innerHTML = 'Generating QR code...';
+    }
+
+    async function saveProfile(event) {
+        event.preventDefault();
+        if (!currentUser) return;
+
+        const saveBtn = document.getElementById('save-profile-btn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+
+        const payload = {
+            first_name: document.getElementById('edit-first-name').value.trim(),
+            last_name: document.getElementById('edit-last-name').value.trim(),
+            email: document.getElementById('edit-email').value.trim(),
+            phone_number: document.getElementById('edit-phone').value.trim(),
+            address: document.getElementById('edit-address').value.trim(),
+            employee_id: document.getElementById('edit-employee-id').value.trim(),
+            role: document.getElementById('edit-role').value.trim(),
+            department: document.getElementById('edit-department').value.trim(),
+            hire_date: document.getElementById('edit-hire-date').value || null,
+            avatar_url: currentProfile?.avatar_url || '',
+            avatar_path: currentProfile?.avatar_path || ''
+        };
+
+        try {
+            const metadataUpdate = {
+                first_name: payload.first_name,
+                last_name: payload.last_name,
+                phone_number: payload.phone_number,
+                address: payload.address,
+                employee_id: payload.employee_id,
+                role: payload.role,
+                department: payload.department,
+                hire_date: payload.hire_date,
+                avatar_url: payload.avatar_url,
+                avatar_path: payload.avatar_path
+            };
+
+            const { error: authUpdateError } = await supabaseClient.auth.updateUser({
+                data: metadataUpdate
+            });
+            if (authUpdateError) throw authUpdateError;
+
+            if (adminProfilesTableExists) {
+                const { error: upsertError } = await supabaseClient
+                    .from('admin_profiles')
+                    .upsert(
+                        {
+                            id: currentUser.id,
+                            ...payload,
+                            updated_at: new Date().toISOString()
+                        },
+                        { onConflict: 'id' }
+                    );
+
+                if (upsertError) {
+                    if (isAdminProfilesMissingError(upsertError)) {
+                        adminProfilesTableExists = false;
+                        console.warn('admin_profiles table not found while saving. Stored in auth metadata only.');
+                    } else {
+                        throw upsertError;
+                    }
+                }
+            }
+
+            currentProfile = { ...payload };
+            renderProfile(currentProfile, currentUser);
+            closeEditModal();
+            alert('Profile updated successfully.');
+        } catch (error) {
+            console.error('Save profile error:', error);
+            alert(`Failed to save profile: ${error.message}`);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
+        }
     }
 
     function changePassword() {
-        alert("🔑 Change Password form would appear here.");
+        const email = currentUser?.email || '';
+        if (!email) {
+            alert('No signed-in account found.');
+            return;
+        }
+
+        // Hand off to the OTP reset page (it will send a 6-digit email OTP).
+        sessionStorage.setItem('citeflow_password_reset_email', email.toLowerCase());
+        window.location.href = `../forgot.html?email=${encodeURIComponent(email)}&autoSend=1`;
     }
 
-    function toggle2FA() {
-        alert("🔐 Two-Factor Authentication setup started.");
-    }
+    async function toggle2FA() {
+        const toggleButton = document.getElementById('twofa-toggle-btn');
+        const originalLabel = toggleButton.textContent;
+        toggleButton.disabled = true;
 
-    function logout() {
-        if (confirm("Log out from all devices?")) {
-            alert("👋 You have been logged out successfully.");
-            // window.location.href = "/";
+        try {
+            if (currentTotpFactor) {
+                if (!confirm('Disable Two-Factor Authentication for this account?')) {
+                    return;
+                }
+                const { error } = await supabaseClient.auth.mfa.unenroll({
+                    factorId: currentTotpFactor.id
+                });
+                if (error) throw error;
+                alert('Two-factor authentication has been disabled.');
+                await refresh2FAStatus();
+                return;
+            }
+
+            const { data: enrollData, error: enrollError } = await supabaseClient.auth.mfa.enroll({
+                factorType: 'totp',
+                friendlyName: 'Admin Profile TOTP'
+            });
+            if (enrollError) throw enrollError;
+
+            pendingTotpEnrollment = enrollData;
+            const { data: challengeData, error: challengeError } = await supabaseClient.auth.mfa.challenge({
+                factorId: enrollData.id
+            });
+            if (challengeError) throw challengeError;
+            pendingTotpChallenge = challengeData;
+
+            const qrContainer = document.getElementById('twofa-qr-container');
+            if (enrollData?.totp?.qr_code) {
+                qrContainer.innerHTML = enrollData.totp.qr_code;
+            } else if (enrollData?.totp?.uri) {
+                qrContainer.innerHTML = `
+                    <div class="text-center space-y-2">
+                        <p class="text-sm text-gray-600">Manual setup URI:</p>
+                        <p class="text-xs break-all text-gray-700">${enrollData.totp.uri}</p>
+                    </div>
+                `;
+            } else {
+                qrContainer.textContent = 'QR code unavailable. Please retry setup.';
+            }
+
+            const modal = document.getElementById('twofa-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        } catch (error) {
+            console.error('2FA toggle error:', error);
+            alert(`Two-factor setup failed: ${error.message}`);
+        } finally {
+            toggleButton.disabled = false;
+            toggleButton.textContent = originalLabel;
         }
     }
+
+    function sanitizeFileName(fileName) {
+        return fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    }
+
+    function isStorageBucketMissingError(error) {
+        if (!error) return false;
+        const code = String(error.code || '').toUpperCase();
+        const message = String(error.message || '').toLowerCase();
+        return (
+            code === 'PGRST205' ||
+            message.includes('bucket') && message.includes('not found') ||
+            message.includes('does not exist')
+        );
+    }
+
+    function openAvatarPicker() {
+        document.getElementById('avatar-input').click();
+    }
+
+    async function handleAvatarSelected(event) {
+        const file = event.target.files?.[0];
+        if (!file || !currentUser) return;
+
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file.');
+            event.target.value = '';
+            return;
+        }
+
+        const maxSizeBytes = 5 * 1024 * 1024;
+        if (file.size > maxSizeBytes) {
+            alert('Image size must be 5MB or less.');
+            event.target.value = '';
+            return;
+        }
+
+        const uploadBtn = document.getElementById('avatar-upload-btn');
+        const originalText = uploadBtn.textContent;
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = 'Uploading...';
+
+        try {
+            const extSafeName = sanitizeFileName(file.name);
+            const filePath = `${currentUser.id}/${Date.now()}-${extSafeName}`;
+
+            const { error: uploadError } = await supabaseClient.storage
+                .from(avatarBucketName)
+                .upload(filePath, file, { upsert: false });
+            if (uploadError) throw uploadError;
+
+            const { data: publicData } = supabaseClient.storage
+                .from(avatarBucketName)
+                .getPublicUrl(filePath);
+            const avatarUrl = publicData?.publicUrl || '';
+
+            const profileForSave = {
+                ...(currentProfile || {}),
+                avatar_url: avatarUrl,
+                avatar_path: filePath
+            };
+
+            const metadataUpdate = {
+                first_name: profileForSave.first_name || '',
+                last_name: profileForSave.last_name || '',
+                phone_number: profileForSave.phone_number || '',
+                address: profileForSave.address || '',
+                employee_id: profileForSave.employee_id || '',
+                role: profileForSave.role || 'Administrator',
+                department: profileForSave.department || '',
+                hire_date: profileForSave.hire_date || null,
+                avatar_url: avatarUrl,
+                avatar_path: filePath
+            };
+
+            const { error: authUpdateError } = await supabaseClient.auth.updateUser({
+                data: metadataUpdate
+            });
+            if (authUpdateError) throw authUpdateError;
+
+            if (adminProfilesTableExists) {
+                const { error: upsertError } = await supabaseClient
+                    .from('admin_profiles')
+                    .upsert(
+                        {
+                            id: currentUser.id,
+                            ...profileForSave,
+                            updated_at: new Date().toISOString()
+                        },
+                        { onConflict: 'id' }
+                    );
+
+                if (upsertError) {
+                    if (isAdminProfilesMissingError(upsertError)) {
+                        adminProfilesTableExists = false;
+                        console.warn('admin_profiles table not found while saving avatar. Stored in auth metadata only.');
+                    } else {
+                        throw upsertError;
+                    }
+                }
+            }
+
+            currentProfile = profileForSave;
+            renderProfile(currentProfile, currentUser);
+            alert('Profile photo uploaded successfully.');
+        } catch (error) {
+            console.error('Avatar upload error:', error);
+            if (isStorageBucketMissingError(error)) {
+                alert("Avatar upload failed: storage bucket 'avatars' is missing. Create it in Supabase Storage first.");
+            } else {
+                alert(`Avatar upload failed: ${error.message}`);
+            }
+        } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = originalText;
+            event.target.value = '';
+        }
+    }
+
+    async function logout() {
+        if (!confirm("Log out from all devices?")) return;
+        const { error } = await supabaseClient.auth.signOut();
+        if (error) {
+            alert(`Logout failed: ${error.message}`);
+            return;
+        }
+        window.location.href = '../login.html';
+    }
+
+    async function verify2FA(event) {
+        event.preventDefault();
+        if (!pendingTotpEnrollment || !pendingTotpChallenge) {
+            alert('2FA setup session expired. Please try enabling again.');
+            closeTwoFAModal();
+            return;
+        }
+
+        const code = document.getElementById('twofa-code').value.trim();
+        if (!/^\d{8}$/.test(code)) {
+            alert('Please enter a valid 8-digit authentication code.');
+            return;
+        }
+
+        const verifyButton = document.getElementById('twofa-verify-btn');
+        verifyButton.disabled = true;
+        verifyButton.textContent = 'Verifying...';
+
+        try {
+            const { error } = await supabaseClient.auth.mfa.verify({
+                factorId: pendingTotpEnrollment.id,
+                challengeId: pendingTotpChallenge.id,
+                code
+            });
+            if (error) throw error;
+
+            alert('Two-factor authentication enabled successfully.');
+            pendingTotpEnrollment = null;
+            pendingTotpChallenge = null;
+            closeTwoFAModal();
+            await refresh2FAStatus();
+        } catch (error) {
+            console.error('2FA verify error:', error);
+            alert(`Verification failed: ${error.message}`);
+        } finally {
+            verifyButton.disabled = false;
+            verifyButton.textContent = 'Verify and Enable';
+        }
+    }
+
+    document.getElementById('edit-profile-form').addEventListener('submit', saveProfile);
+    document.getElementById('twofa-verify-form').addEventListener('submit', verify2FA);
+    document.getElementById('avatar-input').addEventListener('change', handleAvatarSelected);
+    window.addEventListener('DOMContentLoaded', loadAdminProfile);
 </script>
+<script src="../shared/system-ui.js"></script>
 </body>
 </html>
