@@ -354,6 +354,7 @@ const { createClient } = supabase;
 const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 const onboardingClient = createClient(supabaseUrl, supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 let facultyData=[],filteredFaculty=[],selectedFacultyId=null,currentFaculty=null,currentEditSection='',currentStatus='Active',documents=[],researchProjects=[];
+let currentUser=null;
 const DEFAULT_PERMISSIONS=['Document Vault','Submissions','Calendar','Feedback Summary','Engagement Logs'];
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function safeDate(v){if(!v)return '-';let d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
@@ -380,7 +381,104 @@ function closeEditModal(){document.getElementById('editModal').classList.add('hi
 async function saveEditChanges(){if(!currentFaculty)return;let payload={updated_at:new Date().toISOString()};if(currentEditSection==='general'){payload.full_name=document.getElementById('edit-full-name').value.trim()||currentFaculty.name;payload.name=payload.full_name;payload.employee_id=document.getElementById('edit-employee-id').value.trim();payload.position=document.getElementById('edit-access-role').value;payload.role=payload.position;payload.department=document.getElementById('edit-department').value;payload.academic_rank=document.getElementById('edit-academic-rank').value.trim();payload.years_in_service=Number(document.getElementById('edit-years').value||0);payload.shift=document.getElementById('edit-shift').value;payload.teaching_status=document.getElementById('edit-teaching-status').value;payload.status=payload.teaching_status;payload.access_enabled=String(payload.status).toLowerCase()==='active'}else if(currentEditSection==='contract'){payload.contract_type=document.getElementById('edit-contract-type').value;payload.employment_type=document.getElementById('edit-employment-type').value;payload.start_date=document.getElementById('edit-start-date').value||null}else{payload.position=document.getElementById('edit-permission-role').value;payload.role=payload.position;payload.permissions=[...document.querySelectorAll('.permission-check input:checked')].map(i=>i.value)}let {error}=await supabaseClient.from('faculty').update(payload).eq('id',selectedFacultyId);if(error)return alert('Unable to save changes: '+error.message);closeEditModal();await logActivity('Updated','Updated faculty information for '+(payload.full_name||currentFaculty.name));await loadFacultyProfiles();let updated=facultyData.find(f=>String(f.id)===String(selectedFacultyId));if(updated){currentFaculty=updated;renderProfileHeader(updated);renderProfileInfo(updated)}}
 function openRequestModal(){if(!currentFaculty)return;document.getElementById('requestFacultyName').textContent=`Request will be sent to ${currentFaculty.name}`;document.getElementById('request-title').value='';document.getElementById('request-message').value='';document.getElementById('request-due-date').value='';document.getElementById('requestModal').classList.remove('hidden')}
 function closeRequestModal(){document.getElementById('requestModal').classList.add('hidden')}
-async function submitDocumentRequest(){if(!currentFaculty)return;let title=document.getElementById('request-title').value.trim(),message=document.getElementById('request-message').value.trim();if(!title)return alert('Please enter the document title.');let payload={faculty_id:currentFaculty.id,faculty_auth_user_id:currentFaculty.auth_user_id||currentFaculty.authUserId||null,faculty_name:currentFaculty.name,faculty_email:currentFaculty.email,request_type:document.getElementById('request-type').value,document_title:title,instructions:message,due_date:document.getElementById('request-due-date').value||null,status:'Pending',source_module:'Faculty Profiles',created_at:new Date().toISOString(),updated_at:new Date().toISOString()};let {error}=await supabaseClient.from('faculty_document_requests').insert(payload);if(error)return alert('Unable to send request. Please run the document request SQL first. '+error.message);closeRequestModal();await logActivity('Requested Document',`Requested ${title} from ${currentFaculty.name}`);alert('Document request sent. It will appear in the faculty Submissions Module when that page reads faculty_document_requests.')}
+function isSchemaColumnError(error){const msg=String(error?.message||'').toLowerCase(),code=String(error?.code||'').toUpperCase();return code==='PGRST204'||msg.includes('column')||msg.includes('schema cache')}
+function buildRequestDueAt(dateValue){if(!dateValue)return null;return new Date(`${dateValue}T17:00:00`).toISOString()}
+async function insertWorkflowDocumentRequestTask({title,message,dueAt,requestType}){
+    const taskPayload={
+        title,
+        instructions:message||`Please submit the requested document: ${title}`,
+        due_at:dueAt,
+        assigned_label:currentFaculty.name,
+        assigned_scope:'specific',
+        attachment_names:[],
+        created_by_name:'Administrator',
+        updated_at:new Date().toISOString()
+    };
+    let taskResponse=await supabaseClient.from('wf_tasks').insert(taskPayload).select('id').single();
+    if(taskResponse.error&&isSchemaColumnError(taskResponse.error)){
+        const minimalPayload={title,instructions:taskPayload.instructions,due_at:dueAt,created_by_name:'Administrator'};
+        taskResponse=await supabaseClient.from('wf_tasks').insert(minimalPayload).select('id').single();
+    }
+    if(taskResponse.error)throw taskResponse.error;
+    const taskId=taskResponse.data.id;
+    let assignmentPayload={task_id:taskId,faculty_id:currentFaculty.id,assigned_by_name:'Administrator'};
+    let assignmentResponse=await supabaseClient.from('wf_task_assignments').insert(assignmentPayload);
+    if(assignmentResponse.error&&isSchemaColumnError(assignmentResponse.error)){
+        assignmentResponse=await supabaseClient.from('wf_task_assignments').insert({task_id:taskId,faculty_id:currentFaculty.id});
+    }
+    if(assignmentResponse.error)throw assignmentResponse.error;
+    await supabaseClient.from('wf_notifications').insert({
+        faculty_id:currentFaculty.id,
+        task_id:taskId,
+        type:'task',
+        message:`New document request: ${title}`,
+        is_read:false
+    });
+    await supabaseClient.from('wf_activity_log').insert({
+        action:'Document requested',
+        actor_name:'Administrator',
+        target:`${title} - ${currentFaculty.name}`,
+        log_type:'request'
+    });
+    return taskId;
+}
+async function insertFacultyDocumentRequestRecord({title,message,dueDate,requestType,taskId}){
+    try{
+        if(!currentFaculty)return;
+        if(!currentUser){
+            try{
+                const sessionResponse=await supabaseClient.auth.getSession();
+                currentUser=sessionResponse?.data?.session?.user||null;
+            }catch(authError){
+                console.warn('Unable to read current admin session for optional request record:',authError);
+            }
+        }
+        const payload={
+            faculty_auth_user_id:currentFaculty.auth_user_id||currentFaculty.authUserId||null,
+            faculty_name:currentFaculty.name,
+            faculty_email:currentFaculty.email,
+            request_type:requestType,
+            document_title:title,
+            instructions:message,
+            due_date:dueDate||null,
+            status:'Pending',
+            source_module:'Faculty Profiles',
+            created_by:currentUser?.id||null,
+            created_by_name:'Administrator',
+            created_at:new Date().toISOString(),
+            updated_at:new Date().toISOString()
+        };
+        const response=await supabaseClient.from('faculty_document_requests').insert(payload);
+        if(response.error){
+            console.warn('faculty_document_requests insert skipped:',response.error);
+        }
+    }catch(error){
+        console.warn('Optional faculty_document_requests record skipped:',error);
+    }
+}
+async function submitDocumentRequest(){
+    if(!currentFaculty)return;
+    const title=document.getElementById('request-title').value.trim();
+    const message=document.getElementById('request-message').value.trim();
+    const dueDate=document.getElementById('request-due-date').value||'';
+    const requestType=document.getElementById('request-type').value;
+    if(!title)return alert('Please enter the document title.');
+    const buttons=[...document.querySelectorAll('#requestModal button')];
+    buttons.forEach(btn=>btn.disabled=true);
+    try{
+        const dueAt=buildRequestDueAt(dueDate);
+        const taskId=await insertWorkflowDocumentRequestTask({title,message,dueAt,requestType});
+        await insertFacultyDocumentRequestRecord({title,message,dueDate,requestType,taskId});
+        closeRequestModal();
+        await logActivity('Requested Document',`Requested ${title} from ${currentFaculty.name}`);
+        alert('Document request sent. It is now assigned to the faculty and will appear in the Submissions page.');
+    }catch(error){
+        console.error('Document request failed:',error);
+        alert('Unable to send request: '+(error.message||'Please check workflow task and assignment table schema.'));
+    }finally{
+        buttons.forEach(btn=>btn.disabled=false);
+    }
+}
 async function loadFacultyDocuments(id){let box=document.getElementById('documents-list');box.innerHTML='<div class="text-sm text-slate-500">Loading submitted documents...</div>';let {data,error}=await supabaseClient.from('faculty_documents').select('*').eq('faculty_id',id).order('created_at',{ascending:false});if(error){box.innerHTML='<div class="empty-card">No document table found yet. Connect this page to your submissions table or run the optional SQL.</div>';documents=[];return}documents=data||[];box.innerHTML=documents.length?documents.map(d=>`<div class="doc-row"><div class="flex items-center gap-3 min-w-0"><div class="doc-icon"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v6h6"/></svg></div><div class="min-w-0"><div class="font-semibold text-slate-900 truncate">${esc(d.document_name||d.title||'Submitted Document')}</div><div class="text-xs text-slate-500">${esc(d.document_type||d.type||'Document')} • ${safeDate(d.created_at||d.uploaded_at)}</div></div></div><div class="flex items-center gap-2"><span class="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 text-slate-600">${esc(d.status||'Submitted')}</span>${d.file_url?`<a href="${esc(d.file_url)}" target="_blank" class="secondary-btn">Download</a>`:''}</div></div>`).join(''):'<div class="empty-card">No submitted documents yet.</div>'}
 async function loadResearchProjects(id){let box=document.getElementById('research-list');box.innerHTML='<div class="text-sm text-slate-500">Loading research projects...</div>';let {data,error}=await supabaseClient.from('faculty_research_projects').select('*').eq('faculty_id',id).order('created_at',{ascending:false});if(error){box.innerHTML='<div class="empty-card">No research project table found yet. Connect this page to your research table or run the optional SQL.</div>';researchProjects=[];return}researchProjects=data||[];box.innerHTML=researchProjects.length?researchProjects.map(r=>`<div class="research-card"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4"><div><span class="inline-flex px-3 py-1 rounded-full text-xs font-semibold ${String(r.status).toLowerCase()==='completed'?'bg-emerald-50 text-emerald-700 border border-emerald-100':'bg-blue-50 text-blue-700 border border-blue-100'}">${esc(r.status||'Ongoing')}</span><h4 class="font-semibold text-lg text-slate-950 mt-3">${esc(r.title||'Research Project')}</h4><p class="text-sm text-slate-500 mt-1">${esc(r.description||'No description provided.')}</p></div>${String(r.status).toLowerCase()==='completed'&&r.file_url?`<a href="${esc(r.file_url)}" target="_blank" class="primary-light-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>Download File</a>`:''}</div><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5 text-sm"><div><span class="info-label">Start Date</span><strong>${safeDate(r.start_date)}</strong></div><div><span class="info-label">End Date</span><strong>${safeDate(r.end_date)}</strong></div><div><span class="info-label">Output Link</span><strong>${r.output_url?`<a class="text-[#621708] hover:underline" target="_blank" href="${esc(r.output_url)}">Open Link</a>`:'-'}</strong></div></div></div>`).join(''):'<div class="empty-card">No research projects recorded.</div>'}
 function renderPermissions(){let box=document.getElementById('permissions-list');if(!box||!currentFaculty)return;box.innerHTML=(currentFaculty.permissions||DEFAULT_PERMISSIONS).map(p=>`<div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-center gap-3"><div class="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-emerald-700"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg></div><div class="font-semibold text-sm text-slate-800">${esc(p)}</div></div>`).join('')}
@@ -388,7 +486,7 @@ function openAddFacultyModal(){document.getElementById('addFacultyModal').classL
 async function createFacultyAccount(){const btn=document.getElementById('createFacultyAccountBtn'),emailInput=document.getElementById('add-employee-id-email').value.trim(),tempPassword=document.getElementById('add-password').value.trim();if(!emailInput||!isEmail(emailInput))return alert('Please enter a valid faculty email.');if(!tempPassword||tempPassword.length<8)return alert('Please generate a valid temporary password first.');const email=emailInput.toLowerCase(),{firstName,lastName,fullName}=deriveNamePartsFromEmail(email),generatedEmployeeId=generateFacultyId(),role=document.getElementById('add-role').value,status=document.getElementById('add-status').value;btn.disabled=true;btn.textContent='Creating...';try{const sign=await onboardingClient.auth.signUp({email,password:tempPassword,options:{data:{first_name:firstName,last_name:lastName,id_number:generatedEmployeeId,full_name:fullName,role,employee_id:generatedEmployeeId,profile_completed:false,must_change_password:true}}});if(sign.error)throw sign.error;if(sign.data?.user&&Array.isArray(sign.data.user.identities)&&sign.data.user.identities.length===0)throw new Error('This email is already registered.');const userId=sign.data?.user?.id;if(!userId)throw new Error('Account created but user id was not returned.');const payload={auth_user_id:userId,name:fullName,full_name:fullName,email,existing_email:email,employee_id:generatedEmployeeId,position:role,status,department:document.getElementById('add-department').value,phone:'',profile_photo_url:null,contract_type:document.getElementById('add-contract-type').value,employment_type:document.getElementById('add-employment-type').value,start_date:document.getElementById('add-start-date').value||null,role,permissions:DEFAULT_PERMISSIONS,profile_completed:false,must_change_password:true,access_enabled:status==='Active',updated_at:new Date().toISOString()};const up=await supabaseClient.from('faculty').upsert(payload,{onConflict:'auth_user_id'});if(up.error)throw up.error;closeAddFacultyModal();clearAddFacultyForm();await loadFacultyProfiles();showFacultyCredentialsModal({facultyId:generatedEmployeeId,password:tempPassword});await logActivity('Created','Created faculty account for '+fullName)}catch(error){console.error(error);alert('Failed to create faculty account: '+error.message)}finally{await onboardingClient.auth.signOut();btn.disabled=false;btn.textContent='Create Faculty Account'}}function clearAddFacultyForm(){document.getElementById('add-employee-id-email').value='';document.getElementById('add-department').value='BSIT';document.getElementById('add-role').value='Faculty';document.getElementById('add-contract-type').value='Full-Time';document.getElementById('add-employment-type').value='Regular';document.getElementById('add-start-date').value='';document.getElementById('add-status').value='Active';generatePassword()}function showFacultyCredentialsModal(c){document.getElementById('credentialFacultyId').textContent=c.facultyId;document.getElementById('credentialPassword').textContent=c.password;document.getElementById('facultyCredentialsModal').classList.remove('hidden')}function closeFacultyCredentialsModal(){document.getElementById('facultyCredentialsModal').classList.add('hidden')}async function copyCredential(id){let t=document.getElementById(id).textContent.trim();try{await navigator.clipboard.writeText(t);alert('Copied to clipboard.')}catch(e){prompt('Copy this value:',t)}}
 async function logActivity(action,details){try{await supabaseClient.from('system_activity_logs').insert({user_name:'Administrator',user_role:'Administrator',module:'Faculty Profiles',action,details_text:details,metadata:{source:'faculty-profiles'}})}catch(e){console.warn('Activity log skipped:',e.message)}}
 function subscribeRealtime(){supabaseClient.channel('faculty-profiles-realtime').on('postgres_changes',{event:'*',schema:'public',table:'faculty'},loadFacultyProfiles).on('postgres_changes',{event:'*',schema:'public',table:'faculty_document_requests'},()=>{}).subscribe()}
-window.onload=async()=>{await loadFacultyProfiles();subscribeRealtime()};
+window.onload=async()=>{try{const sessionResponse=await supabaseClient.auth.getSession();currentUser=sessionResponse?.data?.session?.user||null}catch(e){console.warn('Admin session lookup skipped:',e)}await loadFacultyProfiles();subscribeRealtime()};
 </script>
 <script src="../shared/system-ui.js"></script>
 <style>
