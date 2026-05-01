@@ -169,6 +169,7 @@
         .action-menu { position: relative; }
         .action-dropdown { position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); min-width: 160px; z-index: 60; display: none; padding: 6px; margin-top: 4px; }
         .action-dropdown.open { display: block; }
+        .action-dropdown.open-up { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 4px; }
 
 
         /* --- Task detail page and file preview actions --- */
@@ -389,7 +390,7 @@
             </div>
 
             <!-- Submissions Table -->
-            <div class="main-surface overflow-hidden">
+            <div class="main-surface overflow-visible">
                 <table class="data-table w-full">
                     <thead>
                         <tr>
@@ -964,20 +965,20 @@ function normalizeFileRecord(file) {
 }
 
 function getFacultyById(id) {
-    return workflowState.faculty.find(f => f.id === id);
+    return workflowState.faculty.find(f => String(f.id) === String(id));
 }
 
 function getTaskById(id) {
-    return workflowState.tasks.find(t => t.id === id);
+    return workflowState.tasks.find(t => String(t.id) === String(id));
 }
 
 function getSubmission(taskId, facultyId) {
-    return workflowState.submissions.find(s => s.task_id === taskId && s.faculty_id === facultyId);
+    return workflowState.submissions.find(s => String(s.task_id) === String(taskId) && String(s.faculty_id) === String(facultyId));
 }
 
 function getSubmissionFiles(submissionId) {
     return workflowState.submissionFiles
-        .filter(f => f.submission_id === submissionId)
+        .filter(f => String(f.submission_id) === String(submissionId))
         .map(normalizeFileRecord);
 }
 
@@ -1172,6 +1173,14 @@ function filterSubmissions() {
                                 <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                 View Details
                             </div>
+                            <div class="dropdown-item" onclick="event.stopPropagation(); openEditTaskModal('${task.id}')">
+                                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                Edit
+                            </div>
+                            <div class="dropdown-item danger" onclick="event.stopPropagation(); deleteTask('${task.id}')">
+                                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                                Delete
+                            </div>
                         </div>
                     </div>
                 </td>
@@ -1182,7 +1191,7 @@ function filterSubmissions() {
 
 function getTaskSubmissionRows(taskId) {
     return allSubmissions
-        .filter(s => s.task_id === taskId)
+        .filter(s => String(s.task_id) === String(taskId))
         .sort((a, b) => {
             const aSubmitted = a.submission_id ? 0 : 1;
             const bSubmitted = b.submission_id ? 0 : 1;
@@ -1283,7 +1292,7 @@ function openTaskDetailsPage(taskId, options = {}) {
     document.getElementById('workflowMainView').classList.add('hidden');
     document.getElementById('taskDetailPage').classList.remove('hidden');
     renderTaskDetailPage(taskId, options);
-    document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
+    document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open', 'open-up'));
 
     if (options.updateHash !== false) {
         const focus = options.focusFacultyId ? `&faculty=${encodeURIComponent(options.focusFacultyId)}` : '';
@@ -1419,15 +1428,30 @@ function openTaskFromHash() {
     }
 }
 
-function toggleActionMenu(subId) {
-    const menu = document.getElementById(`action-${subId}`);
+function toggleActionMenu(taskId) {
+    document.querySelectorAll('.action-dropdown').forEach(m => {
+        if (m.id !== `action-${taskId}`) {
+            m.classList.remove('open', 'open-up');
+        }
+    });
+
+    const menu = document.getElementById(`action-${taskId}`);
+    if (!menu) return;
+
     menu.classList.toggle('open');
+
+    if (menu.classList.contains('open')) {
+        menu.classList.remove('open-up');
+        const rect = menu.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceBelow < 20) menu.classList.add('open-up');
+    }
 }
 
 // Close action menus when clicking outside
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.action-menu')) {
-        document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
+        document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open', 'open-up'));
     }
     if (!e.target.closest('.notif-bell') && !e.target.closest('.dropdown-menu')) {
         document.getElementById('notifDropdown').classList.remove('open');
@@ -1438,20 +1462,99 @@ document.addEventListener('click', function(e) {
    ASSIGN TASK MODAL
    ═══════════════════════════════════════════════════════════════ */
 async function openAssignModal() {
+    editingTaskId = null;
+
     const ws = ensureWorkflowState();
     if (!ws.faculty.length) {
         await fetchAllData();
     }
+
+    const titleEl = document.querySelector('#assignModal h2');
+    if (titleEl) titleEl.textContent = 'Assign New Task';
+    const submitBtn = document.querySelector('#assignModal .modal-footer .btn-primary');
+    if (submitBtn) {
+        submitBtn.innerHTML = `
+            <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Assign Task
+        `;
+    }
+
+    document.getElementById('taskTitle').value = '';
+    document.getElementById('taskDesc').value = '';
+    document.getElementById('dueDate').value = '';
+    document.getElementById('dueTime').value = '17:00';
+    document.getElementById('targetGroup').value = document.querySelector('#targetGroup option[value="all"]') ? 'all' : 'all_bsit';
+    const attachments = document.getElementById('taskAttachments');
+    if (attachments) attachments.value = '';
+
     renderSpecificUsers();
     toggleSpecificUsers();
     document.getElementById('assignModal').classList.add('open');
 }
 function closeAssignModal() {
     document.getElementById('assignModal').classList.remove('open');
+    editingTaskId = null;
 }
 function toggleSpecificUsers() {
     const val = document.getElementById('targetGroup').value;
     document.getElementById('specificUsersContainer').classList.toggle('hidden', val !== 'specific');
+}
+
+async function openEditTaskModal(taskId) {
+    const ws = ensureWorkflowState();
+    if (!ws.faculty.length) {
+        await fetchAllData();
+    }
+
+    const task = getTaskById(taskId);
+    if (!task) {
+        showToast('Task not found.', 'error');
+        return;
+    }
+
+    editingTaskId = taskId;
+
+    const titleEl = document.querySelector('#assignModal h2');
+    if (titleEl) titleEl.textContent = 'Edit Task';
+    const submitBtn = document.querySelector('#assignModal .modal-footer .btn-primary');
+    if (submitBtn) {
+        submitBtn.innerHTML = `
+            <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Save Changes
+        `;
+    }
+
+    document.getElementById('taskTitle').value = task.title || '';
+    document.getElementById('taskDesc').value = task.instructions || '';
+
+    const due = task.due_at ? new Date(task.due_at) : null;
+    if (due && !Number.isNaN(due.getTime())) {
+        document.getElementById('dueDate').value = due.toISOString().slice(0, 10);
+        document.getElementById('dueTime').value = due.toTimeString().slice(0, 5);
+    } else {
+        document.getElementById('dueDate').value = '';
+        document.getElementById('dueTime').value = '17:00';
+    }
+
+    const scope = task.assigned_scope || 'specific';
+    const target = document.getElementById('targetGroup');
+    target.value = target.querySelector(`option[value="${scope}"]`) ? scope : 'specific';
+
+    const attachments = document.getElementById('taskAttachments');
+    if (attachments) attachments.value = '';
+
+    renderSpecificUsers();
+    toggleSpecificUsers();
+
+    const assignedIds = workflowState.assignments
+        .filter(a => String(a.task_id) === String(taskId))
+        .map(a => String(a.faculty_id));
+
+    Array.from(document.getElementById('specificUsers').options).forEach(opt => {
+        opt.selected = assignedIds.includes(String(opt.value));
+    });
+
+    document.getElementById('assignModal').classList.add('open');
 }
 
 function createNewTask() {
@@ -1466,17 +1569,25 @@ function createNewTask() {
     if (!dueDate) { showToast('Please select a due date.', 'error'); return; }
 
     const dueAt = new Date(`${dueDate}T${dueTime || '17:00'}`).toISOString();
-    const selected = Array.from(document.getElementById('specificUsers').selectedOptions).map(o => o.value);
+    const selected = Array.from(document.getElementById('specificUsers').selectedOptions).map(o => String(o.value));
     let assigned = [];
+
     if (group === 'all_bsit') assigned = ws.faculty.filter(f => f.department_code === 'BSIT');
     if (group === 'all_bsie') assigned = ws.faculty.filter(f => f.department_code === 'BSIE');
     if (group === 'all_bit') assigned = ws.faculty.filter(f => f.department_code === 'BIT');
     if (group === 'all') assigned = ws.faculty.slice();
     if (group === 'specific') {
-        assigned = ws.faculty.filter(f => selected.includes(f.full_name));
+        assigned = ws.faculty.filter(f => selected.includes(String(f.id)));
         if (!assigned.length) { showToast('Select at least one faculty member.', 'error'); return; }
     }
-    const files = Array.from(document.getElementById('taskAttachments').files || []).map(f => f.name);
+
+    if (!assigned.length) {
+        showToast('No faculty found for the selected target group.', 'error');
+        return;
+    }
+
+    const attachmentInput = document.getElementById('taskAttachments');
+    const files = Array.from(attachmentInput?.files || []).map(f => f.name);
 
     let assignedLabel = 'Specific Faculty';
     if (group === 'all') assignedLabel = 'All Faculty';
@@ -1485,7 +1596,12 @@ function createNewTask() {
     if (group === 'all_bit') assignedLabel = 'BIT';
     if (group === 'specific') assignedLabel = `${assigned.length} specific faculty`;
 
-    upsertTaskRealtime({ title, instructions: desc, dueAt, assigned, files, assignedLabel, assignedScope: group });
+    const payload = { title, instructions: desc, dueAt, assigned, files, assignedLabel, assignedScope: group };
+    if (editingTaskId) {
+        updateTaskRealtime({ taskId: editingTaskId, ...payload });
+    } else {
+        upsertTaskRealtime(payload);
+    }
 }
 
 async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files, assignedLabel, assignedScope }) {
@@ -1521,7 +1637,7 @@ async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files,
     document.getElementById('taskTitle').value = '';
     document.getElementById('taskDesc').value = '';
     document.getElementById('dueDate').value = '';
-    document.getElementById('taskAttachments').value = '';
+    if (document.getElementById('taskAttachments')) document.getElementById('taskAttachments').value = '';
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1566,17 +1682,65 @@ function closeDeptModal() {
 /* ═══════════════════════════════════════════════════════════════
    REVIEW MODAL
    ═══════════════════════════════════════════════════════════════ */
-function openReviewModal(taskId, facultyRef) {
-    const sub = allSubmissions.find(s => s.task_id === taskId && (s.faculty_id === facultyRef || s.faculty_name === facultyRef));
+async function openReviewModal(taskId, facultyRef) {
+    const taskIdText = String(taskId);
+    const facultyRefText = String(facultyRef);
+
+    const findLocalSubmission = () => allSubmissions.find(s =>
+        String(s.task_id) === taskIdText &&
+        (
+            String(s.faculty_id) === facultyRefText ||
+            String(s.faculty_name) === facultyRefText ||
+            String(s.submission_id || '') === facultyRefText
+        )
+    );
+
+    let sub = findLocalSubmission();
+
+    // If the admin page was already open while the faculty submitted,
+    // refresh once before showing the error.
     if (!sub) {
-        showToast('Submission record not found.', 'error');
+        await fetchAllData();
+        sub = findLocalSubmission();
+    }
+
+    // Last-resort fallback: read the submission directly from Supabase.
+    if (!sub) {
+        const { data, error } = await db
+            .from('wf_submissions')
+            .select('*')
+            .eq('task_id', taskId)
+            .eq('faculty_id', facultyRef)
+            .maybeSingle();
+
+        if (!error && data) {
+            const faculty = getFacultyById(data.faculty_id) || {};
+            sub = {
+                id: `${data.task_id}|${data.faculty_id}`,
+                task_id: data.task_id,
+                faculty_id: data.faculty_id,
+                faculty_name: faculty.full_name || 'Faculty Member',
+                department_code: faculty.department_code || 'N/A',
+                submitted_at: data.submitted_at || null,
+                status: data.status || 'submitted',
+                review_remarks: data.review_remarks || '',
+                reviewed_by_name: data.reviewed_by_name || null,
+                reviewed_at: data.reviewed_at || null,
+                files: getSubmissionFiles(data.id),
+                submission_id: data.id
+            };
+        }
+    }
+
+    if (!sub) {
+        showToast('Submission record not found. Please refresh the admin page and try again.', 'error');
         return;
     }
     if (!sub.submission_id) {
         showToast('This faculty member has not submitted a file yet.', 'warn');
         return;
     }
-    activeReviewId = `${taskId}|${sub.faculty_id}`;
+    activeReviewId = `${sub.task_id}|${sub.faculty_id}`;
     const task = getTaskById(sub.task_id);
 
     document.getElementById('modalTaskTitle').textContent = task ? task.title : 'Submission Review';
@@ -1792,7 +1956,7 @@ function findFacultyByName(name) {
 
 function findLatestSubmissionForFaculty(facultyId) {
     return allSubmissions
-        .filter(s => s.faculty_id === facultyId && s.submission_id)
+        .filter(s => String(s.faculty_id) === String(facultyId) && s.submission_id)
         .sort((a, b) => new Date(b.submitted_at || 0) - new Date(a.submitted_at || 0))[0];
 }
 
@@ -1803,7 +1967,7 @@ function resolveNotificationTarget(notification) {
     let submissionId = notification.submission_id || notification.target_submission_id || notification.related_submission_id || null;
 
     if (submissionId) {
-        const sub = workflowState.submissions.find(s => s.id === submissionId);
+        const sub = workflowState.submissions.find(s => String(s.id) === String(submissionId));
         if (sub) {
             taskId = taskId || sub.task_id;
             facultyId = facultyId || sub.faculty_id;
@@ -2045,12 +2209,29 @@ function renderSpecificUsers() {
     const ws = ensureWorkflowState();
     const select = document.getElementById('specificUsers');
     const list = ws.faculty || [];
-    select.innerHTML = list.map(f => `<option value="${escapeHtml(f.full_name)}">${escapeHtml(f.full_name)} (${escapeHtml(f.department_code)})</option>`).join('');
+    if (!select) return;
+    if (!list.length) {
+        select.innerHTML = `<option disabled>No active faculty found</option>`;
+        return;
+    }
+    select.innerHTML = list.map(f => `
+        <option value="${escapeHtml(f.id)}">${escapeHtml(f.full_name)} (${escapeHtml(f.department_code)})</option>
+    `).join('');
+}
+
+function normalizeWorkflowFaculty(row) {
+    return {
+        id: row.id,
+        full_name: row.full_name || row.name || row.email || 'Unnamed Faculty',
+        department_code: row.department_code || row.department || 'N/A',
+        email: row.email || row.existing_email || '',
+        status: row.status || 'Active'
+    };
 }
 
 async function fetchAllData() {
     const [faculty, tasks, assignments, submissions, files, notifications, activity, comments, delegates] = await Promise.all([
-        db.from('wf_faculty').select('*').order('full_name'),
+        db.from('faculty').select('*').order('full_name', { ascending: true }),
         db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
         db.from('wf_task_assignments').select('*'),
         db.from('wf_submissions').select('*'),
@@ -2060,11 +2241,16 @@ async function fetchAllData() {
         db.from('wf_comments').select('*').order('created_at', { ascending: false }),
         db.from('wf_delegated_access').select('*').eq('is_active', true)
     ]);
+
     if (faculty.error || tasks.error || assignments.error || submissions.error || files.error || notifications.error || activity.error || comments.error || delegates.error) {
-        showToast('Failed to fetch realtime data. Check Supabase credentials.', 'error');
+        console.error({ faculty, tasks, assignments, submissions, files, notifications, activity, comments, delegates });
+        showToast('Unable to load workflow data. Check Supabase tables and columns.', 'error');
         return;
     }
-    workflowState.faculty = faculty.data || [];
+
+    workflowState.faculty = (faculty.data || [])
+        .map(normalizeWorkflowFaculty)
+        .filter(f => String(f.status || 'Active').toLowerCase() === 'active');
     workflowState.tasks = tasks.data || [];
     workflowState.assignments = assignments.data || [];
     workflowState.submissions = submissions.data || [];
@@ -2073,6 +2259,7 @@ async function fetchAllData() {
     workflowState.activity = activity.data || [];
     workflowState.comments = comments.data || [];
     workflowState.delegatedAccess = delegates.data || [];
+
     renderAll();
     updateNotificationBadge();
 }
@@ -2081,6 +2268,7 @@ function initRealtime() {
     if (realtimeChannel) db.removeChannel(realtimeChannel);
     realtimeChannel = db
         .channel('wf-admin-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, fetchAllData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)

@@ -345,9 +345,11 @@
     applyTheme();
     migrateLegacyFeedbackNotifications();
     document.addEventListener('DOMContentLoaded', function () {
+        // Do not inject a floating notification bell.
+        // Pages already provide their own notification UI (dropdown + sidebar badges).
         if (!PAGE_PATH.includes('/auth') && !PAGE_PATH.includes('login')) {
-            renderBell();
-            renderNotificationList();
+            // Keep data up to date for pages that read notifications from localStorage.
+            migrateLegacyFeedbackNotifications();
         }
     });
 })();
