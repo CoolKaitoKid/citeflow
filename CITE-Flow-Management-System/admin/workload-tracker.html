@@ -121,6 +121,24 @@
         .icon-btn:hover {
             background: #f8fafc;
         }
+
+        .export-btn {
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            background: #ffffff;
+            color: #334155;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .export-btn:hover {
+            background: #f8fafc;
+        }
+
     </style>
 </head>
 
@@ -289,7 +307,7 @@
                     Workload Tracker
                 </h1>
                 <p class="text-sm text-slate-500 mt-1">
-                    Realtime summary of faculty teaching, advisory, and administrative workload entries.
+                    Realtime summary of faculty teaching workload entries from faculty profiles.
                 </p>
             </header>
 
@@ -386,23 +404,40 @@
                     <div>
                         <h2 class="text-lg font-semibold text-slate-950">Faculty Workload Table</h2>
                         <p class="text-sm text-slate-500">
-                            Teaching, advisory, admin role, total load, and workload status.
+                            Photo, position, department, preparations, units, hours, sections, and student count overview.
                         </p>
                     </div>
-                    <span id="resultCount" class="text-sm text-slate-500">0 records</span>
+                    <div class="flex items-center gap-3">
+                        <span id="resultCount" class="text-sm text-slate-500">0 records</span>
+                        <div class="relative">
+                            <button onclick="toggleExportMenu()" class="export-btn" type="button">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <path d="M7 10l5 5 5-5"/>
+                                    <path d="M12 15V3"/>
+                                </svg>
+                                Export
+                            </button>
+                            <div id="exportMenu" class="hidden absolute right-0 mt-2 w-40 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-20">
+                                <button onclick="exportWorkload('pdf')" class="block w-full text-left px-4 py-3 text-sm hover:bg-slate-50">PDF</button>
+                                <button onclick="exportWorkload('excel')" class="block w-full text-left px-4 py-3 text-sm hover:bg-slate-50">Excel</button>
+                                <button onclick="exportWorkload('word')" class="block w-full text-left px-4 py-3 text-sm hover:bg-slate-50">Word</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[980px] text-sm">
+                    <table class="w-full min-w-[1100px] text-sm">
                         <thead class="bg-slate-50 text-slate-500 border-b border-slate-100">
                             <tr>
                                 <th class="py-4 px-6 text-left font-semibold">Faculty</th>
                                 <th class="py-4 px-6 text-left font-semibold">Department</th>
-                                <th class="py-4 px-6 text-center font-semibold">Teaching</th>
-                                <th class="py-4 px-6 text-center font-semibold">Advisory</th>
-                                <th class="py-4 px-6 text-center font-semibold">Admin Role</th>
-                                <th class="py-4 px-6 text-center font-semibold">Total Load</th>
-                                <th class="py-4 px-6 text-center font-semibold">Status</th>
+                                <th class="py-4 px-6 text-center font-semibold">Preparations</th>
+                                <th class="py-4 px-6 text-center font-semibold">Units</th>
+                                <th class="py-4 px-6 text-center font-semibold">Hours / Week</th>
+                                <th class="py-4 px-6 text-left font-semibold">Section</th>
+                                <th class="py-4 px-6 text-center font-semibold">Students</th>
                                 <th class="py-4 px-6 text-right font-semibold">Details</th>
                             </tr>
                         </thead>
@@ -428,17 +463,13 @@
 
 <!-- DETAILS MODAL -->
 <div id="detailsModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-50 items-center justify-center p-4">
-    <div class="bg-white rounded-[2rem] w-full max-w-4xl shadow-2xl overflow-hidden">
-
+    <div class="bg-white rounded-[2rem] w-full max-w-5xl shadow-2xl overflow-hidden">
         <div class="px-7 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
             <div>
-                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">
-                    Workload Details
-                </p>
+                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Workload Details</p>
                 <h2 id="detailName" class="text-xl font-semibold text-slate-950 mt-1"></h2>
                 <p id="detailMeta" class="text-sm text-slate-500 mt-1"></p>
             </div>
-
             <button onclick="closeDetails()" class="icon-btn" aria-label="Close details">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path d="M6 18L18 6"/>
@@ -447,21 +478,9 @@
             </button>
         </div>
 
-        <div class="p-7 grid grid-cols-1 lg:grid-cols-3 gap-5 max-h-[72vh] overflow-y-auto">
-            <div>
-                <h3 class="font-semibold text-slate-900 mb-3">Teaching Loads</h3>
-                <div id="detailTeaching" class="space-y-3"></div>
-            </div>
-
-            <div>
-                <h3 class="font-semibold text-slate-900 mb-3">Advisory Loads</h3>
-                <div id="detailAdvisory" class="space-y-3"></div>
-            </div>
-
-            <div>
-                <h3 class="font-semibold text-slate-900 mb-3">Admin Role Loads</h3>
-                <div id="detailAdmin" class="space-y-3"></div>
-            </div>
+        <div class="p-7 max-h-[72vh] overflow-y-auto">
+            <h3 class="font-semibold text-slate-900 mb-3">Uploaded Workload Schedule Details</h3>
+            <div id="detailTeaching" class="space-y-3"></div>
         </div>
     </div>
 </div>
@@ -474,9 +493,8 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey
 
 let faculties = [];
 let teachingLoads = [];
-let advisoryLoads = [];
-let adminRoleLoads = [];
 let workloadSummaries = [];
+let currentFilteredRows = [];
 
 function esc(value) {
     return String(value || '').replace(/[&<>'"]/g, char => ({
@@ -501,6 +519,61 @@ function sumUnits(items) {
     return items.reduce((total, item) => total + (Number(item.units) || 0), 0);
 }
 
+function parseScheduleEntries(value) {
+    if (Array.isArray(value)) return value;
+    if (!value) return [];
+
+    try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function getScheduleEntries(item) {
+    return parseScheduleEntries(item.schedule_entries || item.schedule_slots || item.schedules);
+}
+
+function formatSchedule(item) {
+    const schedules = getScheduleEntries(item);
+
+    if (schedules.length) {
+        return schedules
+            .map(schedule => `${schedule.day || schedule.schedule_day || 'No day'} ${schedule.start_time || ''}-${schedule.end_time || ''}`.trim())
+            .join(' / ');
+    }
+
+    return `${item.schedule_day || 'No day'} ${item.start_time || ''}-${item.end_time || ''}`.trim();
+}
+
+function sumHours(items) {
+    return items.reduce((total, item) => total + (Number(item.hours_per_week ?? item.hours ?? item.load_hours ?? item.units) || 0), 0);
+}
+
+function sumField(items, field) {
+    return items.reduce((total, item) => total + (Number(item[field]) || 0), 0);
+}
+
+function uniqueCount(items, selector) {
+    return new Set(items.map(selector).filter(Boolean)).size;
+}
+
+function getTeachingMetrics(teaching) {
+    const preparations = uniqueCount(teaching, item => item.subject_code || item.subject_title);
+    const sections = [...new Set(teaching.map(item => item.section).filter(Boolean))];
+    const totalStudents = sumField(teaching, 'total_students');
+    const regular = sumField(teaching, 'regular_students');
+    const irregular = sumField(teaching, 'irregular_students');
+    const dropped = sumField(teaching, 'dropped_students');
+    const withdrawn = sumField(teaching, 'withdrawn_students');
+    return { preparations, sections, totalStudents, regular, irregular, dropped, withdrawn, hours: sumHours(teaching) };
+}
+
+function getFacultyPosition(faculty) {
+    return faculty.position || faculty.academic_rank || faculty.role || faculty.employment_type || 'Faculty';
+}
+
 function getStatusLabel(totalLoad) {
     return totalLoad > 27 ? 'Overload' : 'Load';
 }
@@ -523,8 +596,40 @@ function workloadCard(title, meta, units) {
     `;
 }
 
+function teachingDetailCard(item) {
+    const total = Number(item.total_students) || 0;
+    const regular = Number(item.regular_students) || 0;
+    const irregular = Number(item.irregular_students) || 0;
+    const dropped = Number(item.dropped_students) || 0;
+    const withdrawn = Number(item.withdrawn_students) || 0;
+    const hours = Number(item.hours_per_week ?? item.hours ?? item.load_hours ?? item.units) || 0;
+    return `
+        <div class="border border-slate-200 rounded-2xl p-4 bg-white">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="font-semibold text-slate-900">${esc(item.subject_code)} - ${esc(item.subject_title)}</div>
+                    <div class="text-xs text-slate-500 mt-1">${esc(item.section || 'No section')} • ${esc(formatSchedule(item))} • ${esc(item.room || 'TBA')}</div>
+                </div>
+                <div class="text-right text-sm font-semibold text-[#621708]">${Number(item.units) || 0} units<br><span class="text-xs text-slate-500 font-medium">${hours} hrs/week</span></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-4 text-sm">
+                <div class="rounded-xl bg-slate-50 p-3"><div class="text-xs text-slate-500">Semester</div><div class="font-semibold text-slate-900">${esc(item.semester || '—')}</div></div>
+                <div class="rounded-xl bg-slate-50 p-3"><div class="text-xs text-slate-500">Academic Year</div><div class="font-semibold text-slate-900">${esc(item.academic_year || '—')}</div></div>
+                <div class="rounded-xl bg-slate-50 p-3"><div class="text-xs text-slate-500">Remarks</div><div class="font-semibold text-slate-900">${esc(item.remarks || '—')}</div></div>
+            </div>
+            <div class="grid grid-cols-5 gap-2 mt-4 text-center">
+                <div class="rounded-xl bg-slate-50 p-3"><div class="text-xs text-slate-500">Total</div><div class="font-semibold text-slate-900">${total}</div></div>
+                <div class="rounded-xl bg-emerald-50 p-3"><div class="text-xs text-emerald-700">Regular</div><div class="font-semibold text-emerald-700">${regular}</div></div>
+                <div class="rounded-xl bg-blue-50 p-3"><div class="text-xs text-blue-700">Irregular</div><div class="font-semibold text-blue-700">${irregular}</div></div>
+                <div class="rounded-xl bg-red-50 p-3"><div class="text-xs text-red-700">Dropped</div><div class="font-semibold text-red-700">${dropped}</div></div>
+                <div class="rounded-xl bg-amber-50 p-3"><div class="text-xs text-amber-700">Withdrawn</div><div class="font-semibold text-amber-700">${withdrawn}</div></div>
+            </div>
+        </div>
+    `;
+}
+
 async function loadAllWorkloads() {
-    const [facultyResponse, teachingResponse, advisoryResponse, adminRoleResponse] = await Promise.all([
+    const [facultyResponse, teachingResponse] = await Promise.all([
         supabaseClient
             .from('faculty')
             .select('*')
@@ -532,16 +637,6 @@ async function loadAllWorkloads() {
 
         supabaseClient
             .from('faculty_teaching_loads')
-            .select('*')
-            .neq('status', 'Archived'),
-
-        supabaseClient
-            .from('faculty_advisory_loads')
-            .select('*')
-            .neq('status', 'Archived'),
-
-        supabaseClient
-            .from('faculty_admin_role_loads')
             .select('*')
             .neq('status', 'Archived')
     ]);
@@ -560,71 +655,50 @@ async function loadAllWorkloads() {
         teachingLoads = teachingResponse.data || [];
     }
 
-    if (advisoryResponse.error) {
-        console.error('Advisory load error:', advisoryResponse.error);
-        advisoryLoads = [];
-    } else {
-        advisoryLoads = advisoryResponse.data || [];
-    }
-
-    if (adminRoleResponse.error) {
-        console.error('Admin role load error:', adminRoleResponse.error);
-        adminRoleLoads = [];
-    } else {
-        adminRoleLoads = adminRoleResponse.data || [];
-    }
-
     buildWorkloadSummaries();
     populateDepartmentFilter();
     applyFilters();
 }
 
 function buildWorkloadSummaries() {
-    const facultyIds = new Set([
-        ...teachingLoads,
-        ...advisoryLoads,
-        ...adminRoleLoads
-    ].map(item => String(item.faculty_id)));
-
-    workloadSummaries = [...facultyIds].map(facultyId => {
-        const faculty = faculties.find(item => String(item.id) === facultyId) || {};
-
+    workloadSummaries = faculties.map(faculty => {
+        const facultyId = String(faculty.id);
         const teaching = teachingLoads.filter(item => String(item.faculty_id) === facultyId);
-        const advisory = advisoryLoads.filter(item => String(item.faculty_id) === facultyId);
-        const adminRoles = adminRoleLoads.filter(item => String(item.faculty_id) === facultyId);
 
         const facultyName =
             faculty.full_name ||
             faculty.name ||
+            faculty.email ||
             teaching[0]?.faculty_name ||
-            advisory[0]?.faculty_name ||
-            adminRoles[0]?.faculty_name ||
             'Unknown Faculty';
 
         const department =
             faculty.department ||
+            faculty.department_code ||
             teaching[0]?.department ||
-            advisory[0]?.department ||
-            adminRoles[0]?.department ||
             'N/A';
 
         const teachingTotal = sumUnits(teaching);
-        const advisoryTotal = sumUnits(advisory);
-        const adminRoleTotal = sumUnits(adminRoles);
-        const totalLoad = teachingTotal + advisoryTotal + adminRoleTotal;
+        const totalLoad = teachingTotal;
+        const metrics = getTeachingMetrics(teaching);
 
         return {
             facultyId,
             facultyName,
+            position: getFacultyPosition(faculty),
             department,
             photoUrl: faculty.profile_photo_url || faculty.avatar_url || faculty.photo_url || faculty.image_url || '',
             teaching,
-            advisory,
-            adminRoles,
             teachingTotal,
-            advisoryTotal,
-            adminRoleTotal,
-            totalLoad
+            totalLoad,
+            preparations: metrics.preparations,
+            sections: metrics.sections,
+            totalStudents: metrics.totalStudents,
+            regularStudents: metrics.regular,
+            irregularStudents: metrics.irregular,
+            droppedStudents: metrics.dropped,
+            withdrawnStudents: metrics.withdrawn,
+            hoursPerWeek: metrics.hours
         };
     });
 }
@@ -662,39 +736,40 @@ function applyFilters() {
     const filtered = workloadSummaries
         .map(summary => {
             const teaching = filterBySemester(summary.teaching, semester);
-            const advisory = filterBySemester(summary.advisory, semester);
-            const adminRoles = filterBySemester(summary.adminRoles, semester);
 
             const teachingTotal = sumUnits(teaching);
-            const advisoryTotal = sumUnits(advisory);
-            const adminRoleTotal = sumUnits(adminRoles);
-            const totalLoad = teachingTotal + advisoryTotal + adminRoleTotal;
+            const totalLoad = teachingTotal;
+            const metrics = getTeachingMetrics(teaching);
 
             return {
                 ...summary,
                 teaching,
-                advisory,
-                adminRoles,
                 teachingTotal,
-                advisoryTotal,
-                adminRoleTotal,
-                totalLoad
+                totalLoad,
+                preparations: metrics.preparations,
+                sections: metrics.sections,
+                totalStudents: metrics.totalStudents,
+                regularStudents: metrics.regular,
+                irregularStudents: metrics.irregular,
+                droppedStudents: metrics.dropped,
+                withdrawnStudents: metrics.withdrawn,
+                hoursPerWeek: metrics.hours
             };
         })
         .filter(summary => {
             const haystack = [
                 summary.facultyName,
                 summary.department,
-                ...summary.teaching.map(item => `${item.subject_code} ${item.subject_title} ${item.section}`)
+                ...summary.teaching.map(item => `${item.subject_code} ${item.subject_title} ${item.section} ${formatSchedule(item)}`)
             ].join(' ').toLowerCase();
 
             return (
                 (!query || haystack.includes(query)) &&
-                (!department || summary.department === department) &&
-                summary.totalLoad > 0
+                (!department || summary.department === department)
             );
         });
 
+    currentFilteredRows = filtered;
     renderStats(filtered);
     renderTable(filtered);
 }
@@ -723,7 +798,7 @@ function renderTable(rows) {
         <tr class="hover:bg-slate-50 transition">
             <td class="py-4 px-6">
                 <div class="flex items-center gap-3">
-                    <div class="avatar w-10 h-10 rounded-2xl text-sm font-semibold">
+                    <div class="avatar w-11 h-11 rounded-2xl text-sm font-semibold">
                         ${
                             summary.photoUrl
                                 ? `<img src="${esc(summary.photoUrl)}" alt="${esc(summary.facultyName)}">`
@@ -732,17 +807,17 @@ function renderTable(rows) {
                     </div>
                     <div>
                         <div class="font-semibold text-slate-900">${esc(summary.facultyName)}</div>
-                        <div class="text-xs text-slate-500">Faculty</div>
+                        <div class="text-xs text-slate-500">${esc(summary.position)}</div>
                     </div>
                 </div>
             </td>
 
             <td class="py-4 px-6 text-slate-600">${esc(summary.department)}</td>
+            <td class="py-4 px-6 text-center font-semibold">${summary.preparations}</td>
             <td class="py-4 px-6 text-center font-semibold">${summary.teachingTotal}</td>
-            <td class="py-4 px-6 text-center font-semibold">${summary.advisoryTotal}</td>
-            <td class="py-4 px-6 text-center font-semibold">${summary.adminRoleTotal}</td>
-            <td class="py-4 px-6 text-center font-semibold text-[#621708]">${summary.totalLoad}</td>
-            <td class="py-4 px-6 text-center">${statusBadge(summary.totalLoad)}</td>
+            <td class="py-4 px-6 text-center font-semibold">${summary.hoursPerWeek}</td>
+            <td class="py-4 px-6 text-slate-600">${summary.sections.length ? esc(summary.sections.join(', ')) : '—'}</td>
+            <td class="py-4 px-6 text-center font-semibold text-[#621708]">${summary.totalStudents}</td>
 
             <td class="py-4 px-6 text-right">
                 <button onclick="showDetails('${summary.facultyId}')"
@@ -755,53 +830,145 @@ function renderTable(rows) {
     `).join('');
 }
 
-function showDetails(facultyId) {
+async function showDetails(facultyId) {
     const semester = document.getElementById('semesterFilter').value;
     const summary = workloadSummaries.find(item => String(item.facultyId) === String(facultyId));
 
-    if (!summary) return;
-
-    const teaching = filterBySemester(summary.teaching, semester);
-    const advisory = filterBySemester(summary.advisory, semester);
-    const adminRoles = filterBySemester(summary.adminRoles, semester);
-
-    const totalLoad = sumUnits(teaching) + sumUnits(advisory) + sumUnits(adminRoles);
+    if (!summary) {
+        alert('Faculty record was not found. Please reload the page.');
+        return;
+    }
 
     document.getElementById('detailName').textContent = summary.facultyName;
-    document.getElementById('detailMeta').textContent =
-        `${summary.department} • Total load ${totalLoad} units • ${getStatusLabel(totalLoad)}`;
-
-    document.getElementById('detailTeaching').innerHTML = teaching.length
-        ? teaching.map(item => workloadCard(
-            `${item.subject_code} - ${item.subject_title}`,
-            `${item.section} • ${item.schedule_day} ${item.start_time || ''}-${item.end_time || ''} • ${item.room || 'TBA'}`,
-            item.units
-        )).join('')
-        : '<div class="text-sm text-slate-500">No teaching loads.</div>';
-
-    document.getElementById('detailAdvisory').innerHTML = advisory.length
-        ? advisory.map(item => workloadCard(
-            item.advisory_type,
-            `${item.program_or_section || 'No section'} • ${item.description || ''}`,
-            item.units
-        )).join('')
-        : '<div class="text-sm text-slate-500">No advisory loads.</div>';
-
-    document.getElementById('detailAdmin').innerHTML = adminRoles.length
-        ? adminRoles.map(item => workloadCard(
-            item.role_title,
-            item.description || 'No description provided',
-            item.units
-        )).join('')
-        : '<div class="text-sm text-slate-500">No admin role loads.</div>';
-
+    document.getElementById('detailMeta').textContent = 'Loading workload details...';
+    document.getElementById('detailTeaching').innerHTML = '<div class="text-sm text-slate-500">Fetching uploaded workload schedules...</div>';
     document.getElementById('detailsModal').classList.remove('hidden');
     document.getElementById('detailsModal').classList.add('flex');
+
+    const { data, error } = await supabaseClient
+        .from('faculty_teaching_loads')
+        .select('*')
+        .eq('faculty_id', facultyId)
+        .neq('status', 'Archived')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Workload details error:', error);
+        document.getElementById('detailMeta').textContent = `${summary.position} • ${summary.department}`;
+        document.getElementById('detailTeaching').innerHTML = `<div class="text-sm text-red-600">Unable to fetch workload details: ${esc(error.message)}</div>`;
+        return;
+    }
+
+    const teaching = filterBySemester(data || [], semester);
+    const metrics = getTeachingMetrics(teaching);
+
+    document.getElementById('detailMeta').textContent =
+        `${summary.position} • ${summary.department} • ${metrics.preparations} preparations • ${sumUnits(teaching)} units • ${metrics.hours} hours/week`;
+
+    document.getElementById('detailTeaching').innerHTML = teaching.length
+        ? teaching.map(item => teachingDetailCard(item)).join('')
+        : '<div class="text-sm text-slate-500">No uploaded workload schedules found for this faculty.</div>';
 }
 
 function closeDetails() {
     document.getElementById('detailsModal').classList.add('hidden');
     document.getElementById('detailsModal').classList.remove('flex');
+}
+
+
+function toggleExportMenu() {
+    document.getElementById('exportMenu')?.classList.toggle('hidden');
+}
+
+function closeExportMenu() {
+    document.getElementById('exportMenu')?.classList.add('hidden');
+}
+
+function buildExportRows() {
+    return (currentFilteredRows || []).map(row => ({
+        Faculty: row.facultyName,
+        Position: row.position,
+        Department: row.department,
+        Preparations: row.preparations,
+        Units: row.teachingTotal,
+        'Hours / Week': row.hoursPerWeek,
+        Sections: row.sections.length ? row.sections.join(', ') : '',
+        Students: row.totalStudents,
+        Regular: row.regularStudents,
+        Irregular: row.irregularStudents,
+        Dropped: row.droppedStudents,
+        Withdrawn: row.withdrawnStudents
+    }));
+}
+
+function exportTableHtml(title) {
+    const rows = buildExportRows();
+    const headers = Object.keys(rows[0] || {
+        Faculty: '', Position: '', Department: '', Preparations: '', Units: '', 'Hours / Week': '', Sections: '', Students: '', Regular: '', Irregular: '', Dropped: '', Withdrawn: ''
+    });
+
+    const body = rows.map(row => `
+        <tr>${headers.map(header => `<td>${esc(row[header])}</td>`).join('')}</tr>
+    `).join('');
+
+    return `
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; color: #111827; }
+                h1 { font-size: 20px; }
+                table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
+                th { background: #f3f4f6; }
+            </style>
+        </head>
+        <body>
+            <h1>${title}</h1>
+            <p>Generated from CiteFlow Workload Tracker.</p>
+            <table>
+                <thead><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr></thead>
+                <tbody>${body || `<tr><td colspan="${headers.length}">No records found.</td></tr>`}</tbody>
+            </table>
+        </body>
+        </html>
+    `;
+}
+
+function downloadTextFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function exportWorkload(type) {
+    closeExportMenu();
+    const title = 'CiteFlow Faculty Workload Report';
+    const html = exportTableHtml(title);
+
+    if (type === 'pdf') {
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        return;
+    }
+
+    if (type === 'excel') {
+        downloadTextFile('citeflow-workload-report.xls', html, 'application/vnd.ms-excel;charset=utf-8');
+        return;
+    }
+
+    if (type === 'word') {
+        downloadTextFile('citeflow-workload-report.doc', html, 'application/msword;charset=utf-8');
+    }
 }
 
 function subscribeRealtime() {
@@ -811,16 +978,6 @@ function subscribeRealtime() {
             event: '*',
             schema: 'public',
             table: 'faculty_teaching_loads'
-        }, loadAllWorkloads)
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'faculty_advisory_loads'
-        }, loadAllWorkloads)
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'faculty_admin_role_loads'
         }, loadAllWorkloads)
         .on('postgres_changes', {
             event: '*',

@@ -1,27 +1,8 @@
 /*
   engagement-logger.js
   Add this file to every CITE-Flow page after Supabase is initialized.
-  It logs page actions into public.engagement_logs so engagement-logs.html can display them in realtime.
-
-  Required on each page before this file:
-    window.supabaseClient = supabase.createClient(supabaseUrl, supabaseAnonKey);
-
-  Quick examples:
-    EngagementLogger.logDownload({ facultyName: 'Maria Santos', department: 'BSIT Department', fileName: 'Seminar Guide.pdf' });
-    EngagementLogger.logFeedbackSummary({ facultyName: 'Juan Cruz', department: 'BSIE Department', eventName: 'Curriculum Innovation Seminar', averageRating: '4.7 / 5' });
-    EngagementLogger.logProfileUpdate({ facultyName: 'Ana Reyes', department: 'BIT Department', fieldsUpdated: ['Contact Number', 'Research Interests'] });
-
-  You can also add attributes to any button/link:
-    <button
-      data-engagement-log
-      data-activity-type="Download"
-      data-activity-title="Downloaded seminar guide"
-      data-faculty-name="Maria Santos"
-      data-department="BSIT Department"
-      data-description="Downloaded Seminar Guide.pdf from Document Vault"
-      data-source-module="Document Vault">
-      Download
-    </button>
+  Required before this file:
+  window.supabaseClient = supabase.createClient(supabaseUrl, supabaseAnonKey);
 */
 
 (function () {
@@ -35,10 +16,6 @@
 
     function getClient() {
         if (window.supabaseClient) return window.supabaseClient;
-        if (window.supabase && window.CITE_SUPABASE_URL && window.CITE_SUPABASE_ANON_KEY) {
-            window.supabaseClient = window.supabase.createClient(window.CITE_SUPABASE_URL, window.CITE_SUPABASE_ANON_KEY);
-            return window.supabaseClient;
-        }
         console.warn('EngagementLogger: Supabase client is not available.');
         return null;
     }
@@ -56,6 +33,7 @@
         try {
             const { data } = await client.auth.getUser();
             const user = data?.user;
+
             if (!user) return { id: null, name: 'System' };
 
             const meta = user.user_metadata || {};
@@ -73,9 +51,7 @@
     function asDetails(details) {
         if (!details) return [];
 
-        if (Array.isArray(details)) {
-            return details;
-        }
+        if (Array.isArray(details)) return details;
 
         if (typeof details === 'object') {
             return Object.entries(details).map(([label, value]) => ({
@@ -84,12 +60,7 @@
             }));
         }
 
-        return [
-            {
-                label: 'Details',
-                value: String(details)
-            }
-        ];
+        return [{ label: 'Details', value: String(details) }];
     }
 
     async function logActivity(payload) {
@@ -100,7 +71,6 @@
         }
 
         const actor = await getCurrentActor(client);
-        const activityAt = payload.activityAt || payload.activity_at || new Date().toISOString();
 
         const record = {
             faculty_id: payload.facultyId || payload.faculty_id || null,
@@ -111,15 +81,32 @@
                 actor.name ||
                 'Unknown Faculty',
             department: payload.department || null,
-            activity_type: payload.activityType || payload.activity_type || DEFAULT_TYPES.system,
-            activity_title: payload.activityTitle || payload.activity_title || 'Recorded activity',
-            description: payload.description || 'Activity recorded from ' + pageName() + '.',
-            source_module: payload.sourceModule || payload.source_module || pageName(),
-            activity_at: activityAt,
+            activity_type:
+                payload.activityType ||
+                payload.activity_type ||
+                DEFAULT_TYPES.system,
+            activity_title:
+                payload.activityTitle ||
+                payload.activity_title ||
+                'Recorded activity',
+            description:
+                payload.description ||
+                'Activity recorded from ' + pageName() + '.',
+            source_module:
+                payload.sourceModule ||
+                payload.source_module ||
+                pageName(),
+            activity_at:
+                payload.activityAt ||
+                payload.activity_at ||
+                new Date().toISOString(),
             status: payload.status || 'Completed',
             details: asDetails(payload.details),
             created_by: payload.createdBy || payload.created_by || actor.id,
-            created_by_name: payload.createdByName || payload.created_by_name || actor.name
+            created_by_name:
+                payload.createdByName ||
+                payload.created_by_name ||
+                actor.name
         };
 
         const { data, error } = await client
@@ -209,7 +196,9 @@
             activityTitle: 'Updated faculty profile information',
             description:
                 description ||
-                'Updated faculty profile information' + (fields ? ': ' + fields : '') + '.',
+                'Updated faculty profile information' +
+                    (fields ? ': ' + fields : '') +
+                    '.',
             sourceModule,
             details:
                 details || {
@@ -228,16 +217,13 @@
             sourceModule: element.dataset.sourceModule,
             status: element.dataset.status,
             details: element.dataset.details
-                ? {
-                      Details: element.dataset.details
-                  }
+                ? { Details: element.dataset.details }
                 : undefined
         };
     }
 
     document.addEventListener('click', function (event) {
         const target = event.target.closest('[data-engagement-log]');
-
         if (!target) return;
 
         const payload = readDatasetLog(target);

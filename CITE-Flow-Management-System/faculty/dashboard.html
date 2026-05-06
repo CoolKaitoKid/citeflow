@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - CITE-Flow</title>
+    <title>Faculty Dashboard - CITE-Flow</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
         * { font-family: 'Inter', sans-serif; }
-        
+
         .sidebar { 
             background-color: #621708; 
             width: 280px;
@@ -18,9 +21,11 @@
         .nav-item { 
             transition: all 0.3s ease; 
         }
+
         .nav-item:hover { 
             background-color: #8c2a10; 
         }
+
         .nav-item.active { 
             background-color: #8c2a10; 
             border-left: 4px solid #f5e8c7; 
@@ -39,6 +44,7 @@
         .sidebar-scroll::-webkit-scrollbar { 
             width: 4px; 
         }
+
         .sidebar-scroll::-webkit-scrollbar-thumb { 
             background-color: rgba(255,255,255,0.35); 
             border-radius: 20px; 
@@ -54,228 +60,684 @@
             stroke: currentColor;
             stroke-width: 2.25;
         }
+
+        .dashboard-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 26px;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.05);
+        }
+
+        .metric-card {
+            border-top: 3px solid var(--metric-accent);
+        }
+
+        .metric-1 { --metric-accent: #f59eac; }
+        .metric-2 { --metric-accent: #7dd3fc; }
+        .metric-3 { --metric-accent: #facc15; }
+        .metric-4 { --metric-accent: #c4b5fd; }
+
+        .metric-icon {
+            width: 56px;
+            height: 56px;
+            min-width: 56px;
+            min-height: 56px;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            color: #475569;
+            position: relative;
+        }
+
+        .metric-icon::after {
+            content: '';
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 9px;
+            height: 9px;
+            border-radius: 9999px;
+            background: var(--metric-accent);
+            box-shadow: 0 0 0 3px #ffffff;
+        }
+
+        .primary-btn {
+            background: #621708;
+            color: #ffffff;
+            border-radius: 18px;
+            padding: 13px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .primary-btn:hover {
+            background: #8c2a10;
+            transform: translateY(-1px);
+        }
+
+        .secondary-btn {
+            background: #ffffff;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            border-radius: 18px;
+            padding: 13px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .secondary-btn:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .status-pending {
+            background: #fff7ed;
+            color: #c2410c;
+            border: 1px solid #fed7aa;
+        }
+
+        .status-approved {
+            background: #ecfdf5;
+            color: #047857;
+            border: 1px solid #a7f3d0;
+        }
+
+        .status-review {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+
+        .status-completed {
+            background: #f0fdf4;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: -7px;
+            right: -7px;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 6px;
+            border-radius: 9999px;
+            background: #dc2626;
+            color: white;
+            font-size: 11px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 3px solid #ffffff;
+        }
     </style>
 </head>
-<body class="bg-gray-50">
+
+<body class="bg-slate-50">
 
 <div class="flex h-screen overflow-hidden">
 
-    <!-- SIDEBAR - Improved Navigation -->
+    <!-- SIDEBAR -->
     <div class="sidebar text-white flex flex-col h-full">
 
-        <!-- CTU Logo -->
         <div onclick="window.location.href='dashboard.html'" 
              class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" 
-                 alt="CTU Logo" 
-                 class="h-16 w-auto mb-3">
+            <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3">
             <div class="text-center">
                 <div class="font-semibold text-base leading-tight">College of Technology</div>
                 <div class="font-semibold text-base leading-tight">and Engineering</div>
             </div>
         </div>
 
-        <!-- Navigation -->
         <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
 
-            <!-- DOCUMENT MANAGEMENT -->
             <div>
                 <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
+
                 <div onclick="window.location.href='document.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 2v6h6"/>
+                        <path d="M16 13H8"/>
+                        <path d="M16 17H8"/>
+                        <path d="M10 9H8"/>
+                    </svg>
                     Document Vault
                 </div>
+
                 <div onclick="window.location.href='submissions.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24">
+                        <path d="M12 3v18"/>
+                        <path d="M4 8l8-5 8 5"/>
+                        <path d="M4 16l8 5 8-5"/>
+                    </svg>
                     Submissions
                 </div>
+
                 <div onclick="window.location.href='status-tracking.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9-6-18-3 9H2"/></svg>
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24">
+                        <path d="M22 12h-4l-3 9-6-18-3 9H2"/>
+                    </svg>
                     Submission Status
                 </div>
             </div>
 
-            <!-- EVENTS -->
             <div>
                 <div class="section-header text-white/70">EVENTS</div>
+
                 <div onclick="window.location.href='calendar.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/>
+                        <line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
                     Calendar
                 </div>
             </div>
 
-            <!-- SYSTEM -->
             <div>
                 <div class="section-header text-white/70">SYSTEM</div>
+
                 <div onclick="window.location.href='system-settings.html'" 
                      class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82"/>
+                        <path d="M4.6 9a1.65 1.65 0 0 0-.33-1.82"/>
+                    </svg>
                     System Settings
                 </div>
             </div>
-
         </div>
 
         <!-- Bottom Profile -->
         <div onclick="window.location.href='faculty-profile.html'" 
              class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
+            <div class="w-10 h-10 bg-white rounded-2xl overflow-hidden flex items-center justify-center text-[#621708]">
+                <img id="sidebarAvatar" src="" alt="Faculty profile" class="hidden w-full h-full object-cover">
+                <svg id="sidebarAvatarFallback" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                </svg>
+            </div>
+
             <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Faculty Member</div>
+                <div id="sidebarName" class="font-semibold text-sm truncate">Loading...</div>
+                <div id="sidebarRole" class="text-xs text-white/70">Faculty Member</div>
             </div>
         </div>
-
     </div>
 
-    <!-- MAIN FACULTY DASHBOARD CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8">
-        <div class="max-w-6xl mx-auto">
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 overflow-y-auto bg-[#f7f8fc]">
+        <div class="max-w-[1500px] mx-auto px-8 py-8">
+
             <!-- Header -->
-            <div class="flex items-center justify-between mb-8">
-                <div class="flex items-center gap-x-4">
-                    <div class="text-4xl">📊</div>
-                    <div>
-                        <h1 class="text-3xl font-semibold text-gray-900">Dashboard</h1>
-                        <p class="text-gray-500">Welcome back, Maria Santos</p>
-                    </div>
-                </div>
-                <div class="text-sm text-gray-500">Academic Year 2025-2026 • First Semester</div>
-            </div>
-
-            <!-- KPI Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                <div class="bg-white rounded-3xl p-6 card-shadow">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <div class="text-sm text-gray-500">Pending Submissions</div>
-                            <div class="text-5xl font-semibold text-gray-900 mt-2">3</div>
-                        </div>
-                        <div class="w-10 h-10 bg-blue-100 rounded-2xl flex items-center justify-center text-2xl">📄</div>
-                    </div>
+            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-8">
+                <div>
+                    <p class="text-xs font-semibold tracking-[0.25em] text-[#621708] uppercase">
+                        Dashboard Module
+                    </p>
+                    <h1 class="text-[2rem] font-bold text-slate-950 mt-2">
+                        Welcome back, <span id="welcomeName">Faculty</span>
+                    </h1>
+                    <p id="academicPeriodText" class="text-sm text-slate-500 mt-1">
+                        Academic Year 2025-2026 • First Semester
+                    </p>
                 </div>
 
-                <div class="bg-white rounded-3xl p-6 card-shadow">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <div class="text-sm text-gray-500">Approved</div>
-                            <div class="text-5xl font-semibold text-gray-900 mt-2">1</div>
-                        </div>
-                        <div class="w-10 h-10 bg-emerald-100 rounded-2xl flex items-center justify-center text-2xl">✅</div>
-                    </div>
-                </div>
+                <button onclick="window.location.href='notifications.html'" 
+                        class="relative secondary-btn">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                    Notifications
+                    <span id="notificationBadge" class="notification-badge hidden">0</span>
+                </button>
+            </header>
 
-                <div class="bg-white rounded-3xl p-6 card-shadow">
-                    <div class="flex justify-between items-start">
+            <!-- Metrics -->
+            <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-7">
+                <div class="dashboard-card metric-card metric-1 p-6">
+                    <div class="flex items-center justify-between gap-4">
                         <div>
-                            <div class="text-sm text-gray-500">Under Review</div>
-                            <div class="text-5xl font-semibold text-gray-900 mt-2">1</div>
+                            <p class="text-sm font-semibold text-slate-500">Pending Submissions</p>
+                            <p id="pendingCount" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p class="text-xs text-slate-500 mt-2">Awaiting completion</p>
                         </div>
-                        <div class="w-10 h-10 bg-amber-100 rounded-2xl flex items-center justify-center text-2xl">⏳</div>
-                    </div>
-                </div>
-
-                <div class="bg-white rounded-3xl p-6 card-shadow">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <div class="text-sm text-gray-500">Completed</div>
-                            <div class="text-5xl font-semibold text-gray-900 mt-2">3</div>
-                        </div>
-                        <div class="w-10 h-10 bg-green-100 rounded-2xl flex items-center justify-center text-2xl">🏆</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Submissions -->
-            <div class="bg-white rounded-3xl p-8 card-shadow mb-8">
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-xl font-semibold">Recent Submissions</h2>
-                    <a href="submissions.html" class="text-[#621708] hover:underline text-sm font-medium">View all →</a>
-                </div>
-
-                <div class="space-y-5">
-                    <div class="flex justify-between items-center border-b pb-5">
-                        <div>
-                            <div class="font-medium">Research Paper Submission</div>
-                            <div class="text-sm text-gray-500">Submit your latest research paper for peer review</div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-500">Due: 2026-03-30</div>
-                            <span class="inline-block px-4 py-1 text-xs bg-yellow-100 text-yellow-700 rounded-2xl mt-2">Pending</span>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-between items-center border-b pb-5">
-                        <div>
-                            <div class="font-medium">Course Material Update</div>
-                            <div class="text-sm text-gray-500">Update course syllabus and materials for the new semester</div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-500">Due: 2026-04-15</div>
-                            <span class="inline-block px-4 py-1 text-xs bg-blue-100 text-blue-700 rounded-2xl mt-2">Submitted</span>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <div class="font-medium">Annual Performance Report</div>
-                            <div class="text-sm text-gray-500">Submit your annual performance and achievements report</div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-500">Due: 2026-03-01</div>
-                            <span class="inline-block px-4 py-1 text-xs bg-emerald-100 text-emerald-700 rounded-2xl mt-2">Approved</span>
+                        <div class="metric-icon">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1">
+                                <path d="M12 8v4l3 3"/>
+                                <circle cx="12" cy="12" r="9"/>
+                            </svg>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Quick Actions -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div onclick="goToProfile()" 
-                     class="bg-white rounded-3xl p-8 card-shadow hover:shadow-xl transition-all cursor-pointer">
-                    <div class="flex items-center justify-between">
+                <div class="dashboard-card metric-card metric-2 p-6">
+                    <div class="flex items-center justify-between gap-4">
                         <div>
-                            <h3 class="font-semibold text-lg">Complete Your Profile</h3>
-                            <p class="text-sm text-gray-500 mt-2">Add your academic credentials and personal information</p>
+                            <p class="text-sm font-semibold text-slate-500">Approved</p>
+                            <p id="approvedCount" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p class="text-xs text-emerald-600 mt-2">Approved records</p>
                         </div>
-                        <div class="text-4xl">📋</div>
+                        <div class="metric-icon">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1">
+                                <path d="m5 12 5 5L20 7"/>
+                            </svg>
+                        </div>
                     </div>
-                    <button class="mt-6 px-6 py-3 bg-[#621708] text-white rounded-2xl text-sm font-medium">
-                        Go To Profile
-                    </button>
                 </div>
 
-                <div onclick="viewStatus()" 
-                     class="bg-white rounded-3xl p-8 card-shadow hover:shadow-xl transition-all cursor-pointer">
-                    <div class="flex items-center justify-between">
+                <div class="dashboard-card metric-card metric-3 p-6">
+                    <div class="flex items-center justify-between gap-4">
                         <div>
-                            <h3 class="font-semibold text-lg">Track Your Progress</h3>
-                            <p class="text-sm text-gray-500 mt-2">View detailed status and timeline of all submissions</p>
+                            <p class="text-sm font-semibold text-slate-500">Under Review</p>
+                            <p id="reviewCount" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p class="text-xs text-amber-600 mt-2">Being reviewed</p>
                         </div>
-                        <div class="text-4xl">📊</div>
+                        <div class="metric-icon">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1">
+                                <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </div>
                     </div>
-                    <button class="mt-6 px-6 py-3 bg-[#621708] text-white rounded-2xl text-sm font-medium">
-                        View Status
-                    </button>
                 </div>
-            </div>
+
+                <div class="dashboard-card metric-card metric-4 p-6">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-500">Completed</p>
+                            <p id="completedCount" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p class="text-xs text-slate-500 mt-2">Finished submissions</p>
+                        </div>
+                        <div class="metric-icon">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1">
+                                <path d="M9 11l3 3L22 4"/>
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Main Grid -->
+            <section class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+
+                <!-- Recent Submissions -->
+                <div class="dashboard-card p-6 xl:col-span-8">
+                    <div class="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-950">Recent Submissions</h2>
+                            <p class="text-sm text-slate-500 mt-1">Latest submission activity with current review status.</p>
+                        </div>
+
+                        <a href="submissions.html" class="text-sm font-bold text-[#621708] hover:underline">
+                            View All
+                        </a>
+                    </div>
+
+                    <div id="recentSubmissionsList" class="space-y-3">
+                        <div class="text-sm text-slate-500">Loading submissions...</div>
+                    </div>
+                </div>
+
+                <!-- Quick Access -->
+                <div class="xl:col-span-4 space-y-6">
+                    <div class="dashboard-card p-6">
+                        <h2 class="text-lg font-semibold text-slate-950">Quick Access</h2>
+                        <p class="text-sm text-slate-500 mt-1 mb-5">Continue important faculty tasks.</p>
+
+                        <div class="space-y-3">
+                            <button onclick="window.location.href='faculty-profile.html'" class="primary-btn w-full">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="12" cy="7" r="4"/>
+                                </svg>
+                                Complete Your Profile
+                            </button>
+
+                            <button onclick="window.location.href='status-tracking.html'" class="secondary-btn w-full">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                                    <path d="M3 3v18h18"/>
+                                    <path d="M7 14l3-3 3 3 5-7"/>
+                                </svg>
+                                Track Your Progress
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-card p-6">
+                        <h2 class="text-lg font-semibold text-slate-950">Progress Summary</h2>
+                        <p class="text-sm text-slate-500 mt-1 mb-5">Completion based on approved and completed submissions.</p>
+
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium text-slate-700">Overall Progress</span>
+                            <span id="progressPercent" class="text-sm font-bold text-slate-900">0%</span>
+                        </div>
+
+                        <div class="h-3 bg-slate-100 rounded-full overflow-hidden">
+                            <div id="progressBar" class="h-full bg-[#621708] rounded-full" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
-    </div>
+    </main>
 </div>
 
 <script>
-    function goToProfile() {
-        window.location.href = 'faculty-profile.html';
+const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+
+const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+let currentUser = null;
+let currentFaculty = null;
+
+function esc(value) {
+    return String(value || '').replace(/[&<>'"]/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+    }[c]));
+}
+
+function formatDate(value) {
+    if (!value) return 'No date';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'No date';
+
+    return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
+}
+
+function getStatusClass(status) {
+    const value = String(status || '').toLowerCase();
+
+    if (value.includes('approved')) return 'status-approved';
+    if (value.includes('review')) return 'status-review';
+    if (value.includes('completed')) return 'status-completed';
+    return 'status-pending';
+}
+
+function normalizeStatus(status) {
+    const value = String(status || '').toLowerCase();
+
+    if (value.includes('approved')) return 'Approved';
+    if (value.includes('review')) return 'Under Review';
+    if (value.includes('completed')) return 'Completed';
+    if (value.includes('submitted')) return 'Under Review';
+    return 'Pending';
+}
+
+async function safeSelect(table, query = '*') {
+    try {
+        const { data, error } = await supabaseClient.from(table).select(query);
+        if (error) throw error;
+        return data || [];
+    } catch (error) {
+        console.warn(`${table} unavailable:`, error.message);
+        return [];
+    }
+}
+
+async function loadFacultyProfile() {
+    const { data: authData } = await supabaseClient.auth.getUser();
+    currentUser = authData?.user || null;
+
+    if (!currentUser) {
+        document.getElementById('welcomeName').textContent = 'Faculty';
+        document.getElementById('sidebarName').textContent = 'Faculty Member';
+        return;
     }
 
-    function viewStatus() {
-        alert("📈 Opening your submission status tracker...");
+    const { data, error } = await supabaseClient
+        .from('faculty')
+        .select('*')
+        .eq('auth_user_id', currentUser.id)
+        .maybeSingle();
+
+    if (error) {
+        console.warn('Faculty profile load failed:', error.message);
     }
+
+    currentFaculty = data || null;
+
+    const name =
+        currentFaculty?.full_name ||
+        currentFaculty?.name ||
+        currentUser.user_metadata?.full_name ||
+        currentUser.email ||
+        'Faculty Member';
+
+    const firstName = String(name).split(' ')[0] || 'Faculty';
+    const role = currentFaculty?.position || currentFaculty?.role || 'Faculty Member';
+    const photoUrl =
+        currentFaculty?.profile_photo_url ||
+        currentFaculty?.avatar_url ||
+        currentFaculty?.photo_url ||
+        '';
+
+    document.getElementById('welcomeName').textContent = firstName;
+    document.getElementById('sidebarName').textContent = name;
+    document.getElementById('sidebarRole').textContent = role;
+
+    const sidebarAvatar = document.getElementById('sidebarAvatar');
+    const sidebarAvatarFallback = document.getElementById('sidebarAvatarFallback');
+
+    if (photoUrl) {
+        sidebarAvatar.src = photoUrl;
+        sidebarAvatar.classList.remove('hidden');
+        sidebarAvatarFallback.classList.add('hidden');
+    } else {
+        sidebarAvatar.src = '';
+        sidebarAvatar.classList.add('hidden');
+        sidebarAvatarFallback.classList.remove('hidden');
+    }
+}
+
+async function loadAcademicPeriod() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('system_settings')
+            .select('*')
+            .limit(1)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        const academicYear = data?.academic_year || '2025-2026';
+        const semester = data?.semester || 'First Semester';
+
+        document.getElementById('academicPeriodText').textContent =
+            `Academic Year ${academicYear} • ${semester}`;
+    } catch (error) {
+        document.getElementById('academicPeriodText').textContent =
+            'Academic Year 2025-2026 • First Semester';
+    }
+}
+
+async function loadDashboardData() {
+    const facultyId = currentFaculty?.id;
+
+    const documents = await safeSelect('faculty_documents', '*');
+    const requests = await safeSelect('faculty_document_requests', '*');
+    const notifications = await safeSelect('notifications', '*');
+
+    const ownDocuments = facultyId
+        ? documents.filter(item => String(item.faculty_id) === String(facultyId))
+        : documents;
+
+    const ownRequests = facultyId
+        ? requests.filter(item => String(item.faculty_id) === String(facultyId))
+        : requests;
+
+    const combined = [
+        ...ownDocuments.map(item => ({
+            title: item.document_name || item.title || 'Submitted Document',
+            description: item.description || item.document_type || 'Document submission',
+            status: normalizeStatus(item.status),
+            due_date: item.due_date || item.created_at,
+            created_at: item.created_at
+        })),
+        ...ownRequests.map(item => ({
+            title: item.request_title || item.title || item.document_name || 'Requested Submission',
+            description: item.description || 'Document requested by administrator',
+            status: normalizeStatus(item.status || 'Pending'),
+            due_date: item.due_date || item.created_at,
+            created_at: item.created_at
+        }))
+    ];
+
+    const pending = combined.filter(item => item.status === 'Pending').length;
+    const approved = combined.filter(item => item.status === 'Approved').length;
+    const underReview = combined.filter(item => item.status === 'Under Review').length;
+    const completed = combined.filter(item => item.status === 'Completed').length;
+
+    document.getElementById('pendingCount').textContent = pending;
+    document.getElementById('approvedCount').textContent = approved;
+    document.getElementById('reviewCount').textContent = underReview;
+    document.getElementById('completedCount').textContent = completed;
+
+    const total = combined.length;
+    const progress = total ? Math.round(((approved + completed) / total) * 100) : 0;
+
+    document.getElementById('progressPercent').textContent = `${progress}%`;
+    document.getElementById('progressBar').style.width = `${progress}%`;
+
+    renderRecentSubmissions(combined);
+
+    const ownNotifications = facultyId
+        ? notifications.filter(item => String(item.faculty_id || item.recipient_id || '') === String(facultyId))
+        : notifications;
+
+    const unreadNotifications = ownNotifications.filter(item => {
+        const value = String(item.status || item.read_status || '').toLowerCase();
+        return !value || value === 'unread' || value === 'new';
+    }).length;
+
+    updateNotificationBadge(unreadNotifications);
+}
+
+function renderRecentSubmissions(items) {
+    const list = document.getElementById('recentSubmissionsList');
+
+    const recent = items
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+        .slice(0, 5);
+
+    if (!recent.length) {
+        list.innerHTML = `
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
+                <div class="w-12 h-12 rounded-2xl bg-white border border-slate-200 mx-auto flex items-center justify-center text-slate-500 mb-3">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 2v6h6"/>
+                    </svg>
+                </div>
+                <div class="font-semibold text-slate-900">No submissions yet</div>
+                <p class="text-sm text-slate-500 mt-1">Your recent submissions will appear here.</p>
+            </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = recent.map(item => `
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-600 flex-shrink-0">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 2v6h6"/>
+                        <path d="M16 13H8"/>
+                        <path d="M16 17H8"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="font-semibold text-slate-900">${esc(item.title)}</div>
+                    <div class="text-sm text-slate-500 mt-1">${esc(item.description)}</div>
+                </div>
+            </div>
+
+            <div class="md:text-right flex md:block items-center justify-between gap-3">
+                <div class="text-xs text-slate-500 mb-2">Due: ${formatDate(item.due_date)}</div>
+                <span class="status-badge ${getStatusClass(item.status)}">${esc(item.status)}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateNotificationBadge(count) {
+    const badge = document.getElementById('notificationBadge');
+
+    if (!count || count <= 0) {
+        badge.classList.add('hidden');
+        badge.textContent = '0';
+        return;
+    }
+
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.classList.remove('hidden');
+}
+
+function subscribeRealtime() {
+    supabaseClient
+        .channel('faculty-dashboard-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_document_requests' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, async () => {
+            await loadFacultyProfile();
+            await loadDashboardData();
+        })
+        .subscribe();
+}
+
+window.addEventListener('load', async () => {
+    await loadFacultyProfile();
+    await loadAcademicPeriod();
+    await loadDashboardData();
+    subscribeRealtime();
+});
 </script>
+
 <script src="../shared/system-ui.js"></script>
 </body>
 </html>

@@ -268,7 +268,6 @@
                         </div>
                     </div>
 
-                    <div id="connectionStatus" class="hidden mb-5 rounded-2xl border px-4 py-3 text-sm"></div>
 
                     <div id="timelineContainer" class="relative pl-8 space-y-5 before:absolute before:left-4 before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
                         <div class="text-center py-12 text-slate-500 text-sm">Loading engagement logs...</div>
@@ -503,21 +502,12 @@
     }
 
     function showStatus(message, type = 'info') {
-        const el = document.getElementById('connectionStatus');
-        if (!el) return;
-        const styles = {
-            info: 'border-slate-200 bg-slate-50 text-slate-600',
-            success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-            error: 'border-red-200 bg-red-50 text-red-700'
-        };
-        el.className = `mb-5 rounded-2xl border px-4 py-3 text-sm ${styles[type] || styles.info}`;
-        el.textContent = message;
-        el.classList.remove('hidden');
+        // Realtime/status indicators are intentionally hidden.
+        if (type === 'error') console.warn(message);
     }
 
     function hideStatus() {
-        const el = document.getElementById('connectionStatus');
-        if (el) el.classList.add('hidden');
+        // No visible realtime indicator.
     }
 
     function escapeHTML(value) {
@@ -553,14 +543,11 @@
         if (error) {
             engagementLogs = [];
             renderLogs();
-            if (!options.silent) {
-                showStatus('Engagement logs table is not ready yet. Run the provided Supabase SQL, then refresh this page.', 'error');
-            }
             console.error('Error loading engagement logs:', error);
             return;
         }
+
         engagementLogs = data || [];
-        hideStatus();
         renderLogs();
     }
 
@@ -571,10 +558,29 @@
 
     function setupRealtimeLogs() {
         if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+
         realtimeChannel = supabaseClient
             .channel('engagement-logs-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, scheduleRealtimeReload)
-            .subscribe((status) => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, payload => {
+                if (payload.eventType === 'INSERT' && payload.new) {
+                    const exists = engagementLogs.some(log => String(log.id) === String(payload.new.id));
+                    engagementLogs = exists
+                        ? engagementLogs.map(log => String(log.id) === String(payload.new.id) ? payload.new : log)
+                        : [payload.new, ...engagementLogs];
+                }
+
+                if (payload.eventType === 'UPDATE' && payload.new) {
+                    engagementLogs = engagementLogs.map(log => String(log.id) === String(payload.new.id) ? payload.new : log);
+                }
+
+                if (payload.eventType === 'DELETE' && payload.old) {
+                    engagementLogs = engagementLogs.filter(log => String(log.id) !== String(payload.old.id));
+                }
+
+                engagementLogs.sort((a, b) => new Date(b.activity_at || b.created_at || 0) - new Date(a.activity_at || a.created_at || 0));
+                renderLogs();
+            })
+            .subscribe(status => {
                 if (status === 'CHANNEL_ERROR') console.warn('Realtime is not available yet. Enable realtime for engagement_logs in Supabase.');
                 if (status === 'TIMED_OUT') console.warn('Realtime connection timed out. Manual refresh still works.');
             });

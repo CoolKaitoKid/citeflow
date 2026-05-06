@@ -172,6 +172,25 @@
         .action-dropdown.open-up { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 4px; }
 
 
+
+
+        /* ─── Updated Task Layout and Analytics ─────────────────────── */
+        .view-toggle { display:inline-flex; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; background:#fff; }
+        .view-toggle button { padding:9px 13px; font-size:12.5px; font-weight:600; color:#6b7280; border:0; background:transparent; cursor:pointer; }
+        .view-toggle button.active { background:#621708; color:#fff; }
+        .task-card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
+        .task-folder-card { background:#fff; border:1px solid #f0f0f0; border-radius:16px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.05); cursor:pointer; transition:transform .15s, box-shadow .15s, border-color .15s; }
+        .task-folder-card:hover { transform:translateY(-2px); box-shadow:0 10px 26px rgba(0,0,0,.08); border-color:#ead7ce; }
+        .folder-icon { width:46px; height:34px; border-radius:8px 8px 10px 10px; background:#f5e8c7; position:relative; border:1px solid #edd6a7; }
+        .folder-icon::before { content:''; position:absolute; top:-7px; left:6px; width:22px; height:10px; border-radius:7px 7px 0 0; background:#f5e8c7; border:1px solid #edd6a7; border-bottom:0; }
+        .mini-bar-track { height:8px; background:#f3f4f6; border-radius:99px; overflow:hidden; }
+        .mini-bar-fill { height:100%; background:#621708; border-radius:99px; }
+        .analytics-pie { width:150px; height:150px; border-radius:50%; margin:auto; position:relative; background:conic-gradient(#10b981 0deg, #e5e7eb 0deg); }
+        .analytics-pie::after { content:''; position:absolute; inset:22px; background:#fff; border-radius:50%; }
+        .analytics-pie-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:2; flex-direction:column; }
+        .analytics-bar { height:10px; background:#f3f4f6; border-radius:99px; overflow:hidden; }
+        .analytics-bar > div { height:100%; border-radius:99px; }
+
         /* --- Task detail page and file preview actions --- */
         .detail-card { background:#fff; border:1px solid #f0f0f0; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
         .submission-card { border:1px solid #eef0f3; border-radius:14px; background:#fff; padding:16px; transition:border-color .2s, box-shadow .2s, background .2s; }
@@ -234,7 +253,7 @@
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                     Document Vault
                 </div>
-                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
                     Workflow Approval
                 </div>
@@ -387,10 +406,14 @@
                     <option value="BSIE">BSIE</option>
                     <option value="BIT">BIT</option>
                 </select>
+                <div class="view-toggle" title="Switch main page task layout">
+                    <button id="listViewBtn" class="active" onclick="setTaskViewMode('list')">List</button>
+                    <button id="folderViewBtn" onclick="setTaskViewMode('folder')">Folder</button>
+                </div>
             </div>
 
             <!-- Submissions Table -->
-            <div class="main-surface overflow-visible">
+            <div id="taskTableSurface" class="main-surface overflow-visible">
                 <table class="data-table w-full">
                     <thead>
                         <tr>
@@ -408,6 +431,8 @@
                     </tbody>
                 </table>
             </div>
+
+            <div id="taskCardContainer" class="task-card-grid hidden"></div>
 
         </div>
 
@@ -447,8 +472,8 @@
                     <div id="detailPendingCount" class="text-2xl font-semibold text-gray-900">0</div>
                     <div class="detail-muted mt-1">No submission yet</div>
                 </div>
-                <div class="detail-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Progress</div>
+                <div class="detail-card p-5 cursor-pointer" onclick="openAnalyticsModal(activeTaskDetailId)" title="Click to view analytics">
+                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Progress Analytics</div>
                     <div id="detailProgressPercent" class="text-2xl font-semibold text-gray-900">0%</div>
                     <div class="prog-track mt-3"><div id="detailProgressFill" class="prog-fill bg-emerald-500" style="width:0%"></div></div>
                 </div>
@@ -515,14 +540,26 @@
                 <input id="taskTitle" type="text" class="field-input" placeholder="e.g., Annual Research Report">
             </div>
 
-            <div>
-                <label class="field-label">Target Group <span class="text-red-500">*</span></label>
-                <select id="targetGroup" onchange="toggleSpecificUsers()" class="field-input">
-                    <option value="all_bsit">All BSIT Faculty</option>
-                    <option value="all_bsie">All BSIE Faculty</option>
-                    <option value="all_bit">All BIT Faculty</option>
-                    <option value="specific">Specific Users</option>
-                </select>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="field-label">Faculty Group <span class="text-red-500">*</span></label>
+                    <select id="targetGroup" onchange="toggleSpecificUsers()" class="field-input">
+                        <option value="all">All Faculty</option>
+                        <option value="all_bsit">All BSIT Faculty</option>
+                        <option value="all_bsie">All BSIE Faculty</option>
+                        <option value="all_bit">All BIT Faculty</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="field-label">Faculty Type <span class="text-red-500">*</span></label>
+                    <select id="targetType" onchange="toggleSpecificUsers()" class="field-input">
+                        <option value="all_types">All Types</option>
+                        <option value="regular">Regular / Organic</option>
+                        <option value="part_time">Part-Time</option>
+                        <option value="chairperson">Department Chairperson</option>
+                        <option value="specific">Specific Faculty</option>
+                    </select>
+                </div>
             </div>
 
             <div id="specificUsersContainer" class="hidden">
@@ -653,6 +690,29 @@
 </div>
 
 
+
+<!-- MODAL: Task Analytics -->
+<div id="taskAnalyticsModal" class="modal-backdrop">
+    <div class="modal-panel" style="max-width:820px; margin:0 16px;">
+        <div class="modal-header">
+            <div class="flex items-center justify-between gap-4">
+                <div>
+                    <h2 id="analyticsTitle" class="text-base font-semibold text-gray-900">Submission Analytics</h2>
+                    <p id="analyticsSubtitle" class="text-xs text-gray-500 mt-0.5">Task submission summary</p>
+                </div>
+                <button onclick="closeAnalyticsModal()" class="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                    <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="modal-body">
+            <div id="analyticsContent" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeAnalyticsModal()" class="btn btn-ghost flex-1 justify-center">Close</button>
+        </div>
+    </div>
+</div>
 
 <!-- MODAL: File Preview -->
 <div id="filePreviewModal" class="modal-backdrop">
@@ -902,6 +962,7 @@ let activeReviewId = null;
 let currentTimelineSub = null;
 let realtimeChannel = null;
 let activeTaskDetailId = null;
+let taskViewMode = 'list';
 let fileActionSeq = 0;
 window.workflowFileActionCache = window.workflowFileActionCache || {};
 
@@ -1115,6 +1176,113 @@ function taskSummaryStatus(submittedCount, totalAssigned) {
     return { label: 'In Progress', className: 'badge-underreview' };
 }
 
+
+function setTaskViewMode(mode) {
+    taskViewMode = mode === 'folder' ? 'folder' : 'list';
+    document.getElementById('listViewBtn')?.classList.toggle('active', taskViewMode === 'list');
+    document.getElementById('folderViewBtn')?.classList.toggle('active', taskViewMode === 'folder');
+    filterSubmissions();
+}
+
+function openAnalyticsModal(taskId) {
+    const task = getTaskById(taskId);
+    if (!task) return;
+    const rows = getTaskSubmissionRows(taskId);
+    const total = rows.length;
+    const submitted = rows.filter(s => s.submission_id).length;
+    const approved = rows.filter(s => s.status === 'approved').length;
+    const revision = rows.filter(s => s.status === 'revision').length;
+    const rejected = rows.filter(s => s.status === 'rejected').length;
+    const pending = Math.max(total - submitted, 0);
+    const submittedPct = total ? Math.round((submitted / total) * 100) : 0;
+    const pieDegrees = total ? Math.round((submitted / total) * 360) : 0;
+    const byDept = {};
+    rows.forEach(row => {
+        if (!byDept[row.department_code]) byDept[row.department_code] = { total: 0, submitted: 0 };
+        byDept[row.department_code].total++;
+        if (row.submission_id) byDept[row.department_code].submitted++;
+    });
+    document.getElementById('analyticsTitle').textContent = task.title;
+    document.getElementById('analyticsSubtitle').textContent = `${submitted}/${total} faculty submitted | ${submittedPct}% completion`;
+    document.getElementById('analyticsContent').innerHTML = `
+        <div class="detail-card p-6 text-center">
+            <div class="analytics-pie" style="background:conic-gradient(#10b981 0deg ${pieDegrees}deg, #e5e7eb ${pieDegrees}deg 360deg);">
+                <div class="analytics-pie-label">
+                    <div class="text-2xl font-semibold text-gray-900">${submittedPct}%</div>
+                    <div class="text-xs text-gray-500">Submitted</div>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-6 text-left">
+                <div class="bg-gray-50 rounded-lg p-3"><div class="text-xs text-gray-400">Assigned</div><div class="text-xl font-semibold">${total}</div></div>
+                <div class="bg-emerald-50 rounded-lg p-3"><div class="text-xs text-emerald-600">Submitted</div><div class="text-xl font-semibold text-emerald-700">${submitted}</div></div>
+                <div class="bg-amber-50 rounded-lg p-3"><div class="text-xs text-amber-600">Pending</div><div class="text-xl font-semibold text-amber-700">${pending}</div></div>
+                <div class="bg-red-50 rounded-lg p-3"><div class="text-xs text-red-600">Revision/Declined</div><div class="text-xl font-semibold text-red-700">${revision + rejected}</div></div>
+            </div>
+        </div>
+        <div class="detail-card p-6">
+            <h3 class="text-sm font-semibold text-gray-700 mb-4">Department Progress</h3>
+            <div class="space-y-4">
+                ${Object.entries(byDept).map(([dept, item]) => {
+                    const pct = item.total ? Math.round((item.submitted / item.total) * 100) : 0;
+                    return `<div>
+                        <div class="flex justify-between text-xs mb-2"><span class="font-medium text-gray-700">${escapeHtml(dept)}</span><span class="text-gray-500">${item.submitted}/${item.total}</span></div>
+                        <div class="analytics-bar"><div style="width:${pct}%; background:#621708;"></div></div>
+                    </div>`;
+                }).join('') || '<p class="text-sm text-gray-400">No department data available.</p>'}
+            </div>
+            <h3 class="text-sm font-semibold text-gray-700 mt-6 mb-4">Review Result</h3>
+            <div class="space-y-3">
+                ${[
+                    ['Approved', approved, '#10b981'],
+                    ['Needs Revision', revision, '#f59e0b'],
+                    ['Declined', rejected, '#6b7280'],
+                    ['Waiting/Pending', Math.max(total - approved - revision - rejected, 0), '#d97706']
+                ].map(([label, count, color]) => {
+                    const pct = total ? Math.round((count / total) * 100) : 0;
+                    return `<div>
+                        <div class="flex justify-between text-xs mb-2"><span class="text-gray-700">${label}</span><span class="text-gray-500">${count}</span></div>
+                        <div class="analytics-bar"><div style="width:${pct}%; background:${color};"></div></div>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>
+    `;
+    document.getElementById('taskAnalyticsModal').classList.add('open');
+}
+
+function closeAnalyticsModal() {
+    document.getElementById('taskAnalyticsModal').classList.remove('open');
+}
+
+function renderTaskCardContainer(taskRows) {
+    const container = document.getElementById('taskCardContainer');
+    if (!container) return;
+    if (!taskRows.length) {
+        container.innerHTML = `<div class="main-surface p-10 text-center text-sm text-gray-400" style="grid-column:1/-1;">No tasks found.</div>`;
+        return;
+    }
+    container.innerHTML = taskRows.map(r => {
+        const task = r.task;
+        const pct = r.totalAssigned ? Math.round((r.submittedCount / r.totalAssigned) * 100) : 0;
+        return `
+            <div class="task-folder-card" onclick="openTaskDetailsPage('${task.id}')">
+                <div class="flex items-start justify-between gap-3 mb-4">
+                    <div class="folder-icon"></div>
+                    <span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span>
+                </div>
+                <div class="font-semibold text-gray-900 leading-snug mb-1">${escapeHtml(task.title)}</div>
+                <div class="text-xs text-gray-500 mb-4">${escapeHtml(r.assignedLabel)} | Due ${formatDate(task.due_at)}</div>
+                <div class="flex justify-between text-xs text-gray-500 mb-2"><span>Progress</span><span>${r.submittedCount}/${r.totalAssigned}</span></div>
+                <div class="mini-bar-track mb-4"><div class="mini-bar-fill" style="width:${pct}%"></div></div>
+                <div class="flex gap-2" onclick="event.stopPropagation()">
+                    <button class="btn btn-ghost btn-sm flex-1 justify-center" onclick="openTaskDetailsPage('${task.id}')">Open</button>
+                    <button class="btn btn-primary btn-sm flex-1 justify-center" onclick="openAnalyticsModal('${task.id}')">Analytics</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 function filterSubmissions() {
     const search  = (document.getElementById('searchInput').value || '').toLowerCase();
     const status  = document.getElementById('statusFilter').value;
@@ -1140,6 +1308,17 @@ function filterSubmissions() {
         const matchStatus = !status || statusKey === status;
         return matchSearch && matchDept && matchStatus;
     });
+
+    const tableSurface = document.getElementById('taskTableSurface');
+    const cardContainer = document.getElementById('taskCardContainer');
+    if (taskViewMode === 'folder') {
+        tableSurface?.classList.add('hidden');
+        cardContainer?.classList.remove('hidden');
+        renderTaskCardContainer(filtered);
+        return;
+    }
+    tableSurface?.classList.remove('hidden');
+    cardContainer?.classList.add('hidden');
 
     const tbody = document.getElementById('submissionsTableBody');
     if (filtered.length === 0) {
@@ -1172,6 +1351,10 @@ function filterSubmissions() {
                             <div class="dropdown-item" onclick="event.stopPropagation(); openTaskDetailsPage('${task.id}')">
                                 <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                 View Details
+                            </div>
+                            <div class="dropdown-item" onclick="event.stopPropagation(); openAnalyticsModal('${task.id}')">
+                                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
+                                View Analytics
                             </div>
                             <div class="dropdown-item" onclick="event.stopPropagation(); openEditTaskModal('${task.id}')">
                                 <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
@@ -1483,7 +1666,8 @@ async function openAssignModal() {
     document.getElementById('taskDesc').value = '';
     document.getElementById('dueDate').value = '';
     document.getElementById('dueTime').value = '17:00';
-    document.getElementById('targetGroup').value = document.querySelector('#targetGroup option[value="all"]') ? 'all' : 'all_bsit';
+    document.getElementById('targetGroup').value = 'all';
+    if (document.getElementById('targetType')) document.getElementById('targetType').value = 'all_types';
     const attachments = document.getElementById('taskAttachments');
     if (attachments) attachments.value = '';
 
@@ -1496,8 +1680,8 @@ function closeAssignModal() {
     editingTaskId = null;
 }
 function toggleSpecificUsers() {
-    const val = document.getElementById('targetGroup').value;
-    document.getElementById('specificUsersContainer').classList.toggle('hidden', val !== 'specific');
+    const typeVal = document.getElementById('targetType')?.value || '';
+    document.getElementById('specificUsersContainer').classList.toggle('hidden', typeVal !== 'specific');
 }
 
 async function openEditTaskModal(taskId) {
@@ -1536,9 +1720,11 @@ async function openEditTaskModal(taskId) {
         document.getElementById('dueTime').value = '17:00';
     }
 
-    const scope = task.assigned_scope || 'specific';
+    const scope = task.assigned_scope || 'all';
     const target = document.getElementById('targetGroup');
-    target.value = target.querySelector(`option[value="${scope}"]`) ? scope : 'specific';
+    const typeTarget = document.getElementById('targetType');
+    target.value = target.querySelector(`option[value="${scope}"]`) ? scope : 'all';
+    if (typeTarget) typeTarget.value = task.assigned_type || 'all_types';
 
     const attachments = document.getElementById('taskAttachments');
     if (attachments) attachments.value = '';
@@ -1564,6 +1750,7 @@ function createNewTask() {
     const dueTime = document.getElementById('dueTime').value;
     const desc    = document.getElementById('taskDesc').value.trim();
     const group   = document.getElementById('targetGroup').value;
+    const type    = document.getElementById('targetType')?.value || 'all_types';
 
     if (!title)   { showToast('Please enter a task title.', 'error'); return; }
     if (!dueDate) { showToast('Please select a due date.', 'error'); return; }
@@ -1572,11 +1759,15 @@ function createNewTask() {
     const selected = Array.from(document.getElementById('specificUsers').selectedOptions).map(o => String(o.value));
     let assigned = [];
 
-    if (group === 'all_bsit') assigned = ws.faculty.filter(f => f.department_code === 'BSIT');
-    if (group === 'all_bsie') assigned = ws.faculty.filter(f => f.department_code === 'BSIE');
-    if (group === 'all_bit') assigned = ws.faculty.filter(f => f.department_code === 'BIT');
-    if (group === 'all') assigned = ws.faculty.slice();
-    if (group === 'specific') {
+    assigned = ws.faculty.slice();
+    if (group === 'all_bsit') assigned = assigned.filter(f => f.department_code === 'BSIT');
+    if (group === 'all_bsie') assigned = assigned.filter(f => f.department_code === 'BSIE');
+    if (group === 'all_bit') assigned = assigned.filter(f => f.department_code === 'BIT');
+
+    if (type === 'regular') assigned = assigned.filter(f => normalizeText(f.employment_status).includes('regular') || normalizeText(f.employment_status).includes('organic'));
+    if (type === 'part_time') assigned = assigned.filter(f => normalizeText(f.employment_status).includes('part') || normalizeText(f.employment_status).includes('part-time'));
+    if (type === 'chairperson') assigned = assigned.filter(f => normalizeText(f.role).includes('chair') || normalizeText(f.position).includes('chair'));
+    if (type === 'specific') {
         assigned = ws.faculty.filter(f => selected.includes(String(f.id)));
         if (!assigned.length) { showToast('Select at least one faculty member.', 'error'); return; }
     }
@@ -1594,9 +1785,12 @@ function createNewTask() {
     if (group === 'all_bsit') assignedLabel = 'BSIT';
     if (group === 'all_bsie') assignedLabel = 'BSIE';
     if (group === 'all_bit') assignedLabel = 'BIT';
-    if (group === 'specific') assignedLabel = `${assigned.length} specific faculty`;
+    if (type === 'regular') assignedLabel += ' | Regular';
+    if (type === 'part_time') assignedLabel += ' | Part-Time';
+    if (type === 'chairperson') assignedLabel += ' | Chairperson';
+    if (type === 'specific') assignedLabel = `${assigned.length} specific faculty`;
 
-    const payload = { title, instructions: desc, dueAt, assigned, files, assignedLabel, assignedScope: group };
+    const payload = { title, instructions: desc, dueAt, assigned, files, assignedLabel, assignedScope: group, assignedType: type };
     if (editingTaskId) {
         updateTaskRealtime({ taskId: editingTaskId, ...payload });
     } else {
@@ -1604,12 +1798,42 @@ function createNewTask() {
     }
 }
 
-async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files, assignedLabel, assignedScope }) {
-    const { data: task, error: taskError } = await db
-        .from('wf_tasks')
-        .insert({ title, instructions, due_at: dueAt, created_by_name: ADMIN_NAME, attachment_names: files, assigned_label: assignedLabel, assigned_scope: assignedScope })
-        .select('id')
-        .single();
+async function insertTaskWithOptionalColumns(row) {
+    let { data, error } = await db.from('wf_tasks').insert(row).select('id').single();
+    if (error && /column|schema|cache/i.test(error.message || '')) {
+        const fallback = { ...row };
+        delete fallback.assigned_type;
+        delete fallback.task_layout;
+        const retry = await db.from('wf_tasks').insert(fallback).select('id').single();
+        data = retry.data;
+        error = retry.error;
+    }
+    return { data, error };
+}
+
+async function updateTaskWithOptionalColumns(taskId, row) {
+    let { error } = await db.from('wf_tasks').update(row).eq('id', taskId);
+    if (error && /column|schema|cache/i.test(error.message || '')) {
+        const fallback = { ...row };
+        delete fallback.assigned_type;
+        delete fallback.task_layout;
+        const retry = await db.from('wf_tasks').update(fallback).eq('id', taskId);
+        error = retry.error;
+    }
+    return { error };
+}
+
+async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files, assignedLabel, assignedScope, assignedType }) {
+    const { data: task, error: taskError } = await insertTaskWithOptionalColumns({
+        title,
+        instructions,
+        due_at: dueAt,
+        created_by_name: ADMIN_NAME,
+        attachment_names: files,
+        assigned_label: assignedLabel,
+        assigned_scope: assignedScope,
+        assigned_type: assignedType,
+    });
     if (taskError) {
         showToast(taskError.message || 'Failed to create task.', 'error');
         return;
@@ -1638,6 +1862,61 @@ async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files,
     document.getElementById('taskDesc').value = '';
     document.getElementById('dueDate').value = '';
     if (document.getElementById('taskAttachments')) document.getElementById('taskAttachments').value = '';
+}
+
+
+async function updateTaskRealtime({ taskId, title, instructions, dueAt, assigned, files, assignedLabel, assignedScope, assignedType }) {
+    const { error: updateError } = await updateTaskWithOptionalColumns(taskId, {
+        title,
+        instructions,
+        due_at: dueAt,
+        attachment_names: files,
+        assigned_label: assignedLabel,
+        assigned_scope: assignedScope,
+        assigned_type: assignedType,
+    });
+    if (updateError) {
+        showToast(updateError.message || 'Failed to update task.', 'error');
+        return;
+    }
+    await db.from('wf_task_assignments').delete().eq('task_id', taskId);
+    const assignmentRows = assigned.map(f => ({ task_id: taskId, faculty_id: f.id, assigned_by_name: ADMIN_NAME }));
+    const { error: assignError } = await db.from('wf_task_assignments').insert(assignmentRows);
+    if (assignError) {
+        showToast(assignError.message || 'Task updated, but assignment update failed.', 'warn');
+        return;
+    }
+    await db.from('wf_activity_log').insert({
+        action: 'Task updated',
+        actor_name: ADMIN_NAME,
+        target: title,
+        log_type: 'created'
+    });
+    showToast(`Task "${title}" updated.`);
+    closeAssignModal();
+    await fetchAllData();
+}
+
+async function deleteTask(taskId) {
+    const task = getTaskById(taskId);
+    if (!task) return;
+    if (!confirm(`Delete task "${task.title}"? This removes the task assignment list from the admin page.`)) return;
+    await db.from('wf_task_assignments').delete().eq('task_id', taskId);
+    await db.from('wf_submissions').delete().eq('task_id', taskId);
+    const { error } = await db.from('wf_tasks').delete().eq('id', taskId);
+    if (error) {
+        showToast(error.message || 'Failed to delete task.', 'error');
+        return;
+    }
+    await db.from('wf_activity_log').insert({
+        action: 'Task deleted',
+        actor_name: ADMIN_NAME,
+        target: task.title,
+        log_type: 'rejected'
+    });
+    showToast(`Task "${task.title}" deleted.`, 'warn');
+    if (activeTaskDetailId === taskId) returnToWorkflowMain();
+    await fetchAllData();
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -2225,7 +2504,10 @@ function normalizeWorkflowFaculty(row) {
         full_name: row.full_name || row.name || row.email || 'Unnamed Faculty',
         department_code: row.department_code || row.department || 'N/A',
         email: row.email || row.existing_email || '',
-        status: row.status || 'Active'
+        status: row.status || 'Active',
+        employment_status: row.employment_status || row.employment_type || row.faculty_status || row.status || '',
+        role: row.role || row.user_role || '',
+        position: row.position || row.academic_rank || ''
     };
 }
 
@@ -2284,10 +2566,6 @@ async function init() {
     if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON === 'YOUR_ANON_KEY') {
         showToast('Set __SUPABASE_URL__ and __SUPABASE_ANON__ to enable realtime.', 'warn');
         return;
-    }
-    const targetGroup = document.getElementById('targetGroup');
-    if (targetGroup && targetGroup.options.length === 4) {
-        targetGroup.insertAdjacentHTML('afterbegin', '<option value="all">All Faculty Members</option>');
     }
     const textarea = document.getElementById('taskDesc');
     if (textarea && !document.getElementById('taskAttachments')) {

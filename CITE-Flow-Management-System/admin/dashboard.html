@@ -3,80 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - CITE-Flow</title>
+    <title>Dashboard - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
+        body { background: #f8fafc; }
+        .sidebar {
+            background-color: #621708;
             width: 280px;
         }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
-        }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
-        }
-
+        .nav-item { transition: all 0.25s ease; }
+        .nav-item:hover, .nav-item.active { background-color: #8c2a10; }
+        .nav-item.active { border-left: 4px solid #f5e8c7; }
         .section-header {
             font-size: 11px;
             font-weight: 600;
-            letter-spacing: 0.8px;
+            letter-spacing: 0.08em;
             opacity: 0.75;
             padding-left: 20px;
             margin-bottom: 10px;
             text-transform: uppercase;
         }
-
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb {
+            background-color: rgba(255,255,255,0.35);
+            border-radius: 20px;
         }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
-        }
-
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
-        }
-
         .nav-icon {
             width: 20px;
             height: 20px;
             stroke: currentColor;
             stroke-width: 2.25;
         }
+        .dashboard-card {
+            background: rgba(255,255,255,0.92);
+            border: 1px solid #e2e8f0;
+            border-radius: 26px;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.05);
+            backdrop-filter: blur(10px);
+        }
+        .metric-card {
+            position: relative;
+            overflow: hidden;
+            --metric-accent: #e2e8f0;
+            border-top: 3px solid var(--metric-accent);
+        }
+        .metric-card.metric-1 { --metric-accent: #f59eac; }
+        .metric-card.metric-2 { --metric-accent: #7dd3fc; }
+        .metric-card.metric-3 { --metric-accent: #facc15; }
+        .metric-card.metric-4 { --metric-accent: #c4b5fd; }
+        .metric-icon-ring {
+            width: 56px;
+            height: 56px;
+            min-width: 56px;
+            min-height: 56px;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            color: #475569;
+            flex-shrink: 0;
+        }
+        .metric-icon-ring::after {
+            content: '';
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 9px;
+            height: 9px;
+            border-radius: 9999px;
+            background: var(--metric-accent);
+            box-shadow: 0 0 0 3px #ffffff;
+        }
+        .primary-btn {
+            background: #621708;
+            color: #fff;
+            border-radius: 18px;
+            padding: 13px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: center;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .primary-btn:hover { background: #8c2a10; transform: translateY(-1px); }
+        .secondary-btn {
+            background: #fff;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            border-radius: 18px;
+            padding: 13px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        .secondary-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .field {
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            border-radius: 18px;
+            padding: 11px 14px;
+            font-size: 14px;
+            outline: none;
+            color: #0f172a;
+        }
+        .field:focus { border-color: #621708; box-shadow: 0 0 0 4px rgba(98,23,8,.08); }
+        .progress-track { height: 10px; background: #eef2f7; border-radius: 999px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 999px; transition: width 0.35s ease; }
     </style>
 </head>
-<body class="bg-gray-50">
-
+<body class="bg-slate-50">
 <div class="flex h-screen overflow-hidden">
-    <!-- SIDEBAR -->
-    <div class="sidebar text-white flex flex-col h-full">
-        
-        <!-- CTU Logo Section -->
-        <div onclick="window.location.href='dashboard.html'" 
-            class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" 
-                alt="CTU Logo" 
-                class="h-16 w-auto mb-3">
+    <aside class="sidebar text-white flex flex-col h-full">
+        <div onclick="window.location.href='dashboard.html'" class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
+            <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3">
             <div class="text-center">
                 <div class="font-semibold text-base leading-tight">College of Technology</div>
                 <div class="font-semibold text-base leading-tight">and Engineering</div>
             </div>
         </div>
 
-        <!-- Navigation -->
         <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
             <div>
                 <div class="section-header text-white/70">FACULTIES & PROFILES</div>
@@ -120,8 +179,7 @@
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
                     Reports and Analytics
                 </div>
-                <div onclick="window.location.href='feedback-summary.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                <div onclick="window.location.href='feedback-summary.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
                     Seminar Feedback Summary
                 </div>
@@ -133,293 +191,494 @@
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     User Management
                 </div>
+                <div class="nav-item active flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 13.5 10.5 10l3 3L21 6"/></svg>
+                    Dashboard
+                </div>
             </div>
         </div>
 
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer active">
-            <div class="w-10 h-10 bg-white rounded-2xl overflow-hidden flex items-center justify-center text-[#621708] text-xl">
-                <img id="sidebarAvatar" src="" alt="Avatar" class="w-full h-full object-cover hidden">
-                <svg id="sidebarAvatarFallback" style="width:18px;height:18px;stroke:#621708;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <div onclick="window.location.href='admin-profile.html'" class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
+            <div class="w-10 h-10 bg-white rounded-2xl overflow-hidden flex items-center justify-center text-[#621708]">
+                <img id="sidebarAvatar" src="" alt="Profile" class="hidden w-full h-full object-cover">
+                <svg id="sidebarAvatarFallback" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <div class="flex-1 min-w-0">
                 <div id="profileName" class="font-semibold text-sm truncate">Loading...</div>
                 <div id="profileRole" class="text-xs text-white/70">Administrator</div>
             </div>
         </div>
-    </div>
+    </aside>
 
-    <!-- MAIN DASHBOARD CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
-        <div class="max-w-7xl mx-auto">
-            <!-- Header -->
-            <div class="flex items-center justify-between mb-8">
-                <div class="flex items-center gap-x-3">
-                    <div class="text-4xl">📊</div>
-                    <div>
-                        <h1 class="text-3xl font-semibold text-gray-900">Dashboard</h1>
-                        <p class="text-gray-500">Welcome back, Maria Santos</p>
-                    </div>
+    <main class="flex-1 overflow-y-auto bg-[#f7f8fc]">
+        <div class="max-w-[1500px] mx-auto px-8 py-8">
+            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-8">
+                <div>
+                    <p class="text-xs font-semibold tracking-[0.25em] text-[#621708] uppercase">Dashboard Module</p>
+                    <h1 class="text-[2rem] font-bold text-slate-950 mt-2">Dashboard Overview</h1>
+                    <p id="welcomeMessage" class="text-sm text-slate-500 mt-1">Monitor total documents, approvals, and submission status.</p>
                 </div>
-                <div class="flex items-center gap-x-2">
-                    <span class="text-sm font-medium text-gray-500">Department:</span>
-                    <select class="bg-white border border-gray-200 text-sm rounded-2xl px-4 py-2 focus:outline-none focus:border-[#621708]">
-                        <option>All Departments</option>
+                <div class="flex flex-wrap items-center gap-3">
+                    <select id="departmentFilter" onchange="loadDashboardData()" class="field min-w-[210px]">
+                        <option value="">All Departments</option>
                         <option>BSIT</option>
                         <option>BSIE</option>
                         <option>BIT</option>
                     </select>
                 </div>
-            </div>
+            </header>
 
-            <!-- KPI Cards -->
-            <div class="grid grid-cols-4 gap-5 mb-8">
-                <div class="bg-white rounded-3xl p-6 card-shadow">
-                    <div class="flex items-center gap-x-2 text-gray-500 text-sm">📄 <span class="font-medium">Total Documents</span></div>
-                    <div class="text-5xl font-semibold mt-2 text-gray-900">142</div>
-                    <div class="text-emerald-600 text-xs mt-1">+5% from last week</div>
+            <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-7">
+                <div class="dashboard-card metric-card metric-1 p-6">
+                    <div class="relative flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-500">Total Documents</p>
+                            <p id="totalDocuments" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p id="totalDocumentsTrend" class="text-xs text-slate-500 mt-2">No trend available</p>
+                        </div>
+                        <div class="metric-icon-ring">
+                            <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+                        </div>
+                    </div>
                 </div>
-                <div class="bg-white rounded-3xl p-6 card-shadow">
-                    <div class="flex items-center gap-x-2 text-gray-500 text-sm">✅ <span class="font-medium">Approved</span></div>
-                    <div class="text-5xl font-semibold mt-2 text-gray-900">98</div>
-                    <div class="text-emerald-600 text-xs mt-1">+15% from last week</div>
+                <div class="dashboard-card metric-card metric-2 p-6">
+                    <div class="relative flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-500">Approved</p>
+                            <p id="approvedDocuments" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p id="approvedTrend" class="text-xs text-emerald-600 mt-2">Approved records</p>
+                        </div>
+                        <div class="metric-icon-ring">
+                            <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="m5 12 5 5L20 7"/></svg>
+                        </div>
+                    </div>
                 </div>
-                <div class="bg-white rounded-3xl p-6 card-shadow">
-                    <div class="flex items-center gap-x-2 text-gray-500 text-sm">⏳ <span class="font-medium">Pending Review</span></div>
-                    <div class="text-5xl font-semibold mt-2 text-gray-900">27</div>
-                    <div class="text-red-600 text-xs mt-1">-4 from last week</div>
+                <div class="dashboard-card metric-card metric-3 p-6">
+                    <div class="relative flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-500">Submission Status</p>
+                            <p id="pendingDocuments" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p id="pendingTrend" class="text-xs text-amber-600 mt-2">Awaiting submission review</p>
+                        </div>
+                        <div class="metric-icon-ring">
+                            <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>
+                        </div>
+                    </div>
                 </div>
-                <div class="bg-white rounded-3xl p-6 card-shadow">
-                    <div class="flex items-center gap-x-2 text-gray-500 text-sm">⏱️ <span class="font-medium">Workload Hours</span></div>
-                    <div class="text-5xl font-semibold mt-2 text-gray-900">128 / 160</div>
-                    <div class="text-amber-600 text-xs mt-1">+5% decrease</div>
-                </div>
-            </div>
+                            </section>
 
-            <!-- Activities Overview + Quick Actions -->
-            <div class="grid grid-cols-12 gap-6">
-                <div class="col-span-8 bg-white rounded-3xl p-6 card-shadow">
-                    <h2 class="text-xl font-semibold mb-6">My Faculty Activities Overview</h2>
-                    <div class="flex gap-10">
-                        <div class="relative w-52 h-52 flex-shrink-0">
-                            <canvas id="activities-donut"></canvas>
-                            <div class="absolute inset-0 flex items-center justify-center text-center">
-                                <div>
-                                    <div class="text-5xl font-bold text-gray-900">78%</div>
-                                    <div class="text-xs text-gray-500 -mt-1">Overall</div>
-                                </div>
+            <section class="grid grid-cols-1 xl:grid-cols-12 gap-6 mb-7">
+                <div class="dashboard-card p-6 xl:col-span-8">
+                    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-950">Recent Statistics and Trends</h2>
+                            <p class="text-sm text-slate-500 mt-1">Track documents, approvals, submission status, and research activity over time.</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-slate-500 font-medium">Sort by</label>
+                            <select id="trendsMode" class="field min-w-[140px]" onchange="loadDashboardData()">
+                                <option value="overview">Overview</option>
+                                <option value="documents">Documents</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="h-[300px]">
+                        <canvas id="trendsChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="dashboard-card p-6 xl:col-span-4">
+                    <div class="mb-4">
+                        <h2 class="text-lg font-semibold text-slate-950">Overall Performance</h2>
+                        <p class="text-sm text-slate-500 mt-1">Performance percentage based on approvals, completed work, and active workload progress.</p>
+                    </div>
+                    <div class="relative w-[240px] h-[240px] mx-auto">
+                        <canvas id="performanceDonut"></canvas>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <div class="text-center">
+                                <div id="performancePercent" class="text-4xl font-bold text-slate-900">0%</div>
+                                <div class="text-sm text-slate-500 mt-1">Performance</div>
                             </div>
                         </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 mt-5">
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div class="text-xs text-slate-500">Approval Rate</div>
+                            <div id="approvalStat" class="text-lg font-semibold text-slate-900 mt-1">0%</div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div class="text-xs text-slate-500">Research Completion</div>
+                            <div id="researchStat" class="text-lg font-semibold text-slate-900 mt-1">0%</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-                        <div class="flex-1 space-y-5 pt-2">
-                            <div>
-                                <div class="flex justify-between text-sm mb-1.5">
-                                    <div class="flex items-center gap-x-2"><div class="w-3 h-3 bg-red-500 rounded-full"></div> Administrative Tasks</div>
-                                    <span class="font-medium text-red-600">99%</span>
-                                </div>
-                                <div class="h-2 bg-gray-100 rounded-full"><div class="h-2 bg-red-500 rounded-full w-[99%]"></div></div>
+            <section class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+                <div class="dashboard-card p-6 xl:col-span-5">
+                    <div class="mb-6">
+                        <h2 class="text-lg font-semibold text-slate-950">Faculty Activities Overview</h2>
+                        <p class="text-sm text-slate-500 mt-1">Administrative tasks, research output, extension services, and teaching load.</p>
+                    </div>
+                    <div class="space-y-5">
+                        <div>
+                            <div class="flex items-center justify-between text-sm mb-2">
+                                <span class="font-medium text-slate-700">Administrative Tasks</span>
+                                <span id="adminTasksLabel" class="font-semibold text-slate-900">0</span>
                             </div>
-                            <div>
-                                <div class="flex justify-between text-sm mb-1.5">
-                                    <div class="flex items-center gap-x-2"><div class="w-3 h-3 bg-yellow-400 rounded-full"></div> Research Output</div>
-                                    <span class="font-medium">13/20</span>
-                                </div>
-                                <div class="h-2 bg-gray-100 rounded-full"><div class="h-2 bg-yellow-400 rounded-full w-[65%]"></div></div>
+                            <div class="progress-track"><div id="adminTasksBar" class="progress-fill bg-slate-700" style="width:0%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between text-sm mb-2">
+                                <span class="font-medium text-slate-700">Research Output</span>
+                                <span id="researchOutputLabel" class="font-semibold text-slate-900">0</span>
                             </div>
-                            <div>
-                                <div class="flex justify-between text-sm mb-1.5">
-                                    <div class="flex items-center gap-x-2"><div class="w-3 h-3 bg-teal-400 rounded-full"></div> Extension Services</div>
-                                    <span class="font-medium">5/12</span>
-                                </div>
-                                <div class="h-2 bg-gray-100 rounded-full"><div class="h-2 bg-teal-400 rounded-full w-[42%]"></div></div>
+                            <div class="progress-track"><div id="researchOutputBar" class="progress-fill bg-sky-500" style="width:0%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between text-sm mb-2">
+                                <span class="font-medium text-slate-700">Extension Services</span>
+                                <span id="extensionServicesLabel" class="font-semibold text-slate-900">0</span>
                             </div>
-                            <div class="pt-4 border-t">
-                                <div class="flex justify-between text-sm mb-1.5">
-                                    <span class="font-medium">Teaching Load</span>
-                                    <span class="font-medium">64/80 hrs</span>
-                                </div>
-                                <div class="h-2.5 bg-gray-100 rounded-full"><div class="h-2.5 bg-gray-800 rounded-full w-[80%]"></div></div>
+                            <div class="progress-track"><div id="extensionServicesBar" class="progress-fill bg-emerald-500" style="width:0%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between text-sm mb-2">
+                                <span class="font-medium text-slate-700">Teaching Load</span>
+                                <span id="teachingLoadLabel" class="font-semibold text-slate-900">0</span>
                             </div>
+                            <div class="progress-track"><div id="teachingLoadBar" class="progress-fill bg-amber-500" style="width:0%"></div></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Quick Actions -->
-                <div class="col-span-4 bg-white rounded-3xl p-6 card-shadow flex flex-col gap-4">
-                    <h2 class="text-xl font-semibold mb-2">Quick Actions</h2>
-                    <button onclick="quickAction('upload')" class="bg-[#621708] hover:bg-[#8c2a10] text-white rounded-3xl py-4 px-6 text-sm font-medium">↑ Upload New Document</button>
-                    <button onclick="quickAction('submit')" class="bg-[#621708] hover:bg-[#8c2a10] text-white rounded-3xl py-4 px-6 text-sm font-medium">✈️ Submit for Approval</button>
-                    <button onclick="quickAction('analytics')" class="bg-[#621708] hover:bg-[#8c2a10] text-white rounded-3xl py-4 px-6 text-sm font-medium">📈 View Analytics</button>
+                <div class="dashboard-card p-6 xl:col-span-3">
+                    <div class="mb-5">
+                        <h2 class="text-lg font-semibold text-slate-950">Quick Actions</h2>
+                        <p class="text-sm text-slate-500 mt-1">Open common administrative actions.</p>
+                    </div>
+                    <div class="space-y-3">
+                        <button onclick="quickAction('document')" class="primary-btn w-full">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14"/><path d="m7 10 5-5 5 5"/><path d="M5 21h14"/></svg>
+                            Upload Document
+                        </button>
+                        <button onclick="quickAction('approval')" class="secondary-btn w-full">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="m5 12 5 5L20 7"/></svg>
+                            Review Approvals
+                        </button>
+                        <button onclick="quickAction('workload')" class="secondary-btn w-full">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                            View Workload
+                        </button>
+                        <button onclick="quickAction('analytics')" class="secondary-btn w-full">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
+                            View Reports
+                        </button>
+                    </div>
                 </div>
-            </div>
+
+                <div class="dashboard-card p-6 xl:col-span-4">
+                    <div class="mb-5">
+                        <h2 class="text-lg font-semibold text-slate-950">Recent Activity</h2>
+                        <p class="text-sm text-slate-500 mt-1">Recent statistics and system trends from faculty and administrative activity.</p>
+                    </div>
+                    <div id="recentActivityList" class="space-y-3">
+                        <div class="text-sm text-slate-500">Loading recent activity...</div>
+                    </div>
+                </div>
+            </section>
         </div>
-    </div>
+    </main>
 </div>
 
 <script>
-    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-    const { createClient } = supabase;
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
 
-    let activitiesChart = null;
-    let currentUser = null;
-    let currentProfile = null;
+let currentUser = null;
+let currentProfile = null;
+let performanceChart = null;
+let trendsChart = null;
 
-    function formatFullName(firstName, lastName, fallback) {
-        const composed = [firstName, lastName].filter(Boolean).join(' ').trim();
-        return composed || fallback || 'Unknown User';
+function formatFullName(firstName, lastName, fallback) {
+    return [firstName, lastName].filter(Boolean).join(' ').trim() || fallback || 'Administrator';
+}
+function safeCount(data) { return Array.isArray(data) ? data.length : 0; }
+function sumUnits(rows) { return (rows || []).reduce((sum, row) => sum + (Number(row.units) || 0), 0); }
+function percent(value, total) { return total > 0 ? Math.round((value / total) * 100) : 0; }
+function clamp(value) { return Math.max(0, Math.min(100, Math.round(value))); }
+function esc(value) { return String(value || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function formatDate(value) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? 'Recently' : d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+}
+
+async function safeSelect(table, query = '*') {
+    try {
+        const { data, error } = await supabaseClient.from(table).select(query);
+        if (error) throw error;
+        return data || [];
+    } catch (error) {
+        console.warn(`${table} unavailable:`, error.message);
+        return [];
     }
+}
 
-    function getProfileFromAuthMetadata(user) {
-        const metadata = user?.user_metadata || {};
-        return {
-            first_name: metadata.first_name || '',
-            last_name: metadata.last_name || '',
-            email: user?.email || '',
-            role: metadata.role || 'Administrator',
-            avatar_url: metadata.avatar_url || ''
-        };
-    }
+async function loadDashboardData() {
+    const department = document.getElementById('departmentFilter').value;
+    const mode = document.getElementById('trendsMode').value;
 
-    function isAdminProfilesMissingError(error) {
-        if (!error) return false;
-        const code = String(error.code || '').toUpperCase();
-        const message = String(error.message || '').toLowerCase();
-        return (
-            code === '42P01' ||
-            code === 'PGRST205' ||
-            message.includes('admin_profiles') && (message.includes('does not exist') || message.includes('relation'))
-        );
-    }
+    const [documents, research, teaching, advisory, adminRoles, activities, engagement] = await Promise.all([
+        safeSelect('faculty_documents', '*'),
+        safeSelect('faculty_research_projects', '*'),
+        safeSelect('faculty_teaching_loads', '*'),
+        safeSelect('faculty_advisory_loads', '*'),
+        safeSelect('faculty_admin_role_loads', '*'),
+        safeSelect('system_activity_logs', '*'),
+        safeSelect('engagement_logs', '*')
+    ]);
 
-    function renderProfile(profile, user) {
-        const fullName = formatFullName(profile.first_name, profile.last_name, user?.email);
-        const role = profile.role || 'Administrator';
-        const avatarUrl = profile.avatar_url || '';
+    const filteredDocs = department ? documents.filter(row => row.department === department || !row.department) : documents;
+    const filteredResearch = department ? research.filter(row => row.department === department || !row.department) : research;
+    const filteredTeaching = department ? teaching.filter(row => row.department === department || !row.department) : teaching;
+    const filteredAdvisory = department ? advisory.filter(row => row.department === department || !row.department) : advisory;
+    const filteredAdminRoles = department ? adminRoles.filter(row => row.department === department || !row.department) : adminRoles;
+    const filteredEngagement = department ? engagement.filter(row => row.department === department || !row.department) : engagement;
 
-        // Update sidebar profile
-        const profileNameEl = document.getElementById('profileName');
-        const profileRoleEl = document.getElementById('profileRole');
-        const sidebarAvatar = document.getElementById('sidebarAvatar');
-        const sidebarAvatarFallback = document.getElementById('sidebarAvatarFallback');
+    const totalDocs = safeCount(filteredDocs);
+    const approvedDocs = filteredDocs.filter(row => ['approved', 'completed'].includes(String(row.status || '').toLowerCase())).length;
+    const pendingDocs = filteredDocs.filter(row => ['submitted', 'pending', 'pending review', 'for review'].includes(String(row.status || '').toLowerCase())).length;
 
-        if (profileNameEl) profileNameEl.textContent = fullName;
-        if (profileRoleEl) profileRoleEl.textContent = role;
+    const activeTeaching = filteredTeaching.filter(row => String(row.status || 'Active').toLowerCase() !== 'archived');
+    const activeAdvisory = filteredAdvisory.filter(row => String(row.status || 'Active').toLowerCase() !== 'archived');
+    const activeAdminRoles = filteredAdminRoles.filter(row => String(row.status || 'Active').toLowerCase() !== 'archived');
+    const workloadTotal = sumUnits(activeTeaching) + sumUnits(activeAdvisory) + sumUnits(activeAdminRoles);
 
-        if (avatarUrl) {
-            if (sidebarAvatar) {
-                sidebarAvatar.src = avatarUrl;
-                sidebarAvatar.classList.remove('hidden');
-            }
-            if (sidebarAvatarFallback) sidebarAvatarFallback.classList.add('hidden');
-        } else {
-            if (sidebarAvatar) {
-                sidebarAvatar.src = '';
-                sidebarAvatar.classList.add('hidden');
-            }
-            if (sidebarAvatarFallback) sidebarAvatarFallback.classList.remove('hidden');
+    const completedResearch = filteredResearch.filter(row => String(row.status || '').toLowerCase() === 'completed').length;
+    const extensionServices = filteredEngagement.filter(row => String(row.activity_type || '').toLowerCase().includes('community') || String(row.activity_title || '').toLowerCase().includes('extension')).length;
+    const administrativeTasks = activeAdminRoles.length || activities.filter(row => String(row.module || '').toLowerCase().includes('admin')).length;
+
+    document.getElementById('totalDocuments').textContent = totalDocs;
+    document.getElementById('approvedDocuments').textContent = approvedDocs;
+    document.getElementById('pendingDocuments').textContent = pendingDocs;
+    document.getElementById('totalDocumentsTrend').textContent = `${totalDocs} document record${totalDocs === 1 ? '' : 's'} tracked`;
+    document.getElementById('approvedTrend').textContent = `${percent(approvedDocs, Math.max(totalDocs, 1))}% approval share`;
+    document.getElementById('pendingTrend').textContent = `${pendingDocs} pending review`;
+
+    const approvalScore = percent(approvedDocs, Math.max(totalDocs, 1));
+    const workloadScore = clamp(percent(workloadTotal, Math.max(workloadTotal, 40)));
+    const researchScore = clamp(percent(completedResearch, Math.max(filteredResearch.length, 1)));
+    const performance = clamp((approvalScore * 0.45) + (workloadScore * 0.35) + (researchScore * 0.20));
+
+    document.getElementById('approvalStat').textContent = `${approvalScore}%`;
+    document.getElementById('researchStat').textContent = `${researchScore}%`;
+
+    updatePerformanceChart(performance);
+    updateActivityOverview({
+        administrativeTasks,
+        researchOutput: completedResearch,
+        extensionServices,
+        teachingLoad: workloadTotal
+    });
+    updateTrendsChart({ totalDocs, approvedDocs, pendingDocs, workloadTotal, completedResearch, mode });
+    renderRecentActivities(activities, filteredEngagement, filteredDocs);
+}
+
+function updatePerformanceChart(value) {
+    document.getElementById('performancePercent').textContent = `${value}%`;
+    const ctx = document.getElementById('performanceDonut');
+    if (performanceChart) performanceChart.destroy();
+    performanceChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data: [value, Math.max(0, 100 - value)],
+                backgroundColor: ['#fb923c', '#f1f5f9'],
+                borderWidth: 0,
+                cutout: '74%'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } }
         }
+    });
+}
 
-        // Update welcome message
-        const welcomeEl = document.querySelector('.text-gray-500');
-        if (welcomeEl && welcomeEl.textContent.includes('Welcome back')) {
-            welcomeEl.textContent = `Welcome back, ${profile.first_name || 'User'}`;
-        }
-    }
+function updateActivityOverview(values) {
+    const max = Math.max(values.administrativeTasks, values.researchOutput, values.extensionServices, values.teachingLoad, 1);
+    const rows = [
+        ['adminTasks', values.administrativeTasks],
+        ['researchOutput', values.researchOutput],
+        ['extensionServices', values.extensionServices],
+        ['teachingLoad', values.teachingLoad]
+    ];
+    rows.forEach(([id, value]) => {
+        document.getElementById(`${id}Label`).textContent = value;
+        document.getElementById(`${id}Bar`).style.width = `${percent(value, max)}%`;
+    });
+}
 
-    async function loadAdminProfile() {
-        const { data: authData, error: authError } = await supabaseClient.auth.getUser();
-        if (authError || !authData?.user) {
-            // If not logged in, try localStorage fallback
-            loadUserInfo();
-            return;
-        }
+function updateTrendsChart(values) {
+    const ctx = document.getElementById('trendsChart');
+    if (trendsChart) trendsChart.destroy();
 
-        currentUser = authData.user;
-        let profile = getProfileFromAuthMetadata(currentUser);
+    const labels = ['Documents', 'Approved', 'Pending', 'Research'];
+    const numbers = [values.totalDocs, values.approvedDocs, values.pendingDocs, values.completedResearch];
 
-        // Try to get profile from admin_profiles table
-        const { data: dbProfile, error: dbError } = await supabaseClient
-            .from('admin_profiles')
-            .select('*')
-            .eq('id', currentUser.id)
-            .maybeSingle();
+    const useDocumentsPalette = values.mode === 'documents';
+    const useWorkloadPalette = values.mode === 'workload';
+    const lineColor = useDocumentsPalette ? '#f97316' : useWorkloadPalette ? '#8b5cf6' : '#475569';
+    const pointColor = useDocumentsPalette ? '#fb923c' : useWorkloadPalette ? '#a78bfa' : '#f59e0b';
 
-        if (dbError) {
-            if (isAdminProfilesMissingError(dbError)) {
-                console.warn('admin_profiles table not found. Using auth metadata only.');
-            } else {
-                console.error('Error fetching admin profile:', dbError);
-            }
-        } else if (dbProfile) {
-            profile = {
-                first_name: dbProfile.first_name || profile.first_name,
-                last_name: dbProfile.last_name || profile.last_name,
-                email: dbProfile.email || profile.email,
-                role: dbProfile.role || profile.role,
-                avatar_url: dbProfile.avatar_url || profile.avatar_url
-            };
-        }
-
-        currentProfile = profile;
-        renderProfile(currentProfile, currentUser);
-    }
-
-    // Load user info from localStorage (fallback)
-    function loadUserInfo() {
-        const userStr = localStorage.getItem('citeflow_user');
-        if (userStr) {
-            try {
-                const user = JSON.parse(userStr);
-                const profileNameEl = document.getElementById('profileName');
-                const profileRoleEl = document.getElementById('profileRole');
-                if (profileNameEl && user.name) {
-                    profileNameEl.textContent = user.name;
+    trendsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Overview',
+                data: numbers,
+                borderColor: lineColor,
+                backgroundColor: 'rgba(249,115,22,0.08)',
+                pointBackgroundColor: pointColor,
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 3,
+                pointRadius: 6,
+                pointHoverRadius: 7,
+                borderWidth: 3,
+                tension: 0.42,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#0f172a',
+                    padding: 12,
+                    displayColors: false
                 }
-                if (profileRoleEl && user.role) {
-                    profileRoleEl.textContent = user.role;
-                }
-            } catch (e) {
-                console.error('Error loading user info:', e);
-            }
-        }
-    }
-
-    function initDonutChart() {
-        const ctx = document.getElementById('activities-donut');
-        if (activitiesChart) activitiesChart.destroy();
-        activitiesChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                datasets: [{
-                    data: [45, 25, 30],
-                    backgroundColor: ['#14b8a6', '#ef4444', '#eab308'],
-                    borderWidth: 0,
-                    cutout: '78%'
-                }]
             },
-            options: {
-                responsive: true,
-                plugins: { 
-                    legend: { display: false }, 
-                    tooltip: { enabled: false } 
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#eef2f7' },
+                    ticks: { color: '#94a3b8' },
+                    border: { display: false }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#64748b' },
+                    border: { display: false }
                 }
             }
-        });
+        }
+    });
+}
+
+function renderRecentActivities(activities, engagement, documents) {
+    const combined = [
+        ...activities.map(item => ({ title: item.action || 'System Activity', meta: item.details_text || item.module || 'Activity recorded', time: item.created_at })),
+        ...engagement.map(item => ({ title: item.activity_title || item.activity_type || 'Engagement Activity', meta: item.description || item.source_module || 'Engagement recorded', time: item.created_at || item.activity_at })),
+        ...documents.map(item => ({ title: item.document_name || item.title || 'Document submitted', meta: item.status || item.document_type || 'Document record', time: item.created_at }))
+    ].filter(item => item.title).sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0)).slice(0, 6);
+
+    const list = document.getElementById('recentActivityList');
+    if (!combined.length) {
+        list.innerHTML = '<div class="text-sm text-slate-500">No recent activity found.</div>';
+        return;
     }
 
-    function quickAction(action) {
-        if (action === 'upload') alert('📤 Upload New Document modal opened');
-        else if (action === 'submit') alert('✈️ Submit for Approval started');
-        else if (action === 'analytics') alert('📈 Analytics page opened');
-    }
+    list.innerHTML = combined.map(item => `
+        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 text-slate-600 flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+            </div>
+            <div class="min-w-0">
+                <div class="text-sm font-semibold text-slate-900 truncate">${esc(item.title)}</div>
+                <div class="text-xs text-slate-500 mt-1 line-clamp-2">${esc(item.meta)}</div>
+                <div class="text-xs text-slate-400 mt-2">${formatDate(item.time)}</div>
+            </div>
+        </div>
+    `).join('');
+}
 
-    window.onload = () => {
-        loadAdminProfile();
-        initDonutChart();
+function quickAction(action) {
+    const routes = {
+        document: 'document-vault.html',
+        approval: 'workflow-approval.html',
+        workload: 'workload-tracker.html',
+        analytics: 'reports-analytics.html'
     };
+    window.location.href = routes[action] || 'dashboard.html';
+}
+
+function renderProfile(profile, user) {
+    const fullName = formatFullName(profile.first_name, profile.last_name, user?.email);
+    const role = profile.role || 'Administrator';
+    const avatarUrl = profile.avatar_url || '';
+    document.getElementById('profileName').textContent = fullName;
+    document.getElementById('profileRole').textContent = role;
+    document.getElementById('welcomeMessage').textContent = `Welcome back, ${profile.first_name || fullName}. Monitor total documents, approvals, and submission status in one place.`;
+    const sidebarAvatar = document.getElementById('sidebarAvatar');
+    const sidebarAvatarFallback = document.getElementById('sidebarAvatarFallback');
+    if (avatarUrl) {
+        sidebarAvatar.src = avatarUrl;
+        sidebarAvatar.classList.remove('hidden');
+        sidebarAvatarFallback.classList.add('hidden');
+    } else {
+        sidebarAvatar.src = '';
+        sidebarAvatar.classList.add('hidden');
+        sidebarAvatarFallback.classList.remove('hidden');
+    }
+}
+
+async function loadAdminProfile() {
+    const { data: authData } = await supabaseClient.auth.getUser();
+    currentUser = authData?.user || null;
+    if (!currentUser) {
+        document.getElementById('profileName').textContent = 'Administrator';
+        document.getElementById('profileRole').textContent = 'Administrator';
+        return;
+    }
+    let profile = {
+        first_name: currentUser.user_metadata?.first_name || '',
+        last_name: currentUser.user_metadata?.last_name || '',
+        email: currentUser.email,
+        role: currentUser.user_metadata?.role || 'Administrator',
+        avatar_url: currentUser.user_metadata?.avatar_url || ''
+    };
+    try {
+        const { data } = await supabaseClient.from('admin_profiles').select('*').eq('id', currentUser.id).maybeSingle();
+        if (data) profile = { ...profile, ...data };
+    } catch (error) {
+        console.warn('Admin profile skipped:', error.message);
+    }
+    currentProfile = profile;
+    renderProfile(profile, currentUser);
+}
+
+function subscribeRealtime() {
+    supabaseClient.channel('dashboard-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_research_projects' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_teaching_loads' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_advisory_loads' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_admin_role_loads' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'system_activity_logs' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, loadDashboardData)
+        .subscribe();
+}
+
+window.addEventListener('load', async () => {
+    await loadAdminProfile();
+    await loadDashboardData();
+    subscribeRealtime();
+});
 </script>
 <script src="../shared/system-ui.js"></script>
 </body>

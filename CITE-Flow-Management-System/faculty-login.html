@@ -542,6 +542,34 @@
             </div>
           </div>
           <div class="field">
+            <label>Last Name</label>
+            <div class="input-box">
+              <input type="text" id="setup-last-name" required placeholder="Dela Cruz">
+            </div>
+          </div>
+          <div class="field">
+            <label>First Name</label>
+            <div class="input-box">
+              <input type="text" id="setup-first-name" required placeholder="Juan">
+            </div>
+          </div>
+          <div class="field">
+            <label>Middle Name</label>
+            <div class="input-box">
+              <input type="text" id="setup-middle-name" placeholder="Santos">
+            </div>
+          </div>
+          <div class="field">
+            <label>Sex</label>
+            <div class="input-box">
+              <select id="setup-sex" required style="width:100%;border:none;outline:none;background:transparent;font-family:inherit;font-size:0.875rem;">
+                <option value="">Select sex</option>
+                <option>Male</option>
+                <option>Female</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
             <label>Birthdate</label>
             <div class="input-box">
               <input type="date" id="setup-birthdate" required>
@@ -575,6 +603,44 @@
             <label>Position</label>
             <div class="input-box">
               <input type="text" id="setup-position" placeholder="Instructor">
+            </div>
+          </div>
+          <div class="field">
+            <label>Academic Rank</label>
+            <div class="input-box">
+              <select id="setup-academic-rank" style="width:100%;border:none;outline:none;background:transparent;font-family:inherit;font-size:0.875rem;">
+                <option>Part-time</option><option>Instructor I</option><option>Instructor II</option><option>Instructor III</option><option>Instructor IV</option><option>Instructor V</option>
+                <option>Assistant Professor I</option><option>Assistant Professor II</option><option>Assistant Professor III</option><option>Assistant Professor IV</option><option>Assistant Professor V</option>
+                <option>Associate Professor I</option><option>Associate Professor II</option><option>Associate Professor III</option><option>Associate Professor IV</option><option>Associate Professor V</option>
+                <option>Professor I</option><option>Professor II</option><option>Professor III</option><option>Professor IV</option><option>Professor V</option><option>University Professor</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <div class="input-box">
+              <select id="setup-employment-type" required style="width:100%;border:none;outline:none;background:transparent;font-family:inherit;font-size:0.875rem;">
+                <option value="Regular/Organic">Regular/Organic</option>
+                <option value="Part-Time">Part-Time</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Educational Qualification</label>
+            <div class="input-box">
+              <input type="text" id="setup-educational-qualification" placeholder="e.g. MSIT, PhD units">
+            </div>
+          </div>
+          <div class="field">
+            <label>Years of Experience</label>
+            <div class="input-box">
+              <input type="number" min="0" id="setup-years-experience" placeholder="0">
+            </div>
+          </div>
+          <div class="field">
+            <label>Eligibility</label>
+            <div class="input-box">
+              <input type="text" id="setup-eligibility" placeholder="e.g. NC II CHS, LPT">
             </div>
           </div>
           <div class="field">
@@ -664,12 +730,21 @@
 
     function openFirstLoginModal(user, profile) {
       document.getElementById('setup-full-name').value = profile?.full_name || user?.user_metadata?.full_name || '';
+      document.getElementById('setup-last-name').value = profile?.last_name || user?.user_metadata?.last_name || '';
+      document.getElementById('setup-first-name').value = profile?.first_name || user?.user_metadata?.first_name || '';
+      document.getElementById('setup-middle-name').value = profile?.middle_name || user?.user_metadata?.middle_name || '';
+      document.getElementById('setup-sex').value = profile?.sex || user?.user_metadata?.sex || '';
       document.getElementById('setup-birthdate').value = profile?.birthdate || user?.user_metadata?.birthdate || '';
       document.getElementById('setup-employee-id').value = profile?.employee_id || user?.user_metadata?.employee_id || '';
       document.getElementById('setup-existing-email').value = profile?.existing_email || profile?.email || user?.email || '';
       document.getElementById('setup-department').value = profile?.department || '';
       document.getElementById('setup-phone').value = profile?.phone || '';
       document.getElementById('setup-position').value = profile?.position || 'Faculty';
+      document.getElementById('setup-academic-rank').value = profile?.academic_rank || 'Part-time';
+      document.getElementById('setup-employment-type').value = profile?.employment_type || 'Regular/Organic';
+      document.getElementById('setup-educational-qualification').value = profile?.educational_qualification || '';
+      document.getElementById('setup-years-experience').value = profile?.years_experience || '';
+      document.getElementById('setup-eligibility').value = profile?.eligibility || '';
       document.getElementById('setup-password').value = '';
       document.getElementById('setup-confirm-password').value = '';
       document.getElementById('setup-photo').value = '';
@@ -850,17 +925,27 @@
       event.preventDefault();
       if (!pendingFirstLoginContext?.user) return;
 
-      const fullName = document.getElementById('setup-full-name').value.trim();
+      const typedFullName = document.getElementById('setup-full-name').value.trim();
+      const lastName = document.getElementById('setup-last-name').value.trim();
+      const firstName = document.getElementById('setup-first-name').value.trim();
+      const middleName = document.getElementById('setup-middle-name').value.trim();
+      const fullName = [firstName, middleName ? middleName.charAt(0).toUpperCase() + '.' : '', lastName].filter(Boolean).join(' ').trim() || typedFullName;
+      const sex = document.getElementById('setup-sex').value;
       const birthdate = document.getElementById('setup-birthdate').value;
       const employeeId = document.getElementById('setup-employee-id').value.trim();
       const existingEmail = document.getElementById('setup-existing-email').value.trim().toLowerCase();
       const department = document.getElementById('setup-department').value.trim();
       const phone = document.getElementById('setup-phone').value.trim();
       const position = document.getElementById('setup-position').value.trim() || 'Faculty';
+      const academicRank = document.getElementById('setup-academic-rank').value;
+      const employmentType = document.getElementById('setup-employment-type').value;
+      const educationalQualification = document.getElementById('setup-educational-qualification').value.trim();
+      const yearsExperience = Number(document.getElementById('setup-years-experience').value || 0);
+      const eligibility = document.getElementById('setup-eligibility').value.trim();
       const newPassword = document.getElementById('setup-password').value;
       const confirmNewPassword = document.getElementById('setup-confirm-password').value;
 
-      if (!fullName || !birthdate || !employeeId || !existingEmail || !department) {
+      if (!fullName || !firstName || !lastName || !sex || !birthdate || !employeeId || !existingEmail || !department) {
         alert('Please complete all required profile details.');
         return;
       }
