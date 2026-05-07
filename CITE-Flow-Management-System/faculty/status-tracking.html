@@ -16,12 +16,22 @@
             --ink: #111827;
         }
         body { background: #f6f7f9; color: var(--ink); }
-        /* Keep sidebar background consistent across faculty pages */
-        .sidebar { background: linear-gradient(180deg, #621708 0%, #4f1308 100%); width: 280px; }
-        .nav-item { transition: all .22s ease; }
-        .nav-item:hover { background: rgba(255,255,255,.10); transform: translateX(2px); }
-        .nav-item.active { background: rgba(255,255,255,.14); box-shadow: inset 4px 0 0 var(--cream); }
-        .section-header { font-size: 11px; font-weight: 700; letter-spacing: .9px; padding-left: 20px; margin-bottom: 10px; text-transform: uppercase; }
+        .sidebar {
+            background-color: #621708;
+            width: 280px;
+        }
+        
+        .nav-item { 
+            transition: all 0.3s ease; 
+        }
+        .nav-item:hover { 
+            background-color: #8c2a10; 
+        }
+        .nav-item.active { 
+            background-color: #8c2a10; 
+            border-left: 4px solid #f5e8c7; 
+        }
+.section-header { font-size: 11px; font-weight: 700; letter-spacing: .9px; padding-left: 20px; margin-bottom: 10px; text-transform: uppercase; }
         .sidebar-scroll::-webkit-scrollbar { width: 4px; }
         .sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,.35); border-radius: 20px; }
         .nav-icon, .icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
@@ -204,15 +214,21 @@ const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined' ? window._
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [], taskFiles: [] };
+const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [] };
 let currentFaculty = null;
 let currentUser = null;
 let activeFilter = 'all';
 let activeRowKey = null;
 let searchTerm = '';
 let realtimeChannel = null;
-let isFetchingData = false;
-let authChecked = false;
+const FACULTY_ROLE_ALLOWLIST = new Set([
+    'faculty',
+    'faculty member',
+    'department chairperson',
+    'department chaiperson',
+    'college dean',
+    'college secretary'
+]);
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -242,65 +258,71 @@ function setSidebarFaculty(profile, user) {
 }
 
 async function requireFacultyAuth() {
-    if (authChecked && currentUser) return true;
-
-    const { data, error } = await db.auth.getSession();
-    if (error || !data?.session?.user) {
+    const { data, error } = await db.auth.getUser();
+    if (error || !data?.user) {
         window.location.href = '../faculty-login.html';
         return false;
     }
 
-    const user = data.session.user;
+    const user = data.user;
     const role = String(user.user_metadata?.role || '').toLowerCase();
-    if (role && role !== 'faculty') {
+    const isFacultyRole = !role || FACULTY_ROLE_ALLOWLIST.has(role) || role.includes('faculty');
+    if (!isFacultyRole) {
         await db.auth.signOut();
         window.location.href = '../login.html';
         return false;
     }
 
     currentUser = user;
-    authChecked = true;
     return true;
-}
-
-function normalizeFacultyForStatus(row) {
-    if (!row) return null;
-    return {
-        ...row,
-        id: row.id,
-        full_name: row.full_name || row.name || row.email || 'Faculty Member',
-        department_code: row.department || row.department_code || 'N/A',
-        is_active: row.access_enabled !== false && String(row.status || 'Active').toLowerCase() === 'active'
-    };
 }
 
 async function loadCurrentFacultyProfile() {
     if (!currentUser) return null;
     const email = String(currentUser.email || '').toLowerCase();
 
-    let response = await db
-        .from('faculty')
+    const wfProfileResponse = await db
+        .from('wf_faculty')
         .select('*')
-        .eq('auth_user_id', currentUser.id)
+        .eq('is_active', true)
+        .or(`auth_user_id.eq.${currentUser.id},email.eq.${email}`)
         .maybeSingle();
 
-    if (response.error) {
-        console.error('Failed to load faculty profile by auth_user_id:', response.error);
+    if (!wfProfileResponse.error && wfProfileResponse.data) {
+        return wfProfileResponse.data;
+    }
+    if (wfProfileResponse.error) {
+        console.warn('wf_faculty lookup failed:', wfProfileResponse.error.message);
     }
 
-    if (!response.data && email) {
-        response = await db
-            .from('faculty')
-            .select('*')
-            .or(`email.eq.${email},existing_email.eq.${email}`)
-            .maybeSingle();
-        if (response.error) {
-            console.error('Failed to load faculty profile by email:', response.error);
-        }
+    const legacyProfileResponse = await db
+        .from('faculty')
+        .select('*')
+        .or(`auth_user_id.eq.${currentUser.id},email.eq.${email}`)
+        .maybeSingle();
+
+    if (legacyProfileResponse.error) {
+        console.warn('faculty lookup fallback failed:', legacyProfileResponse.error.message);
+    } else if (legacyProfileResponse.data) {
+        const profile = legacyProfileResponse.data;
+        return {
+            id: profile.id,
+            auth_user_id: profile.auth_user_id || currentUser.id,
+            full_name: profile.full_name || profile.name || currentUser.user_metadata?.full_name || currentUser.email,
+            name: profile.name || profile.full_name || currentUser.user_metadata?.full_name || currentUser.email,
+            email: profile.email || profile.existing_email || currentUser.email || '',
+            department: profile.department || ''
+        };
     }
 
-    const normalized = normalizeFacultyForStatus(response.data);
-    return normalized?.is_active ? normalized : null;
+    return {
+        id: currentUser.id,
+        auth_user_id: currentUser.id,
+        full_name: currentUser.user_metadata?.full_name || currentUser.email || 'Faculty Member',
+        name: currentUser.user_metadata?.full_name || currentUser.email || 'Faculty Member',
+        email: currentUser.email || '',
+        department: ''
+    };
 }
 function getFacultyNotifications() {
     const faculty = resolveCurrentFaculty();
@@ -349,10 +371,10 @@ function getDueMeta(row) {
 function computeRows() {
     const faculty = resolveCurrentFaculty();
     if (!faculty) return [];
-    return state.assignments.filter(a => String(a.faculty_id) === String(faculty.id)).map(a => {
-        const task = state.tasks.find(t => String(t.id) === String(a.task_id));
-        const submission = state.submissions.find(s => String(s.task_id) === String(a.task_id) && String(s.faculty_id) === String(faculty.id));
-        const files = submission ? state.files.filter(f => String(f.submission_id) === String(submission.id)) : [];
+    return state.assignments.filter(a => a.faculty_id === faculty.id).map(a => {
+        const task = state.tasks.find(t => t.id === a.task_id);
+        const submission = state.submissions.find(s => s.task_id === a.task_id && s.faculty_id === faculty.id);
+        const files = submission ? state.files.filter(f => f.submission_id === submission.id) : [];
         const status = normalizeStatus(submission?.status, task);
         return { key: `${a.task_id}-${faculty.id}`, task, assignment: a, submission, files, status };
     }).filter(r => r.task);
@@ -475,17 +497,8 @@ function renderDetail(row) {
         const encoded = encodeFileForPreview(f);
         return `<button type="button" onclick="previewFileFromEncoded('${encoded}')" class="w-full text-left flex items-center gap-3 p-3 rounded-2xl bg-white border border-gray-200 hover:border-[#621708]/30 hover:bg-[#fffaf8] transition"><div class="w-10 h-10 rounded-xl bg-gray-50 text-gray-500 flex items-center justify-center"><svg class="icon w-5 h-5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><div class="min-w-0 flex-1"><div class="text-sm font-semibold text-gray-900 truncate">${escapeHtml(f.file_name || 'Uploaded document')}</div><div class="text-xs text-gray-500">${url ? 'Click to preview document' : 'Preview unavailable: missing file URL'}</div></div><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>`;
     }).join('') : '<div class="text-sm text-gray-500 bg-white border border-dashed border-gray-300 rounded-2xl p-4">No submitted documents yet.</div>';
-    const taskFileRows = (state.taskFiles || []).filter(tf => String(tf.task_id) === String(row.task.id));
-    const attachments = taskFileRows.length ? taskFileRows : (row.task?.attachment_names || []).map(name => ({ file_name: name }));
-    const attachmentsHtml = attachments.length ? attachments.map(file => {
-        const url = getFileUrl(file);
-        const encoded = encodeFileForPreview(file);
-        const label = escapeHtml(file.file_name || file.name || 'Task attachment');
-        if (url) {
-            return `<button type="button" onclick="previewFileFromEncoded('${encoded}')" class="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 hover:border-[#621708]/30 hover:bg-[#fffaf8] rounded-xl text-xs font-semibold text-gray-700"><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${label}</button>`;
-        }
-        return `<span class="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700"><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${label}</span>`;
-    }).join('') : '<span class="text-sm text-gray-500">No required attachment template.</span>';
+    const attachments = row.task?.attachment_names || [];
+    const attachmentsHtml = attachments.length ? attachments.map(name => `<span class="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700"><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${escapeHtml(name)}</span>`).join('') : '<span class="text-sm text-gray-500">No required attachment template.</span>';
     panel.innerHTML = `<div class="flex flex-col gap-6">
         <div class="bg-white rounded-[1.5rem] border border-gray-200 p-6">
             <div class="flex items-start justify-between gap-4 mb-5">
@@ -580,62 +593,50 @@ function filterStatus(status) {
 }
 function toggleNotifications() { document.getElementById('notifDropdown').classList.toggle('open'); }
 async function fetchAllData() {
-    if (isFetchingData) return;
-    isFetchingData = true;
+    const ok = await requireFacultyAuth();
+    if (!ok) return;
 
-    try {
-        const ok = await requireFacultyAuth();
-        if (!ok) return;
+    currentFaculty = await loadCurrentFacultyProfile();
+    setSidebarFaculty(currentFaculty, currentUser);
 
-        currentFaculty = await loadCurrentFacultyProfile();
-        setSidebarFaculty(currentFaculty, currentUser);
+    if (!currentFaculty) return;
 
-        if (!currentFaculty) {
-            document.getElementById('statusList').innerHTML = `<div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl p-4">Your account is signed in, but no matching active faculty profile was found in the faculty table. Please ask the administrator to check your faculty profile.</div>`;
-            renderDetail(null);
-            return;
-        }
-
-        const [faculty, tasks, assignments, submissions, files, notifications, taskFiles] = await Promise.all([
-            db.from('faculty').select('*').order('full_name', { ascending: true }),
-            db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
-            db.from('wf_task_assignments').select('*'),
-            db.from('wf_submissions').select('*'),
-            db.from('wf_submission_files').select('*'),
-            db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(100),
-            db.from('wf_task_files').select('*')
-        ]);
-
-        const requiredError = faculty.error || tasks.error || assignments.error || submissions.error;
-        if (requiredError) {
-            document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(requiredError.message || 'Failed to load status data.')}</div>`;
-            return;
-        }
-
-        if (files.error || notifications.error || taskFiles.error) {
-            console.warn('Optional status data could not be loaded:', { files, notifications, taskFiles });
-        }
-
-        state.faculty = (faculty.data || []).map(normalizeFacultyForStatus).filter(f => f.is_active);
-        state.tasks = tasks.data || [];
-        state.assignments = assignments.data || [];
-        state.submissions = submissions.data || [];
-        state.files = files.error ? [] : (files.data || []);
-        state.notifications = notifications.error ? [] : (notifications.data || []);
-        state.taskFiles = taskFiles.error ? [] : (taskFiles.data || []);
-        renderRows();
-        renderNotifications();
-    } finally {
-        isFetchingData = false;
+    const [faculty, tasks, assignments, submissions, files, notifications] = await Promise.all([
+        db.from('wf_faculty').select('*').eq('is_active', true).order('full_name'),
+        db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
+        db.from('wf_task_assignments').select('*'),
+        db.from('wf_submissions').select('*'),
+        db.from('wf_submission_files').select('*'),
+        db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(100)
+    ]);
+    const error = tasks.error || assignments.error || submissions.error || files.error || notifications.error;
+    if (error) {
+        document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(error.message || 'Failed to load realtime data.')}</div>`;
+        return;
     }
+    state.faculty = faculty.data || [];
+    state.tasks = tasks.data || [];
+    state.assignments = assignments.data || [];
+    state.submissions = submissions.data || [];
+    state.files = files.data || [];
+    state.notifications = notifications.data || [];
+    renderRows();
+    renderNotifications();
 }
 function initRealtime() {
-    // Realtime is intentionally disabled on this page to avoid Supabase Auth lock conflicts.
+    if (realtimeChannel) db.removeChannel(realtimeChannel);
+    realtimeChannel = db.channel('wf-faculty-status-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submission_files' }, fetchAllData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, fetchAllData)
+        .subscribe();
 }
 document.addEventListener('click', (event) => {
     if (!event.target.closest('.notif-bell') && !event.target.closest('#notifDropdown')) document.getElementById('notifDropdown').classList.remove('open');
 });
-window.onload = async () => { await fetchAllData(); };
+window.onload = async () => { await fetchAllData(); initRealtime(); };
 </script>
 <script src="../shared/system-ui.js"></script>
 </body>

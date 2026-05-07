@@ -10,11 +10,22 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
         body { background: #f7f8fb; color: #111827; }
-        .sidebar { background: linear-gradient(180deg, #621708 0%, #4f1308 100%); width: 280px; }
-        .nav-item { transition: all .2s ease; }
-        .nav-item:hover { background-color: rgba(255,255,255,.12); }
-        .nav-item.active { background-color: rgba(255,255,255,.14); border-left: 4px solid #f5e8c7; }
-        .section-header { font-size: 11px; font-weight: 700; letter-spacing: .08em; opacity: .74; padding-left: 20px; margin-bottom: 10px; text-transform: uppercase; }
+        .sidebar {
+            background-color: #621708;
+            width: 280px;
+        }
+        
+        .nav-item { 
+            transition: all 0.3s ease; 
+        }
+        .nav-item:hover { 
+            background-color: #8c2a10; 
+        }
+        .nav-item.active { 
+            background-color: #8c2a10; 
+            border-left: 4px solid #f5e8c7; 
+        }
+.section-header { font-size: 11px; font-weight: 700; letter-spacing: .08em; opacity: .74; padding-left: 20px; margin-bottom: 10px; text-transform: uppercase; }
         .sidebar-scroll::-webkit-scrollbar { width: 4px; }
         .sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,.35); border-radius: 20px; }
         .nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.25; }
@@ -115,11 +126,15 @@ let selectedTaskId = null;
 let currentView = 'list';
 let currentFilter = 'all';
 let unreadNotifications = 0;
-let isFetchingData = false;
-let needsFetchAfterCurrent = false;
 const submissionBucket = 'wf-submissions';
-let authChecked = false;
-
+const FACULTY_ROLE_ALLOWLIST = new Set([
+    'faculty',
+    'faculty member',
+    'department chairperson',
+    'department chaiperson',
+    'college dean',
+    'college secretary'
+]);
 
 const icons = {
     search: '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>',
@@ -144,17 +159,6 @@ function getSubmission(taskId, facultyId) { return state.submissions.find(s => S
 function getSubmissionFiles(submissionId) { return state.submissionFiles.filter(f => String(f.submission_id) === String(submissionId)).map(f => f.file_name); }
 function getDraftFiles(taskId) { return Array.isArray(draftUploads[taskId]) ? draftUploads[taskId] : []; }
 function getDraftFileNames(taskId) { return getDraftFiles(taskId).map(f => f?.name).filter(Boolean); }
-function normalizeFacultyForSubmissions(row) {
-    return {
-        ...row,
-        id: row.id,
-        auth_user_id: row.auth_user_id || null,
-        full_name: row.full_name || row.name || row.email || 'Faculty Member',
-        department_code: row.department || row.department_code || 'N/A',
-        is_active: row.access_enabled !== false && String(row.status || 'Active').toLowerCase() === 'active'
-    };
-}
-
 
 function resolveCurrentFaculty() {
     return currentFaculty;
@@ -169,26 +173,22 @@ function setSidebarFaculty(profile, user) {
 }
 
 async function requireFacultyAuth() {
-    if (authChecked && currentUser) return true;
-
-    const { data, error } = await db.auth.getSession();
-
-    if (error || !data?.session?.user) {
+    const { data, error } = await db.auth.getUser();
+    if (error || !data?.user) {
         window.location.href = '../faculty-login.html';
         return false;
     }
 
-    const user = data.session.user;
+    const user = data.user;
     const role = String(user.user_metadata?.role || '').toLowerCase();
-
-    if (role && role !== 'faculty') {
+    const isFacultyRole = !role || FACULTY_ROLE_ALLOWLIST.has(role) || role.includes('faculty');
+    if (!isFacultyRole) {
         await db.auth.signOut();
         window.location.href = '../login.html';
         return false;
     }
 
     currentUser = user;
-    authChecked = true;
     return true;
 }
 
@@ -196,32 +196,49 @@ async function loadCurrentFacultyProfile() {
     if (!currentUser) return null;
     const email = String(currentUser.email || '').toLowerCase();
 
-    let response = await db
-        .from('faculty')
+    const wfProfileResponse = await db
+        .from('wf_faculty')
         .select('*')
-        .eq('auth_user_id', currentUser.id)
+        .eq('is_active', true)
+        .or(`auth_user_id.eq.${currentUser.id},email.eq.${email}`)
         .maybeSingle();
 
-    if (response.error) {
-        console.error('Failed to load faculty profile by auth_user_id:', response.error);
+    if (!wfProfileResponse.error && wfProfileResponse.data) {
+        return wfProfileResponse.data;
+    }
+    if (wfProfileResponse.error) {
+        console.warn('wf_faculty lookup failed:', wfProfileResponse.error.message);
     }
 
-    if (!response.data && email) {
-        response = await db
-            .from('faculty')
-            .select('*')
-            .or(`email.eq.${email},existing_email.eq.${email}`)
-            .maybeSingle();
-        if (response.error) {
-            console.error('Failed to load faculty profile by email:', response.error);
-        }
+    const legacyProfileResponse = await db
+        .from('faculty')
+        .select('*')
+        .or(`auth_user_id.eq.${currentUser.id},email.eq.${email}`)
+        .maybeSingle();
+
+    if (legacyProfileResponse.error) {
+        console.warn('faculty lookup fallback failed:', legacyProfileResponse.error.message);
+    } else if (legacyProfileResponse.data) {
+        const profile = legacyProfileResponse.data;
+        return {
+            id: profile.id,
+            auth_user_id: profile.auth_user_id || currentUser.id,
+            full_name: profile.full_name || profile.name || currentUser.user_metadata?.full_name || currentUser.email,
+            name: profile.name || profile.full_name || currentUser.user_metadata?.full_name || currentUser.email,
+            email: profile.email || profile.existing_email || currentUser.email || '',
+            department: profile.department || ''
+        };
     }
 
-    if (!response.data) return null;
-    const normalized = normalizeFacultyForSubmissions(response.data);
-    return normalized.is_active ? normalized : null;
+    return {
+        id: currentUser.id,
+        auth_user_id: currentUser.id,
+        full_name: currentUser.user_metadata?.full_name || currentUser.email || 'Faculty Member',
+        name: currentUser.user_metadata?.full_name || currentUser.email || 'Faculty Member',
+        email: currentUser.email || '',
+        department: ''
+    };
 }
-
 
 function effectiveStatus(task, sub) {
     if (!sub) return isPastDue(task.due_at) ? 'Late' : 'Not Submitted';
@@ -289,6 +306,7 @@ function renderTopBar(title, subtitle, showBack = false) {
                 </div>
             </div>
             <div class="flex items-center gap-3">
+                <div class="hidden md:flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white border border-gray-200 text-sm font-medium text-gray-600">${icons.clock}<span>Realtime updates enabled</span></div>
                 <div class="relative">
                     <div class="notif-bell bg-white border border-gray-200" onclick="toggleNotifications()" aria-label="Open notifications">${icons.bell}<span id="notifBadge" class="notif-badge" style="display:none;">0</span></div>
                     <div id="notifDropdown" class="dropdown-menu"><div class="px-3 py-3 border-b border-gray-100 flex justify-between items-center"><span class="font-semibold text-sm text-gray-950">Notifications</span><button onclick="markFacultyNotificationsRead()" class="text-xs font-semibold text-[#621708] hover:underline">Mark all read</button></div><div id="notifList" class="py-1"></div></div>
@@ -510,137 +528,92 @@ async function markFacultyNotificationsRead() {
 
 async function submitTask(taskId) {
     const faculty = resolveCurrentFaculty();
-    if (!faculty) { alert('No matching active faculty profile found.'); return; }
+    if (!faculty) { alert('No faculty profile found for this account.'); return; }
     const task = getTaskById(taskId);
     if (!task) return;
     const files = getDraftFiles(taskId);
     if (!files.length) { alert('Please upload at least one file before submitting.'); return; }
-
-    const payload = {
-        task_id: taskId,
-        faculty_id: faculty.id,
-        submitted_at: new Date().toISOString(),
-        status: isPastDue(task.due_at) ? 'late' : 'submitted',
-        reviewed_by_name: null,
-        reviewed_at: null,
-        review_remarks: ''
-    };
-
-    const { data: savedSubmission, error: saveError } = await db
-        .from('wf_submissions')
-        .upsert(payload, { onConflict: 'task_id,faculty_id' })
-        .select('id')
-        .single();
-
-    if (saveError) { alert(saveError.message); return; }
-    const submissionId = savedSubmission?.id;
-    if (!submissionId) { alert('Submission was saved, but no submission ID was returned.'); return; }
-
-    await db.from('wf_submission_files').delete().eq('submission_id', submissionId);
+    const existing = getSubmission(taskId, faculty.id);
+    const payload = { task_id: taskId, faculty_id: faculty.id, submitted_at: new Date().toISOString(), status: isPastDue(task.due_at) ? 'late' : 'submitted', reviewed_by_name: null, reviewed_at: null, review_remarks: '' };
+    let submissionId = existing?.id || null;
+    if (existing) {
+        const { error } = await db.from('wf_submissions').update(payload).eq('id', existing.id);
+        if (error) { alert(error.message); return; }
+        await db.from('wf_submission_files').delete().eq('submission_id', existing.id);
+        submissionId = existing.id;
+    } else {
+        const { data, error } = await db.from('wf_submissions').insert(payload).select('id').single();
+        if (error) { alert(error.message); return; }
+        submissionId = data.id;
+    }
 
     let uploaded = [];
-    let savedWithoutStorage = false;
     try {
         uploaded = await uploadFilesToStorage({ facultyId: faculty.id, taskId, submissionId, files });
     } catch (e) {
-        if (String(e?.message || '').toLowerCase().includes('storage bucket') || isStorageBucketMissingError(e)) {
-            uploaded = files.map(file => ({ file_name: file.name, file_url: '', storage_path: '' }));
-            savedWithoutStorage = true;
-        } else {
-            alert(e?.message || 'File upload failed.');
-            return;
-        }
+        alert(e?.message || 'File upload failed.');
+        return;
     }
 
-    const rows = uploaded.map(f => ({ submission_id: submissionId, file_name: f.file_name, file_url: f.file_url || '', storage_path: f.storage_path || '' }));
+    const rows = uploaded.map(f => ({ submission_id: submissionId, file_name: f.file_name, file_url: f.file_url, storage_path: f.storage_path }));
     if (rows.length) {
         let { error: filesError } = await db.from('wf_submission_files').insert(rows);
         if (filesError && /column|schema|cache/i.test(filesError.message || '')) {
+            // Fallback if file_url/storage_path columns don't exist yet.
             const fallbackRows = uploaded.map(f => ({ submission_id: submissionId, file_name: f.file_name }));
             const retry = await db.from('wf_submission_files').insert(fallbackRows);
             filesError = retry.error;
-            if (!filesError && !savedWithoutStorage) {
+            if (!filesError) {
                 alert('Submission saved, but file preview needs DB columns. Please add wf_submission_files.file_url (text) and optionally storage_path (text).');
             }
         }
         if (filesError) { alert(filesError.message); return; }
     }
 
-    await db.from('wf_notifications').insert({ type: 'submission', faculty_id: faculty.id, task_id: taskId, message: `New submission from ${faculty.full_name}: ${task.title}`, is_read: false });
+    await db.from('wf_notifications').insert({ type: 'submission', message: `New submission from ${faculty.full_name}: ${task.title}`, is_read: false });
     await db.from('wf_activity_log').insert({ action: 'Submitted task', actor_name: faculty.full_name, target: task.title, log_type: 'submission' });
     delete draftUploads[taskId];
     selectedTaskId = String(taskId);
     await fetchAllData();
-
-    if (savedWithoutStorage) {
-        alert('Submission saved. File names were recorded, but preview/download is disabled because the wf-submissions storage bucket is missing.');
-    }
 }
 
 async function fetchAllData() {
-    if (isFetchingData) return;
-    isFetchingData = true;
-
     const root = document.getElementById('appRoot');
 
-    try {
-        const ok = await requireFacultyAuth();
-        if (!ok) return;
+    // Ensure auth is present and faculty profile is resolved before loading workload data.
+    const ok = await requireFacultyAuth();
+    if (!ok) return;
 
-        currentFaculty = await loadCurrentFacultyProfile();
-        setSidebarFaculty(currentFaculty, currentUser);
+    currentFaculty = await loadCurrentFacultyProfile();
+    setSidebarFaculty(currentFaculty, currentUser);
 
-        if (!currentFaculty) {
-            root.innerHTML = `${renderTopBar('Submission Tasks', 'Faculty profile not found.', false)}<div class="rounded-3xl p-6 bg-white border border-amber-200 text-amber-800">Your account is signed in, but no matching active faculty profile was found in the faculty table. Please ask the administrator to check your faculty profile.</div>`;
-            return;
-        }
+    if (!currentFaculty) return;
 
-        const [faculty, tasks, assignments, submissions, files, notifications] = await Promise.all([
-            db.from('faculty').select('*').order('full_name', { ascending: true }),
-            db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
-            db.from('wf_task_assignments').select('*'),
-            db.from('wf_submissions').select('*'),
-            db.from('wf_submission_files').select('*'),
-            db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(100)
-        ]);
-
-        if (faculty.error || tasks.error || assignments.error || submissions.error) {
-            const msg =
-                faculty.error?.message ||
-                tasks.error?.message ||
-                assignments.error?.message ||
-                submissions.error?.message ||
-                'Failed to load realtime data.';
-
-            root.innerHTML = `${renderTopBar('Submission Tasks', 'There was a problem loading your tasks.', false)}<div class="rounded-3xl p-6 bg-white border border-red-100 text-red-600">${escapeHtml(msg)}</div>`;
-            return;
-        }
-
-        if (files.error || notifications.error) {
-            console.warn('Optional submission data could not be loaded:', { files, notifications });
-        }
-
-        state.faculty = (faculty.data || []).map(normalizeFacultyForSubmissions).filter(f => f.is_active);
-        state.tasks = tasks.data || [];
-        state.assignments = assignments.data || [];
-        state.submissions = submissions.data || [];
-        state.submissionFiles = files.error ? [] : (files.data || []);
-        state.notifications = notifications.error ? [] : (notifications.data || []);
-
-        if (currentView === 'detail' && selectedTaskId) {
-            renderDetailPage();
-        } else {
-            renderListPage();
-        }
-    } finally {
-        isFetchingData = false;
+    const [faculty, tasks, assignments, submissions, files, notifications] = await Promise.all([
+        db.from('wf_faculty').select('*').eq('is_active', true).order('full_name'),
+        db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
+        db.from('wf_task_assignments').select('*'),
+        db.from('wf_submissions').select('*'),
+        db.from('wf_submission_files').select('*'),
+        db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(100)
+    ]);
+    if (tasks.error || assignments.error || submissions.error || files.error || notifications.error) {
+        const msg = tasks.error?.message || assignments.error?.message || submissions.error?.message || files.error?.message || notifications.error?.message || 'Failed to load realtime data.';
+        root.innerHTML = `${renderTopBar('Submission Tasks', 'There was a problem loading your tasks.', false)}<div class="rounded-3xl p-6 bg-white border border-red-100 text-red-600">${escapeHtml(msg)}</div>`;
+        return;
     }
+    state.faculty = faculty.data || [];
+    state.tasks = tasks.data || [];
+    state.assignments = assignments.data || [];
+    state.submissions = submissions.data || [];
+    state.submissionFiles = files.data || [];
+    state.notifications = notifications.data || [];
+    if (currentView === 'detail' && selectedTaskId) renderDetailPage(); else renderListPage();
 }
 
 function initRealtime() {
     if (realtimeChannel) db.removeChannel(realtimeChannel);
     realtimeChannel = db.channel('wf-faculty-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, fetchAllData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)
@@ -651,21 +624,12 @@ function initRealtime() {
 
 window.onload = async () => {
     await fetchAllData();
-
-    // Realtime disabled to prevent Supabase Auth lock conflicts.
-    // initRealtime();
-
-    document.addEventListener('input', (e) => {
-        if (e.target?.id === 'taskSearch') window.__lastSearch = e.target.value;
-    });
-
+    initRealtime();
+    document.addEventListener('input', (e) => { if (e.target?.id === 'taskSearch') window.__lastSearch = e.target.value; });
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('.notif-bell') && !e.target.closest('#notifDropdown')) {
-            document.getElementById('notifDropdown')?.classList.remove('open');
-        }
+        if (!e.target.closest('.notif-bell') && !e.target.closest('#notifDropdown')) document.getElementById('notifDropdown')?.classList.remove('open');
     });
 };
-
 </script>
 <script src="../shared/system-ui.js"></script>
 </body>

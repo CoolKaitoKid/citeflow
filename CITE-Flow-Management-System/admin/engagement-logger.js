@@ -120,6 +120,16 @@
             return { error };
         }
 
+        try {
+            window.dispatchEvent(
+                new CustomEvent('engagement-log:created', {
+                    detail: data
+                })
+            );
+        } catch (dispatchError) {
+            console.warn('EngagementLogger: unable to dispatch log event.', dispatchError);
+        }
+
         return { data };
     }
 

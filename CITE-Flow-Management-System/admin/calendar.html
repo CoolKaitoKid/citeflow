@@ -8,23 +8,25 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
+
+        .sidebar {
+            background-color: #621708;
             width: 280px;
         }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
+
+        .nav-item {
+            transition: all 0.3s ease;
         }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
+
+        .nav-item:hover,
+        .nav-item.active {
+            background-color: #8c2a10;
         }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
+
+        .nav-item.active {
+            border-left: 4px solid #f5e8c7;
         }
 
         .section-header {
@@ -37,16 +39,13 @@
             text-transform: uppercase;
         }
 
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
-        }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
+        .sidebar-scroll::-webkit-scrollbar {
+            width: 4px;
         }
 
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        .sidebar-scroll::-webkit-scrollbar-thumb {
+            background-color: rgba(255,255,255,0.35);
+            border-radius: 20px;
         }
 
         .nav-icon {
@@ -56,49 +55,172 @@
             stroke-width: 2.25;
         }
 
-        .calendar-day { 
-            min-height: 110px; 
-            transition: all 0.2s; 
-            padding: 8px;
+        .app-surface {
+            background: linear-gradient(135deg, #f8fafc, #f7f7fb 48%, #f9fafb);
         }
-        .calendar-day:hover { background-color: #f8f8f8; }
-        .calendar-day.today { 
-            background-color: #fff1f2; 
-            border: 2px solid #9f1239; 
+
+        .panel {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, .06);
+        }
+
+        .icon-btn {
+            width: 38px;
+            height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            background: #fff;
+            color: #334155;
+        }
+
+        .icon-btn:hover {
+            background: #f8fafc;
+        }
+
+        .day-cell {
+            min-height: 122px;
+            border-right: 1px solid #eef2f7;
+            border-bottom: 1px solid #eef2f7;
+            transition: .18s;
+        }
+
+        .day-cell:hover {
+            background: #f9fafb;
+        }
+
+        .day-cell.selected {
+            background: #fff7ed;
+            box-shadow: inset 0 0 0 1px #c2410c;
+        }
+
+        .day-num {
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            font-size: 12px;
             font-weight: 700;
-            color: #9f1239;
+            color: #334155;
         }
-        
-        .event-block {
-            font-size: 0.75rem;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-top: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+
+        .day-num.today {
+            background: #621708;
+            color: #fff;
+        }
+
+        .mini-day {
+            position: relative;
+            width: 32px;
+            height: 32px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+        }
+
+        .mini-day:hover {
+            background: #f1f5f9;
+        }
+
+        .mini-day.active {
+            background: #621708;
+            color: #fff;
+        }
+
+        .mini-day.has::after {
+            content: '';
+            position: absolute;
+            bottom: 3px;
+            left: 50%;
+            width: 4px;
+            height: 4px;
+            background: #b45309;
+            border-radius: 999px;
+            transform: translateX(-50%);
+        }
+
+        .pill {
+            display: block;
+            width: 100%;
+            border-radius: 12px;
+            padding: 7px 9px;
+            margin-top: 6px;
+            font-size: 11px;
+            line-height: 1.15;
+            text-align: left;
+            border: 1px solid transparent;
+            cursor: pointer;
+        }
+
+        .pill:hover {
+            filter: brightness(.98);
+        }
+
+        .event-meeting {
+            background: #eef2ff;
+            color: #3730a3;
+            border-color: #c7d2fe;
+        }
+
+        .event-seminar {
+            background: #f0fdf4;
+            color: #166534;
+            border-color: #bbf7d0;
+        }
+
+        .event-exam {
+            background: #fff7ed;
+            color: #9a3412;
+            border-color: #fed7aa;
+        }
+
+        .event-workshop {
+            background: #f5f3ff;
+            color: #5b21b6;
+            border-color: #ddd6fe;
+        }
+
+        .event-other {
+            background: #f8fafc;
+            color: #334155;
+            border-color: #e2e8f0;
+        }
+
+        .modal-field {
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 18px;
+            padding: 12px 14px;
+            font-size: 14px;
+            outline: none;
+            background: white;
+        }
+
+        .modal-field:focus {
+            border-color: #621708;
+            box-shadow: 0 0 0 4px rgba(98, 23, 8, .08);
         }
     </style>
 </head>
-<body class="bg-gray-50">
 
+<body class="bg-gray-50">
 <div class="flex h-screen overflow-hidden">
-    <!-- SIDEBAR - unchanged -->
     <div class="sidebar text-white flex flex-col h-full">
-        
-        <!-- CTU Logo Section -->
-        <div onclick="window.location.href='dashboard.html'" 
-            class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" 
-                alt="CTU Logo" 
-                class="h-16 w-auto mb-3">
+        <div onclick="window.location.href='dashboard.html'"
+             class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
+            <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3">
             <div class="text-center">
                 <div class="font-semibold text-base leading-tight">College of Technology</div>
                 <div class="font-semibold text-base leading-tight">and Engineering</div>
             </div>
         </div>
 
-        <!-- Navigation - unchanged -->
         <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
             <div>
                 <div class="section-header text-white/70">FACULTIES & PROFILES</div>
@@ -130,7 +252,7 @@
 
             <div>
                 <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
+                <div onclick="window.location.href='calendar.html'" class="nav-item active flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
                     <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     Calendar
                 </div>
@@ -143,24 +265,25 @@
                     Reports and Analytics
                 </div>
                 <div onclick="window.location.href='feedback-summary.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10"/></svg>
                     Seminar Feedback Summary
                 </div>
                 <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83"/></svg>
                     System Settings
                 </div>
                 <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                     User Management
                 </div>
             </div>
         </div>
 
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
+        <div onclick="window.location.href='admin-profile.html'"
              class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708]"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708]">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
             <div class="flex-1 min-w-0">
                 <div id="profileName" class="font-semibold text-sm truncate">Loading...</div>
                 <div id="profileRole" class="text-xs text-white/70">Administrator</div>
@@ -168,71 +291,878 @@
         </div>
     </div>
 
-<style>
-.app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}.panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}.icon-btn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:14px;background:#fff;color:#334155}.icon-btn:hover{background:#f8fafc}.day-cell{min-height:122px;border-right:1px solid #eef2f7;border-bottom:1px solid #eef2f7;transition:.18s}.day-cell:hover{background:#f9fafb}.day-cell.selected{background:#fff7ed;box-shadow:inset 0 0 0 1px #c2410c}.day-num{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-size:12px;font-weight:700;color:#334155}.day-num.today{background:#621708;color:#fff}.mini-day{position:relative;width:32px;height:32px;border-radius:999px;font-size:12px;font-weight:700;color:#475569}.mini-day:hover{background:#f1f5f9}.mini-day.active{background:#621708;color:#fff}.mini-day.has:after{content:'';position:absolute;bottom:3px;left:50%;width:4px;height:4px;background:#b45309;border-radius:999px;transform:translateX(-50%)}.pill{display:block;width:100%;border-radius:12px;padding:7px 9px;margin-top:6px;font-size:11px;line-height:1.15;text-align:left;border:1px solid transparent;cursor:pointer}.pill:hover{filter:brightness(.98)}.event-meeting{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}.event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}.event-exam{background:#fff7ed;color:#9a3412;border-color:#fed7aa}.event-workshop{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}.event-other{background:#f8fafc;color:#334155;border-color:#e2e8f0}.modal-field{width:100%;border:1px solid #d1d5db;border-radius:18px;padding:12px 14px;font-size:14px;outline:none;background:white}.modal-field:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}
-</style>
-    <!-- MAIN CALENDAR CONTENT -->
     <div class="flex-1 overflow-y-auto app-surface">
         <div class="max-w-[1500px] mx-auto px-8 py-7">
             <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-7">
-                <div><div class="text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase mb-2">Events</div><h1 class="text-3xl font-semibold text-slate-950 tracking-tight">Calendar</h1><p class="text-sm text-slate-500 mt-1">Manage schedules, seminars, meetings, exams, and academic activities in realtime.</p></div>
-                <div class="flex flex-wrap items-center gap-3"><button onclick="goToday()" class="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-medium hover:bg-slate-50">Today</button><button onclick="prevMonth()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button><button onclick="nextMonth()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button><button onclick="openAddEventModal()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-5 py-2.5 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-sm"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>Create Schedule</button></div>
+                <div>
+                    <div class="text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase mb-2">Events</div>
+                    <h1 class="text-3xl font-semibold text-slate-950 tracking-tight">Calendar</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage schedules, seminars, meetings, exams, and academic activities in realtime.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button onclick="goToday()" class="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-medium hover:bg-slate-50">Today</button>
+                    <button onclick="prevMonth()" class="icon-btn">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <button onclick="nextMonth()" class="icon-btn">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    <button onclick="openAddEventModal()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-5 py-2.5 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-sm">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>
+                        Create Schedule
+                    </button>
+                </div>
             </div>
-            <div class="grid grid-cols-1 2xl:grid-cols-[1fr_360px] gap-7">
-                <section class="panel rounded-[2rem] overflow-hidden"><div class="px-6 py-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"><div class="flex items-center gap-3"><select id="month-select" onchange="changeMonthYear()" class="bg-white border border-slate-200 rounded-2xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus:border-[#621708]"></select><select id="year-select" onchange="changeMonthYear()" class="bg-white border border-slate-200 rounded-2xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus:border-[#621708]"></select></div><div class="flex items-center gap-2 text-xs text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-[#621708]"></span><span id="realtime-status">Connecting realtime calendar...</span></div></div><div id="calendar-grid" class="bg-white"></div></section>
-                <aside class="space-y-5"><section class="panel rounded-[2rem] p-5"><div class="flex items-center justify-between mb-4"><div><h2 id="mini-title" class="font-semibold text-slate-900">Month</h2><p class="text-xs text-slate-500">Quick date picker</p></div><button onclick="goToday()" class="text-xs font-semibold text-[#621708] hover:underline">Today</button></div><div class="grid grid-cols-7 text-center text-[11px] font-semibold text-slate-400 mb-2"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div><div id="mini-calendar" class="grid grid-cols-7 gap-1 text-center"></div></section><section class="panel rounded-[2rem] p-5"><div class="flex items-start justify-between gap-3 mb-4"><div><h2 class="font-semibold text-slate-900">Selected Day</h2><p id="selected-label" class="text-sm text-slate-500 mt-1">No date selected</p></div><button onclick="openAddEventModal(null, selectedDate)" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg></button></div><div id="selected-events" class="space-y-3"></div></section><section class="panel rounded-[2rem] p-5"><div class="flex items-center justify-between mb-4"><div><h2 class="font-semibold text-slate-900">Upcoming Schedule</h2><p class="text-xs text-slate-500">Next events across all pages</p></div><span id="upcoming-count" class="text-xs font-semibold px-3 py-1 bg-slate-100 rounded-full text-slate-600">0</span></div><div id="upcoming-events" class="space-y-3 max-h-[360px] overflow-y-auto pr-1"></div></section></aside>
-            </div>
-        </div>
-    </div>
-</div>
-<div id="add-event-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden"><div class="px-7 py-5 border-b border-slate-100 flex items-center justify-between"><div><h2 class="text-xl font-semibold text-slate-950" id="modal-title">Create Schedule</h2><p class="text-sm text-slate-500 mt-1">Add schedule details for the realtime calendar.</p></div><button onclick="closeAddEventModal()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[72vh] overflow-y-auto"><div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Event Title</label><input id="modal-event-title" type="text" placeholder="e.g. Faculty Meeting" class="modal-field"></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Event Type</label><select id="modal-event-type" class="modal-field"><option value="meeting">Meeting</option><option value="seminar">Seminar</option><option value="exam">Exam</option><option value="workshop">Workshop</option><option value="other">Other</option></select></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Priority</label><select id="modal-priority" class="modal-field"><option value="Normal">Normal</option><option value="Important">Important</option><option value="Very Important">Very Important</option></select></div><div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Location / Venue</label><input id="modal-location" type="text" placeholder="e.g. Main Auditorium, Room 305, Online" class="modal-field"></div><div class="md:col-span-2"><label class="flex items-center gap-3 cursor-pointer"><input type="checkbox" id="modal-all-day" onchange="toggleModalAllDay()" class="w-4 h-4 accent-[#621708]"><span class="text-sm font-medium text-slate-700">All-day event</span></label></div><div id="modal-time-fields" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5"><div><label class="block text-sm font-medium text-slate-700 mb-2">Starts</label><input type="datetime-local" id="modal-start-time" class="modal-field"></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Ends</label><input type="datetime-local" id="modal-end-time" class="modal-field"></div></div><div id="modal-date-only" class="hidden md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Date</label><input type="date" id="modal-all-day-date" class="modal-field"></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Repeat</label><select id="modal-repeat" class="modal-field"><option value="Never">Never</option><option value="Every Day">Every Day</option><option value="Every Week">Every Week</option><option value="Every 2 Weeks">Every 2 Weeks</option><option value="Every Month">Every Month</option><option value="Every Year">Every Year</option><option value="Custom">Custom</option></select></div><div>
-    <label class="block text-sm font-medium text-slate-700 mb-2">Announcement Visibility</label>
-    <select id="modal-visibility" class="modal-field">
-        <option value="all_faculty">All Faculty</option>
-        <option value="bsit">BSIT Faculty</option>
-        <option value="bsie">BSIE Faculty</option>
-        <option value="bit">BIT Faculty</option>
-        <option value="department_chairs">Department Chairpersons</option>
-        <option value="admin_only">Only Me</option>
-    </select>
-</div>
-<div class="md:col-span-2 border border-slate-200 rounded-3xl p-5 bg-white">
-    <label class="flex items-start gap-3 cursor-pointer">
-        <input type="checkbox" id="modal-has-surveys" onchange="toggleSurveyLinks()" class="mt-1 w-4 h-4 accent-[#621708]">
-        <span>
-            <span class="block text-sm font-semibold text-slate-900">Add optional survey links</span>
-            <span class="block text-xs text-slate-500 mt-1">Enable this only when the event requires pre-survey and post-survey forms.</span>
-        </span>
-    </label>
-    <div id="modal-survey-fields" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-        <div>
-            <label class="block text-sm font-medium text-slate-700 mb-2">Pre-Survey Link</label>
-            <input id="modal-pre-survey-link" type="url" placeholder="https://..." class="modal-field">
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700 mb-2">Post-Survey Link</label>
-            <input id="modal-post-survey-link" type="url" placeholder="https://..." class="modal-field">
-        </div>
-    </div>
-</div><div class="md:col-span-2 border border-slate-200 rounded-3xl p-5 bg-slate-50"><label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" id="modal-requires-feedback" class="mt-1 w-4 h-4 accent-[#621708]"><span><span class="block text-sm font-semibold text-slate-900">Require faculty feedback after this event</span><span class="block text-xs text-slate-500 mt-1">Faculty users will see a feedback requirement on their calendar and receive a reminder starting the day after the event.</span></span></label><label class="block text-sm font-medium text-slate-700 mt-4 mb-2">Feedback Instructions</label><textarea id="modal-feedback-instructions" rows="2" placeholder="Optional instructions shown to faculty when submitting feedback..." class="modal-field resize-none"></textarea></div><div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Notes</label><textarea id="modal-notes" placeholder="Add notes or description..." rows="4" class="modal-field resize-none"></textarea></div></div><div class="border-t border-slate-100 px-7 py-5 flex justify-end gap-3 bg-slate-50"><button onclick="closeAddEventModal()" class="px-6 py-3 border border-slate-200 bg-white rounded-2xl text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button><button onclick="saveEventFromModal()" id="save-button" class="px-6 py-3 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-2xl text-sm font-semibold">Create Schedule</button></div></div></div>
-<div id="event-detail-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div class="bg-white rounded-[2rem] max-w-lg w-full shadow-2xl overflow-hidden"><div class="px-7 py-5 border-b border-slate-100 flex justify-between items-start gap-4"><div><p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Schedule Details</p><h2 id="detail-title" class="font-semibold text-xl text-slate-950 mt-1"></h2></div><button onclick="closeDetailModal()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div class="p-7 space-y-5"><div class="grid grid-cols-2 gap-4 text-sm"><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">Type</div><div id="detail-type" class="font-semibold text-slate-900 mt-1"></div></div><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">Priority</div><div id="detail-priority" class="font-semibold text-slate-900 mt-1"></div></div><div class="bg-slate-50 rounded-2xl p-4 col-span-2"><div class="text-slate-500">Date & Time</div><div id="detail-time" class="font-semibold text-slate-900 mt-1"></div></div><div class="bg-slate-50 rounded-2xl p-4 col-span-2"><div class="text-slate-500">Location</div><div id="detail-location" class="font-semibold text-slate-900 mt-1"></div></div><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">Repeat</div><div id="detail-repeat" class="font-semibold text-slate-900 mt-1">Never</div></div><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">Visibility</div><div id="detail-invitees" class="font-semibold text-slate-900 mt-1">All Faculty</div></div><div id="detail-surveys-box" class="hidden bg-slate-50 rounded-2xl p-4 col-span-2"><div class="text-slate-500">Survey Links</div><div id="detail-surveys" class="font-semibold text-slate-900 mt-2 space-y-1"></div></div><div class="bg-slate-50 rounded-2xl p-4 col-span-2"><div class="text-slate-500">Faculty Feedback</div><div id="detail-feedback" class="font-semibold text-slate-900 mt-1">Not required</div></div></div><div><div class="text-sm text-slate-500 mb-1">Notes</div><div id="detail-notes" class="text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-2xl p-4"></div></div><div class="flex gap-3 pt-2"><button onclick="editCurrentEvent()" class="flex-1 py-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-2xl text-sm">Edit Event</button><button onclick="removeCurrentEvent()" class="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-2xl text-sm">Delete Event</button></div></div></div></div>
-<script>
-const supabaseUrl='https://uforealazougjckepggc.supabase.co';
-const supabaseAnonKey='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-const {createClient}=supabase;const supabaseClient=createClient(supabaseUrl,supabaseAnonKey);window.supabaseClient=supabaseClient;
-const months=['January','February','March','April','May','June','July','August','September','October','November','December'];let now=new Date(),currentMonth=now.getMonth(),currentYear=now.getFullYear(),selectedDate=key(now),events=[],currentDetailEventId=null,isEditing=false,currentUser=null,currentProfile=null;
-function key(d){d=new Date(d);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}function localDT(d){d=new Date(d);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}function addH(d,h){d=new Date(d);d.setHours(d.getHours()+h);return d}function time(d){return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(d))}function longDate(k){let [y,m,d]=k.split('-').map(Number);return new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d))}function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','other'].includes(t)?t:'other')}function visibilityLabel(v){return ({all_faculty:'All Faculty',bsit:'BSIT Faculty',bsie:'BSIE Faculty',bit:'BIT Faculty',department_chairs:'Department Chairpersons',admin_only:'Only Me'}[v]||v||'All Faculty')}function toggleSurveyLinks(){let enabled=document.getElementById('modal-has-surveys')?.checked;document.getElementById('modal-survey-fields')?.classList.toggle('hidden',!enabled)}function normalize(r){let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addH(s,1);return{id:r.id,title:r.title,date:key(s),startAt:r.start_at,endAt:r.end_at,time:r.all_day?'All Day':`${time(s)} - ${time(e)}`,type:r.event_type||'other',location:r.location||'TBA',priority:r.priority||'Normal',notes:r.notes||'',repeat:r.repeat_rule||'Never',visibility:r.visibility_scope||r.visibility||'all_faculty',allDay:!!r.all_day,requiresFeedback:!!r.requires_feedback,feedbackInstructions:r.feedback_instructions||'',feedbackDueAfterDays:r.feedback_due_after_days||1,hasSurveys:!!r.has_survey_links,preSurveyUrl:r.pre_survey_url||'',postSurveyUrl:r.post_survey_url||''}}
-async function loadCalendarEvents(){let {data,error}=await supabaseClient.from('calendar_events').select('*').order('start_at',{ascending:true});if(error){console.error(error);status('Calendar table not ready. Run the SQL first.');events=[]}else{events=(data||[]).map(normalize);status('Realtime calendar connected.')}renderCalendar()}function status(t){let el=document.getElementById('realtime-status');if(el)el.textContent=t}function subscribe(){supabaseClient.channel('calendar-events-realtime').on('postgres_changes',{event:'*',schema:'public',table:'calendar_events'},loadCalendarEvents).subscribe(s=>{if(s==='SUBSCRIBED')status('Realtime calendar connected.')})}
-function populateControls(){let ms=document.getElementById('month-select');ms.innerHTML=months.map((m,i)=>`<option value="${i}">${m}</option>`).join('');let ys=document.getElementById('year-select');ys.innerHTML='';for(let y=currentYear-5;y<=currentYear+6;y++)ys.innerHTML+=`<option value="${y}">${y}</option>`;ms.value=currentMonth;ys.value=currentYear}function changeMonthYear(){currentMonth=+document.getElementById('month-select').value;currentYear=+document.getElementById('year-select').value;selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}function renderCalendar(){document.getElementById('month-select').value=currentMonth;document.getElementById('year-select').value=currentYear;renderGrid();renderMini();renderSelected();renderUpcoming()}
-function renderGrid(){let grid=document.getElementById('calendar-grid'),first=new Date(currentYear,currentMonth,1).getDay(),days=new Date(currentYear,currentMonth+1,0).getDate(),today=key(new Date());let h='<div class="grid grid-cols-7 border-b border-slate-100 bg-slate-50">'+['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=>`<div class="py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">${d}</div>`).join('')+'</div><div class="grid grid-cols-7">';for(let i=0;i<first;i++)h+='<div class="day-cell bg-slate-50/70"></div>';for(let d=1;d<=days;d++){let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,des=events.filter(e=>e.date===dk).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));h+=`<div class="day-cell bg-white p-3 ${dk===selectedDate?'selected':''}" onclick="selectDate('${dk}')"><div class="flex items-center justify-between mb-1"><span class="day-num ${dk===today?'today':''}">${d}</span>${des.length?`<span class="text-[11px] font-semibold text-slate-400">${des.length}</span>`:''}</div>`;des.slice(0,3).forEach(e=>h+=`<button onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}"><span class="block font-semibold truncate">${esc(e.title)}</span><span class="block opacity-80 truncate">${esc(e.time)}${e.requiresFeedback?' • Feedback':''}</span></button>`);if(des.length>3)h+=`<div class="mt-2 text-[11px] font-semibold text-slate-400">+${des.length-3} more</div>`;h+='</div>'}let rem=(first+days)%7;if(rem)for(let i=rem;i<7;i++)h+='<div class="day-cell bg-slate-50/70"></div>';grid.innerHTML=h+'</div>'}
-function renderMini(){document.getElementById('mini-title').textContent=`${months[currentMonth]} ${currentYear}`;let first=new Date(currentYear,currentMonth,1).getDay(),days=new Date(currentYear,currentMonth+1,0).getDate(),h='';for(let i=0;i<first;i++)h+='<div></div>';for(let d=1;d<=days;d++){let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,has=events.some(e=>e.date===dk);h+=`<button onclick="selectDate('${dk}')" class="mini-day ${dk===selectedDate?'active':''} ${has?'has':''}">${d}</button>`}document.getElementById('mini-calendar').innerHTML=h}function card(e,showDate=false){return `<button onclick="showEventDetails('${e.id}')" class="w-full text-left rounded-2xl border border-slate-100 hover:border-slate-200 bg-white p-4 hover:shadow-sm transition"><div class="flex items-start gap-3"><div class="w-9 h-9 rounded-2xl ${cls(e.type)} flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><div class="min-w-0 flex-1"><div class="font-semibold text-sm text-slate-900 truncate">${esc(e.title)}</div><div class="text-xs text-slate-500 mt-1">${showDate?longDate(e.date)+' • ':''}${esc(e.time)}</div><div class="text-xs text-slate-400 mt-1 truncate">${esc(e.location)}</div>${e.requiresFeedback?'<div class="inline-flex mt-2 px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-semibold">Feedback Required</div>':''}</div></div></button>`}function renderSelected(){document.getElementById('selected-label').textContent=longDate(selectedDate);let ds=events.filter(e=>e.date===selectedDate).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));document.getElementById('selected-events').innerHTML=ds.length?ds.map(e=>card(e)).join(''):'<div class="text-sm text-slate-500 border border-dashed border-slate-200 rounded-2xl p-5 text-center">No schedules for this date.</div>'}function renderUpcoming(){let up=events.filter(e=>e.allDay||new Date(e.startAt)>=new Date(new Date().setHours(0,0,0,0))).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt)).slice(0,8);document.getElementById('upcoming-count').textContent=up.length;document.getElementById('upcoming-events').innerHTML=up.length?up.map(e=>card(e,true)).join(''):'<div class="text-sm text-slate-500 border border-dashed border-slate-200 rounded-2xl p-5 text-center">No upcoming schedules yet.</div>'}
-function selectDate(d){selectedDate=d;let a=d.split('-').map(Number);currentYear=a[0];currentMonth=a[1]-1;renderCalendar()}function prevMonth(){currentMonth--;if(currentMonth<0){currentMonth=11;currentYear--}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}function nextMonth(){currentMonth++;if(currentMonth>11){currentMonth=0;currentYear++}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}function goToday(){now=new Date();currentMonth=now.getMonth();currentYear=now.getFullYear();selectedDate=key(now);renderCalendar()}
-function openAddEventModal(edit=null,d=null){isEditing=!!edit;document.getElementById('modal-title').textContent=isEditing?'Edit Schedule':'Create Schedule';document.getElementById('save-button').textContent=isEditing?'Save Changes':'Create Schedule';let bd=d||selectedDate,st=new Date(`${bd}T09:00:00`),en=addH(st,1);document.getElementById('modal-event-title').value=edit?.title||'';document.getElementById('modal-event-type').value=edit?.type||'seminar';document.getElementById('modal-priority').value=edit?.priority||'Normal';document.getElementById('modal-location').value=edit?.location||'';document.getElementById('modal-repeat').value=edit?.repeat||'Never';document.getElementById('modal-visibility').value=edit?.visibility||'all_faculty';document.getElementById('modal-notes').value=edit?.notes||'';document.getElementById('modal-requires-feedback').checked=!!edit?.requiresFeedback;document.getElementById('modal-has-surveys').checked=!!edit?.hasSurveys;document.getElementById('modal-pre-survey-link').value=edit?.preSurveyUrl||'';document.getElementById('modal-post-survey-link').value=edit?.postSurveyUrl||'';toggleSurveyLinks();document.getElementById('modal-feedback-instructions').value=edit?.feedbackInstructions||'';document.getElementById('modal-all-day').checked=!!edit?.allDay;document.getElementById('modal-start-time').value=localDT(edit?.startAt||st);document.getElementById('modal-end-time').value=localDT(edit?.endAt||en);document.getElementById('modal-all-day-date').value=edit?.date||bd;toggleModalAllDay();document.getElementById('add-event-modal').classList.remove('hidden')}function closeAddEventModal(){document.getElementById('add-event-modal').classList.add('hidden');isEditing=false}function toggleModalAllDay(){let a=document.getElementById('modal-all-day').checked;document.getElementById('modal-time-fields').classList.toggle('hidden',a);document.getElementById('modal-date-only').classList.toggle('hidden',!a)}
-async function saveEventFromModal(){let title=document.getElementById('modal-event-title').value.trim();if(!title)return alert('Please enter an event title.');let all=document.getElementById('modal-all-day').checked,start,end;if(all){let d=document.getElementById('modal-all-day-date').value;start=new Date(`${d}T00:00:00`).toISOString();end=new Date(`${d}T23:59:00`).toISOString()}else{let s=document.getElementById('modal-start-time').value,e=document.getElementById('modal-end-time').value;if(!s||!e)return alert('Please provide start and end time.');if(new Date(e)<=new Date(s))return alert('End time must be later than start time.');start=new Date(s).toISOString();end=new Date(e).toISOString()}let payload={title,event_type:document.getElementById('modal-event-type').value,location:document.getElementById('modal-location').value.trim()||'TBA',start_at:start,end_at:end,all_day:all,repeat_rule:document.getElementById('modal-repeat').value,priority:document.getElementById('modal-priority').value,visibility:visibilityLabel(document.getElementById('modal-visibility').value),visibility_scope:document.getElementById('modal-visibility').value,has_survey_links:document.getElementById('modal-has-surveys').checked,pre_survey_url:document.getElementById('modal-has-surveys').checked?document.getElementById('modal-pre-survey-link').value.trim():'',post_survey_url:document.getElementById('modal-has-surveys').checked?document.getElementById('modal-post-survey-link').value.trim():'',notes:document.getElementById('modal-notes').value.trim(),requires_feedback:document.getElementById('modal-requires-feedback').checked,feedback_due_after_days:1,feedback_instructions:document.getElementById('modal-feedback-instructions').value.trim(),created_by:currentUser?.id||null,created_by_name:currentUser?.email||null};let res=isEditing&&currentDetailEventId?await supabaseClient.from('calendar_events').update(payload).eq('id',currentDetailEventId).select().single():await supabaseClient.from('calendar_events').insert(payload).select().single();if(res.error){console.error(res.error);return alert('Unable to save event. Please run the Supabase SQL and check table permissions.')}closeAddEventModal();closeDetailModal();await loadCalendarEvents()}
-function showEventDetails(id){currentDetailEventId=id;let e=events.find(x=>String(x.id)===String(id));if(!e)return;document.getElementById('detail-title').textContent=e.title;document.getElementById('detail-type').textContent=(e.type||'Event').toUpperCase();document.getElementById('detail-location').textContent=e.location;document.getElementById('detail-time').textContent=`${longDate(e.date)} • ${e.time}`;document.getElementById('detail-priority').textContent=e.priority;document.getElementById('detail-repeat').textContent=e.repeat;document.getElementById('detail-invitees').textContent=visibilityLabel(e.visibility);let surveyBox=document.getElementById('detail-surveys-box'),surveyLinks=document.getElementById('detail-surveys');if(e.hasSurveys&&(e.preSurveyUrl||e.postSurveyUrl)){surveyLinks.innerHTML=`${e.preSurveyUrl?`<a class="text-[#621708] hover:underline block" target="_blank" href="${esc(e.preSurveyUrl)}">Open Pre-Survey</a>`:''}${e.postSurveyUrl?`<a class="text-[#621708] hover:underline block" target="_blank" href="${esc(e.postSurveyUrl)}">Open Post-Survey</a>`:''}`;surveyBox.classList.remove('hidden')}else{surveyLinks.innerHTML='';surveyBox.classList.add('hidden')}document.getElementById('detail-feedback').textContent=e.requiresFeedback?'Required from faculty users starting the day after the event.':'Not required';document.getElementById('detail-notes').textContent=e.notes||'No notes provided.';document.getElementById('event-detail-modal').classList.remove('hidden')}function closeDetailModal(){document.getElementById('event-detail-modal').classList.add('hidden')}function editCurrentEvent(){let e=events.find(x=>String(x.id)===String(currentDetailEventId));if(e){closeDetailModal();openAddEventModal(e)}}async function removeCurrentEvent(){if(!confirm('Are you sure you want to delete this event?'))return;let {error}=await supabaseClient.from('calendar_events').delete().eq('id',currentDetailEventId);if(error){console.error(error);return alert('Unable to delete event. Please check table permissions.')}closeDetailModal();await loadCalendarEvents()}
 
-function formatFullName(f,l,fb){return [f,l].filter(Boolean).join(' ').trim()||fb||'Unknown User'}function renderProfile(p,u){document.getElementById('profileName').textContent=formatFullName(p.first_name,p.last_name,u?.email);document.getElementById('profileRole').textContent=p.role||'Administrator'}async function loadAdminProfile(){let {data,error}=await supabaseClient.auth.getUser();if(error||!data?.user)return;currentUser=data.user;let meta=currentUser.user_metadata||{},profile={first_name:meta.first_name||'',last_name:meta.last_name||'',email:currentUser.email||'',role:meta.role||'Administrator'};let res=await supabaseClient.from('admin_profiles').select('*').eq('id',currentUser.id).maybeSingle();if(res.data)profile={...profile,...res.data};currentProfile=profile;renderProfile(profile,currentUser)}
-window.addEventListener('load',async()=>{populateControls();await loadAdminProfile();await loadCalendarEvents();subscribe()});
+            <div class="grid grid-cols-1 2xl:grid-cols-[1fr_360px] gap-7">
+                <section class="panel rounded-[2rem] overflow-hidden">
+                    <div class="px-6 py-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div class="flex items-center gap-3">
+                            <select id="month-select" onchange="changeMonthYear()" class="bg-white border border-slate-200 rounded-2xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus:border-[#621708]"></select>
+                            <select id="year-select" onchange="changeMonthYear()" class="bg-white border border-slate-200 rounded-2xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus:border-[#621708]"></select>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-slate-500">
+                            <span class="w-2.5 h-2.5 rounded-full bg-[#621708]"></span>
+                            <span id="realtime-status">Connecting realtime calendar...</span>
+                        </div>
+                    </div>
+                    <div id="calendar-grid" class="bg-white"></div>
+                </section>
+
+                <aside class="space-y-5">
+                    <section class="panel rounded-[2rem] p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 id="mini-title" class="font-semibold text-slate-900">Month</h2>
+                                <p class="text-xs text-slate-500">Quick date picker</p>
+                            </div>
+                            <button onclick="goToday()" class="text-xs font-semibold text-[#621708] hover:underline">Today</button>
+                        </div>
+                        <div class="grid grid-cols-7 text-center text-[11px] font-semibold text-slate-400 mb-2">
+                            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                        </div>
+                        <div id="mini-calendar" class="grid grid-cols-7 gap-1 text-center"></div>
+                    </section>
+
+                    <section class="panel rounded-[2rem] p-5">
+                        <div class="flex items-start justify-between gap-3 mb-4">
+                            <div>
+                                <h2 class="font-semibold text-slate-900">Selected Day</h2>
+                                <p id="selected-label" class="text-sm text-slate-500 mt-1">No date selected</p>
+                            </div>
+                            <button onclick="openAddEventModal(null, selectedDate)" class="icon-btn">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>
+                            </button>
+                        </div>
+                        <div id="selected-events" class="space-y-3"></div>
+                    </section>
+
+                    <section class="panel rounded-[2rem] p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 class="font-semibold text-slate-900">Upcoming Schedule</h2>
+                                <p class="text-xs text-slate-500">Next events across all pages</p>
+                            </div>
+                            <span id="upcoming-count" class="text-xs font-semibold px-3 py-1 bg-slate-100 rounded-full text-slate-600">0</span>
+                        </div>
+                        <div id="upcoming-events" class="space-y-3 max-h-[360px] overflow-y-auto pr-1"></div>
+                    </section>
+                </aside>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="add-event-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex items-center justify-between">
+            <div>
+                <h2 class="text-xl font-semibold text-slate-950" id="modal-title">Create Schedule</h2>
+                <p class="text-sm text-slate-500 mt-1">Add schedule details for the realtime calendar.</p>
+            </div>
+            <button onclick="closeAddEventModal()" class="icon-btn">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[72vh] overflow-y-auto">
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Event Title</label>
+                <input id="modal-event-title" type="text" placeholder="e.g. Faculty Meeting" class="modal-field">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">Event Type</label>
+                <select id="modal-event-type" class="modal-field">
+                    <option value="meeting">Meeting</option>
+                    <option value="seminar">Seminar</option>
+                    <option value="exam">Exam</option>
+                    <option value="workshop">Workshop</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">Priority</label>
+                <select id="modal-priority" class="modal-field">
+                    <option value="Normal">Normal</option>
+                    <option value="Important">Important</option>
+                    <option value="Very Important">Very Important</option>
+                </select>
+            </div>
+
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Location / Venue</label>
+                <input id="modal-location" type="text" placeholder="e.g. Main Auditorium, Room 305, Online" class="modal-field">
+            </div>
+
+            <div class="md:col-span-2">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" id="modal-all-day" onchange="toggleModalAllDay()" class="w-4 h-4 accent-[#621708]">
+                    <span class="text-sm font-medium text-slate-700">All-day event</span>
+                </label>
+            </div>
+
+            <div id="modal-time-fields" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Starts</label>
+                    <input type="datetime-local" id="modal-start-time" class="modal-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Ends</label>
+                    <input type="datetime-local" id="modal-end-time" class="modal-field">
+                </div>
+            </div>
+
+            <div id="modal-date-only" class="hidden md:col-span-2">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Date</label>
+                <input type="date" id="modal-all-day-date" class="modal-field">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">Repeat</label>
+                <select id="modal-repeat" class="modal-field">
+                    <option value="Never">Never</option>
+                    <option value="Every Day">Every Day</option>
+                    <option value="Every Week">Every Week</option>
+                    <option value="Every 2 Weeks">Every 2 Weeks</option>
+                    <option value="Every Month">Every Month</option>
+                    <option value="Every Year">Every Year</option>
+                    <option value="Custom">Custom</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">Announcement Visibility</label>
+                <select id="modal-visibility" class="modal-field">
+                    <option value="all_faculty">All Faculty</option>
+                    <option value="bsit">BSIT Faculty</option>
+                    <option value="bsie">BSIE Faculty</option>
+                    <option value="bit">BIT Faculty</option>
+                    <option value="department_chairs">Department Chairpersons</option>
+                    <option value="admin_only">Only Me</option>
+                </select>
+            </div>
+
+            <div class="md:col-span-2 border border-slate-200 rounded-3xl p-5 bg-white">
+                <label class="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" id="modal-has-surveys" onchange="toggleSurveyLinks()" class="mt-1 w-4 h-4 accent-[#621708]">
+                    <span>
+                        <span class="block text-sm font-semibold text-slate-900">Add optional survey links</span>
+                        <span class="block text-xs text-slate-500 mt-1">Enable this only when the event requires pre-survey and post-survey forms.</span>
+                    </span>
+                </label>
+
+                <div id="modal-survey-fields" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Pre-Survey Link</label>
+                        <input id="modal-pre-survey-link" type="url" placeholder="https://..." class="modal-field">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Post-Survey Link</label>
+                        <input id="modal-post-survey-link" type="url" placeholder="https://..." class="modal-field">
+                    </div>
+                </div>
+            </div>
+
+            <div class="md:col-span-2 border border-slate-200 rounded-3xl p-5 bg-slate-50">
+                <label class="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" id="modal-requires-feedback" class="mt-1 w-4 h-4 accent-[#621708]">
+                    <span>
+                        <span class="block text-sm font-semibold text-slate-900">Require faculty feedback after this event</span>
+                        <span class="block text-xs text-slate-500 mt-1">Faculty users will see a feedback requirement on their calendar and receive a reminder starting the day after the event.</span>
+                    </span>
+                </label>
+
+                <label class="block text-sm font-medium text-slate-700 mt-4 mb-2">Feedback Instructions</label>
+                <textarea id="modal-feedback-instructions" rows="2" placeholder="Optional instructions shown to faculty when submitting feedback..." class="modal-field resize-none"></textarea>
+            </div>
+
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Notes</label>
+                <textarea id="modal-notes" placeholder="Add notes or description..." rows="4" class="modal-field resize-none"></textarea>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-100 px-7 py-5 flex justify-end gap-3 bg-slate-50">
+            <button onclick="closeAddEventModal()" class="px-6 py-3 border border-slate-200 bg-white rounded-2xl text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button onclick="saveEventFromModal()" id="save-button" class="px-6 py-3 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-2xl text-sm font-semibold">Create Schedule</button>
+        </div>
+    </div>
+</div>
+
+<div id="event-detail-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-[2rem] max-w-lg w-full shadow-2xl overflow-hidden">
+        <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-start gap-4">
+            <div>
+                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Schedule Details</p>
+                <h2 id="detail-title" class="font-semibold text-xl text-slate-950 mt-1"></h2>
+            </div>
+            <button onclick="closeDetailModal()" class="icon-btn">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <div class="p-7 space-y-5">
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div class="bg-slate-50 rounded-2xl p-4">
+                    <div class="text-slate-500">Type</div>
+                    <div id="detail-type" class="font-semibold text-slate-900 mt-1"></div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-4">
+                    <div class="text-slate-500">Priority</div>
+                    <div id="detail-priority" class="font-semibold text-slate-900 mt-1"></div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-4 col-span-2">
+                    <div class="text-slate-500">Date & Time</div>
+                    <div id="detail-time" class="font-semibold text-slate-900 mt-1"></div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-4 col-span-2">
+                    <div class="text-slate-500">Location</div>
+                    <div id="detail-location" class="font-semibold text-slate-900 mt-1"></div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-4">
+                    <div class="text-slate-500">Repeat</div>
+                    <div id="detail-repeat" class="font-semibold text-slate-900 mt-1">Never</div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-4">
+                    <div class="text-slate-500">Visibility</div>
+                    <div id="detail-invitees" class="font-semibold text-slate-900 mt-1">All Faculty</div>
+                </div>
+                <div id="detail-surveys-box" class="hidden bg-slate-50 rounded-2xl p-4 col-span-2">
+                    <div class="text-slate-500">Survey Links</div>
+                    <div id="detail-surveys" class="font-semibold text-slate-900 mt-2 space-y-1"></div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-4 col-span-2">
+                    <div class="text-slate-500">Faculty Feedback</div>
+                    <div id="detail-feedback" class="font-semibold text-slate-900 mt-1">Not required</div>
+                </div>
+            </div>
+
+            <div>
+                <div class="text-sm text-slate-500 mb-1">Notes</div>
+                <div id="detail-notes" class="text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-2xl p-4"></div>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+                <button onclick="editCurrentEvent()" class="flex-1 py-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-2xl text-sm">Edit Event</button>
+                <button onclick="removeCurrentEvent()" class="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-2xl text-sm">Delete Event</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+
+const supabaseClient = window.supabase?.createClient(supabaseUrl, supabaseAnonKey);
+window.supabaseClient = supabaseClient;
+
+const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+let now = new Date();
+let currentMonth = now.getMonth();
+let currentYear = now.getFullYear();
+let selectedDate = key(now);
+let events = [];
+let currentDetailEventId = null;
+let isEditing = false;
+let currentUser = null;
+let currentProfile = null;
+let realtimeChannel = null;
+
+function $(id) {
+    return document.getElementById(id);
+}
+
+function key(d) {
+    d = new Date(d);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function localDT(d) {
+    d = new Date(d);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function addH(d, h) {
+    d = new Date(d);
+    d.setHours(d.getHours() + h);
+    return d;
+}
+
+function time(d) {
+    return new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit'
+    }).format(new Date(d));
+}
+
+function longDate(k) {
+    let [y, m, d] = k.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+    }).format(new Date(y, m - 1, d));
+}
+
+function esc(v) {
+    return String(v || '').replace(/[&<>'"]/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+    }[c]));
+}
+
+function cls(t) {
+    return 'event-' + (['meeting', 'seminar', 'exam', 'workshop', 'other'].includes(t) ? t : 'other');
+}
+
+function visibilityLabel(v) {
+    return ({
+        all_faculty: 'All Faculty',
+        bsit: 'BSIT Faculty',
+        bsie: 'BSIE Faculty',
+        bit: 'BIT Faculty',
+        department_chairs: 'Department Chairpersons',
+        admin_only: 'Only Me'
+    }[v] || v || 'All Faculty');
+}
+
+function status(t) {
+    let el = $('realtime-status');
+    if (el) el.textContent = t;
+}
+
+function toggleSurveyLinks() {
+    let enabled = $('modal-has-surveys')?.checked;
+    $('modal-survey-fields')?.classList.toggle('hidden', !enabled);
+}
+
+function normalize(r) {
+    let s = new Date(r.start_at);
+    let e = r.end_at ? new Date(r.end_at) : addH(s, 1);
+    let visibility = r.visibility_scope || r.visibility || 'all_faculty';
+
+    return {
+        id: r.id,
+        title: r.title || 'Untitled Schedule',
+        date: key(s),
+        startAt: r.start_at,
+        endAt: r.end_at || e.toISOString(),
+        time: r.all_day ? 'All Day' : `${time(s)} - ${time(e)}`,
+        type: r.event_type || 'other',
+        location: r.location || 'TBA',
+        priority: r.priority || 'Normal',
+        notes: r.notes || '',
+        repeat: r.repeat_rule || 'Never',
+        visibility,
+        allDay: !!r.all_day,
+        requiresFeedback: !!r.requires_feedback,
+        feedbackInstructions: r.feedback_instructions || '',
+        feedbackDueAfterDays: r.feedback_due_after_days || 1,
+        hasSurveys: !!r.has_survey_links,
+        preSurveyUrl: r.pre_survey_url || '',
+        postSurveyUrl: r.post_survey_url || ''
+    };
+}
+
+async function loadCalendarEvents() {
+    if (!supabaseClient) {
+        status('Supabase library failed to load.');
+        events = [];
+        renderCalendar();
+        return;
+    }
+
+    let { data, error } = await supabaseClient
+        .from('calendar_events')
+        .select('*')
+        .order('start_at', { ascending: true });
+
+    if (error) {
+        console.error(error);
+        status('Calendar table not ready. Run the SQL first.');
+        events = [];
+    } else {
+        events = (data || []).map(normalize);
+        status('Realtime calendar connected.');
+    }
+
+    renderCalendar();
+}
+
+function subscribe() {
+    if (!supabaseClient || realtimeChannel) return;
+
+    realtimeChannel = supabaseClient
+        .channel('calendar-events-realtime')
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'calendar_events'
+        }, loadCalendarEvents)
+        .subscribe(s => {
+            if (s === 'SUBSCRIBED') status('Realtime calendar connected.');
+        });
+}
+
+function populateControls() {
+    let ms = $('month-select');
+    let ys = $('year-select');
+    if (!ms || !ys) return;
+
+    ms.innerHTML = months.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+    ys.innerHTML = '';
+
+    for (let y = currentYear - 5; y <= currentYear + 6; y++) {
+        ys.innerHTML += `<option value="${y}">${y}</option>`;
+    }
+
+    ms.value = currentMonth;
+    ys.value = currentYear;
+}
+
+function changeMonthYear() {
+    currentMonth = +$('month-select').value;
+    currentYear = +$('year-select').value;
+    selectedDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    renderCalendar();
+}
+
+function renderCalendar() {
+    if ($('month-select')) $('month-select').value = currentMonth;
+    if ($('year-select')) $('year-select').value = currentYear;
+    renderGrid();
+    renderMini();
+    renderSelected();
+    renderUpcoming();
+}
+
+function renderGrid() {
+    let grid = $('calendar-grid');
+    if (!grid) return;
+
+    let first = new Date(currentYear, currentMonth, 1).getDay();
+    let days = new Date(currentYear, currentMonth + 1, 0).getDate();
+    let today = key(new Date());
+
+    let h = '<div class="grid grid-cols-7 border-b border-slate-100 bg-slate-50">' +
+        ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+            .map(d => `<div class="py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">${d}</div>`)
+            .join('') +
+        '</div><div class="grid grid-cols-7">';
+
+    for (let i = 0; i < first; i++) h += '<div class="day-cell bg-slate-50/70"></div>';
+
+    for (let d = 1; d <= days; d++) {
+        let dk = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        let des = events
+            .filter(e => e.date === dk)
+            .sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+
+        h += `<div class="day-cell bg-white p-3 ${dk === selectedDate ? 'selected' : ''}" onclick="selectDate('${dk}')">`;
+        h += `<div class="flex items-center justify-between mb-1"><span class="day-num ${dk === today ? 'today' : ''}">${d}</span>${des.length ? `<span class="text-[11px] font-semibold text-slate-400">${des.length}</span>` : ''}</div>`;
+
+        des.slice(0, 3).forEach(e => {
+            h += `<button onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}"><span class="block font-semibold truncate">${esc(e.title)}</span><span class="block opacity-80 truncate">${esc(e.time)}${e.requiresFeedback ? ' • Feedback' : ''}</span></button>`;
+        });
+
+        if (des.length > 3) h += `<div class="mt-2 text-[11px] font-semibold text-slate-400">+${des.length - 3} more</div>`;
+        h += '</div>';
+    }
+
+    let rem = (first + days) % 7;
+    if (rem) {
+        for (let i = rem; i < 7; i++) h += '<div class="day-cell bg-slate-50/70"></div>';
+    }
+
+    grid.innerHTML = h + '</div>';
+}
+
+function renderMini() {
+    if (!$('mini-title') || !$('mini-calendar')) return;
+
+    $('mini-title').textContent = `${months[currentMonth]} ${currentYear}`;
+
+    let first = new Date(currentYear, currentMonth, 1).getDay();
+    let days = new Date(currentYear, currentMonth + 1, 0).getDate();
+    let h = '';
+
+    for (let i = 0; i < first; i++) h += '<div></div>';
+
+    for (let d = 1; d <= days; d++) {
+        let dk = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        let has = events.some(e => e.date === dk);
+        h += `<button onclick="selectDate('${dk}')" class="mini-day ${dk === selectedDate ? 'active' : ''} ${has ? 'has' : ''}">${d}</button>`;
+    }
+
+    $('mini-calendar').innerHTML = h;
+}
+
+function card(e, showDate = false) {
+    return `<button onclick="showEventDetails('${e.id}')" class="w-full text-left rounded-2xl border border-slate-100 hover:border-slate-200 bg-white p-4 hover:shadow-sm transition"><div class="flex items-start gap-3"><div class="w-9 h-9 rounded-2xl ${cls(e.type)} flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><div class="min-w-0 flex-1"><div class="font-semibold text-sm text-slate-900 truncate">${esc(e.title)}</div><div class="text-xs text-slate-500 mt-1">${showDate ? longDate(e.date) + ' • ' : ''}${esc(e.time)}</div><div class="text-xs text-slate-400 mt-1 truncate">${esc(e.location)}</div>${e.requiresFeedback ? '<div class="inline-flex mt-2 px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-semibold">Feedback Required</div>' : ''}</div></div></button>`;
+}
+
+function renderSelected() {
+    if (!$('selected-label') || !$('selected-events')) return;
+
+    $('selected-label').textContent = longDate(selectedDate);
+
+    let ds = events
+        .filter(e => e.date === selectedDate)
+        .sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+
+    $('selected-events').innerHTML = ds.length
+        ? ds.map(e => card(e)).join('')
+        : '<div class="text-sm text-slate-500 border border-dashed border-slate-200 rounded-2xl p-5 text-center">No schedules for this date.</div>';
+}
+
+function renderUpcoming() {
+    if (!$('upcoming-count') || !$('upcoming-events')) return;
+
+    let todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    let up = events
+        .filter(e => new Date(e.startAt) >= todayStart)
+        .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))
+        .slice(0, 8);
+
+    $('upcoming-count').textContent = up.length;
+    $('upcoming-events').innerHTML = up.length
+        ? up.map(e => card(e, true)).join('')
+        : '<div class="text-sm text-slate-500 border border-dashed border-slate-200 rounded-2xl p-5 text-center">No upcoming schedules yet.</div>';
+}
+
+function selectDate(d) {
+    selectedDate = d;
+    let a = d.split('-').map(Number);
+    currentYear = a[0];
+    currentMonth = a[1] - 1;
+    renderCalendar();
+}
+
+function prevMonth() {
+    currentMonth--;
+    if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+    }
+    selectedDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    renderCalendar();
+}
+
+function nextMonth() {
+    currentMonth++;
+    if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+    }
+    selectedDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    renderCalendar();
+}
+
+function goToday() {
+    now = new Date();
+    currentMonth = now.getMonth();
+    currentYear = now.getFullYear();
+    selectedDate = key(now);
+    renderCalendar();
+}
+
+function openAddEventModal(edit = null, d = null) {
+    isEditing = !!edit;
+
+    $('modal-title').textContent = isEditing ? 'Edit Schedule' : 'Create Schedule';
+    $('save-button').textContent = isEditing ? 'Save Changes' : 'Create Schedule';
+
+    let bd = d || edit?.date || selectedDate || key(new Date());
+    let st = new Date(`${bd}T09:00:00`);
+    let en = addH(st, 1);
+
+    $('modal-event-title').value = edit?.title || '';
+    $('modal-event-type').value = edit?.type || 'seminar';
+    $('modal-priority').value = edit?.priority || 'Normal';
+    $('modal-location').value = edit?.location === 'TBA' ? '' : (edit?.location || '');
+    $('modal-repeat').value = edit?.repeat || 'Never';
+    $('modal-visibility').value = ['all_faculty', 'bsit', 'bsie', 'bit', 'department_chairs', 'admin_only'].includes(edit?.visibility) ? edit.visibility : 'all_faculty';
+    $('modal-notes').value = edit?.notes || '';
+    $('modal-requires-feedback').checked = !!edit?.requiresFeedback;
+    $('modal-feedback-instructions').value = edit?.feedbackInstructions || '';
+    $('modal-has-surveys').checked = !!edit?.hasSurveys;
+    $('modal-pre-survey-link').value = edit?.preSurveyUrl || '';
+    $('modal-post-survey-link').value = edit?.postSurveyUrl || '';
+    $('modal-all-day').checked = !!edit?.allDay;
+    $('modal-start-time').value = localDT(edit?.startAt || st);
+    $('modal-end-time').value = localDT(edit?.endAt || en);
+    $('modal-all-day-date').value = edit?.date || bd;
+
+    toggleSurveyLinks();
+    toggleModalAllDay();
+    $('add-event-modal').classList.remove('hidden');
+}
+
+function closeAddEventModal() {
+    $('add-event-modal').classList.add('hidden');
+    isEditing = false;
+}
+
+function toggleModalAllDay() {
+    let a = $('modal-all-day').checked;
+    $('modal-time-fields').classList.toggle('hidden', a);
+    $('modal-date-only').classList.toggle('hidden', !a);
+}
+
+function missingColumnName(error) {
+    let msg = error?.message || '';
+    let match = msg.match(/Could not find the '([^']+)' column/i) || msg.match(/Could not find '([^']+)'/i);
+    return match ? match[1] : null;
+}
+
+async function saveCalendarRecord(payload) {
+    const optionalColumns = new Set([
+        'event_type',
+        'location',
+        'all_day',
+        'repeat_rule',
+        'priority',
+        'visibility',
+        'visibility_scope',
+        'has_survey_links',
+        'pre_survey_url',
+        'post_survey_url',
+        'notes',
+        'requires_feedback',
+        'feedback_due_after_days',
+        'feedback_instructions',
+        'created_by',
+        'created_by_name'
+    ]);
+
+    let cleanPayload = { ...payload };
+    let lastResult = null;
+
+    for (let attempt = 0; attempt < 18; attempt++) {
+        let query = supabaseClient.from('calendar_events');
+
+        lastResult = isEditing && currentDetailEventId
+            ? await query.update(cleanPayload).eq('id', currentDetailEventId).select().single()
+            : await query.insert(cleanPayload).select().single();
+
+        if (!lastResult.error) return lastResult;
+
+        let col = missingColumnName(lastResult.error);
+        if (!col || !optionalColumns.has(col) || !(col in cleanPayload)) return lastResult;
+
+        delete cleanPayload[col];
+    }
+
+    return lastResult;
+}
+
+async function saveEventFromModal() {
+    if (!supabaseClient) return alert('Supabase is not loaded. Please check your internet connection or CDN script.');
+
+    let title = $('modal-event-title').value.trim();
+    if (!title) return alert('Please enter an event title.');
+
+    let all = $('modal-all-day').checked;
+    let start;
+    let end;
+
+    if (all) {
+        let d = $('modal-all-day-date').value;
+        if (!d) return alert('Please select a date.');
+        start = new Date(`${d}T00:00:00`).toISOString();
+        end = new Date(`${d}T23:59:00`).toISOString();
+    } else {
+        let s = $('modal-start-time').value;
+        let e = $('modal-end-time').value;
+        if (!s || !e) return alert('Please provide start and end time.');
+        if (new Date(e) <= new Date(s)) return alert('End time must be later than start time.');
+        start = new Date(s).toISOString();
+        end = new Date(e).toISOString();
+    }
+
+    let hasSurveys = $('modal-has-surveys').checked;
+    let visibilityScope = $('modal-visibility').value;
+
+    let payload = {
+        title,
+        event_type: $('modal-event-type').value,
+        location: $('modal-location').value.trim() || 'TBA',
+        start_at: start,
+        end_at: end,
+        all_day: all,
+        repeat_rule: $('modal-repeat').value,
+        priority: $('modal-priority').value,
+        visibility: visibilityLabel(visibilityScope),
+        visibility_scope: visibilityScope,
+        has_survey_links: hasSurveys,
+        pre_survey_url: hasSurveys ? $('modal-pre-survey-link').value.trim() : '',
+        post_survey_url: hasSurveys ? $('modal-post-survey-link').value.trim() : '',
+        notes: $('modal-notes').value.trim(),
+        requires_feedback: $('modal-requires-feedback').checked,
+        feedback_due_after_days: 1,
+        feedback_instructions: $('modal-feedback-instructions').value.trim(),
+        created_by: currentUser?.id || null,
+        created_by_name: currentUser?.email || null
+    };
+
+    let res = await saveCalendarRecord(payload);
+
+    if (res?.error) {
+        console.error(res.error);
+        return alert('Unable to save event. Please run the Supabase SQL and check table permissions.');
+    }
+
+    closeAddEventModal();
+    closeDetailModal();
+    await loadCalendarEvents();
+}
+
+function showEventDetails(id) {
+    currentDetailEventId = id;
+    let e = events.find(x => String(x.id) === String(id));
+    if (!e) return;
+
+    $('detail-title').textContent = e.title;
+    $('detail-type').textContent = (e.type || 'Event').toUpperCase();
+    $('detail-location').textContent = e.location;
+    $('detail-time').textContent = `${longDate(e.date)} • ${e.time}`;
+    $('detail-priority').textContent = e.priority;
+    $('detail-repeat').textContent = e.repeat;
+    $('detail-invitees').textContent = visibilityLabel(e.visibility);
+
+    let surveyBox = $('detail-surveys-box');
+    let surveyLinks = $('detail-surveys');
+
+    if (e.hasSurveys && (e.preSurveyUrl || e.postSurveyUrl)) {
+        surveyLinks.innerHTML = `${e.preSurveyUrl ? `<a class="text-[#621708] hover:underline block" target="_blank" rel="noopener noreferrer" href="${esc(e.preSurveyUrl)}">Open Pre-Survey</a>` : ''}${e.postSurveyUrl ? `<a class="text-[#621708] hover:underline block" target="_blank" rel="noopener noreferrer" href="${esc(e.postSurveyUrl)}">Open Post-Survey</a>` : ''}`;
+        surveyBox.classList.remove('hidden');
+    } else {
+        surveyLinks.innerHTML = '';
+        surveyBox.classList.add('hidden');
+    }
+
+    $('detail-feedback').textContent = e.requiresFeedback
+        ? 'Required from faculty users starting the day after the event.'
+        : 'Not required';
+
+    $('detail-notes').textContent = e.notes || 'No notes provided.';
+    $('event-detail-modal').classList.remove('hidden');
+}
+
+function closeDetailModal() {
+    $('event-detail-modal').classList.add('hidden');
+}
+
+function editCurrentEvent() {
+    let e = events.find(x => String(x.id) === String(currentDetailEventId));
+    if (e) {
+        closeDetailModal();
+        openAddEventModal(e);
+    }
+}
+
+async function removeCurrentEvent() {
+    if (!supabaseClient) return alert('Supabase is not loaded.');
+    if (!currentDetailEventId) return;
+    if (!confirm('Are you sure you want to delete this event?')) return;
+
+    let { error } = await supabaseClient
+        .from('calendar_events')
+        .delete()
+        .eq('id', currentDetailEventId);
+
+    if (error) {
+        console.error(error);
+        return alert('Unable to delete event. Please check table permissions.');
+    }
+
+    closeDetailModal();
+    await loadCalendarEvents();
+}
+
+function formatFullName(f, l, fb) {
+    return [f, l].filter(Boolean).join(' ').trim() || fb || 'Unknown User';
+}
+
+function renderProfile(p, u) {
+    $('profileName').textContent = formatFullName(p.first_name, p.last_name, u?.email);
+    $('profileRole').textContent = p.role || 'Administrator';
+}
+
+async function loadAdminProfile() {
+    if (!supabaseClient) {
+        renderProfile({ first_name: 'Admin', last_name: '', role: 'Administrator' }, null);
+        return;
+    }
+
+    let { data, error } = await supabaseClient.auth.getUser();
+
+    if (error || !data?.user) {
+        renderProfile({ first_name: 'Admin', last_name: '', role: 'Administrator' }, null);
+        return;
+    }
+
+    currentUser = data.user;
+    let meta = currentUser.user_metadata || {};
+    let profile = {
+        first_name: meta.first_name || '',
+        last_name: meta.last_name || '',
+        email: currentUser.email || '',
+        role: meta.role || 'Administrator'
+    };
+
+    let res = await supabaseClient
+        .from('admin_profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .maybeSingle();
+
+    if (res.data) profile = { ...profile, ...res.data };
+
+    currentProfile = profile;
+    renderProfile(profile, currentUser);
+}
+
+window.addEventListener('load', async () => {
+    populateControls();
+    renderCalendar();
+    await loadAdminProfile();
+    await loadCalendarEvents();
+    subscribe();
+});
 </script>
 <script src="../shared/system-ui.js"></script>
 </body>

@@ -255,15 +255,6 @@
                             </div>
                             <select id="typeFilter" onchange="applyLogFilters()" class="px-4 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#621708]/20 focus:border-[#621708]">
                                 <option value="all">All Types</option>
-                                <option value="Workshop">Workshop</option>
-                                <option value="Seminar">Seminar</option>
-                                <option value="Download">Download</option>
-                                <option value="Feedback Summary">Feedback Summary</option>
-                                <option value="Profile Update">Profile Update</option>
-                                <option value="Meeting">Meeting</option>
-                                <option value="Community Service">Community Service</option>
-                                <option value="Document Action">Document Action</option>
-                                <option value="System Event">System Event</option>
                             </select>
                         </div>
                     </div>
@@ -419,6 +410,7 @@
     let realtimeChannel = null;
     let isLoadingLogs = false;
     let realtimeReloadTimer = null;
+    let pollingIntervalId = null;
 
     const ACTIVITY_TYPES = [
         'Workshop', 'Seminar', 'Download', 'Feedback Summary', 'Profile Update',
@@ -586,8 +578,29 @@
             });
     }
 
+    function startEngagementPolling() {
+        if (pollingIntervalId) clearInterval(pollingIntervalId);
+        pollingIntervalId = setInterval(() => loadEngagementLogs({ silent: true }), 15000);
+    }
+
+    function stopEngagementPolling() {
+        if (!pollingIntervalId) return;
+        clearInterval(pollingIntervalId);
+        pollingIntervalId = null;
+    }
+
     function applyLogFilters() {
         renderLogs();
+    }
+
+    function syncTypeFilterOptions() {
+        const select = document.getElementById('typeFilter');
+        if (!select) return;
+        const previousValue = select.value || 'all';
+        const uniqueTypes = [...new Set((engagementLogs || []).map(log => String(log.activity_type || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+        select.innerHTML = `<option value="all">All Types</option>${uniqueTypes.map(type => `<option value="${escapeHTML(type)}">${escapeHTML(type)}</option>`).join('')}`;
+        const hasPrevious = previousValue === 'all' || uniqueTypes.includes(previousValue);
+        select.value = hasPrevious ? previousValue : 'all';
     }
 
     function getFilteredLogs() {
@@ -602,6 +615,7 @@
     }
 
     function renderLogs() {
+        syncTypeFilterOptions();
         renderSummary();
         renderCategoryCounts();
         renderRecentEvents();
@@ -688,9 +702,14 @@
     function renderCategoryCounts() {
         const container = document.getElementById('categoryCounts');
         if (!container) return;
-        container.innerHTML = ACTIVITY_TYPES.map(type => `
+        const uniqueTypes = [...new Set((engagementLogs || []).map(log => String(log.activity_type || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+        if (!uniqueTypes.length) {
+            container.innerHTML = '<p class="text-sm text-slate-500">No category data yet.</p>';
+            return;
+        }
+        container.innerHTML = uniqueTypes.map(type => `
             <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                <span class="text-sm font-medium text-slate-700">${type}</span>
+                <span class="text-sm font-medium text-slate-700">${escapeHTML(type)}</span>
                 <span class="text-xs font-semibold text-slate-500">${countType(type)}</span>
             </div>`).join('');
     }
@@ -801,11 +820,30 @@
         if (event.key === 'Escape') closeLogModal();
     });
 
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopEngagementPolling();
+            return;
+        }
+        loadEngagementLogs({ silent: true });
+        startEngagementPolling();
+    });
+
+    window.addEventListener('engagement-log:created', () => {
+        scheduleRealtimeReload();
+    });
+
     window.onload = async () => {
         await loadAdminProfile();
         await loadEngagementLogs();
         setupRealtimeLogs();
+        startEngagementPolling();
     };
+
+    window.addEventListener('beforeunload', () => {
+        stopEngagementPolling();
+        if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+    });
 </script>
 <script src="../shared/system-ui.js"></script>
 </body>
