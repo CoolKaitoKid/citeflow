@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CTU – Login</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" 
+        integrity="sha512-x..." crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Supabase JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: white;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Faculty Icon - Top Right Corner */
+    .faculty-icon {
+      position: fixed;
+      top: 25px;
+      right: 30px;
+      width: 48px;
+      height: 48px;
+      background: #1e40af;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.35rem;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(30, 64, 175, 0.25);
+      transition: all 0.3s ease;
+      z-index: 1000;
+    }
+
+    .faculty-icon:hover {
+      background: #1e3a8a;
+      transform: scale(1.08);
+    }
+
+    .faculty-icon i {
+      transition: transform 0.3s ease;
+    }
+
+    .faculty-icon:hover i {
+      transform: rotate(12deg);
+    }
+
+    .layout {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+    }
+
+    .image-area {
+      flex: 1.1;
+      height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .image-area img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .form-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+      padding: 50px 70px;
+      max-width: 580px;
+    }
+
+    .logo {
+      width: clamp(4.8rem, 6.5vw, 7.2rem);     /* Bigger Logo */
+      height: clamp(4.8rem, 6.5vw, 7.2rem);
+      border-radius: 50%;
+      object-fit: contain;
+      background: #efefef;
+      margin: 0 auto 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      font-size: clamp(1.5rem, 2.2vw, 2rem);
+      font-weight: 700;
+      color: #000;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: clamp(0.8125rem, 1vw, 0.875rem);
+      color: #666;
+      margin-bottom: 32px;
+    }
+
+    .field {
+      margin-bottom: 18px;
+      text-align: left;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8125rem;
+      color: #333;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .input-box {
+      height: 46px;
+      background: #ffffff;
+      border: 1px solid #bbb;
+      border-radius: 0.875rem;
+      display: flex;
+      align-items: center;
+      padding: 0 15px;
+      gap: 12px;
+      transition: border-color 0.2s;
+      position: relative;
+    }
+
+    .input-box:focus-within {
+      border-color: #9c2f1f;
+      outline: 3px solid rgba(156,47,31,0.1);
+    }
+
+    .icon-square {
+      width: 38px;
+      height: 38px;
+      background: transparent;
+      color: #9c2f1f;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+
+    input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 0.875rem;
+      font-family: inherit;
+      color: #111;
+    }
+
+    input::placeholder {
+      color: #9a9a9a;
+    }
+
+    .password-wrapper {
+      position: relative;
+    }
+
+    .eye-btn {
+      background: none;
+      border: none;
+      font-size: 1.1rem;
+      color: #555;
+      cursor: pointer;
+      padding: 0 4px;
+      position: absolute;
+      right: 12px;
+    }
+
+    .options-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8125rem;
+      color: #333;
+      margin-top: 8px;
+    }
+
+    .login-btn {
+      width: 100%;
+      height: 50px;
+      margin-top: 28px;
+      background: #9c2f1f;
+      color: white;
+      border: none;
+      border-radius: 0.75rem;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .login-btn:hover {
+      background: #84261a;
+    }
+
+    .login-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .register-text {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 0.8125rem;
+      color: #555;
+    }
+
+    .register-text a {
+      color: #000;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .register-text a:hover {
+      text-decoration: underline;
+    }
+
+    .message {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .layout {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+      }
+      .image-area {
+        height: 45vh;
+        width: 100%;
+      }
+      .form-area {
+        padding: 40px 30px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .form-area {
+        padding: 30px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Faculty Icon (Top Right) -->
+  <div class="faculty-icon" id="facultyIcon" title="Switch to Faculty Login">
+    <i class="fas fa-chalkboard-teacher"></i>
+  </div>
+
+  <div class="layout">
+
+    <!-- Image Area - Full Half Screen -->
+    <div class="image-area">
+      <img src="bldg1.jpg" alt="University campus building">
+    </div>
+
+    <!-- Form Area -->
+    <div class="form-area">
+      <img src="ctu-logo.png" alt="CTU logo" class="logo">
+
+      <h1>Welcome Back!</h1>
+      <div class="subtitle">Access your CiteFlow account</div>
+
+      <form id="loginForm">
+        <div class="field">
+          <label>Email</label>
+          <div class="input-box">
+            <div class="icon-square"><i class="far fa-envelope"></i></div>
+            <input type="email" id="email" placeholder="name@citeflow.edu.ph" required autocomplete="email">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Password</label>
+          <div class="input-box password-wrapper">
+            <div class="icon-square"><i class="fas fa-lock"></i></div>
+            <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" class="eye-btn" aria-label="Toggle password visibility">
+              <i class="far fa-eye-slash"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="options-bar">
+          <label class="remember-box">
+            <input type="checkbox">
+            Remember me
+          </label>
+          <a href="forgot.html" class="forgot-link">Forgot password?</a>
+        </div>
+
+        <button type="submit" id="loginBtn" class="login-btn">Login</button>
+
+        <div id="message" class="message" style="display:none;"></div>
+      </form>
+
+      <div class="register-text">
+        Don't have an account? <a href="register.html">Register</a>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ================== SUPABASE CONFIG ==================
+    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+
+    const { createClient } = supabase;
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    // Password visibility toggle + Faculty Icon
+    document.addEventListener('DOMContentLoaded', function() {
+      const eyeBtns = document.querySelectorAll('.eye-btn');
+      eyeBtns.forEach(btn => {
+        const input = btn.parentElement.querySelector('input');
+        const icon = btn.querySelector('i');
+
+        btn.addEventListener('click', function() {
+          if (input.type === 'password') {
+            input.type = 'text';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+          } else {
+            input.type = 'password';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+          }
+        });
+      });
+
+      // Faculty Icon Click
+      const facultyIcon = document.getElementById('facultyIcon');
+      facultyIcon.addEventListener('click', function() {
+        window.location.href = 'faculty-login.html';
+      });
+    });
+
+    // Login Form Handler
+    const loginForm = document.getElementById('loginForm');
+    const loginBtn = document.getElementById('loginBtn');
+    const messageDiv = document.getElementById('message');
+
+    loginForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      messageDiv.style.display = 'none';
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Logging in...';
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      try {
+        const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+          email: email,
+          password: password
+        });
+
+        if (authError) throw authError;
+
+        window.location.href = 'admin/faculty-profiles.html';
+
+      } catch (err) {
+        console.error('Login Error:', err);
+        let msg = 'Invalid email or password. Please try again.';
+
+        if (err.message.includes('Invalid login credentials')) {
+          msg = 'Incorrect email or password.';
+        } else if (err.message.includes('Email not confirmed')) {
+          msg = 'Please confirm your email before logging in.';
+        } else if (err.message.includes('Failed to fetch')) {
+          msg = 'Network error. Please check your internet connection.';
+        }
+
+        showMessage(msg, 'error');
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Login';
+      }
+    });
+
+    function showMessage(text, type) {
+      messageDiv.textContent = text;
+      messageDiv.className = `message ${type}`;
+      messageDiv.style.display = 'block';
+    }
+  </script>
+
+</body>
+</html>
