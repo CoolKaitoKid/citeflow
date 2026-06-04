@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CTU – Create Account</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+        integrity="sha512-x..." crossorigin="anonymous" referrerpolicy="no-referrer" />
+  
+  <!-- Supabase JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: white;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .signup-layout {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+    }
+
+    .form-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+      padding: 50px 70px;
+      max-width: 580px;
+    }
+
+    .brand-logo {
+      width: clamp(4.8rem, 6.5vw, 7.2rem);     /* Bigger Logo */
+      height: clamp(4.8rem, 6.5vw, 7.2rem);
+      border-radius: 50%;
+      object-fit: contain;
+      background: #efefef;
+      margin: 0 auto 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      font-size: clamp(1.35rem, 1.95vw, 1.8rem);
+      font-weight: 700;
+      color: #000;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 0.83rem;
+      color: #666;
+      margin-bottom: 32px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .field {
+      text-align: left;
+      margin-bottom: 4px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.76rem;
+      color: #333;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .input-wrapper {
+      height: 46px;
+      background: #ffffff;
+      border: 1px solid #bbb;
+      border-radius: 0.875rem;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      transition: border-color 0.2s;
+      position: relative;
+    }
+
+    .input-wrapper:focus-within {
+      border-color: #9c2f1f;
+      outline: 3px solid rgba(156,47,31,0.1);
+    }
+
+    input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 0.87rem;
+      font-family: inherit;
+      color: #111;
+    }
+
+    input::placeholder {
+      color: #999;
+    }
+
+    .password-field {
+      position: relative;
+    }
+
+    .eye-toggle {
+      background: none;
+      border: none;
+      font-size: 1.1rem;
+      color: #555;
+      cursor: pointer;
+      padding: 0 8px;
+      position: absolute;
+      right: 12px;
+    }
+
+    .create-btn {
+      width: 100%;
+      height: 50px;
+      margin-top: 28px;
+      background: #9c2f1f;
+      color: white;
+      border: none;
+      border-radius: 0.75rem;
+      font-size: 0.94rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .create-btn:hover {
+      background: #84261a;
+    }
+
+    .create-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .login-prompt {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 0.81rem;
+      color: #555;
+    }
+
+    .login-prompt a {
+      color: #000;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .login-prompt a:hover {
+      text-decoration: underline;
+    }
+
+    /* Message Styling */
+    .message {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      padding: 12px;
+      border-radius: 8px;
+    }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+
+    /* Image Section - Full Half */
+    .image-section {
+      flex: 1.1;
+      height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .image-section img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .signup-layout {
+        flex-direction: column-reverse;
+        height: auto;
+        min-height: 100vh;
+      }
+      .form-section {
+        padding: 40px 30px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .form-section {
+        padding: 30px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="signup-layout">
+    <section class="form-section">
+      <img src="ctu-logo.png" alt="Cebu Technological University Logo" class="brand-logo">
+      <h1>Create an account!</h1>
+      <div class="subtitle">Create your CiteFlow account</div>
+
+      <form id="signup-form">
+        <div class="form-grid">
+          <div class="field">
+            <label>First Name</label>
+            <div class="input-wrapper">
+              <input type="text" id="first-name" placeholder="Juan" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>Last Name</label>
+            <div class="input-wrapper">
+              <input type="text" id="last-name" placeholder="Dela Cruz" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>Email Address</label>
+            <div class="input-wrapper">
+              <input type="email" id="email" placeholder="name@ctu.edu.ph" required autocomplete="email">
+            </div>
+          </div>
+          <div class="field">
+            <label>ID Number</label>
+            <div class="input-wrapper">
+              <input type="text" id="id-number" placeholder="2023-00123" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <div class="input-wrapper password-field">
+              <input type="password" id="password" placeholder="••••••••" required autocomplete="new-password">
+              <button type="button" class="eye-toggle" aria-label="Toggle password visibility">
+                <i class="far fa-eye"></i>
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Confirm Password</label>
+            <div class="input-wrapper password-field">
+              <input type="password" id="confirm-password" placeholder="••••••••" required autocomplete="new-password">
+              <button type="button" class="eye-toggle" aria-label="Toggle password visibility">
+                <i class="far fa-eye"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" id="create-btn" class="create-btn">Create Account</button>
+        <div id="message" class="message" style="display:none;"></div>
+
+        <div class="login-prompt">
+          Already have an account? <a href="login.html">Login</a>
+        </div>
+      </form>
+    </section>
+
+    <div class="image-section">
+      <img src="bldg2.jpg" alt="CTU Campus Building">
+    </div>
+  </div>
+
+  <script>
+    // ================== SUPABASE CONFIG ==================
+    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+    const { createClient } = supabase;
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    // Password visibility toggle
+    document.addEventListener('DOMContentLoaded', function() {
+      const eyeToggles = document.querySelectorAll('.eye-toggle');
+      eyeToggles.forEach(toggle => {
+        const input = toggle.parentElement.querySelector('input');
+        const icon = toggle.querySelector('i');
+        toggle.addEventListener('click', function() {
+          if (input.type === 'password') {
+            input.type = 'text';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+          } else {
+            input.type = 'password';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+          }
+        });
+      });
+    });
+
+    // Form submission with all your original logic
+    const form = document.getElementById('signup-form');
+    const createBtn = document.getElementById('create-btn');
+    const messageDiv = document.getElementById('message');
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      messageDiv.style.display = 'none';
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating account...';
+
+      const firstName = document.getElementById('first-name').value.trim();
+      const lastName = document.getElementById('last-name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const idNumber = document.getElementById('id-number').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
+      if (password !== confirmPassword) {
+        showMessage('Passwords do not match!', 'error');
+        resetButton();
+        return;
+      }
+      if (password.length < 8) {
+        showMessage('Password must be at least 8 characters long.', 'error');
+        resetButton();
+        return;
+      }
+      if (!passwordRegex.test(password)) {
+        showMessage('Password must contain uppercase, lowercase, number & special character.', 'error');
+        resetButton();
+        return;
+      }
+
+      try {
+        const { data, error } = await supabaseClient.auth.signUp({
+          email: email,
+          password: password,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              id_number: idNumber
+            }
+          }
+        });
+
+        if (error) throw error;
+
+        showMessage('Account created successfully! Please check your email (including spam) to confirm your account.', 'success');
+        
+        setTimeout(() => {
+          window.location.href = 'login.html';
+        }, 4000);
+
+      } catch (err) {
+        console.error('Signup Error:', err);
+        let msg = 'Failed to create account. Please try again.';
+        if (err.message.includes('already registered') || err.message.includes('already exists')) {
+          msg = 'An account with this email already exists. Please login instead.';
+        } else if (err.message.includes('Failed to fetch')) {
+          msg = 'Network error. Please check your internet connection.';
+        }
+        showMessage(msg, 'error');
+      } finally {
+        resetButton();
+      }
+    });
+
+    function showMessage(text, type) {
+      messageDiv.textContent = text;
+      messageDiv.className = `message ${type}`;
+      messageDiv.style.display = 'block';
+    }
+
+    function resetButton() {
+      createBtn.disabled = false;
+      createBtn.textContent = 'Create Account';
+    }
+  </script>
+</body>
+</html>
