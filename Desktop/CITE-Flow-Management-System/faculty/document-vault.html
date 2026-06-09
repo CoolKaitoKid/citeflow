@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Vault - CITE-Flow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        
+        * { font-family: 'Inter', sans-serif; }
+        .sidebar { background-color: #621708; }
+        .card-shadow { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); }
+        
+        .nav-item:hover { background-color: #8c2a10; }
+        .nav-item.active { 
+            background-color: #8c2a10; 
+            border-left: 6px solid #f5e8c7; 
+            border-radius: 9999px 0 0 9999px;
+            margin-left: 8px;
+            padding-left: 20px;
+        }
+
+        /* Subtle scrollbar */
+        .sidebar .flex-1.overflow-y-auto {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.15) transparent;
+        }
+        .sidebar .flex-1.overflow-y-auto::-webkit-scrollbar {
+            width: 3px;
+        }
+        .sidebar .flex-1.overflow-y-auto::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .sidebar .flex-1.overflow-y-auto::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.15);
+            border-radius: 20px;
+        }
+        .sidebar .flex-1.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+<div class="flex h-screen overflow-hidden">
+    <!-- SIDEBAR -->
+    <div class="sidebar w-72 text-white flex flex-col h-full">
+        <div onclick="window.location.href='dashboard.html'" 
+             class="px-6 pt-6 pb-4 cursor-pointer flex items-center gap-x-3 border-b border-white/20 hover:bg-white/10">
+            <div class="w-11 h-11 bg-white rounded-2xl flex items-center justify-center">
+                <span class="text-[#621708] text-3xl font-bold">CTU</span>
+            </div>
+            <div>
+                <div class="text-lg font-semibold">CITE-Flow</div>
+                <div class="text-xs opacity-75">College of Technology and Engineering</div>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-3 py-6 space-y-8">
+            <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-4 py-3 rounded-2xl text-sm font-medium cursor-pointer active">📁 Document Vault</div>
+            <div onclick="window.location.href='submissions.html'" class="nav-item flex items-center gap-x-3 px-4 py-3 rounded-2xl text-sm font-medium cursor-pointer">📤 Submissions</div>
+            <div onclick="window.location.href='status-tracking.html'" class="nav-item flex items-center gap-x-3 px-4 py-3 rounded-2xl text-sm font-medium cursor-pointer">📋 Status Tracking</div>
+            <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-4 py-3 rounded-2xl text-sm font-medium cursor-pointer">📅 Calendar</div>
+            <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-4 py-3 rounded-2xl text-sm font-medium cursor-pointer">⚙️ System Settings</div>
+        </div>
+
+        <!-- Faculty Profile -->
+        <div class="p-4 border-t border-white/20">
+            <div onclick="window.location.href='faculty-profile.html'" 
+                 class="flex items-center gap-3 bg-white/10 hover:bg-white/20 p-3 rounded-2xl cursor-pointer">
+                <div class="w-10 h-10 bg-gray-200 rounded-2xl flex items-center justify-center text-2xl">👤</div>
+                <div class="text-sm">
+                    <div class="font-medium">Maria Santos</div>
+                    <div class="text-xs opacity-75">Faculty Member</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN DOCUMENT VAULT CONTENT -->
+    <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
+        <div class="max-w-5xl mx-auto">
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center gap-3">
+                    <button onclick="window.history.back()" class="text-2xl">←</button>
+                    <div>
+                        <h1 class="text-3xl font-semibold">Document Vault</h1>
+                        <p class="text-gray-500">Store, organize, and access all your academic documents</p>
+                    </div>
+                </div>
+                <button onclick="uploadNewDocument()" 
+                        class="flex items-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-3 rounded-2xl text-sm font-medium">
+                    <span>📤</span> Upload New Document
+                </button>
+            </div>
+
+            <!-- Search & Filter -->
+            <div class="flex gap-4 mb-8">
+                <div class="flex-1 relative">
+                    <input type="text" id="search-input" 
+                           onkeyup="filterDocuments()" 
+                           placeholder="Search documents..." 
+                           class="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 pl-12 focus:outline-none focus:border-[#621708]">
+                    <span class="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                </div>
+                <select id="category-filter" onchange="filterDocuments()" 
+                        class="bg-white border border-gray-200 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
+                    <option value="">All Categories</option>
+                    <option value="Research">Research</option>
+                    <option value="Syllabus">Syllabus</option>
+                    <option value="Lecture">Lecture Notes</option>
+                    <option value="Report">Reports</option>
+                    <option value="Certificate">Certificates</option>
+                </select>
+            </div>
+
+            <!-- Documents Grid -->
+            <div id="documents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const documents = [
+        {
+            id: 1,
+            name: "Research_Paper_ML_Education.pdf",
+            category: "Research",
+            date: "2026-01-15",
+            size: "2.4 MB",
+            type: "PDF"
+        },
+        {
+            id: 2,
+            name: "BSIT_Syllabus_2025-2026.docx",
+            category: "Syllabus",
+            date: "2025-12-20",
+            size: "1.1 MB",
+            type: "DOCX"
+        },
+        {
+            id: 3,
+            name: "Lecture_Notes_Data_Structures.pdf",
+            category: "Lecture",
+            date: "2026-02-10",
+            size: "3.8 MB",
+            type: "PDF"
+        },
+        {
+            id: 4,
+            name: "Annual_Performance_Report_2025.pdf",
+            category: "Report",
+            date: "2026-01-05",
+            size: "890 KB",
+            type: "PDF"
+        },
+        {
+            id: 5,
+            name: "Teaching_Certificate_2024.pdf",
+            category: "Certificate",
+            date: "2025-11-30",
+            size: "450 KB",
+            type: "PDF"
+        }
+    ];
+
+    function renderDocuments(filteredDocs) {
+        const grid = document.getElementById('documents-grid');
+        grid.innerHTML = '';
+
+        filteredDocs.forEach(doc => {
+            const card = document.createElement('div');
+            card.className = "bg-white rounded-3xl p-6 card-shadow hover:shadow-lg transition-shadow";
+            card.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="font-medium text-base">${doc.name}</div>
+                        <div class="text-xs text-gray-500 mt-1">${doc.category} • ${doc.date}</div>
+                    </div>
+                    <span class="px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded-xl">${doc.type}</span>
+                </div>
+                <div class="mt-6 text-sm text-gray-500">${doc.size}</div>
+                <div class="mt-8 flex gap-3">
+                    <button onclick="viewDocument(${doc.id})" 
+                            class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-2xl text-sm font-medium">
+                        View
+                    </button>
+                    <button onclick="downloadDocument(${doc.id})" 
+                            class="flex-1 bg-[#621708] hover:bg-[#8c2a10] text-white py-3 rounded-2xl text-sm font-medium">
+                        Download
+                    </button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function filterDocuments() {
+        const searchTerm = document.getElementById('search-input').value.toLowerCase();
+        const category = document.getElementById('category-filter').value;
+
+        let filtered = documents;
+
+        if (searchTerm) {
+            filtered = filtered.filter(doc => 
+                doc.name.toLowerCase().includes(searchTerm)
+            );
+        }
+
+        if (category) {
+            filtered = filtered.filter(doc => doc.category === category);
+        }
+
+        renderDocuments(filtered);
+    }
+
+    function viewDocument(id) {
+        alert(`📄 Opening document #${id} in preview mode...`);
+    }
+
+    function downloadDocument(id) {
+        alert(`⬇️ Downloading document #${id}...`);
+    }
+
+    function uploadNewDocument() {
+        alert("📤 Upload new document dialog would open here.\n\nYou can add file upload functionality later.");
+    }
+
+    // Initial render
+    window.onload = () => {
+        renderDocuments(documents);
+    };
+</script>
+</body>
+</html>

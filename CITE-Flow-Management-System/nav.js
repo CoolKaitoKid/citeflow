@@ -182,6 +182,24 @@ async function loadAdminNavigation() {
         const html = await response.text();
         const doc = new DOMParser().parseFromString(html, "text/html");
 
+        // Ensure Font Awesome is available for nav icons
+        if (!document.querySelector('link[data-citeflow="fontawesome"]') && !document.querySelector('link[href*="font-awesome"]') && !document.querySelector('link[href*="fontawesome"]') && !document.querySelector('link[href*="font-awesome"]')) {
+            const fa = document.createElement('link');
+            fa.rel = 'stylesheet';
+            fa.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css';
+            fa.setAttribute('data-citeflow', 'fontawesome');
+            document.head.appendChild(fa);
+        }
+
+        // Ensure nav.css is loaded when not present in the page head
+        if (!document.querySelector('link[data-citeflow="navcss"]') && !document.querySelector('link[href*="/nav.css"]') && !document.querySelector('link[href*="nav.css"]')) {
+            const navCss = document.createElement('link');
+            navCss.rel = 'stylesheet';
+            navCss.href = isInAdminFolder() ? '../nav.css' : 'nav.css';
+            navCss.setAttribute('data-citeflow', 'navcss');
+            document.head.appendChild(navCss);
+        }
+
         mountNavPart(doc.querySelector("aside.sidebar"), "sidebar-container");
         mountNavPart(doc.querySelector("nav.navbar"), "navbar-container");
         mountNavPart(doc.getElementById("profileBackdrop"), null, true);
