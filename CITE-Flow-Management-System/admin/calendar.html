@@ -5,46 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calendar - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../nav.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
         * { font-family: 'Inter', sans-serif; }
         
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
-        }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
-        }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
-        }
-
-        .section-header {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
-
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
-        }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
-        }
-
         .card-shadow { 
             box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
         }
@@ -78,101 +45,39 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}
+        .panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}
+        .icon-btn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:14px;background:#fff;color:#334155}
+        .icon-btn:hover{background:#f8fafc}
+        .day-cell{min-height:122px;border-right:1px solid #eef2f7;border-bottom:1px solid #eef2f7;transition:.18s}
+        .day-cell:hover{background:#f9fafb}
+        .day-cell.selected{background:#fff7ed;box-shadow:inset 0 0 0 1px #c2410c}
+        .day-num{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-size:12px;font-weight:700;color:#334155}
+        .day-num.today{background:#621708;color:#fff}
+        .mini-day{position:relative;width:32px;height:32px;border-radius:999px;font-size:12px;font-weight:700;color:#475569}
+        .mini-day:hover{background:#f1f5f9}
+        .mini-day.active{background:#621708;color:#fff}
+        .mini-day.has:after{content:'';position:absolute;bottom:3px;left:50%;width:4px;height:4px;background:#b45309;border-radius:999px;transform:translateX(-50%)}
+        .pill{display:block;width:100%;border-radius:12px;padding:7px 9px;margin-top:6px;font-size:11px;line-height:1.15;text-align:left;border:1px solid transparent;cursor:pointer}
+        .pill:hover{filter:brightness(.98)}
+        .event-meeting{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+        .event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
+        .event-exam{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+        .event-workshop{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}
+        .event-other{background:#f8fafc;color:#334155;border-color:#e2e8f0}
+        .modal-field{width:100%;border:1px solid #d1d5db;border-radius:18px;padding:12px 14px;font-size:14px;outline:none;background:white}
+        .modal-field:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}
     </style>
 </head>
 <body class="bg-gray-50">
 
 <div class="flex h-screen overflow-hidden">
-    <!-- SIDEBAR - unchanged -->
-    <div class="sidebar text-white flex flex-col h-full">
-        
-        <!-- CTU Logo Section -->
-        <div onclick="window.location.href='dashboard.html'" 
-            class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" 
-                alt="CTU Logo" 
-                class="h-16 w-auto mb-3">
-            <div class="text-center">
-                <div class="font-semibold text-base leading-tight">College of Technology</div>
-                <div class="font-semibold text-base leading-tight">and Engineering</div>
-            </div>
-        </div>
+    <div id="sidebar-container"></div>
 
-        <!-- Navigation - unchanged -->
-        <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
-            <div>
-                <div class="section-header text-white/70">FACULTIES & PROFILES</div>
-                <div onclick="window.location.href='faculty-profiles.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Faculty Profiles
-                </div>
-                <div onclick="window.location.href='workload-tracker.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Workload Tracker
-                </div>
-                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                    Engagement Logs
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Workflow Approval
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">ADMINISTRATION</div>
-                <div onclick="window.location.href='reports-analytics.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
-                    Reports and Analytics
-                </div>
-                <div onclick="window.location.href='feedback-summary.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
-                    Seminar Feedback Summary
-                </div>
-                <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-                <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    User Management
-                </div>
-            </div>
-        </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708]"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-            <div class="flex-1 min-w-0">
-                <div id="profileName" class="font-semibold text-sm truncate">Loading...</div>
-                <div id="profileRole" class="text-xs text-white/70">Administrator</div>
-            </div>
-        </div>
-    </div>
-
-<style>
-.app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}.panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}.icon-btn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:14px;background:#fff;color:#334155}.icon-btn:hover{background:#f8fafc}.day-cell{min-height:122px;border-right:1px solid #eef2f7;border-bottom:1px solid #eef2f7;transition:.18s}.day-cell:hover{background:#f9fafb}.day-cell.selected{background:#fff7ed;box-shadow:inset 0 0 0 1px #c2410c}.day-num{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-size:12px;font-weight:700;color:#334155}.day-num.today{background:#621708;color:#fff}.mini-day{position:relative;width:32px;height:32px;border-radius:999px;font-size:12px;font-weight:700;color:#475569}.mini-day:hover{background:#f1f5f9}.mini-day.active{background:#621708;color:#fff}.mini-day.has:after{content:'';position:absolute;bottom:3px;left:50%;width:4px;height:4px;background:#b45309;border-radius:999px;transform:translateX(-50%)}.pill{display:block;width:100%;border-radius:12px;padding:7px 9px;margin-top:6px;font-size:11px;line-height:1.15;text-align:left;border:1px solid transparent;cursor:pointer}.pill:hover{filter:brightness(.98)}.event-meeting{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}.event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}.event-exam{background:#fff7ed;color:#9a3412;border-color:#fed7aa}.event-workshop{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}.event-other{background:#f8fafc;color:#334155;border-color:#e2e8f0}.modal-field{width:100%;border:1px solid #d1d5db;border-radius:18px;padding:12px 14px;font-size:14px;outline:none;background:white}.modal-field:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}
-</style>
     <!-- MAIN CALENDAR CONTENT -->
-    <div class="flex-1 overflow-y-auto app-surface">
+    <main class="flex-1 overflow-y-auto ml-[220px] app-surface">
+        <div id="navbar-container"></div>
+        <div class="mt-16">
         <div class="max-w-[1500px] mx-auto px-8 py-7">
             <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-7">
                 <div><div class="text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase mb-2">Events</div><h1 class="text-3xl font-semibold text-slate-950 tracking-tight">Calendar</h1><p class="text-sm text-slate-500 mt-1">Manage schedules, seminars, meetings, exams, and academic activities in realtime.</p></div>
@@ -183,7 +88,8 @@
                 <aside class="space-y-5"><section class="panel rounded-[2rem] p-5"><div class="flex items-center justify-between mb-4"><div><h2 id="mini-title" class="font-semibold text-slate-900">Month</h2><p class="text-xs text-slate-500">Quick date picker</p></div><button onclick="goToday()" class="text-xs font-semibold text-[#621708] hover:underline">Today</button></div><div class="grid grid-cols-7 text-center text-[11px] font-semibold text-slate-400 mb-2"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div><div id="mini-calendar" class="grid grid-cols-7 gap-1 text-center"></div></section><section class="panel rounded-[2rem] p-5"><div class="flex items-start justify-between gap-3 mb-4"><div><h2 class="font-semibold text-slate-900">Selected Day</h2><p id="selected-label" class="text-sm text-slate-500 mt-1">No date selected</p></div><button onclick="openAddEventModal(null, selectedDate)" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg></button></div><div id="selected-events" class="space-y-3"></div></section><section class="panel rounded-[2rem] p-5"><div class="flex items-center justify-between mb-4"><div><h2 class="font-semibold text-slate-900">Upcoming Schedule</h2><p class="text-xs text-slate-500">Next events across all pages</p></div><span id="upcoming-count" class="text-xs font-semibold px-3 py-1 bg-slate-100 rounded-full text-slate-600">0</span></div><div id="upcoming-events" class="space-y-3 max-h-[360px] overflow-y-auto pr-1"></div></section></aside>
             </div>
         </div>
-    </div>
+        </div>
+    </main>
 </div>
 <div id="add-event-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden"><div class="px-7 py-5 border-b border-slate-100 flex items-center justify-between"><div><h2 class="text-xl font-semibold text-slate-950" id="modal-title">Create Schedule</h2><p class="text-sm text-slate-500 mt-1">Add schedule details for the realtime calendar.</p></div><button onclick="closeAddEventModal()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[72vh] overflow-y-auto"><div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Event Title</label><input id="modal-event-title" type="text" placeholder="e.g. Faculty Meeting" class="modal-field"></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Event Type</label><select id="modal-event-type" class="modal-field"><option value="meeting">Meeting</option><option value="seminar">Seminar</option><option value="exam">Exam</option><option value="workshop">Workshop</option><option value="other">Other</option></select></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Priority</label><select id="modal-priority" class="modal-field"><option value="Normal">Normal</option><option value="Important">Important</option><option value="Very Important">Very Important</option></select></div><div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Location / Venue</label><input id="modal-location" type="text" placeholder="e.g. Main Auditorium, Room 305, Online" class="modal-field"></div><div class="md:col-span-2"><label class="flex items-center gap-3 cursor-pointer"><input type="checkbox" id="modal-all-day" onchange="toggleModalAllDay()" class="w-4 h-4 accent-[#621708]"><span class="text-sm font-medium text-slate-700">All-day event</span></label></div><div id="modal-time-fields" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5"><div><label class="block text-sm font-medium text-slate-700 mb-2">Starts</label><input type="datetime-local" id="modal-start-time" class="modal-field"></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Ends</label><input type="datetime-local" id="modal-end-time" class="modal-field"></div></div><div id="modal-date-only" class="hidden md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Date</label><input type="date" id="modal-all-day-date" class="modal-field"></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Repeat</label><select id="modal-repeat" class="modal-field"><option value="Never">Never</option><option value="Every Day">Every Day</option><option value="Every Week">Every Week</option><option value="Every 2 Weeks">Every 2 Weeks</option><option value="Every Month">Every Month</option><option value="Every Year">Every Year</option><option value="Custom">Custom</option></select></div><div>
     <label class="block text-sm font-medium text-slate-700 mb-2">Announcement Visibility</label>
@@ -232,8 +138,10 @@ async function saveEventFromModal(){let title=document.getElementById('modal-eve
 function showEventDetails(id){currentDetailEventId=id;let e=events.find(x=>String(x.id)===String(id));if(!e)return;document.getElementById('detail-title').textContent=e.title;document.getElementById('detail-type').textContent=(e.type||'Event').toUpperCase();document.getElementById('detail-location').textContent=e.location;document.getElementById('detail-time').textContent=`${longDate(e.date)} • ${e.time}`;document.getElementById('detail-priority').textContent=e.priority;document.getElementById('detail-repeat').textContent=e.repeat;document.getElementById('detail-invitees').textContent=visibilityLabel(e.visibility);let surveyBox=document.getElementById('detail-surveys-box'),surveyLinks=document.getElementById('detail-surveys');if(e.hasSurveys&&(e.preSurveyUrl||e.postSurveyUrl)){surveyLinks.innerHTML=`${e.preSurveyUrl?`<a class="text-[#621708] hover:underline block" target="_blank" href="${esc(e.preSurveyUrl)}">Open Pre-Survey</a>`:''}${e.postSurveyUrl?`<a class="text-[#621708] hover:underline block" target="_blank" href="${esc(e.postSurveyUrl)}">Open Post-Survey</a>`:''}`;surveyBox.classList.remove('hidden')}else{surveyLinks.innerHTML='';surveyBox.classList.add('hidden')}document.getElementById('detail-feedback').textContent=e.requiresFeedback?'Required from faculty users starting the day after the event.':'Not required';document.getElementById('detail-notes').textContent=e.notes||'No notes provided.';document.getElementById('event-detail-modal').classList.remove('hidden')}function closeDetailModal(){document.getElementById('event-detail-modal').classList.add('hidden')}function editCurrentEvent(){let e=events.find(x=>String(x.id)===String(currentDetailEventId));if(e){closeDetailModal();openAddEventModal(e)}}async function removeCurrentEvent(){if(!confirm('Are you sure you want to delete this event?'))return;let {error}=await supabaseClient.from('calendar_events').delete().eq('id',currentDetailEventId);if(error){console.error(error);return alert('Unable to delete event. Please check table permissions.')}closeDetailModal();await loadCalendarEvents()}
 
 function formatFullName(f,l,fb){return [f,l].filter(Boolean).join(' ').trim()||fb||'Unknown User'}function renderProfile(p,u){document.getElementById('profileName').textContent=formatFullName(p.first_name,p.last_name,u?.email);document.getElementById('profileRole').textContent=p.role||'Administrator'}async function loadAdminProfile(){let {data,error}=await supabaseClient.auth.getUser();if(error||!data?.user)return;currentUser=data.user;let meta=currentUser.user_metadata||{},profile={first_name:meta.first_name||'',last_name:meta.last_name||'',email:currentUser.email||'',role:meta.role||'Administrator'};let res=await supabaseClient.from('admin_profiles').select('*').eq('id',currentUser.id).maybeSingle();if(res.data)profile={...profile,...res.data};currentProfile=profile;renderProfile(profile,currentUser)}
-window.addEventListener('load',async()=>{populateControls();await loadAdminProfile();await loadCalendarEvents();subscribe()});
+window.addEventListener('load',async()=>{populateControls();await loadSidebar();await loadAdminProfile();await loadCalendarEvents();subscribe()});
 </script>
 <script src="../shared/system-ui.js"></script>
+<div id="message-container"></div>
+<script src="../nav.js" defer></script>
 </body>
 </html>

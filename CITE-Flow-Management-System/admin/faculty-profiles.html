@@ -1,58 +1,90 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Faculty Profiles - CITE-Flow</title>
+    
+    <!-- Core Dependencies -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Navigation -->
+    <link rel="stylesheet" href="../nav.css">
+    
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         
         * { font-family: 'Inter', sans-serif; }
-
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
-        }
         
-        .nav-item { 
-            transition: all 0.3s ease; 
-        }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
+        body {
+            background: #f1f5f9;
         }
 
-        .section-header {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
+        .dashboard-card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(15,23,42,.06);
+            transition: .25s ease;
         }
 
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
-        }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
+        .dashboard-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(15,23,42,.08);
         }
 
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        .primary-btn {
+            background: #621708;
+            color: #fff;
+            border-radius: 18px;
+            padding: 13px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: center;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .primary-btn:hover { 
+            background: #8c2a10; 
+            transform: translateY(-1px); 
         }
 
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
+        .secondary-btn {
+            background: #fff;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            border-radius: 18px;
+            padding: 13px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        .secondary-btn:hover { 
+            background: #f8fafc; 
+            border-color: #cbd5e1; 
+        }
+
+        .field {
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            border-radius: 18px;
+            padding: 11px 14px;
+            font-size: 14px;
+            outline: none;
+            color: #0f172a;
+        }
+        .field:focus { 
+            border-color: #621708; 
+            box-shadow: 0 0 0 4px rgba(98,23,8,.08); 
         }
 
         .tab-active {
@@ -61,158 +93,119 @@
             font-weight: 600;
         }
 
-        /* Back Button - Gray by default, green only on hover */
-        .back-btn {
-            transition: all 0.2s ease;
+        .profile-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 1.75rem;
+            box-shadow: 0 4px 20px rgba(15,23,42,.06);
         }
-        .back-btn:hover {
-            background-color: #22c55e;
-            color: white;
+        /* Improved Modal */
+        .modal {
+            animation: fadeInModal 0.2s ease forwards;
+        }
+        @keyframes fadeInModal {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
         }
     </style>
 </head>
-<body class="bg-gray-50">
-
+<body class="bg-slate-50">
 <div class="flex h-screen overflow-hidden">
-    <!-- SIDEBAR -->
-    <div class="sidebar text-white flex flex-col h-full">
-        <div onclick="window.location.href='dashboard.html'" 
-            class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3">
-            <div class="text-center">
-                <div class="font-semibold text-base leading-tight">College of Technology</div>
-                <div class="font-semibold text-base leading-tight">and Engineering</div>
-            </div>
-        </div>
 
-        <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
-            <div>
-                <div class="section-header text-white/70">FACULTIES & PROFILES</div>
-                <div onclick="window.location.href='faculty-profiles.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Faculty Profiles
-                </div>
-                <div onclick="window.location.href='workload-tracker.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Workload Tracker
-                </div>
-                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                    Engagement Logs
-                </div>
-            </div>
+    <div id="sidebar-container"></div>
 
-            <div>
-                <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Workflow Approval
-                </div>
-            </div>
+    <main class="flex-1 overflow-y-auto bg-slate-100 ml-[220px]">
 
-            <div>
-                <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
-            </div>
+        <div id="navbar-container"></div>
 
-            <div>
-                <div class="section-header text-white/70">ADMINISTRATION</div>
-                <div onclick="window.location.href='reports-analytics.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
-                    Reports and Analytics
-                </div>
-                <div onclick="window.location.href='feedback-summary.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
-                    Seminar Feedback Summary
-                </div>
-                <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-                <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    User Management
-                </div>
-            </div>
-        </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Dean & Administrator</div>
-            </div>
-        </div>
-    </div>
-
-    
-    <!-- MAIN CONTENT -->
-    <main class="flex-1 overflow-y-auto bg-slate-50">
-        <div id="list-view" class="max-w-[1500px] mx-auto px-8 py-7">
-            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-7">
+        <!-- MAIN CONTENT -->
+        <div id="list-view">
+            <div class="max-w-[1500px] mx-auto px-8 py-8 mt-16">
+            
+            <!-- Header -->
+            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-8">
                 <div>
-                    <p class="text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase">Faculty Profiles</p>
-                    <h1 class="text-3xl font-semibold text-slate-950 mt-2">Faculty Profiles</h1>
-                    <p class="text-sm text-slate-500 mt-1">View faculty accounts, manage roles, permissions, status, research, and submitted documents.</p>
+                    <p class="text-xs font-semibold tracking-widest text-[#621708] uppercase">Faculty Management</p>
+                    <h1 class="text-[2rem] font-bold text-slate-950 mt-1">Faculty Profiles</h1>
+                    <p class="text-sm text-slate-500 mt-1">View faculty accounts, manage roles, permissions, and submitted documents.</p>
                 </div>
-                <div class="flex flex-wrap gap-3">
-                    <button onclick="exportFacultyExcel()" class="inline-flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-3 rounded-2xl text-sm font-semibold shadow-sm">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path stroke-linecap="round" stroke-linejoin="round" d="M7 10l5 5 5-5"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 15V3"/></svg>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button onclick="exportFacultyExcel()" 
+                            class="secondary-btn">
+                        <i class="fas fa-download"></i>
                         Export Excel
                     </button>
-                    <button onclick="openAddFacultyModal()" class="inline-flex items-center justify-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-5 py-3 rounded-2xl text-sm font-semibold shadow-sm" data-theme-primary="true">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>
+                    <button onclick="openAddFacultyModal()" 
+                            class="primary-btn">
+                        <i class="fas fa-plus"></i>
                         Add Faculty
                     </button>
                 </div>
             </header>
 
-            <section class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-7">
-                <div class="bg-white border border-slate-200 rounded-[1.75rem] p-6 shadow-sm">
-                    <div class="flex items-center justify-between gap-4">
-                        <div><p class="text-sm text-slate-500">Total Faculty</p><p id="total-faculty" class="text-4xl font-semibold text-slate-950 mt-2">0</p></div>
-                        <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path stroke-linecap="round" stroke-linejoin="round" d="M22 21v-2a4 4 0 0 0-3-3.87M17 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+            <!-- Stats Cards -->
+            <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="dashboard-card p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-500">Total Faculty</p>
+                            <p id="total-faculty" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                        </div>
+                        <div class="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600">
+                            <i class="fas fa-users text-2xl"></i>
+                        </div>
                     </div>
                 </div>
-                <div class="bg-white border border-slate-200 rounded-[1.75rem] p-6 shadow-sm">
-                    <div class="flex items-center justify-between gap-4">
-                        <div><p class="text-sm text-slate-500">Active Faculty</p><p id="active-faculty" class="text-4xl font-semibold text-emerald-600 mt-2">0</p></div>
-                        <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div>
+                <div class="dashboard-card p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-500">Active Faculty</p>
+                            <p id="active-faculty" class="text-4xl font-bold text-emerald-600 mt-2">0</p>
+                        </div>
+                        <div class="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                            <i class="fas fa-check-circle text-2xl"></i>
+                        </div>
                     </div>
                 </div>
-                <div class="bg-white border border-slate-200 rounded-[1.75rem] p-6 shadow-sm">
-                    <div class="flex items-center justify-between gap-4">
-                        <div><p class="text-sm text-slate-500">Inactive / On Leave</p><p id="inactive-faculty" class="text-4xl font-semibold text-amber-600 mt-2">0</p></div>
-                        <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01"/><circle cx="12" cy="12" r="9"/></svg></div>
+                <div class="dashboard-card p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-500">Inactive / On Leave</p>
+                            <p id="inactive-faculty" class="text-4xl font-bold text-amber-600 mt-2">0</p>
+                        </div>
+                        <div class="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
+                            <i class="fas fa-pause-circle text-2xl"></i>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            <section class="bg-white border border-slate-200 rounded-[2rem] p-5 shadow-sm mb-7">
-                <div class="grid grid-cols-1 lg:grid-cols-[1fr_190px_190px_190px] gap-3">
+            <div class="dashboard-card p-6 mb-8">
+                <div class="grid grid-cols-1 lg:grid-cols-[1fr_200px_200px_200px] gap-4">
                     <div class="relative">
-                        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35"/></svg>
-                        <input id="search-input" oninput="applyFilters()" type="text" placeholder="Search faculty by name, email, rank, or department" class="w-full border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:border-[#621708] focus:ring-4 focus:ring-[#621708]/10">
+                        <input id="search-input" oninput="applyFilters()" 
+                               type="text" 
+                               placeholder="Search faculty by name, email, rank, or department..."
+                               class="field w-full pl-11">
+                        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35"/>
+                        </svg>
                     </div>
-                    <select id="role-filter" onchange="applyFilters()" class="field-input"><option value="">All Roles</option></select>
-                    <select id="department-filter" onchange="applyFilters()" class="field-input"><option value="">All Departments</option></select>
-                    <select id="status-filter" onchange="applyFilters()" class="field-input"><option value="">All Status</option><option value="Regular/Organic">Regular/Organic</option><option value="Part-Time">Part-Time</option></select>
+                    <select id="role-filter" onchange="applyFilters()" class="field"></select>
+                    <select id="department-filter" onchange="applyFilters()" class="field"></select>
+                    <select id="status-filter" onchange="applyFilters()" class="field">
+                        <option value="">All Status</option>
+                        <option value="Regular/Organic">Regular/Organic</option>
+                        <option value="Part-Time">Part-Time</option>
+                    </select>
                 </div>
-                <div class="flex justify-between items-center mt-4">
-                    <button onclick="resetFilters()" class="text-sm font-semibold text-[#621708] hover:underline">Reset filters</button>
+                <div class="flex justify-between items-center mt-5">
+                    <button onclick="resetFilters()" class="text-sm font-semibold text-[#621708] hover:underline">Reset Filters</button>
                     <p id="result-count" class="text-sm text-slate-500">0 faculty displayed</p>
                 </div>
-            </section>
+            </div>
 
             <section id="faculty-grid" class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-5"></section>
             <div id="empty-state" class="hidden bg-white border border-dashed border-slate-200 rounded-[2rem] py-16 text-center">
@@ -326,20 +319,84 @@
 </div>
 
 <!-- ADD NEW FACULTY MODAL -->
-<div id="addFacultyModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden">
-        <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-start gap-4"><div><p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">New Faculty Account</p><h2 class="text-xl font-semibold text-slate-950 mt-1">Add New Faculty Member</h2><p class="text-sm text-slate-500 mt-1">Generate login credentials and create a faculty profile.</p></div><button onclick="closeAddFacultyModal()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button></div>
-        <div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[70vh] overflow-y-auto">
-            <div><label class="field-label">Faculty Email</label><input id="add-employee-id-email" type="email" placeholder="faculty@ctu.edu.ph" class="field-input"><p class="text-xs text-slate-500 mt-2">A Faculty ID will be generated automatically.</p></div>
-            <div><label class="field-label">Temporary Password</label><div class="flex gap-2"><input id="add-password" type="text" readonly class="field-input bg-slate-50"><button onclick="generatePassword()" class="px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-semibold">Generate</button></div></div>
-            <div><label class="field-label">Department</label><select id="add-department" class="field-input"><option value="BSIT">BSIT</option><option value="BSIE">BSIE</option><option value="BIT">BIT</option><option value="N/A">N/A</option></select></div>
-            <div><label class="field-label">Role</label><select id="add-role" class="field-input"><option value="Faculty">Faculty</option><option value="Research Faculty">Research Faculty</option><option value="Administrative Faculty">Administrative Faculty</option></select></div>
-            <div><label class="field-label">Contract Type</label><select id="add-contract-type" class="field-input"><option value="Full-Time">Full-Time</option><option value="Part-Time">Part-Time</option><option value="Temporary">Temporary</option><option value="Visiting">Visiting</option><option value="Research Faculty">Research Faculty</option><option value="Administrative Faculty">Administrative Faculty</option></select></div>
-            <div><label class="field-label">Employment Type</label><select id="add-employment-type" class="field-input"><option value="Regular">Regular</option><option value="Probationary">Probationary</option><option value="Contractual">Contractual</option><option value="Job Order">Job Order</option><option value="Part-Time">Part-Time</option><option value="Project Based">Project Based</option></select></div>
-            <div><label class="field-label">Start Date</label><input id="add-start-date" type="date" class="field-input"></div>
-            <div><label class="field-label">Initial Status</label><select id="add-status" class="field-input"><option>Active</option><option>Inactive</option><option>On Leave</option></select></div>
+<div id="addFacultyModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 modal">
+    <div class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden">
+        <div class="px-8 py-6 border-b flex justify-between items-start">
+            <div>
+                <p class="text-xs font-semibold tracking-widest text-[#621708] uppercase">New Faculty</p>
+                <h2 class="text-2xl font-semibold text-slate-900 mt-1">Add New Faculty Member</h2>
+            </div>
+            <button onclick="closeAddFacultyModal()" class="text-slate-400 hover:text-slate-600 text-3xl leading-none">×</button>
         </div>
-        <div class="border-t border-slate-100 px-7 py-5 flex justify-end gap-3 bg-slate-50"><button onclick="closeAddFacultyModal()" class="px-6 py-3 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button><button id="createFacultyAccountBtn" onclick="createFacultyAccount()" class="px-6 py-3 bg-[#621708] hover:bg-[#8c2a10] disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded-2xl text-sm font-semibold" data-theme-primary="true">Create Faculty Account</button></div>
+
+        <div class="p-8 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[75vh] overflow-y-auto">
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">Faculty Email</label>
+                <input id="add-employee-id-email" type="email" placeholder="faculty@ctu.edu.ph" class="field w-full">
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">Temporary Password</label>
+                <div class="flex gap-2">
+                    <input id="add-password" type="text" readonly class="field w-full bg-slate-50">
+                    <button onclick="generatePassword()" class="px-5 py-3 bg-slate-800 text-white rounded-2xl text-sm font-semibold">Generate</button>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">Department</label>
+                <select id="add-department" class="field w-full">
+                    <option value="BSIT">BSIT</option>
+                    <option value="BSIE">BSIE</option>
+                    <option value="BIT">BIT</option>
+                    <option value="N/A">N/A</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">Role</label>
+                <select id="add-role" class="field w-full">
+                    <option value="Faculty">Faculty</option>
+                    <option value="Research Faculty">Research Faculty</option>
+                    <option value="Administrative Faculty">Administrative Faculty</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">Contract Type</label>
+                <select id="add-contract-type" class="field w-full">
+                    <option value="Full-Time">Full-Time</option>
+                    <option value="Part-Time">Part-Time</option>
+                    <option value="Temporary">Temporary</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">Employment Type</label>
+                <select id="add-employment-type" class="field w-full">
+                    <option value="Regular">Regular</option>
+                    <option value="Probationary">Probationary</option>
+                    <option value="Contractual">Contractual</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">Start Date</label>
+                <input id="add-start-date" type="date" class="field w-full">
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">Initial Status</label>
+                <select id="add-status" class="field w-full">
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="On Leave">On Leave</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="border-t px-8 py-6 flex justify-end gap-4 bg-slate-50">
+            <button onclick="closeAddFacultyModal()" class="px-8 py-3 rounded-2xl border border-slate-300 hover:bg-slate-100">Cancel</button>
+            <button id="createFacultyAccountBtn" onclick="createFacultyAccount()" class="primary-btn px-8">
+                Create Faculty Account
+            </button>
+        </div>
     </div>
 </div>
 
@@ -352,6 +409,10 @@
     </div>
 </div>
 
+<script>
+
+</script>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
@@ -362,6 +423,7 @@ const onboardingClient = createClient(supabaseUrl, supabaseAnonKey, { auth: { pe
 let facultyData=[],filteredFaculty=[],selectedFacultyId=null,currentFaculty=null,currentEditSection='',currentStatus='Active',documents=[],researchProjects=[];
 let currentUser=null;
 const DEFAULT_PERMISSIONS=['Document Vault','Submissions','Calendar','Feedback Summary','Engagement Logs'];
+
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function safeDate(v){if(!v)return '-';let d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
 function longDate(v){if(!v)return '';let d=new Date(v);return Number.isNaN(d.getTime())?'':d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
@@ -372,6 +434,7 @@ function initials(n){return String(n||'F').split(/\s+/).filter(Boolean).slice(0,
 function getPhoto(row){return row.profile_photo_url||row.avatar_url||row.photo_url||row.image_url||''}
 function normalizeFacultyRow(row){return{...row,id:row.id,name:row.full_name||row.name||'Unnamed Faculty',firstName:row.first_name||'',middleName:row.middle_name||'',lastName:row.last_name||'',sex:row.sex||'',birthdate:row.birthdate||'',age:ageFromBirthdate(row.birthdate),position:row.position||row.role||'Faculty',status:row.status||'Active',employmentStatus:employmentStatusLabel(row.employment_type),department:row.department||'N/A',email:row.email||row.existing_email||'-',phone:row.phone||'No contact number',employeeId:row.employee_id||'-',academicRank:row.academic_rank||row.position||'Faculty',years:row.years_in_service||row.years||'',yearsExperience:row.years_experience||0,educationalQualification:row.educational_qualification||'',eligibility:row.eligibility||'',shift:row.shift||'Not specified',teachingStatus:row.teaching_status||row.status||'Active',contractType:row.contract_type||'Not specified',employmentType:row.employment_type||'Not specified',startDate:row.start_date||'',profilePhoto:getPhoto(row),permissions:Array.isArray(row.permissions)?row.permissions:(row.permissions&&typeof row.permissions==='object'?Object.keys(row.permissions).filter(k=>row.permissions[k]):DEFAULT_PERMISSIONS),accessEnabled:row.access_enabled!==false&&String(row.status||'Active').toLowerCase()==='active'}}
 function avatarHTML(f,size='card'){let cls=size==='large'?'w-28 h-28 rounded-[2rem]':'w-14 h-14 rounded-2xl';if(f.profilePhoto)return `<img src="${esc(f.profilePhoto)}" alt="${esc(f.name)}" class="${cls} object-cover border border-slate-200">`;return `<div class="${cls} bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center font-semibold">${esc(initials(f.name))}</div>`}
+
 async function loadFacultyProfiles(){const {data,error}=await supabaseClient.from('faculty').select('*').order('created_at',{ascending:false});if(error){console.error(error);alert('Unable to load faculty profiles: '+error.message);facultyData=[]}else facultyData=(data||[]).map(normalizeFacultyRow);populateFilters();applyFilters()}
 function populateFilters(){let roles=[...new Set(facultyData.map(f=>f.position).filter(Boolean))].sort();let deps=[...new Set(facultyData.map(f=>f.department).filter(Boolean))].sort();document.getElementById('role-filter').innerHTML='<option value="">All Roles</option>'+roles.map(r=>`<option>${esc(r)}</option>`).join('');document.getElementById('department-filter').innerHTML='<option value="">All Departments</option>'+deps.map(d=>`<option>${esc(d)}</option>`).join('')}
 function applyFilters(){let q=document.getElementById('search-input').value.toLowerCase().trim(),role=document.getElementById('role-filter').value,dep=document.getElementById('department-filter').value,status=document.getElementById('status-filter').value;filteredFaculty=facultyData.filter(f=>{let hay=[f.name,f.email,f.position,f.department,f.status,f.employeeId,f.academicRank,f.employmentStatus].join(' ').toLowerCase();return(!q||hay.includes(q))&&(!role||f.position===role)&&(!dep||f.department===dep)&&(!status||f.employmentStatus===status)});updateStats();renderFacultyCards(filteredFaculty)}
@@ -492,7 +555,10 @@ async function submitDocumentRequest(){
 async function loadFacultyDocuments(id){let box=document.getElementById('documents-list');box.innerHTML='<div class="text-sm text-slate-500">Loading submitted documents...</div>';let {data,error}=await supabaseClient.from('faculty_documents').select('*').eq('faculty_id',id).order('created_at',{ascending:false});if(error){box.innerHTML='<div class="empty-card">No document table found yet. Connect this page to your submissions table or run the optional SQL.</div>';documents=[];return}documents=data||[];box.innerHTML=documents.length?documents.map(d=>`<div class="doc-row"><div class="flex items-center gap-3 min-w-0"><div class="doc-icon"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v6h6"/></svg></div><div class="min-w-0"><div class="font-semibold text-slate-900 truncate">${esc(d.document_name||d.title||'Submitted Document')}</div><div class="text-xs text-slate-500">${esc(d.document_type||d.type||'Document')} • ${safeDate(d.created_at||d.uploaded_at)}</div></div></div><div class="flex items-center gap-2"><span class="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 text-slate-600">${esc(d.status||'Submitted')}</span>${d.file_url?`<a href="${esc(d.file_url)}" target="_blank" class="secondary-btn">Download</a>`:''}</div></div>`).join(''):'<div class="empty-card">No submitted documents yet.</div>'}
 async function loadResearchProjects(id){let box=document.getElementById('research-list');box.innerHTML='<div class="text-sm text-slate-500">Loading research projects...</div>';let {data,error}=await supabaseClient.from('faculty_research_projects').select('*').eq('faculty_id',id).order('created_at',{ascending:false});if(error){box.innerHTML='<div class="empty-card">No research project table found yet. Connect this page to your research table or run the optional SQL.</div>';researchProjects=[];return}researchProjects=data||[];box.innerHTML=researchProjects.length?researchProjects.map(r=>`<div class="research-card"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4"><div><span class="inline-flex px-3 py-1 rounded-full text-xs font-semibold ${String(r.status).toLowerCase()==='completed'?'bg-emerald-50 text-emerald-700 border border-emerald-100':'bg-blue-50 text-blue-700 border border-blue-100'}">${esc(r.status||'Ongoing')}</span><h4 class="font-semibold text-lg text-slate-950 mt-3">${esc(r.title||'Research Project')}</h4><p class="text-sm text-slate-500 mt-1">${esc(r.description||'No description provided.')}</p></div>${String(r.status).toLowerCase()==='completed'&&r.file_url?`<a href="${esc(r.file_url)}" target="_blank" class="primary-light-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>Download File</a>`:''}</div><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5 text-sm"><div><span class="info-label">Start Date</span><strong>${safeDate(r.start_date)}</strong></div><div><span class="info-label">End Date</span><strong>${safeDate(r.end_date)}</strong></div><div><span class="info-label">Output Link</span><strong>${r.output_url?`<a class="text-[#621708] hover:underline" target="_blank" href="${esc(r.output_url)}">Open Link</a>`:'-'}</strong></div></div></div>`).join(''):'<div class="empty-card">No research projects recorded.</div>'}
 function renderPermissions(){let box=document.getElementById('permissions-list');if(!box||!currentFaculty)return;box.innerHTML=(currentFaculty.permissions||DEFAULT_PERMISSIONS).map(p=>`<div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-center gap-3"><div class="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-emerald-700"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg></div><div class="font-semibold text-sm text-slate-800">${esc(p)}</div></div>`).join('')}
-function openAddFacultyModal(){document.getElementById('addFacultyModal').classList.remove('hidden');generatePassword()}function closeAddFacultyModal(){document.getElementById('addFacultyModal').classList.add('hidden')}function generatePassword(){const f=document.getElementById('add-password'),upper='ABCDEFGHJKLMNPQRSTUVWXYZ',lower='abcdefghijkmnopqrstuvwxyz',nums='23456789',special='!@#$%',all=upper+lower+nums+special,pick=s=>s[Math.floor(Math.random()*s.length)],raw=[pick(upper),pick(lower),pick(nums),pick(special)];while(raw.length<12)raw.push(pick(all));f.value=raw.sort(()=>Math.random()-.5).join('')}function generateFacultyId(){return `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}${Math.floor(10+Math.random()*90)}`}function isEmail(value){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)}function deriveNamePartsFromEmail(email){const local=email.split('@')[0]||'faculty',tokens=local.replace(/[^a-zA-Z0-9._-]/g,'').split(/[._-]+/).filter(Boolean),normalized=tokens.map(t=>t.charAt(0).toUpperCase()+t.slice(1).toLowerCase());let firstName=normalized[0]||'Faculty',lastName=normalized.slice(1).join(' ')||'User';return{firstName,lastName,fullName:`${firstName} ${lastName}`.trim()}}
+function openAddFacultyModal(){
+    document.getElementById('addFacultyModal').classList.remove('hidden');
+    generatePassword()}function closeAddFacultyModal(){
+        document.getElementById('addFacultyModal').classList.add('hidden')}function generatePassword(){const f=document.getElementById('add-password'),upper='ABCDEFGHJKLMNPQRSTUVWXYZ',lower='abcdefghijkmnopqrstuvwxyz',nums='23456789',special='!@#$%',all=upper+lower+nums+special,pick=s=>s[Math.floor(Math.random()*s.length)],raw=[pick(upper),pick(lower),pick(nums),pick(special)];while(raw.length<12)raw.push(pick(all));f.value=raw.sort(()=>Math.random()-.5).join('')}function generateFacultyId(){return `FAC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}${Math.floor(10+Math.random()*90)}`}function isEmail(value){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)}function deriveNamePartsFromEmail(email){const local=email.split('@')[0]||'faculty',tokens=local.replace(/[^a-zA-Z0-9._-]/g,'').split(/[._-]+/).filter(Boolean),normalized=tokens.map(t=>t.charAt(0).toUpperCase()+t.slice(1).toLowerCase());let firstName=normalized[0]||'Faculty',lastName=normalized.slice(1).join(' ')||'User';return{firstName,lastName,fullName:`${firstName} ${lastName}`.trim()}}
 async function createFacultyAccount(){const btn=document.getElementById('createFacultyAccountBtn'),emailInput=document.getElementById('add-employee-id-email').value.trim(),tempPassword=document.getElementById('add-password').value.trim();if(!emailInput||!isEmail(emailInput))return alert('Please enter a valid faculty email.');if(!tempPassword||tempPassword.length<8)return alert('Please generate a valid temporary password first.');const email=emailInput.toLowerCase(),{firstName,lastName,fullName}=deriveNamePartsFromEmail(email),generatedEmployeeId=generateFacultyId(),role=document.getElementById('add-role').value,status=document.getElementById('add-status').value;btn.disabled=true;btn.textContent='Creating...';try{const sign=await onboardingClient.auth.signUp({email,password:tempPassword,options:{data:{first_name:firstName,last_name:lastName,id_number:generatedEmployeeId,full_name:fullName,role,employee_id:generatedEmployeeId,profile_completed:false,must_change_password:true}}});if(sign.error)throw sign.error;if(sign.data?.user&&Array.isArray(sign.data.user.identities)&&sign.data.user.identities.length===0)throw new Error('This email is already registered.');const userId=sign.data?.user?.id;if(!userId)throw new Error('Account created but user id was not returned.');const payload={auth_user_id:userId,name:fullName,full_name:fullName,first_name:firstName,middle_name:'',last_name:lastName,email,existing_email:email,employee_id:generatedEmployeeId,position:role,status,department:document.getElementById('add-department').value,phone:'',profile_photo_url:null,contract_type:document.getElementById('add-contract-type').value,employment_type:document.getElementById('add-employment-type').value,start_date:document.getElementById('add-start-date').value||null,role,permissions:DEFAULT_PERMISSIONS,profile_completed:false,must_change_password:true,access_enabled:status==='Active',updated_at:new Date().toISOString()};const up=await supabaseClient.from('faculty').upsert(payload,{onConflict:'auth_user_id'});if(up.error)throw up.error;closeAddFacultyModal();clearAddFacultyForm();await loadFacultyProfiles();showFacultyCredentialsModal({facultyId:generatedEmployeeId,password:tempPassword});await logActivity('Created','Created faculty account for '+fullName)}catch(error){console.error(error);alert('Failed to create faculty account: '+error.message)}finally{await onboardingClient.auth.signOut();btn.disabled=false;btn.textContent='Create Faculty Account'}}function clearAddFacultyForm(){document.getElementById('add-employee-id-email').value='';document.getElementById('add-department').value='BSIT';document.getElementById('add-role').value='Faculty';document.getElementById('add-contract-type').value='Full-Time';document.getElementById('add-employment-type').value='Regular';document.getElementById('add-start-date').value='';document.getElementById('add-status').value='Active';generatePassword()}function showFacultyCredentialsModal(c){document.getElementById('credentialFacultyId').textContent=c.facultyId;document.getElementById('credentialPassword').textContent=c.password;document.getElementById('facultyCredentialsModal').classList.remove('hidden')}function closeFacultyCredentialsModal(){document.getElementById('facultyCredentialsModal').classList.add('hidden')}async function copyCredential(id){let t=document.getElementById(id).textContent.trim();try{await navigator.clipboard.writeText(t);alert('Copied to clipboard.')}catch(e){prompt('Copy this value:',t)}}
 
 function exportFacultyExcel(){
@@ -514,7 +580,8 @@ function exportFacultyExcel(){
         ];
         return `<tr>${values.map(value => `<td>${excelEscape(value)}</td>`).join('')}</tr>`;
     }).join('');
-    const html = `<html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left}th{background:#f3f4f6}</style></head><body><h2>CiteFlow Faculty Profile Export</h2><table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${headers.length}">No records found.</td></tr>`}</tbody></table></body></html>`;
+    const html = `<html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left}th{background:#f3f4f6}</style></head><body><h2>CiteFlow Faculty Profile Export</h2><table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${headers.length}">No records found.</td></tr>`}</tbody></table><div id="message-container"></div>
+</body></html>`;
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -528,9 +595,12 @@ function exportFacultyExcel(){
 
 async function logActivity(action,details){try{await supabaseClient.from('system_activity_logs').insert({user_name:'Administrator',user_role:'Administrator',module:'Faculty Profiles',action,details_text:details,metadata:{source:'faculty-profiles'}})}catch(e){console.warn('Activity log skipped:',e.message)}}
 function subscribeRealtime(){supabaseClient.channel('faculty-profiles-realtime').on('postgres_changes',{event:'*',schema:'public',table:'faculty'},loadFacultyProfiles).on('postgres_changes',{event:'*',schema:'public',table:'faculty_document_requests'},()=>{}).subscribe()}
-window.onload=async()=>{try{const sessionResponse=await supabaseClient.auth.getSession();currentUser=sessionResponse?.data?.session?.user||null}catch(e){console.warn('Admin session lookup skipped:',e)}await loadFacultyProfiles();subscribeRealtime()};
+window.onload=async()=>{try{await loadSidebar();}catch(e){console.warn('Sidebar load failed:',e);}try{const sessionResponse=await supabaseClient.auth.getSession();currentUser=sessionResponse?.data?.session?.user||null}catch(e){console.warn('Admin session lookup skipped:',e)}await loadFacultyProfiles();subscribeRealtime()};
 </script>
+
 <script src="../shared/system-ui.js"></script>
+<script src="../nav.js" defer></script>
+
 <style>
 .icon-btn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:14px;background:#fff;color:#334155}.icon-btn:hover{background:#f8fafc}.field-label{display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:8px}.field-input{width:100%;border:1px solid #d1d5db;border-radius:18px;padding:12px 14px;font-size:14px;outline:none;background:white}.field-input:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}.tab{font-size:14px;font-weight:600}.profile-card{background:#fff;border:1px solid #e2e8f0;border-radius:2rem;padding:1.75rem;box-shadow:0 1px 2px rgba(15,23,42,.04)}.profile-card-title{font-size:18px;font-weight:700;color:#0f172a}.secondary-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;color:#334155;padding:.65rem 1rem;font-size:.875rem;font-weight:700}.secondary-btn:hover{background:#f8fafc}.primary-light-btn{display:inline-flex;align-items:center;gap:.5rem;border-radius:1rem;background:#621708;color:white;padding:.75rem 1rem;font-size:.875rem;font-weight:700}.info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.2rem}.info-grid span,.info-label{display:block;font-size:.75rem;color:#64748b;margin-bottom:.25rem}.info-grid strong{display:block;color:#0f172a;font-weight:700}.status-pill{border-radius:999px;padding:.35rem .8rem;font-size:.75rem;font-weight:700;border:1px solid}.credential-box{border:1px solid #e2e8f0;background:#f8fafc;border-radius:1rem;padding:1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}.credential-box span{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:.2rem}.credential-box strong{color:#0f172a}.credential-box button{border-radius:.8rem;background:#621708;color:#fff;font-size:.75rem;font-weight:700;padding:.55rem .85rem}.permission-check{border:1px solid #e2e8f0;border-radius:1rem;padding:.9rem 1rem;display:flex;align-items:center;gap:.65rem;font-size:.9rem;font-weight:600;color:#334155}.permission-check input{accent-color:#621708}.doc-row{border:1px solid #e2e8f0;border-radius:1.25rem;padding:1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}.doc-icon{width:2.5rem;height:2.5rem;border-radius:1rem;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#475569}.empty-card{border:1px dashed #cbd5e1;border-radius:1.25rem;padding:2rem;text-align:center;color:#64748b;font-size:.9rem}.research-card{border:1px solid #e2e8f0;border-radius:1.5rem;padding:1.5rem;background:#fff}
 </style>
