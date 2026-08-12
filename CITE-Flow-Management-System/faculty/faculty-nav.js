@@ -1,4 +1,4 @@
-﻿function getContent() {
+function getContent() {
     return document.getElementById("content");
 }
 
@@ -6,15 +6,11 @@ function isSpa() {
     return Boolean(getContent());
 }
 
-function isInAdminFolder() {
-    return window.location.pathname.toLowerCase().includes("/admin/");
-}
-
 function normalizePageKey(pageFile) {
     if (!pageFile) return "";
     return pageFile
         .replace(/^\.\.\//, "")
-        .replace(/^admin\//, "")
+        .replace(/^faculty\//, "")
         .replace(/\.html$/, "");
 }
 
@@ -22,26 +18,18 @@ function pageMap(pageName) {
     const key = normalizePageKey(pageName);
     return {
         dashboard: "dashboard.html",
-        "faculty-profiles": "faculty-profiles.html",
-        "workload-tracker": "workload-tracker.html",
-        "engagement-logs": "engagement-logs.html",
-        "document-vault": "document-vault.html",
-        "workflow-approval": "workflow-approval.html",
+        "faculty-profile": "faculty-profile.html",
         calendar: "calendar.html",
-        "reports-analytics": "reports-analytics.html",
-        "feedback-summary": "feedback-summary.html",
-        "user-management": "user-management.html",
-        "system-settings": "system-settings.html",
-        "admin-profile": "admin-profile.html",
-        profile: "admin-profile.html"
+        document: "document.html",
+        "status-tracking": "status-tracking.html",
+        submissions: "submissions.html",
+        "system-settings": "system-settings.html"
     }[key] || `${key}.html`;
 }
 
-function resolveAdminPath(pageFile) {
+function resolveFacultyPath(pageFile) {
     const mapped = pageMap(pageFile);
-    const file = mapped.endsWith(".html") ? mapped : `${mapped}.html`;
-    if (isInAdminFolder()) return file;
-    return `admin/${file}`;
+    return mapped.endsWith(".html") ? mapped : `${mapped}.html`;
 }
 
 function getCurrentPageFile() {
@@ -66,7 +54,7 @@ async function loadPage(pageName) {
     const content = getContent();
     if (!content) return;
 
-    const fileName = resolveAdminPath(pageMap(pageName));
+    const fileName = resolveFacultyPath(pageMap(pageName));
     try {
         const response = await fetch(fileName);
         if (!response.ok) {
@@ -97,7 +85,7 @@ async function loadPage(pageName) {
 function normalizeMenuTarget(fileName) {
     return String(fileName || "")
         .replace(/^\.\.\//, "")
-        .replace(/^admin\//, "")
+        .replace(/^faculty\//, "")
         .toLowerCase();
 }
 
@@ -144,7 +132,7 @@ function attachNavEvents() {
 }
 
 function changePage(pageName) {
-    window.location.href = resolveAdminPath(pageMap(pageName));
+    window.location.href = resolveFacultyPath(pageMap(pageName));
 }
 
 function toggleProfileModal() {
@@ -168,9 +156,9 @@ function mountNavPart(sourceNode, containerId, appendToBody) {
     }
 }
 
-async function loadAdminNavigation() {
+async function loadFacultyNavigation() {
     try {
-        const response = await fetch("../nav.html");
+        const response = await fetch("faculty-nav.html");
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -179,7 +167,7 @@ async function loadAdminNavigation() {
         const doc = new DOMParser().parseFromString(html, "text/html");
 
         // Ensure Font Awesome is available for nav icons
-        if (!document.querySelector('link[data-citeflow="fontawesome"]') && !document.querySelector('link[href*="font-awesome"]') && !document.querySelector('link[href*="fontawesome"]') && !document.querySelector('link[href*="font-awesome"]')) {
+        if (!document.querySelector('link[data-citeflow="fontawesome"]') && !document.querySelector('link[href*="font-awesome"]') && !document.querySelector('link[href*="fontawesome"]')) {
             const fa = document.createElement('link');
             fa.rel = 'stylesheet';
             fa.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css';
@@ -187,11 +175,11 @@ async function loadAdminNavigation() {
             document.head.appendChild(fa);
         }
 
-        // Ensure nav.css is loaded when not present in the page head
-        if (!document.querySelector('link[data-citeflow="navcss"]') && !document.querySelector('link[href*="/nav.css"]') && !document.querySelector('link[href*="nav.css"]')) {
+        // Ensure faculty-nav.css is loaded when not present in the page head
+        if (!document.querySelector('link[data-citeflow="navcss"]') && !document.querySelector('link[href*="faculty-nav.css"]')) {
             const navCss = document.createElement('link');
             navCss.rel = 'stylesheet';
-            navCss.href = isInAdminFolder() ? '../nav.css' : 'nav.css';
+            navCss.href = 'faculty-nav.css';
             navCss.setAttribute('data-citeflow', 'navcss');
             document.head.appendChild(navCss);
         }
@@ -217,7 +205,7 @@ async function loadAdminNavigation() {
 }
 
 async function loadSidebar() {
-    return loadAdminNavigation();
+    return loadFacultyNavigation();
 }
 
 document.addEventListener("click", (e) => {
@@ -237,30 +225,31 @@ window.addEventListener("load", () => {
 });
 
 /* =========================================================
-   CITE-Flow Messenger
+   CITE-Flow Messenger (faculty side)
    =========================================================
-   Wiring assumptions (adjust the CONFIG block if these don't
-   match your project):
+   Same wiring assumptions as the admin nav.js version:
 
-   1. A Supabase client already exists somewhere on the page,
-      e.g. `const supabaseClient = createClient(...)` in a
-      shared script loaded before this file. This file looks
-      for it under window.supabaseClient, then window.supabase,
-      then window._supabase — first one it finds wins.
+   1. A Supabase client already exists on the page, e.g.
+      `const supabaseClient = createClient(...)`, loaded
+      before this file. Looked up under window.supabaseClient,
+      then window.supabase, then window._supabase.
 
-   2. People live in the `public.directory` view created by
-      messenger-schema.sql, which unions your `faculty` and
-      `admin` tables into: auth_user_id, display_name, email,
-      avatar_url, role.
+   2. People live in the `public.directory` view (created by
+      messenger-schema.sql), which unions faculty + admin into:
+      auth_user_id, display_name, email, avatar_url, role.
 
-   3. The logged-in user's id is auth.users.id (Supabase Auth),
-      matched to faculty.auth_user_id / admin.auth_user_id.
+   3. The logged-in user's id is auth.users.id (Supabase Auth).
+
+   Faculty pages sit flat (no /admin/-style subfolder), so
+   unlike the admin version this file does NOT prefix asset
+   paths with "../" — messenger.html / messenger.css are
+   expected right next to faculty-nav.html.
    ========================================================= */
 
 const MSGR_CONFIG = {
     directoryView: "directory",
-    partialUrl: "../messenger.html",     // same folder as nav.html; adjust if you place it elsewhere
-    cssHref: "../messenger.css"
+    partialUrl: "messenger.html",
+    cssHref: "messenger.css"
 };
 
 function msgrGetClient() {
@@ -348,23 +337,15 @@ function ensureMessengerCss() {
     if (document.querySelector('link[data-citeflow="messengercss"]')) return;
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = resolveMessengerAsset(MSGR_CONFIG.cssHref);
+    link.href = MSGR_CONFIG.cssHref;
     link.setAttribute("data-citeflow", "messengercss");
     document.head.appendChild(link);
-}
-
-function resolveMessengerAsset(path) {
-    // Reuses the same admin-folder detection nav.js already does.
-    if (typeof isInAdminFolder === "function") {
-        return isInAdminFolder() ? path : path.replace(/^\.\.\//, "");
-    }
-    return path;
 }
 
 async function injectMessengerPanel() {
     if (document.getElementById("msgrPanel")) return;
     try {
-        const res = await fetch(resolveMessengerAsset(MSGR_CONFIG.partialUrl));
+        const res = await fetch(MSGR_CONFIG.partialUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const html = await res.text();
         const wrapper = document.createElement("div");
@@ -446,7 +427,6 @@ async function loadConversations() {
         .eq("user_id", MsgrState.currentUserId);
 
     if (error) {
-        // Surface it and re-throw so loadMessengerData's catch shows the error state
         console.error("Messenger: failed to load conversations", error);
         throw error;
     }
@@ -922,4 +902,12 @@ function formatTime(iso) {
     if (sameDay) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const sameYear = d.getFullYear() === now.getFullYear();
     return d.toLocaleDateString([], { month: "short", day: "numeric", year: sameYear ? undefined : "numeric" });
+}
+
+/* initMessenger is called once loadFacultyNavigation() finishes
+   mounting the nav — it just wires up the FAB badge state so an
+   unread count is visible even before the panel is opened. */
+async function initMessenger() {
+    // Nothing to preload eagerly; conversations load lazily when
+    // the user actually opens the panel via openMessages().
 }
