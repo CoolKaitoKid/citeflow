@@ -6,6 +6,7 @@
     <title>Workflow Approval - CITE-Flow</title>
     <!-- Updated admin workflow page: .html navigation, task detail page, submission file preview/download, clickable notifications. -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
@@ -203,7 +204,7 @@
 </head>
 <body class="bg-[#f5f5f5] text-gray-900">
 
-<div class="flex h-screen overflow-hidden">
+<div class="flex h-screen w-screen overflow-hidden">
 
     <!-- ══════════════════════════════════════════════════════════════
          SIDEBAR — original, untouched
@@ -212,10 +213,8 @@
 
     <main class="flex-1 overflow-y-auto ml-[220px]">
         <div id="navbar-container"></div>
-        <div class="mt-16">
-    
-    <div class="flex-1 overflow-y-auto">
-        <div id="workflowMainView" class="max-w-6xl mx-auto px-8 py-8">
+
+        <div id="workflowMainView" class="max-w-6xl mx-auto px-8 py-8 mt-16">
 
             <!-- Page Header -->
             <div class="flex items-start justify-between mb-8">
@@ -820,9 +819,9 @@
                 <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 Post Comment
             </button>
-        </div>
-    </div>
-</div>
+        </div><!-- /workflowMainView -->
+    </main>
+</div><!-- /flex h-screen -->
 
 <!-- ════════════════════════════════════════════════════
      TOAST
@@ -1860,11 +1859,11 @@ function openDeptDetails(dept) {
     });
 
     document.getElementById('submittedList').innerHTML = submitted.length > 0 
-        ? submitted.map(n => `<div class="flex items-center gap-2 py-1"><span class="text-green-500">✓</span> ${n}</div>`).join('') 
+        ? submitted.map(n => `<div class="flex items-center gap-2 py-1"><span class="text-green-500"><i class="fa-solid fa-check"></i></span> ${n}</div>`).join('') 
         : '<span class="text-gray-400">None yet</span>';
 
     document.getElementById('notSubmittedList').innerHTML = notSubmitted.length > 0 
-        ? notSubmitted.map(n => `<div class="flex items-center gap-2 py-1"><span class="text-red-400">○</span> ${n}</div>`).join('') 
+        ? notSubmitted.map(n => `<div class="flex items-center gap-2 py-1"><span class="text-red-400"><i class="fa-regular fa-circle"></i></span> ${n}</div>`).join('') 
         : '<span class="text-green-500">All submitted!</span>';
 }
 
@@ -2477,7 +2476,9 @@ function initRealtime() {
 }
 
 async function init() {
-    await loadSidebar();
+    if (typeof loadSidebar === 'function') {
+        await loadSidebar();
+    }
     if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON === 'YOUR_ANON_KEY') {
         showToast('Set __SUPABASE_URL__ and __SUPABASE_ANON__ to enable realtime.', 'warn');
         return;
@@ -2500,10 +2501,12 @@ window.addEventListener('hashchange', () => {
     if (window.location.hash.startsWith('#task=')) openTaskFromHash();
     else if (activeTaskDetailId) returnToWorkflowMain(false);
 });
-init();
+window.addEventListener('load', async () => {
+    await init();
+});
 </script>
 <script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
-<script src="../nav.js" defer></script>
+<script src="../nav.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -48,7 +48,7 @@
     </style>
 </head>
 <body>
-<div class="flex h-screen overflow-hidden">
+<div class="flex h-screen w-screen overflow-hidden">
     <div id="sidebar-container"></div>
 
     <main class="flex-1 overflow-y-auto ml-[220px] ">
@@ -129,7 +129,7 @@
 </div>
 
 <!-- Folder Editor Modal -->
-<div id="folder-editor-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-50 p-5">
+<div id="folder-editor-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-[2500] p-5">
     <div class="modal-panel bg-white rounded-[2rem] w-full max-w-xl overflow-hidden">
         <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center"><div><h3 id="folder-editor-title" class="text-xl font-extrabold text-slate-900">New Folder</h3><p class="text-sm text-slate-500">Manage folder details and appearance.</p></div><button onclick="closeFolderEditor()" class="w-10 h-10 rounded-full hover:bg-slate-100 text-slate-500"><i class="fa-solid fa-xmark"></i></button></div>
         <div class="p-7 space-y-5">
@@ -146,7 +146,7 @@
 </div>
 
 <!-- Upload Modal -->
-<div id="main-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-50 p-5">
+<div id="main-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-[2500] p-5">
     <div class="modal-panel bg-white rounded-[2rem] w-full max-w-lg overflow-hidden">
         <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center"><div><h3 class="text-xl font-extrabold text-slate-900">Upload Documents</h3><p class="text-sm text-slate-500">Choose files and destination folder.</p></div><button onclick="hideMainUploadModal()" class="w-10 h-10 rounded-full hover:bg-slate-100 text-slate-500"><i class="fa-solid fa-xmark"></i></button></div>
         <div class="p-7 space-y-5"><div id="main-drop-zone" class="drop-zone rounded-3xl p-8 text-center"><i class="fa-solid fa-cloud-arrow-up text-4xl text-[#621708]"></i><div class="font-extrabold text-slate-900 mt-3">Select or drop files</div><p class="text-sm text-slate-500 mt-1">PDF, Word, Excel, PowerPoint, images, and text files.</p><input type="file" id="main-file-input" multiple class="mt-5 block w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-2xl file:border-0 file:text-sm file:font-bold file:bg-[#621708] file:text-white"></div><div><label class="block text-sm font-bold mb-2 text-slate-700">Upload to Folder</label><select id="doc-folder-select" class="w-full border border-slate-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]"></select></div></div>
@@ -154,7 +154,7 @@
     </div>
 </div>
 
-<div id="simple-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-50 p-5">
+<div id="simple-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm items-center justify-center z-[2500] p-5">
     <div class="modal-panel bg-white rounded-[2rem] w-full max-w-md overflow-hidden">
         <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center"><div><h3 class="text-xl font-extrabold text-slate-900">Add Documents</h3><p class="text-sm text-slate-500">Upload files to the current folder.</p></div><button onclick="hideSimpleUploadModal()" class="w-10 h-10 rounded-full hover:bg-slate-100 text-slate-500"><i class="fa-solid fa-xmark"></i></button></div>
         <div class="p-7"><input type="file" id="simple-file-input" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-2xl file:border-0 file:text-sm file:font-bold file:bg-[#621708] file:text-white"></div>
@@ -315,7 +315,7 @@ function renderFolderDocuments(){
     const grid=isTiles?'grid-cols-1 md:grid-cols-2 xl:grid-cols-3':'grid-cols-2 md:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6';
     container.innerHTML=`<div class="grid ${grid} gap-4">${filtered.map(doc=> isTiles ? renderTileDoc(doc) : renderLargeDoc(doc)).join('')}</div>`;
 }
-function docMeta(doc){ const date=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; return `${getFileTypeLabel(doc.name,doc.mime_type)} â€¢ ${formatFileSize(doc.size_bytes)} â€¢ ${date}`; }
+function docMeta(doc){ const date=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; return `${getFileTypeLabel(doc.name,doc.mime_type)} • ${formatFileSize(doc.size_bytes)} • ${date}`; }
 function renderLargeDoc(doc){
     return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow"><input type="checkbox" class="doc-checkbox absolute top-3 right-3" ${isSelected(doc.id)?'checked':''} onchange='toggleSelect(${jsArg(doc.id)})'><div class="h-24 rounded-2xl mb-3 flex items-center justify-center text-4xl bg-slate-100 text-[#621708]"><i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i></div><div class="font-extrabold text-sm leading-snug line-clamp-2 text-slate-900 min-h-[38px]">${escapeHtml(doc.name)}</div><div class="text-[11px] text-slate-500 mt-1.5 truncate">${docMeta(doc)}</div><div class="grid grid-cols-2 gap-2 mt-3"><button onclick='viewDocument(${jsArg(doc.id)})' class="compact-doc-button text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-xl font-bold text-slate-700"><i class="fa-solid fa-eye mr-1"></i>Preview</button><button onclick='downloadDocument(${jsArg(doc.id)})' class="compact-doc-button text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl font-bold"><i class="fa-solid fa-download mr-1"></i>Download</button></div><button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="mt-2 w-full py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-xl font-bold"><i class="fa-solid fa-trash-can mr-1"></i>Delete</button></div>`;
 }
@@ -442,7 +442,7 @@ function makePreviewUrl(doc, access){
     if(kind==='office' && access?.url && !access.url.startsWith('blob:')) return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(access.url)}`;
     return access.url;
 }
-function openDocumentPreviewModal(doc,access){ currentPreviewDocument=doc; currentPreviewAccess=access; const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); const loader=document.getElementById('previewLoading'); const fileSize=formatFileSize(doc.size_bytes); const fileType=getFileTypeLabel(doc.name,doc.mime_type); const uploadedDate=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; document.getElementById('previewFileIcon').innerHTML=`<i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i>`; document.getElementById('previewDocumentTitle').textContent=doc.name||'Document Preview'; document.getElementById('previewDocumentMeta').textContent=`${fileType} â€¢ ${fileSize} â€¢ Uploaded ${uploadedDate}`; document.getElementById('previewSideName').textContent=doc.name||'-'; document.getElementById('previewSideType').textContent=fileType; document.getElementById('previewSideSize').textContent=fileSize; document.getElementById('previewSideDate').textContent=uploadedDate; loader.style.display='flex'; frame.src='about:blank'; modal.classList.remove('hidden'); modal.classList.add('flex'); setTimeout(()=>{ frame.src=makePreviewUrl(doc,access); },80); frame.onload=()=>{ loader.style.display='none'; }; setTimeout(()=>{ loader.style.display='none'; },4000); }
+function openDocumentPreviewModal(doc,access){ currentPreviewDocument=doc; currentPreviewAccess=access; const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); const loader=document.getElementById('previewLoading'); const fileSize=formatFileSize(doc.size_bytes); const fileType=getFileTypeLabel(doc.name,doc.mime_type); const uploadedDate=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; document.getElementById('previewFileIcon').innerHTML=`<i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i>`; document.getElementById('previewDocumentTitle').textContent=doc.name||'Document Preview'; document.getElementById('previewDocumentMeta').textContent=`${fileType} • ${fileSize} • Uploaded ${uploadedDate}`; document.getElementById('previewSideName').textContent=doc.name||'-'; document.getElementById('previewSideType').textContent=fileType; document.getElementById('previewSideSize').textContent=fileSize; document.getElementById('previewSideDate').textContent=uploadedDate; loader.style.display='flex'; frame.src='about:blank'; modal.classList.remove('hidden'); modal.classList.add('flex'); setTimeout(()=>{ frame.src=makePreviewUrl(doc,access); },80); frame.onload=()=>{ loader.style.display='none'; }; setTimeout(()=>{ loader.style.display='none'; },4000); }
 function closeDocumentPreviewModal(){ const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); modal.classList.add('hidden'); modal.classList.remove('flex'); frame.src='about:blank'; if(currentPreviewAccess&&typeof currentPreviewAccess.revoke==='function') currentPreviewAccess.revoke(); currentPreviewDocument=null; currentPreviewAccess=null; }
 function openPreviewInNewTab(){ if(!currentPreviewDocument||!currentPreviewAccess?.url) return; window.open(makePreviewUrl(currentPreviewDocument,currentPreviewAccess),'_blank'); }
 async function viewDocument(id){
@@ -489,9 +489,9 @@ function setupDropZone(){ const dz=document.getElementById('main-drop-zone'); if
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeDocumentPreviewModal(); closeFolderEditor(); hideMainUploadModal(); hideSimpleUploadModal(); } });
 window.onload=async()=>{ setupDropZone(); await loadSidebar(); await refreshVault(); setFolderView(currentFolderView,false); };
 </script>
-<!-- <script src="../shared/system-ui.js"></script> -->
+<script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
-<script src="../nav.js" defer></script>
+<script src="../nav.js"></script>
 </body>
 </html>
 

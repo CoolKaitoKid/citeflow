@@ -228,8 +228,8 @@
         wrap.innerHTML = `
             <div style="position: relative;">
                 <button id="citeflow-bell-btn" aria-label="Notifications"
-                    style="width:44px;height:44px;border:none;border-radius:12px;background:var(--cite-theme);color:var(--cite-theme-text);cursor:pointer;box-shadow:0 8px 18px rgba(0,0,0,.16);font-size:18px;">
-                    🔔
+                    style="width:44px;height:44px;border:none;border-radius:12px;background:var(--cite-theme);color:var(--cite-theme-text);cursor:pointer;box-shadow:0 8px 18px rgba(0,0,0,.16);font-size:18px;display:flex;align-items:center;justify-content:center;">
+                    <i class="fa-solid fa-bell"></i>
                 </button>
                 <span id="citeflow-bell-badge"
                     style="position:absolute;top:-5px;right:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#dc2626;color:#fff;font-size:11px;line-height:18px;text-align:center;display:none;">0</span>

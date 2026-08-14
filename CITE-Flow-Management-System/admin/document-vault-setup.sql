@@ -28,12 +28,14 @@ CREATE TABLE IF NOT EXISTS public.documents (
 ALTER TABLE public.folders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 
--- Create policies for authenticated users
-CREATE POLICY "Allow all for authenticated users - folders" ON public.folders
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+-- Create policies for anon and authenticated users
+DROP POLICY IF EXISTS "Allow all for authenticated users - folders" ON public.folders;
+CREATE POLICY "Allow all for folders" ON public.folders
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Allow all for authenticated users - documents" ON public.documents
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow all for authenticated users - documents" ON public.documents;
+CREATE POLICY "Allow all for documents" ON public.documents
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_documents_folder_id ON public.documents(folder_id);
