@@ -17,7 +17,7 @@
             --cite-theme-soft: #f8fafc;
             --cite-theme-soft-text: #111827;
         }
-        .sidebar { background-color: var(--cite-theme); width: 280px; }
+        .sidebar { background-color: var(--cite-theme); width: 220px; }
         .nav-item { transition: all 0.25s ease; }
         .nav-item:hover { background-color: var(--cite-theme-hover); }
         .nav-item.active { background-color: var(--cite-theme-hover); border-left: 4px solid #f5e8c7; }
@@ -43,13 +43,15 @@
         .theme-swatch.light.active::after { background: #111827; box-shadow: none; }
         .toast { position: fixed; bottom: 24px; right: 24px; z-index: 1100; transform: translateY(20px); opacity: 0; pointer-events: none; transition: all .25s ease; }
         .toast.show { transform: translateY(0); opacity: 1; }
+
+        
     </style>
 </head>
 <body class="bg-gray-50">
 
-<div class="flex h-screen overflow-hidden">
+<div class="flex min-h-screen">
     <div id="sidebar-container"></div>
-    <main class="flex-1 overflow-y-auto ml-[220px] app-surface p-6 lg:p-8">
+    <main class="flex-1 ml-[250px] app-surface p-6 lg:p-8">
         <div id="navbar-container"></div>
 
         <div class="max-w-[1500px] mx-auto px-8 py-8 mt-16">
@@ -221,7 +223,34 @@
                         <div class="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 items-start">
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 mb-3">Theme Color</label>
-                                <div id="theme-colors" class="flex flex-wrap gap-4"></div>
+                                <div id="theme-colors" class="flex items-center gap-5">
+
+    <label for="themePicker"
+        class="relative w-20 h-20 rounded-full overflow-hidden cursor-pointer shadow-lg border-4 border-white hover:scale-105 transition">
+
+        <input
+            type="color"
+            id="themePicker"
+            class="absolute inset-0 opacity-0 cursor-pointer">
+
+        <div id="themePreview"
+            class="w-full h-full rounded-full"
+            style="background:#740A03;">
+        </div>
+
+    </label>
+
+    <div>
+        <p class="font-semibold text-slate-800">
+            Click the circle to choose any color.
+        </p>
+
+        <p class="text-sm text-slate-500">
+            Click the circle to choose any color.
+        </p>
+    </div>
+
+</div>
                                 <p class="text-xs text-slate-500 mt-4">The selected color updates the sidebar, primary buttons, highlights, and notification bell across pages that include <code class="bg-slate-100 px-1.5 py-0.5 rounded">system-ui.js</code>.</p>
                             </div>
                             <div class="rounded-3xl border border-slate-200 p-5 bg-slate-50">
@@ -299,7 +328,10 @@
 
 <script>
     const SETTINGS_KEY = 'citeflow_system_settings';
-    let selectedThemeColor = '#740A03';
+    let selectedThemeColor =
+window.CiteFlowUI?.getTheme()
+||
+'#740A03';
     let confirmResolver = null;
 
     const defaultSettings = {
@@ -408,23 +440,48 @@
     }
 
     function renderThemeColors() {
-        const fallbackThemes = ['#740A03', '#BB1919', '#250505', '#000000', '#E2E2B6'];
-        const themes = window.CiteFlowUI?.getAllowedThemes ? window.CiteFlowUI.getAllowedThemes() : fallbackThemes;
-        const labels = {
-            '#740A03': 'Classic Maroon',
-            '#BB1919': 'Academic Red',
-            '#250505': 'Deep Mahogany',
-            '#000000': 'Executive Black',
-            '#E2E2B6': 'Light Sand'
-        };
-        document.getElementById('theme-colors').innerHTML = themes.map(color => `
-            <button type="button" title="${labels[color] || color}" aria-label="${labels[color] || color}"
-                data-theme-color="${color}" onclick="changeThemeColor('${color}')"
-                class="theme-swatch ${color === '#E2E2B6' ? 'light' : ''}" style="background:${color};"></button>
-        `).join('');
-        syncThemeSelection();
-    }
 
+    const current = window.CiteFlowUI.getTheme();
+
+    document.getElementById("theme-colors").innerHTML = `
+
+<label class="relative cursor-pointer">
+
+<input
+type="color"
+id="themePicker"
+value="${current}"
+class="absolute inset-0 opacity-0 w-20 h-20 cursor-pointer">
+
+<div
+id="themePreview"
+class="w-20 h-20 rounded-full border-4 border-white shadow-lg"
+style="background:${current}">
+</div>
+
+</label>
+
+<div>
+<p class="font-semibold">
+Click the circle to choose any color
+</p>
+<p class="text-sm text-gray-500">
+Current color:
+<b>${current}</b>
+</p>
+</div>
+
+`;
+
+    document
+    .getElementById("themePicker")
+    .addEventListener("input",function(){
+
+        changeThemeColor(this.value);
+
+    });
+
+}
     function syncThemeSelection() {
         const current = window.CiteFlowUI?.getTheme ? window.CiteFlowUI.getTheme() : selectedThemeColor;
         selectedThemeColor = current;
@@ -433,24 +490,32 @@
         });
     }
 
-    function changeThemeColor(color) {
-        selectedThemeColor = color;
-        if (window.CiteFlowUI?.setTheme) {
-            window.CiteFlowUI.setTheme(color);
-        } else {
-            document.documentElement.style.setProperty('--cite-theme', color);
-        }
-        syncThemeSelection();
-        showToast('Theme updated', 'The selected color has been applied through system-ui.js.');
-    }
+    function changeThemeColor(color){
 
-    function saveSettings() {
-        const settings = collectSettings();
-        setSettings(settings);
-        if (window.CiteFlowUI?.setTheme) window.CiteFlowUI.setTheme(selectedThemeColor);
-        updateAcademicSummary();
-        showToast('Settings saved', 'System settings have been saved successfully.');
-    }
+    selectedThemeColor=color;
+
+    window.CiteFlowUI.setTheme(color);
+
+    document.getElementById("themePreview").style.background=color;
+
+}
+
+   function saveSettings(){
+
+    const settings=collectSettings();
+
+    setSettings(settings);
+
+    window.CiteFlowUI.setTheme(selectedThemeColor);
+
+    updateAcademicSummary();
+
+    showToast(
+        "Saved",
+        "Settings updated successfully."
+    );
+
+}
 
     async function resetSettings() {
         const confirmed = await askConfirm('Reset system settings', 'This will restore local system settings to their default values. The selected theme will remain unchanged.');
@@ -558,10 +623,16 @@
 
     window.addEventListener('DOMContentLoaded', async () => {
         await loadSidebar();
-        loadSettings();
-        renderThemeColors();
-        loadAdminProfile();
-        setTimeout(syncThemeSelection, 100);
+
+    loadSettings();
+
+    selectedThemeColor =
+        window.CiteFlowUI.getTheme();
+
+    renderThemeColors();
+
+    loadAdminProfile();
+
     });
 </script>
 <script src="../shared/system-ui.js"></script>

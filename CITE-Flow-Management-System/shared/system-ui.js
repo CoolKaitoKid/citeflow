@@ -39,10 +39,11 @@
         if (scopedTheme) return scopedTheme;
 
         const legacyTheme = localStorage.getItem(LEGACY_THEME_KEY);
-        if (legacyTheme && THEMES.includes(legacyTheme)) {
-            localStorage.setItem(scopedKey, legacyTheme);
-            return legacyTheme;
-        }
+
+if (legacyTheme) {
+    localStorage.setItem(scopedKey, legacyTheme);
+    return legacyTheme;
+}
         return DEFAULT_THEME;
     }
 
@@ -93,7 +94,7 @@
     }
 
     function adjustTheme(color) {
-        const theme = THEMES.includes(color) ? color : DEFAULT_THEME;
+        const theme = color || DEFAULT_THEME;
         const lum = luminance(theme);
         const text = lum > 0.55 ? '#111827' : '#FFFFFF';
         const hover = lum > 0.55 ? mix(theme, '#000000', 0.18) : mix(theme, '#FFFFFF', 0.14);
@@ -114,6 +115,7 @@
 
         const css = `
             .sidebar { background-color: var(--cite-theme) !important; color: var(--cite-theme-text) !important; }
+            
             .nav-item:hover, .nav-item.active { background-color: var(--cite-theme-hover) !important; }
             button[class*="bg-[#621708]"], .bg-\\[\\#621708\\], [data-theme-primary="true"] {
                 background-color: var(--cite-theme) !important;
@@ -320,10 +322,12 @@
 
     window.CiteFlowUI = {
         setTheme: function (hexColor) {
-            const selected = THEMES.includes(hexColor) ? hexColor : DEFAULT_THEME;
-            saveTheme(selected);
-            applyTheme();
-        },
+
+    saveTheme(hexColor);
+
+    applyTheme();
+
+},
         getTheme: function () {
             return getStoredTheme();
         },
