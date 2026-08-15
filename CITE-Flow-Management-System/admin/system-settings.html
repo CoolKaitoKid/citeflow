@@ -231,6 +231,7 @@
         <input
             type="color"
             id="themePicker"
+            value="#740A03"
             class="absolute inset-0 opacity-0 cursor-pointer">
 
         <div id="themePreview"
@@ -246,8 +247,9 @@
         </p>
 
         <p class="text-sm text-slate-500">
-            Click the circle to choose any color.
-        </p>
+    Current color:
+    <b id="currentThemeHex">${current.toUpperCase()}</b>
+</p>
     </div>
 
 </div>
@@ -260,7 +262,11 @@
                                     <div class="p-4 space-y-3">
                                         <div class="h-3 rounded bg-slate-200 w-2/3"></div>
                                         <div class="h-3 rounded bg-slate-100 w-full"></div>
-                                        <button data-theme-primary="true" class="mt-2 px-4 py-2 rounded-xl bg-[#621708] text-white text-xs font-semibold">Primary Action</button>
+                                       <button
+    data-theme-primary="true"
+    class="mt-2 px-4 py-2 rounded-xl bg-[var(--cite-theme)] text-white text-xs font-semibold">
+    Primary Action
+</button>
                                     </div>
                                 </div>
                             </div>
@@ -296,7 +302,12 @@
 
             <div class="mt-8 flex flex-col sm:flex-row sm:justify-end gap-3">
                 <button onclick="resetSettings()" class="px-7 py-3 rounded-2xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</button>
-                <button onclick="saveSettings()" data-theme-primary="true" class="px-8 py-3 rounded-2xl bg-[#621708] text-white text-sm font-semibold hover:bg-[#8c2a10] shadow-sm">Save Changes</button>
+                <button
+    onclick="saveSettings()"
+    data-theme-primary="true"
+    class="px-8 py-3 rounded-2xl bg-[var(--cite-theme)] text-white text-sm font-semibold hover:bg-[var(--cite-theme-hover)] shadow-sm">
+    Save Changes
+</button>
             </div>
         </div>
     </main>
@@ -326,6 +337,7 @@
     </div>
 </div>
 
+<script src="../shared/system-ui.js"></script>
 <script>
     const SETTINGS_KEY = 'citeflow_system_settings';
     let selectedThemeColor =
@@ -441,46 +453,50 @@ window.CiteFlowUI?.getTheme()
 
     function renderThemeColors() {
 
-    const current = window.CiteFlowUI.getTheme();
+    const current =
+        window.CiteFlowUI?.getTheme?.() || '#740A03';
+
+    selectedThemeColor = current;
 
     document.getElementById("theme-colors").innerHTML = `
 
-<label class="relative cursor-pointer">
+        <label for="themePicker"
+            class="relative w-20 h-20 rounded-full overflow-hidden cursor-pointer shadow-lg border-4 border-white hover:scale-105 transition">
 
-<input
-type="color"
-id="themePicker"
-value="${current}"
-class="absolute inset-0 opacity-0 w-20 h-20 cursor-pointer">
+            <input
+                type="color"
+                id="themePicker"
+                value="${current}"
+                class="absolute inset-0 opacity-0 cursor-pointer">
 
-<div
-id="themePreview"
-class="w-20 h-20 rounded-full border-4 border-white shadow-lg"
-style="background:${current}">
-</div>
+            <div
+                id="themePreview"
+                class="w-full h-full rounded-full"
+                style="background:${current};">
+            </div>
 
-</label>
+        </label>
 
-<div>
-<p class="font-semibold">
-Click the circle to choose any color
-</p>
-<p class="text-sm text-gray-500">
-Current color:
-<b>${current}</b>
-</p>
-</div>
+        <div>
+            <p class="font-semibold text-slate-800">
+                Click the circle to choose any color.
+            </p>
 
-`;
+            <p class="text-sm text-slate-500">
+                Current color:
+                <b id="currentThemeHex">${current.toUpperCase()}</b>
+            </p>
+        </div>
+
+    `;
 
     document
-    .getElementById("themePicker")
-    .addEventListener("input",function(){
+        .getElementById("themePicker")
+        .addEventListener("input", function () {
 
-        changeThemeColor(this.value);
+            changeThemeColor(this.value);
 
-    });
-
+        });
 }
     function syncThemeSelection() {
         const current = window.CiteFlowUI?.getTheme ? window.CiteFlowUI.getTheme() : selectedThemeColor;
@@ -490,14 +506,27 @@ Current color:
         });
     }
 
-    function changeThemeColor(color){
+    function changeThemeColor(color) {
 
-    selectedThemeColor=color;
+    selectedThemeColor = color;
 
     window.CiteFlowUI.setTheme(color);
 
-    document.getElementById("themePreview").style.background=color;
+    const preview = document.getElementById("themePreview");
+    const picker = document.getElementById("themePicker");
+    const hexLabel = document.getElementById("currentThemeHex");
 
+    if (preview) {
+        preview.style.background = color;
+    }
+
+    if (picker) {
+        picker.value = color;
+    }
+
+    if (hexLabel) {
+        hexLabel.textContent = color.toUpperCase();
+    }
 }
 
    function saveSettings(){
@@ -518,12 +547,35 @@ Current color:
 }
 
     async function resetSettings() {
-        const confirmed = await askConfirm('Reset system settings', 'This will restore local system settings to their default values. The selected theme will remain unchanged.');
-        if (!confirmed) return;
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaultSettings));
-        loadSettings();
-        showToast('Settings reset', 'Default values have been restored.');
-    }
+    const confirmed = await askConfirm(
+        'Reset system settings',
+        'This will restore all system settings, including the theme color, to their default values.'
+    );
+
+    if (!confirmed) return;
+
+    // Reset system settings
+    localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify(defaultSettings)
+    );
+
+    // Reset theme color to default
+    selectedThemeColor = '#740A03';
+
+    window.CiteFlowUI.setTheme('#740A03');
+
+    // Update settings fields
+    loadSettings();
+
+    // Update color picker and preview
+    renderThemeColors();
+
+    showToast(
+        'Settings reset',
+        'All settings have been restored to their default values.'
+    );
+}
 
     function createBackup() {
         const settings = collectSettings();
@@ -635,7 +687,7 @@ Current color:
 
     });
 </script>
-<script src="../shared/system-ui.js"></script>
+
 <div id="message-container"></div>
 <script src="../nav.js" defer></script>
 </body>
