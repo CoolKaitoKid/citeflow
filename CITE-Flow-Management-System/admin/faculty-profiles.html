@@ -3,16 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Faculty Profiles - CITE-Flow</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- EmailJS -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
     <link rel="stylesheet" href="../nav.css">
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        .card-shadow {
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05);
         }
 
         .tab-active {
@@ -21,1121 +33,4914 @@
             font-weight: 600;
         }
 
-        /* Back Button - Gray by default, green only on hover */
         .back-btn {
             transition: all 0.2s ease;
         }
+
         .back-btn:hover {
             background-color: #22c55e;
             color: white;
         }
     </style>
 </head>
+
 <body>
 
 <div id="sidebar-container"></div>
 <div id="navbar-container"></div>
 
 <div class="main-content">
+
     <div class="content-area">
 
-        <!-- List View -->
+        <!-- =========================================================
+             FACULTY LIST
+        ========================================================== -->
+
         <div id="list-view">
+
             <div class="flex items-center justify-between mb-8">
+
                 <div>
-                    <h1 class="text-3xl font-semibold text-gray-900">Faculty Profiles</h1>
-                    <p class="text-gray-500 text-sm">Manage faculty members and their information</p>
+
+                    <h1 class="text-3xl font-semibold text-gray-900">
+                        Faculty Profiles
+                    </h1>
+
+                    <p class="text-gray-500 text-sm">
+                        Manage faculty members and their information
+                    </p>
+
                 </div>
-                <button onclick="openAddFacultyModal()" 
-                        class="bg-[#621708] text-white px-6 py-3 rounded-3xl flex items-center gap-x-2 hover:bg-[#8c2a10]">
-                    <span class="text-xl">+</span> Add Faculty
+
+                <button
+                    onclick="openAddFacultyModal()"
+                    class="bg-[#621708] text-white px-6 py-3 rounded-3xl flex items-center gap-x-2 hover:bg-[#8c2a10]"
+                >
+                    <span class="text-xl">+</span>
+                    Add Faculty
                 </button>
+
             </div>
 
-            <!-- Stats -->
+
+            <!-- =====================================================
+                 STATS
+            ====================================================== -->
+
             <div class="grid grid-cols-3 gap-6 mb-8">
+
                 <div class="bg-white rounded-3xl p-6 text-center card-shadow">
-                    <div class="text-sm text-gray-500">Total Faculty</div>
-                    <div id="total-faculty" class="text-6xl font-semibold text-gray-900">5</div>
+
+                    <div class="text-sm text-gray-500">
+                        Total Faculty
+                    </div>
+
+                    <div
+                        id="total-faculty"
+                        class="text-6xl font-semibold text-gray-900"
+                    >
+                        0
+                    </div>
+
                 </div>
+
+
                 <div class="bg-white rounded-3xl p-6 text-center card-shadow">
-                    <div class="text-sm text-gray-500">Active Faculty</div>
-                    <div id="active-faculty" class="text-6xl font-semibold text-emerald-600">4</div>
+
+                    <div class="text-sm text-gray-500">
+                        Active Faculty
+                    </div>
+
+                    <div
+                        id="active-faculty"
+                        class="text-6xl font-semibold text-emerald-600"
+                    >
+                        0
+                    </div>
+
                 </div>
+
+
                 <div class="bg-white rounded-3xl p-6 text-center card-shadow">
-                    <div class="text-sm text-gray-500">On Leave</div>
-                    <div id="onleave-faculty" class="text-6xl font-semibold text-amber-600">1</div>
+
+                    <div class="text-sm text-gray-500">
+                        On Leave
+                    </div>
+
+                    <div
+                        id="onleave-faculty"
+                        class="text-6xl font-semibold text-amber-600"
+                    >
+                        0
+                    </div>
+
                 </div>
+
             </div>
 
-            <!-- Faculty Grid -->
-            <div id="faculty-grid" class="grid grid-cols-3 gap-6"></div>
+
+            <!-- =====================================================
+                 FACULTY GRID
+            ====================================================== -->
+
+            <div
+                id="faculty-grid"
+                class="grid grid-cols-3 gap-6"
+            ></div>
+
         </div>
 
-        <!-- Detailed Profile View -->
-        <div id="profile-view" class="hidden p-8 max-w-5xl mx-auto">
-            <!-- Back Button - Gray by default, green only on hover -->
-            <button onclick="backToList()" 
-                    class="back-btn flex items-center gap-2 text-gray-600 hover:bg-[#22c55e] hover:text-white px-6 py-3 rounded-2xl font-medium text-sm transition-all">
+
+        <!-- =========================================================
+             PROFILE VIEW
+        ========================================================== -->
+
+        <div
+            id="profile-view"
+            class="hidden p-8 max-w-5xl mx-auto"
+        >
+
+            <button
+                onclick="backToList()"
+                class="back-btn flex items-center gap-2 text-gray-600 hover:bg-[#22c55e] hover:text-white px-6 py-3 rounded-2xl font-medium text-sm transition-all"
+            >
                 ← Back
             </button>
 
-            <!-- Profile Header -->
-            <div class="bg-white rounded-3xl p-8 shadow">
+
+            <!-- PROFILE HEADER -->
+
+            <div class="bg-white rounded-3xl p-8 shadow mt-4">
+
                 <div class="flex justify-between items-start">
+
                     <div class="flex items-center gap-6">
-                        <div id="profile-avatar" class="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-6xl overflow-hidden">👤</div>
-                        <div>
-                            <h2 id="profile-name" class="text-3xl font-bold">Maria Santos</h2>
-                            <p id="profile-position" class="text-gray-600">Faculty</p>
-                            <div class="flex items-center gap-6 mt-4 text-sm">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-red-500">📞</span>
-                                    <span id="profile-phone">+63 912 345 6789</span>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-purple-500">✉️</span>
-                                    <span id="profile-email">maria.santos@cite.edu</span>
-                                </div>
-                            </div>
+
+                        <div
+                            id="profile-avatar"
+                            class="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-6xl overflow-hidden"
+                        >
+                            👤
                         </div>
+
+
+                        <div>
+
+                            <h2
+                                id="profile-name"
+                                class="text-3xl font-bold"
+                            >
+                                Faculty
+                            </h2>
+
+                            <p
+                                id="profile-position"
+                                class="text-gray-600"
+                            >
+                                Faculty
+                            </p>
+
+
+                            <div class="flex items-center gap-6 mt-4 text-sm">
+
+                                <div class="flex items-center gap-2">
+
+                                    <span class="text-red-500">
+                                        📞
+                                    </span>
+
+                                    <span id="profile-phone">
+                                        No contact number
+                                    </span>
+
+                                </div>
+
+
+                                <div class="flex items-center gap-2">
+
+                                    <span class="text-purple-500">
+                                        ✉️
+                                    </span>
+
+                                    <span id="profile-email">
+                                        -
+                                    </span>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
                     </div>
-                    <button onclick="newRequest()" 
-                            class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2">
-                        + New Request
-                    </button>
+
+
+                    <div class="flex items-center gap-3">
+
+                        <button
+                            onclick="newRequest()"
+                            class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2"
+                        >
+                            + New Request
+                        </button>
+
+
+                        <button
+                            id="deleteFacultyBtn"
+                            onclick="confirmDeleteFaculty()"
+                            class="hidden bg-red-500 hover:bg-red-600 text-white w-11 h-11 rounded-2xl flex items-center justify-center transition-colors"
+                            title="Delete Faculty"
+                        >
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+
+                    </div>
+
                 </div>
 
-                <!-- Status with Toggle -->
+
+                <!-- STATUS -->
+
                 <div class="mt-8 bg-gray-50 rounded-2xl p-5 flex items-center justify-between">
+
                     <div class="flex items-center gap-4">
-                        <span class="font-medium">Status:</span>
-                        <span id="profile-status" onclick="toggleStatus()" 
-                              class="cursor-pointer px-6 py-1.5 rounded-3xl text-sm font-medium bg-emerald-100 text-emerald-700">
+
+                        <span class="font-medium">
+                            Status:
+                        </span>
+
+                        <span
+                            id="profile-status"
+                            onclick="toggleStatus()"
+                            class="cursor-pointer px-6 py-1.5 rounded-3xl text-sm font-medium bg-emerald-100 text-emerald-700"
+                        >
                             Active
                         </span>
+
                     </div>
+
                 </div>
+
             </div>
 
-            <!-- Tabs -->
+
+            <!-- =====================================================
+                 TABS
+            ====================================================== -->
+
             <div class="flex border-b mt-8">
-                <button onclick="switchTab(0)" id="personal-tab" class="tab px-8 py-4 tab-active">Personal</button>
-                <button onclick="switchTab(1)" id="documents-tab" class="tab px-8 py-4 text-gray-500 hover:text-gray-700">Documents</button>
-                <button onclick="switchTab(2)" id="research-tab" class="tab px-8 py-4 text-gray-500 hover:text-gray-700">Research</button>
+
+                <button
+                    onclick="switchTab(0)"
+                    id="personal-tab"
+                    class="tab px-8 py-4 tab-active"
+                >
+                    Personal
+                </button>
+
+                <button
+                    onclick="switchTab(1)"
+                    id="documents-tab"
+                    class="tab px-8 py-4 text-gray-500 hover:text-gray-700"
+                >
+                    Documents
+                </button>
+
+                <button
+                    onclick="switchTab(2)"
+                    id="research-tab"
+                    class="tab px-8 py-4 text-gray-500 hover:text-gray-700"
+                >
+                    Research
+                </button>
+
             </div>
 
-            <!-- Personal Tab Content -->
-            <div id="personal-content" class="mt-8 space-y-8">
-                <!-- General Information -->
+
+            <!-- =====================================================
+                 PERSONAL
+            ====================================================== -->
+
+            <div
+                id="personal-content"
+                class="mt-8 space-y-8"
+            >
+
+                <!-- GENERAL INFORMATION -->
+
                 <div class="bg-white rounded-3xl p-8">
+
                     <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-xl font-semibold">General Information</h3>
-                        <button onclick="openEditModal('general')" 
-                                class="bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-2.5 rounded-2xl text-sm font-medium transition-colors">
+
+                        <h3 class="text-xl font-semibold">
+                            General Information
+                        </h3>
+
+                        <button
+                            onclick="openEditModal('general')"
+                            class="bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-2.5 rounded-2xl text-sm font-medium"
+                        >
                             Edit
                         </button>
+
                     </div>
+
+
                     <div class="grid grid-cols-2 gap-x-12 gap-y-8">
+
                         <div>
-                            <div class="text-xs text-gray-500">Employee ID</div>
-                            <div id="gen-employee-id" class="font-medium">123456</div>
+
+                            <div class="text-xs text-gray-500">
+                                Active Email
+                            </div>
+
+                            <div
+                                id="gen-email"
+                                class="font-medium"
+                            >
+                                -
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Academic Rank</div>
-                            <div id="gen-academic-rank" class="font-medium">Associate Professor</div>
+
+                            <div class="text-xs text-gray-500">
+                                Academic Rank
+                            </div>
+
+                            <div
+                                id="gen-academic-rank"
+                                class="font-medium"
+                            >
+                                Faculty
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Access Role</div>
-                            <div id="gen-access-role" class="font-medium">Faculty</div>
+
+                            <div class="text-xs text-gray-500">
+                                Access Role
+                            </div>
+
+                            <div
+                                id="gen-access-role"
+                                class="font-medium"
+                            >
+                                Faculty
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Years in Service</div>
-                            <div id="gen-years" class="font-medium">8 Years</div>
+
+                            <div class="text-xs text-gray-500">
+                                Years in Service
+                            </div>
+
+                            <div
+                                id="gen-years"
+                                class="font-medium"
+                            >
+                                -
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Department</div>
-                            <div id="gen-department" class="font-medium">BSIT</div>
+
+                            <div class="text-xs text-gray-500">
+                                Department
+                            </div>
+
+                            <div
+                                id="gen-department"
+                                class="font-medium"
+                            >
+                                -
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Shift</div>
-                            <div id="gen-shift" class="font-medium">Morning</div>
+
+                            <div class="text-xs text-gray-500">
+                                Shift
+                            </div>
+
+                            <div
+                                id="gen-shift"
+                                class="font-medium"
+                            >
+                                -
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Teaching Status</div>
-                            <div id="gen-teaching-status" class="font-medium">Active</div>
+
+                            <div class="text-xs text-gray-500">
+                                Teaching Status
+                            </div>
+
+                            <div
+                                id="gen-teaching-status"
+                                class="font-medium"
+                            >
+                                Active
+                            </div>
+
                         </div>
+
                     </div>
+
                 </div>
 
-                <!-- Contract Information -->
+
+                <!-- CONTRACT INFORMATION -->
+
                 <div class="bg-white rounded-3xl p-8">
+
                     <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-xl font-semibold">Contract Information</h3>
-                        <button onclick="openEditModal('contract')" 
-                                class="bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-2.5 rounded-2xl text-sm font-medium transition-colors">
+
+                        <h3 class="text-xl font-semibold">
+                            Contract Information
+                        </h3>
+
+                        <button
+                            onclick="openEditModal('contract')"
+                            class="bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-2.5 rounded-2xl text-sm font-medium"
+                        >
                             Edit
                         </button>
+
                     </div>
+
+
                     <div class="grid grid-cols-3 gap-x-12 gap-y-8">
+
                         <div>
-                            <div class="text-xs text-gray-500">Contract Type</div>
-                            <div id="con-contract-type" class="font-medium">Full-time</div>
+
+                            <div class="text-xs text-gray-500">
+                                Contract Type
+                            </div>
+
+                            <div
+                                id="con-contract-type"
+                                class="font-medium"
+                            >
+                                Full-time
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Start Date</div>
-                            <div id="con-start-date" class="font-medium">2018-08-15</div>
+
+                            <div class="text-xs text-gray-500">
+                                Start Date
+                            </div>
+
+                            <div
+                                id="con-start-date"
+                                class="font-medium"
+                            >
+                                -
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Salary (HR only)</div>
-                            <div id="con-salary" class="font-medium">₱XX,XXX</div>
+
+                            <div class="text-xs text-gray-500">
+                                Salary (HR only)
+                            </div>
+
+                            <div
+                                id="con-salary"
+                                class="font-medium"
+                            >
+                                ₱XX,XXX
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Employment Type</div>
-                            <div id="con-employment-type" class="font-medium">Regular</div>
+
+                            <div class="text-xs text-gray-500">
+                                Employment Type
+                            </div>
+
+                            <div
+                                id="con-employment-type"
+                                class="font-medium"
+                            >
+                                Regular
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">End Date</div>
-                            <div id="con-end-date" class="font-medium">N/A</div>
+
+                            <div class="text-xs text-gray-500">
+                                End Date
+                            </div>
+
+                            <div
+                                id="con-end-date"
+                                class="font-medium"
+                            >
+                                N/A
+                            </div>
+
                         </div>
+
+
                         <div>
-                            <div class="text-xs text-gray-500">Renewal</div>
-                            <div id="con-renewal" class="font-medium">N/A</div>
+
+                            <div class="text-xs text-gray-500">
+                                Renewal
+                            </div>
+
+                            <div
+                                id="con-renewal"
+                                class="font-medium"
+                            >
+                                N/A
+                            </div>
+
                         </div>
+
                     </div>
+
                 </div>
+
             </div>
 
-            <!-- Documents -->
-            <div id="documents-content" class="hidden mt-8">
+
+            <!-- =====================================================
+                 DOCUMENTS
+            ====================================================== -->
+
+            <div
+                id="documents-content"
+                class="hidden mt-8"
+            >
+
                 <div class="bg-white rounded-3xl p-8">
+
                     <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-2xl font-semibold">Documents</h3>
-                        <button onclick="uploadDocument()" class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 text-sm font-medium">
-                            <span class="text-lg">+</span> Upload Documents
+
+                        <h3 class="text-2xl font-semibold">
+                            Documents
+                        </h3>
+
+                        <button
+                            onclick="uploadDocument()"
+                            class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-2xl"
+                        >
+                            + Upload Documents
                         </button>
+
                     </div>
+
+
                     <div class="overflow-x-auto">
+
                         <table class="w-full text-sm">
+
                             <thead>
+
                                 <tr class="bg-gray-100">
-                                    <th class="text-left py-4 px-6 font-medium text-gray-600">Document Name</th>
-                                    <th class="text-left py-4 px-6 font-medium text-gray-600">Type</th>
-                                    <th class="text-left py-4 px-6 font-medium text-gray-600">Uploaded</th>
-                                    <th class="text-left py-4 px-6 font-medium text-gray-600">File Size</th>
-                                    <th class="text-left py-4 px-6 font-medium text-gray-600">Actions</th>
+
+                                    <th class="text-left py-4 px-6">
+                                        Document Name
+                                    </th>
+
+                                    <th class="text-left py-4 px-6">
+                                        Type
+                                    </th>
+
+                                    <th class="text-left py-4 px-6">
+                                        Uploaded
+                                    </th>
+
+                                    <th class="text-left py-4 px-6">
+                                        File Size
+                                    </th>
+
+                                    <th class="text-left py-4 px-6">
+                                        Actions
+                                    </th>
+
                                 </tr>
+
                             </thead>
+
+
                             <tbody>
-                                <tr class="border-t hover:bg-gray-50">
-                                    <td class="py-5 px-6 flex items-center gap-3">
-                                        <span class="text-red-500 text-xl">📄</span>
-                                        Research Paper
-                                    </td>
-                                    <td class="py-5 px-6 text-gray-600">PDF</td>
-                                    <td class="py-5 px-6 text-gray-600">01/23/2026</td>
-                                    <td class="py-5 px-6 text-gray-600">1.2 MB</td>
+
+                                <tr class="border-t">
+
                                     <td class="py-5 px-6">
-                                        <button onclick="viewDocument()" class="bg-amber-500 text-white px-5 py-2 rounded-xl text-sm mr-2">View</button>
-                                        <button onclick="downloadDocument()" class="bg-blue-500 text-white px-5 py-2 rounded-xl text-sm mr-2">Download</button>
-                                        <button onclick="deleteDocument(this)" class="bg-red-500 text-white px-5 py-2 rounded-xl text-sm">Delete</button>
+                                        📄 Research Paper
                                     </td>
+
+                                    <td class="py-5 px-6">
+                                        PDF
+                                    </td>
+
+                                    <td class="py-5 px-6">
+                                        01/23/2026
+                                    </td>
+
+                                    <td class="py-5 px-6">
+                                        1.2 MB
+                                    </td>
+
+                                    <td class="py-5 px-6">
+
+                                        <button
+                                            onclick="viewDocument()"
+                                            class="bg-amber-500 text-white px-4 py-2 rounded-xl mr-2"
+                                        >
+                                            View
+                                        </button>
+
+                                        <button
+                                            onclick="downloadDocument()"
+                                            class="bg-blue-500 text-white px-4 py-2 rounded-xl"
+                                        >
+                                            Download
+                                        </button>
+
+                                    </td>
+
                                 </tr>
+
                             </tbody>
+
                         </table>
+
                     </div>
+
                 </div>
+
             </div>
 
-            <!-- Research -->
-            <div id="research-content" class="hidden mt-8">
+
+            <!-- =====================================================
+                 RESEARCH
+            ====================================================== -->
+
+            <div
+                id="research-content"
+                class="hidden mt-8"
+            >
+
                 <div class="bg-white rounded-3xl p-8">
-                    <h3 class="text-2xl font-semibold mb-8">Research Projects</h3>
-                    
-                    <!-- Ongoing Research -->
-                    <div class="border border-gray-200 rounded-3xl p-8 mb-8">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="flex items-center gap-3 mb-4">
-                                    <span class="bg-blue-100 text-blue-700 px-4 py-1 rounded-2xl text-sm font-medium">Ongoing Research</span>
-                                </div>
-                                <h4 class="text-xl font-semibold mb-2">Machine Learning Applications in Educational Systems</h4>
-                                <p class="text-gray-600 text-sm">Research on implementing ML algorithms to improve student learning outcomes</p>
-                            </div>
-                            <button onclick="viewResearch(1)" class="border border-gray-300 px-6 py-2 rounded-2xl text-sm flex items-center gap-2 hover:bg-gray-50">
-                                👁 View
-                            </button>
-                        </div>
-                        <div class="grid grid-cols-2 gap-8 mt-8 text-sm">
-                            <div>
-                                <div class="text-xs text-gray-500">Start Date</div>
-                                <div class="font-medium">01/15/2026</div>
-                            </div>
-                            <div>
-                                <div class="text-xs text-gray-500">Status</div>
-                                <div class="font-medium text-blue-600">Ongoing</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Completed Research -->
+                    <h3 class="text-2xl font-semibold mb-8">
+                        Research Projects
+                    </h3>
+
                     <div class="border border-gray-200 rounded-3xl p-8">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="flex items-center gap-3 mb-4">
-                                    <span class="bg-green-100 text-green-700 px-4 py-1 rounded-2xl text-sm font-medium">✓ Completed Research</span>
-                                </div>
-                                <h4 class="text-xl font-semibold mb-2">IoT Integration in Smart Campus Infrastructure</h4>
-                                <p class="text-gray-600 text-sm">Development and deployment of IoT sensors for campus monitoring</p>
-                            </div>
-                            <button onclick="viewResearch(2)" class="border border-gray-300 px-6 py-2 rounded-2xl text-sm flex items-center gap-2 hover:bg-gray-50">
-                                👁 View
-                            </button>
-                        </div>
-                        <div class="grid grid-cols-3 gap-8 mt-8 text-sm">
-                            <div>
-                                <div class="text-xs text-gray-500">Start Date</div>
-                                <div class="font-medium">03/10/2025</div>
-                            </div>
-                            <div>
-                                <div class="text-xs text-gray-500">End Date</div>
-                                <div class="font-medium">12/20/2025</div>
-                            </div>
-                            <div>
-                                <div class="text-xs text-gray-500">Status</div>
-                                <div class="font-medium text-green-600">Completed</div>
-                            </div>
-                        </div>
 
-                        <div class="mt-10 pt-6 border-t">
-                            <p class="text-xs text-gray-500 mb-3">Research Submission (Required for completed research)</p>
-                            
-                            <div class="bg-green-50 border border-green-200 rounded-2xl p-4 flex justify-between items-center mb-4">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-green-600 text-2xl">📄</span>
-                                    <div>
-                                        <div class="font-medium text-sm">IoT_Research_Final.pdf</div>
-                                    </div>
-                                </div>
-                                <button onclick="downloadResearch()" 
-                                        class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-2xl text-sm flex items-center gap-2">
-                                    ↓ Download
-                                </button>
-                            </div>
+                        <span class="bg-blue-100 text-blue-700 px-4 py-1 rounded-2xl text-sm">
+                            Ongoing Research
+                        </span>
 
-                            <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex justify-between items-center">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-blue-600">🔗</span>
-                                    <div class="text-sm">https://example.com/research/iot-campus</div>
-                                </div>
-                                <button onclick="viewLink()" 
-                                        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-2xl text-sm">
-                                    View Link
-                                </button>
-                            </div>
-                        </div>
+                        <h4 class="text-xl font-semibold mt-4">
+                            Faculty Research Project
+                        </h4>
+
+                        <p class="text-gray-600 text-sm mt-2">
+                            Research project information will appear here.
+                        </p>
+
                     </div>
+
                 </div>
+
             </div>
+
         </div>
+
     </div>
-</div>
 
-<!-- EDIT MODAL -->
-<div id="editModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-    <div class="bg-white rounded-3xl w-full max-w-2xl mx-4 overflow-hidden">
-        <div class="px-8 py-6 border-b flex justify-between items-center bg-gray-50">
-            <h3 id="modalTitle" class="text-xl font-semibold">Edit Information</h3>
-            <button onclick="closeEditModal()" class="text-3xl text-gray-400 hover:text-gray-600">×</button>
-        </div>
-        
-        <div class="p-8 max-h-[70vh] overflow-y-auto" id="modalBody">
-            <!-- Fields injected here -->
-        </div>
-
-        <div class="border-t px-8 py-6 flex justify-end gap-4 bg-gray-50">
-            <button onclick="closeEditModal()" class="px-8 py-3 text-gray-700 hover:bg-gray-100 rounded-2xl font-medium">Cancel</button>
-            <button onclick="saveEditChanges()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-8 py-3 rounded-2xl font-medium">Save Changes</button>
-        </div>
-    </div>
-</div>
-
-<!-- ADD NEW FACULTY MODAL -->
-<div id="addFacultyModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-    <div class="bg-white rounded-3xl w-full max-w-2xl mx-4 overflow-hidden">
-        <div class="px-8 py-6 border-b flex justify-between items-center bg-gray-50">
-            <div>
-                <h2 class="text-2xl font-semibold"></h2>
-                <p class="text-sm text-gray-500"></p>
-            </div>
-            <button onclick="closeAddFacultyModal()" class="text-3xl text-gray-400 hover:text-gray-600">×</button>
-        </div>
-
-        <div class="p-8 max-h-[70vh] overflow-y-auto space-y-10">
-            <!-- Login Credentials -->
-            <div>
-                <h3 class="font-semibold text-lg mb-4">Login Credentials</h3>
-                <div class="space-y-6">
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Faculty Email</label>
-                        <input id="add-employee-id-email" type="email" placeholder="e.g. faculty@ctu.edu.ph" 
-                               class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
-                        
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Personal/Private Email</label>
-                        <input id="add-private-email" type="email" placeholder="e.g. personal.email@gmail.com" 
-                               class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
-                        
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Temporary Password</label>
-                        <div class="flex gap-3">
-                            <div class="flex-1 relative">
-                                <input id="add-password" type="password" readonly class="w-full border border-gray-300 rounded-2xl px-4 py-3 pr-12 bg-gray-50">
-                                <button type="button" onclick="togglePasswordVisibility()" id="toggle-password-btn"
-                                        class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg" title="Show/Hide password">
-                                    👁
-                                </button>
-                            </div>
-                            <button onclick="generatePassword()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-6 rounded-2xl text-sm font-medium">Generate</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Contract Information -->
-            <div>
-                <h3 class="font-semibold text-lg mb-4">Contract Information</h3>
-                <div class="grid grid-cols-2 gap-6">
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Contract Type</label>
-                        <select id="add-contract-type" class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
-                            <option value="Full-Time">Full-Time</option>
-                            <option value="Part-Time">Part-Time</option>
-                            <option value="Temporary">Temporary</option>
-                            <option value="Visiting">Visiting</option>
-                            <option value="Research Faculty">Research Faculty</option>
-                            <option value="Administrative Faculty">Administrative Faculty</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Employment Type</label>
-                        <select id="add-employment-type" class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
-                            <option value="Regular">Regular</option>
-                            <option value="Probationary">Probationary</option>
-                            <option value="Contractual">Contractual</option>
-                            <option value="Job Order">Job Order</option>
-                            <option value="Part-Time">Part-Time</option>
-                            <option value="Project Based">Project Based</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Start Date</label>
-                        <input id="add-start-date" type="date" class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">End Date</label>
-                        <input id="add-end-date" type="date" class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Salary (₱)</label>
-                        <input id="add-salary" type="text" placeholder="00,000"
-                               class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Renewal</label>
-                        <select id="add-renewal" class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:border-[#621708]">
-                            <option value="For Renewal">For Renewal</option>
-                            <option value="Renewed">Renewed</option>
-                            <option value="Not Renewed">Not Renewed</option>
-                            <option value="N/A (Permanent)">N/A (Permanent)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="border-t px-8 py-6 flex justify-end gap-4 bg-gray-50">
-            <button onclick="closeAddFacultyModal()" class="px-8 py-3 text-gray-700 hover:bg-gray-100 rounded-2xl">Cancel</button>
-            <button id="createFacultyAccountBtn" onclick="createFacultyAccount()" 
-                    class="bg-[#621708] hover:bg-[#8c2a10] disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-10 py-3 rounded-2xl">Create Faculty Account</button>
-        </div>
-    </div>
 </div>
 
 
-<!-- CREDENTIALS SENT CONFIRMATION MODAL -->
-<div id="facultyCredentialsModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
-    <div class="bg-white rounded-3xl w-full max-w-md mx-4 overflow-hidden shadow-2xl">
-        <div class="px-6 py-5 border-b bg-emerald-50 flex items-start gap-3">
-            <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-xl flex-shrink-0">✉️</div>
+<!-- =============================================================
+     DELETE FACULTY MODAL
+============================================================== -->
+
+<div
+    id="deleteFacultyModal"
+    class="hidden fixed inset-0 bg-black/60 items-center justify-center z-[10001] p-4"
+>
+
+    <div class="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+
+        <div class="px-6 py-5 border-b bg-red-50 flex items-center gap-4">
+
+            <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
+                <i class="fa-solid fa-trash"></i>
+            </div>
+
             <div>
-                <h3 class="text-xl font-semibold text-gray-900">Faculty Account Created</h3>
-                <p class="text-sm text-gray-600 mt-1">Credentials were emailed — not shown on screen.</p>
+
+                <h3 class="text-lg font-semibold">
+                    Delete Faculty Account?
+                </h3>
+
+                <p class="text-sm text-gray-600">
+                    This action cannot be undone.
+                </p>
+
             </div>
+
         </div>
-        <div class="p-6 space-y-4">
-            <div class="bg-gray-50 rounded-2xl p-4 border text-sm text-gray-700 leading-relaxed">
-                The Faculty ID and temporary password have been sent to the faculty member's private email:
-                <div id="confirmSentToEmail" class="font-semibold text-gray-900 mt-1">-</div>
-            </div>
-            <div class="bg-blue-50 rounded-2xl p-4 border border-blue-200 text-sm text-blue-800 leading-relaxed">
-                A notification has also been sent to your admin email confirming that these credentials were delivered.
-            </div>
-            <div id="emailFailedWarning" class="hidden bg-red-50 rounded-2xl p-4 border border-red-200 text-sm text-red-800 leading-relaxed">
-                We couldn't confirm the credential email reached the faculty member's private email. Check the <code>send-faculty-credentials</code> Edge Function logs in Supabase, then try resending, or share the login details with them directly for now.
-            </div>
-            <p class="text-xs text-gray-500">
-                For security, the password is not displayed here. Ask the faculty member to check their private inbox (including spam/junk folder) and to change their password on first login.
+
+
+        <div class="p-6">
+
+            <p class="text-sm text-gray-700">
+
+                You are about to permanently delete
+
+                <strong id="deleteFacultyName">
+                    this faculty member
+                </strong>.
+
+                Their faculty profile and Supabase login account will be deleted.
+
             </p>
+
         </div>
-        <div class="border-t px-6 py-4 flex justify-end bg-gray-50">
-            <button onclick="closeFacultyCredentialsModal()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-3 rounded-2xl font-medium">Done</button>
+
+
+        <div class="border-t px-6 py-4 flex justify-end gap-3 bg-gray-50">
+
+            <button
+                onclick="closeDeleteFacultyModal()"
+                class="px-5 py-2.5 rounded-2xl"
+            >
+                Cancel
+            </button>
+
+            <button
+                id="confirmDeleteFacultyBtn"
+                onclick="deleteSelectedFaculty()"
+                class="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-2xl"
+            >
+                <i class="fa-solid fa-trash"></i>
+                Delete User
+            </button>
+
         </div>
+
     </div>
+
 </div>
+
+
+<!-- =============================================================
+     EDIT MODAL
+============================================================== -->
+
+<div
+    id="editModal"
+    class="hidden fixed inset-0 bg-black/60 items-center justify-center z-[9999]"
+>
+
+    <div class="bg-white rounded-3xl w-full max-w-2xl mx-4 overflow-hidden">
+
+        <div class="px-8 py-6 border-b flex justify-between bg-gray-50">
+
+            <h3
+                id="modalTitle"
+                class="text-xl font-semibold"
+            >
+                Edit Information
+            </h3>
+
+            <button
+                onclick="closeEditModal()"
+                class="text-3xl text-gray-400"
+            >
+                &times;
+            </button>
+
+        </div>
+
+
+        <div
+            id="modalBody"
+            class="p-8 max-h-[70vh] overflow-y-auto"
+        ></div>
+
+
+        <div class="border-t px-8 py-6 flex justify-end gap-4 bg-gray-50">
+
+            <button
+                onclick="closeEditModal()"
+                class="px-8 py-3 rounded-2xl"
+            >
+                Cancel
+            </button>
+
+            <button
+                onclick="saveEditChanges()"
+                class="bg-[#621708] text-white px-8 py-3 rounded-2xl"
+            >
+                Save Changes
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =============================================================
+     ADD FACULTY MODAL
+============================================================== -->
+
+<div
+    id="addFacultyModal"
+    class="hidden fixed inset-0 bg-black/60 items-center justify-center z-[9999] p-3"
+>
+
+    <div class="bg-white rounded-xl w-full max-w-sm mx-auto overflow-hidden shadow-2xl">
+
+        <div class="px-4 py-3 border-b flex justify-between items-center bg-gray-50">
+
+            <div>
+
+                <h2 class="text-base font-semibold">
+                    Add Faculty
+                </h2>
+
+                <p class="text-[11px] text-gray-500">
+                    Login credentials will be sent to the active email
+                </p>
+
+            </div>
+
+            <button
+                onclick="closeAddFacultyModal()"
+                class="text-xl text-gray-400"
+            >
+                &times;
+            </button>
+
+        </div>
+
+
+        <div class="p-4 space-y-2.5">
+
+            <!-- NAME -->
+
+            <div class="grid grid-cols-3 gap-2">
+
+                <div>
+
+                    <label class="block text-[11px] font-medium text-gray-500">
+                        First <span class="text-red-500">*</span>
+                    </label>
+
+                    <input
+                        id="add-first-name"
+                        type="text"
+                        placeholder="Juan"
+                        autocomplete="given-name"
+                        class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm"
+                    >
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-[11px] font-medium text-gray-500">
+                        Middle
+                    </label>
+
+                    <input
+                        id="add-middle-name"
+                        type="text"
+                        placeholder="Opt."
+                        autocomplete="additional-name"
+                        class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm"
+                    >
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-[11px] font-medium text-gray-500">
+                        Last <span class="text-red-500">*</span>
+                    </label>
+
+                    <input
+                        id="add-last-name"
+                        type="text"
+                        placeholder="Dela Cruz"
+                        autocomplete="family-name"
+                        class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm"
+                    >
+
+                </div>
+
+            </div>
+
+
+            <!-- ACTIVE EMAIL -->
+
+            <div>
+
+                <label class="block text-[11px] font-medium text-gray-500">
+                    Active Email <span class="text-red-500">*</span>
+                </label>
+
+                <input
+                    id="add-private-email"
+                    type="email"
+                    placeholder="faculty@gmail.com"
+                    autocomplete="email"
+                    class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm"
+                >
+
+                <p class="text-[10px] text-gray-400 mt-1">
+                    This email will also be used as the faculty's login email.
+                </p>
+
+            </div>
+
+
+            <!-- POSITION / DEPARTMENT -->
+
+            <div class="grid grid-cols-2 gap-2">
+
+                <div>
+
+                    <label class="block text-[11px] font-medium text-gray-500">
+                        Position <span class="text-red-500">*</span>
+                    </label>
+
+                    <select
+                        id="add-position"
+                        class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm"
+                    >
+
+                        <option value="Faculty">
+                            Faculty
+                        </option>
+
+                        <option value="Chairperson">
+                            Chairperson
+                        </option>
+
+                        <option value="Dean">
+                            Dean
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-[11px] font-medium text-gray-500">
+                        Department <span class="text-red-500">*</span>
+                    </label>
+
+                    <select
+                        id="add-department"
+                        class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm"
+                    >
+
+                        <option value="BSIT">
+                            BSIT
+                        </option>
+
+                        <option value="BSIE">
+                            BSIE
+                        </option>
+
+                        <option value="BIT">
+                            BIT
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="border-t px-4 py-2.5 flex justify-end bg-gray-50">
+
+            <button
+                id="createFacultyAccountBtn"
+                onclick="createFacultyAccount()"
+                class="bg-[#621708] hover:bg-[#8c2a10] disabled:bg-gray-400 text-white px-4 py-2 text-xs font-medium rounded-lg"
+            >
+                Create Account
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =============================================================
+     ACCOUNT CREATED MODAL
+============================================================== -->
+
+<div
+    id="facultyCredentialsModal"
+    class="hidden fixed inset-0 bg-black/60 items-center justify-center z-[10000] p-3"
+>
+
+    <div class="bg-white rounded-xl w-full max-w-sm mx-auto overflow-hidden shadow-2xl">
+
+        <div
+            id="credentialHeader"
+            class="px-4 py-3 border-b bg-emerald-50 flex items-start gap-2.5"
+        >
+
+            <div
+                id="credentialIcon"
+                class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center"
+            >
+                ✉️
+            </div>
+
+            <div>
+
+                <h3
+                    id="credentialModalTitle"
+                    class="text-base font-semibold"
+                >
+                    Faculty Account Created
+                </h3>
+
+                <p
+                    id="credentialModalSubtitle"
+                    class="text-[11px] text-gray-600"
+                >
+                    Login credentials were sent.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="p-4 space-y-3">
+
+            <div class="bg-gray-50 rounded-lg p-3 border text-xs">
+
+                <div class="text-gray-500">
+                    Login email:
+                </div>
+
+                <div
+                    id="confirmSentToEmail"
+                    class="font-semibold text-gray-900 mt-1"
+                >
+                    -
+                </div>
+
+            </div>
+
+
+            <div
+                id="emailSuccessMessage"
+                class="bg-blue-50 rounded-lg p-3 border border-blue-200 text-xs text-blue-800"
+            >
+                A temporary password was sent to this email.
+                The faculty member should check their inbox and spam folder.
+            </div>
+
+
+            <div
+                id="emailFailedWarning"
+                class="hidden bg-red-50 rounded-lg p-3 border border-red-200 text-xs text-red-800"
+            >
+                The faculty account was created successfully, but the
+                credential email could not be sent.
+                Please check the EmailJS configuration.
+            </div>
+
+
+            <p class="text-[11px] text-gray-500">
+
+                The temporary password is not displayed here.
+                The faculty member should change the password after logging in.
+
+            </p>
+
+        </div>
+
+
+        <div class="border-t px-4 py-2.5 flex justify-end bg-gray-50">
+
+            <button
+                onclick="closeFacultyCredentialsModal()"
+                class="bg-[#621708] hover:bg-[#8c2a10] text-white px-4 py-1.5 text-xs font-medium rounded-lg"
+            >
+                Done
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
 
 <script>
-    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-    const { createClient } = supabase;
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-    // Non-persistent client lets admin create faculty auth users without replacing admin session.
-    const onboardingClient = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-    });
 
-    // Admin's own email, used only for the "we notified you too" message.
-    // Replace with a real lookup (e.g. from the logged-in admin's session) as needed.
-    const ADMIN_NOTIFICATION_EMAIL = 'krishpao19@gmail.com';
+/* ================================================================
+   SUPABASE
+================================================================ */
 
-    let facultyData = [];
-    let currentEditSection = '';
-    let currentStatus = 'Active';
-    let selectedFacultyId = null;
+const supabaseUrl =
+    'https://uforealazougjckepggc.supabase.co';
 
-    function normalizeFacultyRow(row) {
-        return {
-            id: row.id,
-            name: row.full_name || 'Unnamed Faculty',
-            position: row.position || 'Faculty',
-            status: row.status || 'Active',
-            department: row.department || 'N/A',
-            email: row.email || '-',
-            phone: row.phone || 'No contact number',
-            employeeId: row.employee_id || '-',
-            photoUrl: row.profile_photo_url || ''
-        };
+const supabaseAnonKey =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+
+const {
+    createClient
+} = supabase;
+
+const supabaseClient =
+    createClient(
+        supabaseUrl,
+        supabaseAnonKey
+    );
+
+
+/* ================================================================
+   EMAILJS
+================================================================ */
+
+const EMAILJS_SERVICE_ID =
+    'service_kmzgyii';
+
+const EMAILJS_TEMPLATE_ID =
+    'template_lzzwr4e';
+
+const EMAILJS_PUBLIC_KEY =
+    'VDfsAHXPAWgLCmHnk';
+
+
+emailjs.init({
+    publicKey: EMAILJS_PUBLIC_KEY
+});
+
+
+/* ================================================================
+   ROLE SYSTEM
+================================================================ */
+
+const ROLE_RANK = {
+
+    administrator: 100,
+    admin: 100,
+    dean: 80,
+    chairperson: 60,
+    secretary: 40,
+    faculty: 20
+
+};
+
+
+const PERMISSIONS = {
+
+    viewAllDepartments: [
+        'administrator',
+        'admin',
+        'dean'
+    ],
+
+    manageUsers: [
+        'administrator',
+        'admin',
+        'dean',
+        'chairperson'
+    ],
+
+    addFaculty: [
+        'administrator',
+        'admin',
+        'dean',
+        'chairperson'
+    ],
+
+    editFaculty: [
+        'administrator',
+        'admin',
+        'dean',
+        'chairperson'
+    ],
+
+    deleteFaculty: [
+        'administrator',
+        'admin',
+        'dean'
+    ],
+
+    viewSalary: [
+        'administrator',
+        'admin'
+    ]
+
+};
+
+
+let currentUser = {
+
+    role: 'Administrator',
+    department: 'All',
+    email: null,
+    id: null
+
+};
+
+
+let facultyData = [];
+
+let currentEditSection = '';
+
+let currentStatus = 'Active';
+
+let selectedFacultyId = null;
+
+
+/* ================================================================
+   ROLE HELPERS
+================================================================ */
+
+function normalizeRole(role) {
+
+    return String(role || 'faculty')
+        .toLowerCase()
+        .trim();
+
+}
+
+
+function hasPermission(permission) {
+
+    const list =
+        PERMISSIONS[permission] || [];
+
+    return list.includes(
+        normalizeRole(
+            currentUser.role
+        )
+    );
+
+}
+
+
+function canAccessDepartment(dept) {
+
+    if (
+        hasPermission(
+            'viewAllDepartments'
+        )
+    ) {
+        return true;
     }
 
-    function initials(name) {
-        return String(name || 'F').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('') || 'F';
+
+    const userDept =
+        String(
+            currentUser.department || ''
+        )
+            .toLowerCase()
+            .trim();
+
+
+    if (
+        !userDept ||
+        userDept === 'all' ||
+        userDept === 'n/a'
+    ) {
+        return true;
     }
 
-    function avatarHtml(faculty, sizeClasses, textSizeClass) {
-        if (faculty.photoUrl) {
-            return `<img src="${faculty.photoUrl}" alt="${faculty.name}" class="${sizeClasses} rounded-2xl object-cover" onerror="this.replaceWith(Object.assign(document.createElement('div'), { className: '${sizeClasses} bg-gray-100 rounded-2xl flex items-center justify-center ${textSizeClass} font-semibold text-gray-500', textContent: '${initials(faculty.name)}' }))">`;
+
+    return (
+        String(dept || '')
+            .toLowerCase()
+            .trim() ===
+        userDept
+    );
+
+}
+
+
+function filterByDepartmentAccess(list) {
+
+    if (
+        hasPermission(
+            'viewAllDepartments'
+        )
+    ) {
+        return list;
+    }
+
+
+    return list.filter(
+        faculty =>
+            canAccessDepartment(
+                faculty.department
+            )
+    );
+
+}
+
+
+/* ================================================================
+   CURRENT USER
+================================================================ */
+
+async function resolveCurrentUser() {
+
+    try {
+
+        const {
+            data: authData,
+            error: authError
+        } =
+            await supabaseClient.auth.getUser();
+
+
+        if (authError) {
+
+            console.warn(
+                'Unable to resolve authenticated user:',
+                authError
+            );
+
+            return;
+
         }
-        return `<div class="${sizeClasses} bg-gray-100 rounded-2xl flex items-center justify-center ${textSizeClass} font-semibold text-gray-500">${initials(faculty.name)}</div>`;
+
+
+        const user =
+            authData?.user;
+
+
+        if (!user) {
+
+            console.warn(
+                'No authenticated user found.'
+            );
+
+            return;
+
+        }
+
+
+        currentUser.id =
+            user.id;
+
+        currentUser.email =
+            user.email || null;
+
+
+        const meta =
+            user.user_metadata || {};
+
+
+        currentUser.role =
+            meta.role ||
+            'Administrator';
+
+
+        currentUser.department =
+            meta.department ||
+            'All';
+
+
+        /* ---------------------------------------------------------
+           ADMIN PROFILES
+        --------------------------------------------------------- */
+
+        const {
+            data: adminRow,
+            error: adminError
+        } =
+            await supabaseClient
+                .from('admin_profiles')
+                .select(
+                    'id, role, email'
+                )
+                .eq(
+                    'id',
+                    user.id
+                )
+                .maybeSingle();
+
+
+        if (
+            adminRow &&
+            !adminError
+        ) {
+
+            currentUser.role =
+                adminRow.role ||
+                currentUser.role;
+
+            currentUser.email =
+                adminRow.email ||
+                currentUser.email;
+
+            currentUser.department =
+                'All';
+
+            return;
+
+        }
+
+
+        /* ---------------------------------------------------------
+           FACULTY
+        --------------------------------------------------------- */
+
+        const {
+            data: facultyRow,
+            error: facultyError
+        } =
+            await supabaseClient
+                .from('faculty')
+                .select(
+                    'role, position, department, email'
+                )
+                .eq(
+                    'auth_user_id',
+                    user.id
+                )
+                .maybeSingle();
+
+
+        if (
+            facultyRow &&
+            !facultyError
+        ) {
+
+            currentUser.role =
+                facultyRow.role ||
+                facultyRow.position ||
+                currentUser.role;
+
+            currentUser.department =
+                facultyRow.department ||
+                currentUser.department;
+
+            currentUser.email =
+                facultyRow.email ||
+                currentUser.email;
+
+        }
+
     }
 
-    async function loadFacultyProfiles() {
-        const { data, error } = await supabaseClient
+    catch (error) {
+
+        console.error(
+            'resolveCurrentUser failed:',
+            error
+        );
+
+    }
+
+}
+
+
+/* ================================================================
+   ACCESS UI
+================================================================ */
+
+function applyAccessUI() {
+
+    const addButton =
+        document.querySelector(
+            'button[onclick="openAddFacultyModal()"]'
+        );
+
+
+    if (addButton) {
+
+        addButton.style.display =
+            hasPermission(
+                'addFaculty'
+            )
+                ? ''
+                : 'none';
+
+    }
+
+
+    const departmentSelect =
+        document.getElementById(
+            'add-department'
+        );
+
+
+    if (
+        departmentSelect &&
+        !hasPermission(
+            'viewAllDepartments'
+        )
+    ) {
+
+        const dept =
+            currentUser.department ||
+            'BSIT';
+
+
+        Array.from(
+            departmentSelect.options
+        )
+            .forEach(option => {
+
+                option.hidden =
+                    option.value !== dept;
+
+            });
+
+
+        departmentSelect.value =
+            dept;
+
+    }
+
+}
+
+
+/* ================================================================
+   FACULTY MAPPING
+================================================================ */
+
+function normalizeFacultyRow(row) {
+
+    return {
+
+        id:
+            row.id,
+
+        authUserId:
+            row.auth_user_id ||
+            null,
+
+        name:
+            row.full_name ||
+            buildFullName(
+                row.first_name,
+                row.middle_name,
+                row.last_name
+            ) ||
+            'Unnamed Faculty',
+
+        firstName:
+            row.first_name ||
+            '',
+
+        middleName:
+            row.middle_name ||
+            '',
+
+        lastName:
+            row.last_name ||
+            '',
+
+        position:
+            row.position ||
+            'Faculty',
+
+        role:
+            row.role ||
+            'Faculty',
+
+        status:
+            row.status ||
+            'Active',
+
+        department:
+            row.department ||
+            'N/A',
+
+        email:
+            row.email ||
+            row.private_email ||
+            '-',
+
+        privateEmail:
+            row.private_email ||
+            row.email ||
+            '',
+
+        phone:
+            row.phone ||
+            'No contact number',
+
+        photoUrl:
+            row.profile_photo_url ||
+            row.avatar_url ||
+            '',
+
+        academicRank:
+            row.academic_rank ||
+            '',
+
+        yearsInService:
+            row.years_in_service ??
+            row.years_experience ??
+            '',
+
+        shift:
+            row.shift ||
+            '',
+
+        teachingStatus:
+            row.teaching_status ||
+            row.status ||
+            'Active',
+
+        contractType:
+            row.contract_type ||
+            'Full-time',
+
+        employmentType:
+            row.employment_type ||
+            'Regular',
+
+        startDate:
+            row.start_date ||
+            '',
+
+        endDate:
+            row.end_date ||
+            '',
+
+        salary:
+            row.salary ??
+            '',
+
+        renewal:
+            row.renewal ||
+            'N/A'
+
+    };
+
+}
+
+
+/* ================================================================
+   INITIALS
+================================================================ */
+
+function initials(name) {
+
+    return String(name || 'F')
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(
+            x =>
+                x[0].toUpperCase()
+        )
+        .join('') ||
+        'F';
+
+}
+
+
+/* ================================================================
+   HTML ESCAPE
+================================================================ */
+
+function escapeHtml(value) {
+
+    return String(value ?? '')
+        .replace(
+            /&/g,
+            '&amp;'
+        )
+        .replace(
+            /</g,
+            '&lt;'
+        )
+        .replace(
+            />/g,
+            '&gt;'
+        )
+        .replace(
+            /"/g,
+            '&quot;'
+        )
+        .replace(
+            /'/g,
+            '&#039;'
+        );
+
+}
+
+
+/* ================================================================
+   AVATAR
+================================================================ */
+
+function avatarHtml(
+    faculty,
+    sizeClasses,
+    textSizeClass
+) {
+
+    if (faculty.photoUrl) {
+
+        return `
+            <img
+                src="${escapeHtml(faculty.photoUrl)}"
+                alt="${escapeHtml(faculty.name)}"
+                class="${sizeClasses} rounded-2xl object-cover"
+            >
+        `;
+
+    }
+
+
+    return `
+        <div
+            class="${sizeClasses}
+                   bg-gray-100
+                   rounded-2xl
+                   flex
+                   items-center
+                   justify-center
+                   ${textSizeClass}
+                   font-semibold
+                   text-gray-500"
+        >
+            ${escapeHtml(initials(faculty.name))}
+        </div>
+    `;
+
+}
+
+
+/* ================================================================
+   LOAD FACULTY
+================================================================ */
+
+async function loadFacultyProfiles() {
+
+    const {
+        data,
+        error
+    } =
+        await supabaseClient
             .from('faculty')
             .select('*')
-            .order('created_at', { ascending: false });
+            .order(
+                'created_at',
+                {
+                    ascending: false
+                }
+            );
 
-        if (error) {
-            console.error('Failed loading faculty profiles:', error);
-            alert(`Unable to load faculty profiles: ${error.message}`);
-            facultyData = [];
-            renderFacultyCards([]);
-            updateStats([]);
-            return;
-        }
 
-        facultyData = (data || []).map(normalizeFacultyRow);
-        renderFacultyCards(facultyData);
-        updateStats(facultyData);
+    if (error) {
+
+        console.error(
+            'Failed loading faculty profiles:',
+            error
+        );
+
+
+        alert(
+            `Unable to load faculty profiles: ${error.message}`
+        );
+
+
+        facultyData = [];
+
+        renderFacultyCards([]);
+
+        updateStats([]);
+
+        return;
+
     }
 
-    function updateStats(data) {
-        const total = data.length;
-        const active = data.filter(f => (f.status || '').toLowerCase() === 'active').length;
-        const onLeave = data.filter(f => (f.status || '').toLowerCase() === 'on leave').length;
-        document.getElementById('total-faculty').textContent = String(total);
-        document.getElementById('active-faculty').textContent = String(active);
-        document.getElementById('onleave-faculty').textContent = String(onLeave);
+
+    const mapped =
+        (data || [])
+            .map(
+                normalizeFacultyRow
+            );
+
+
+    facultyData =
+        filterByDepartmentAccess(
+            mapped
+        );
+
+
+    renderFacultyCards(
+        facultyData
+    );
+
+
+    updateStats(
+        facultyData
+    );
+
+}
+
+
+/* ================================================================
+   STATS
+================================================================ */
+
+function updateStats(data) {
+
+    const total =
+        data.length;
+
+
+    const active =
+        data.filter(
+            faculty =>
+                String(
+                    faculty.status
+                ).toLowerCase() ===
+                'active'
+        ).length;
+
+
+    const onLeave =
+        data.filter(
+            faculty =>
+                String(
+                    faculty.status
+                ).toLowerCase() ===
+                'on leave'
+        ).length;
+
+
+    document.getElementById(
+        'total-faculty'
+    ).textContent =
+        String(total);
+
+
+    document.getElementById(
+        'active-faculty'
+    ).textContent =
+        String(active);
+
+
+    document.getElementById(
+        'onleave-faculty'
+    ).textContent =
+        String(onLeave);
+
+}
+
+
+/* ================================================================
+   FACULTY CARDS
+================================================================ */
+
+function renderFacultyCards(data) {
+
+    const grid =
+        document.getElementById(
+            'faculty-grid'
+        );
+
+
+    grid.innerHTML = '';
+
+
+    if (!data.length) {
+
+        grid.innerHTML = `
+            <div
+                class="col-span-3
+                       bg-white
+                       rounded-3xl
+                       p-10
+                       text-center
+                       text-gray-500"
+            >
+                No faculty members found.
+            </div>
+        `;
+
+        return;
+
     }
 
-    function renderFacultyCards(data) {
-        const grid = document.getElementById('faculty-grid');
-        grid.innerHTML = '';
-        data.forEach(f => {
+
+    data.forEach(
+        faculty => {
+
             const html = `
-            <div onclick="openProfile(${f.id})" class="bg-white rounded-3xl p-6 card-shadow hover:shadow-xl transition-all cursor-pointer">
-                <div class="flex justify-between items-start">
-                    <div class="flex items-center gap-4">
-                        ${avatarHtml(f, 'w-12 h-12', 'text-sm')}
-                        <div>
-                            <div class="font-semibold">${f.name}</div>
-                            <div class="text-sm text-gray-500">${f.position}</div>
+
+                <div
+                    onclick="openProfile(${faculty.id})"
+                    class="bg-white
+                           rounded-3xl
+                           p-6
+                           card-shadow
+                           hover:shadow-xl
+                           transition-all
+                           cursor-pointer"
+                >
+
+                    <div class="flex justify-between items-start">
+
+                        <div class="flex items-center gap-4">
+
+                            ${avatarHtml(
+                                faculty,
+                                'w-12 h-12',
+                                'text-sm'
+                            )}
+
+                            <div>
+
+                                <div class="font-semibold">
+                                    ${escapeHtml(faculty.name)}
+                                </div>
+
+                                <div class="text-sm text-gray-500">
+                                    ${escapeHtml(faculty.position)}
+                                </div>
+
+                            </div>
+
                         </div>
+
+
+                        <span
+                            class="px-4 py-1
+                                   text-xs
+                                   font-medium
+                                   rounded-3xl
+                                   ${
+                                       String(faculty.status).toLowerCase() === 'active'
+                                           ? 'bg-emerald-100 text-emerald-700'
+                                           : 'bg-amber-100 text-amber-700'
+                                   }"
+                        >
+                            ${escapeHtml(faculty.status)}
+                        </span>
+
                     </div>
-                    <span class="px-4 py-1 text-xs font-medium rounded-3xl ${f.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
-                        ${f.status}
-                    </span>
+
+
+                    <div class="mt-6 space-y-2 text-sm">
+
+                        <div class="flex justify-between gap-3">
+
+                            <span class="text-gray-500">
+                                Email
+                            </span>
+
+                            <span class="text-[#621708] truncate">
+                                ${escapeHtml(faculty.email)}
+                            </span>
+
+                        </div>
+
+
+                        <div class="flex justify-between">
+
+                            <span class="text-gray-500">
+                                Phone
+                            </span>
+
+                            <span>
+                                ${escapeHtml(faculty.phone)}
+                            </span>
+
+                        </div>
+
+
+                        <div class="flex justify-between">
+
+                            <span class="text-gray-500">
+                                Department
+                            </span>
+
+                            <span
+                                class="px-3 py-0.5
+                                       bg-[#621708]
+                                       text-white
+                                       text-xs
+                                       rounded-2xl"
+                            >
+                                ${escapeHtml(faculty.department)}
+                            </span>
+
+                        </div>
+
+                    </div>
+
                 </div>
-                <div class="mt-6 space-y-2 text-sm">
-                    <div class="flex justify-between"><span class="text-gray-500">Email</span><span class="text-[#621708]">${f.email}</span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">Phone</span><span>${f.phone}</span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">Department</span><span class="px-3 py-0.5 bg-[#621708] text-white text-xs rounded-2xl">${f.department}</span></div>
-                </div>
-            </div>`;
-            grid.innerHTML += html;
-        });
-    }
 
-    function openProfile(id) {
-        const faculty = facultyData.find(f => f.id === id);
-        if (!faculty) return;
-        selectedFacultyId = id;
+            `;
 
-        document.getElementById('list-view').classList.add('hidden');
-        document.getElementById('profile-view').classList.remove('hidden');
 
-        document.getElementById('profile-name').textContent = faculty.name;
-        document.getElementById('profile-position').textContent = faculty.position;
-        document.getElementById('profile-phone').textContent = faculty.phone;
-        document.getElementById('profile-email').textContent = faculty.email;
-        document.getElementById('profile-status').textContent = faculty.status;
-        document.getElementById('gen-employee-id').textContent = faculty.employeeId;
-        document.getElementById('gen-department').textContent = faculty.department;
-        document.getElementById('gen-academic-rank').textContent = faculty.position;
+            grid.innerHTML +=
+                html;
 
-        const avatarEl = document.getElementById('profile-avatar');
-        if (faculty.photoUrl) {
-            avatarEl.innerHTML = `<img src="${faculty.photoUrl}" alt="${faculty.name}" class="w-full h-full object-cover" onerror="this.parentElement.textContent='👤'">`;
-        } else {
-            avatarEl.textContent = '👤';
         }
+    );
 
-        currentStatus = faculty.status === 'Inactive' ? 'Inactive' : 'Active';
+}
 
-        switchTab(0);
+
+/* ================================================================
+   OPEN PROFILE
+================================================================ */
+
+function openProfile(id) {
+
+    const faculty =
+        facultyData.find(
+            f =>
+                f.id === id
+        );
+
+
+    if (!faculty) {
+        return;
     }
 
-    function backToList() {
-        document.getElementById('profile-view').classList.add('hidden');
-        document.getElementById('list-view').classList.remove('hidden');
-        selectedFacultyId = null;
+
+    selectedFacultyId =
+        id;
+
+
+    const deleteButton =
+        document.getElementById(
+            'deleteFacultyBtn'
+        );
+
+
+    if (deleteButton) {
+
+        deleteButton.classList.toggle(
+            'hidden',
+            !hasPermission(
+                'deleteFaculty'
+            )
+        );
+
     }
 
-    function switchTab(tab) {
-        document.getElementById('personal-content').classList.add('hidden');
-        document.getElementById('documents-content').classList.add('hidden');
-        document.getElementById('research-content').classList.add('hidden');
 
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
+    document.getElementById(
+        'list-view'
+    ).classList.add(
+        'hidden'
+    );
 
-        if (tab === 0) {
-            document.getElementById('personal-content').classList.remove('hidden');
-            document.getElementById('personal-tab').classList.add('tab-active');
-        } else if (tab === 1) {
-            document.getElementById('documents-content').classList.remove('hidden');
-            document.getElementById('documents-tab').classList.add('tab-active');
-        } else if (tab === 2) {
-            document.getElementById('research-content').classList.remove('hidden');
-            document.getElementById('research-tab').classList.add('tab-active');
-        }
+
+    document.getElementById(
+        'profile-view'
+    ).classList.remove(
+        'hidden'
+    );
+
+
+    document.getElementById(
+        'profile-name'
+    ).textContent =
+        faculty.name;
+
+
+    document.getElementById(
+        'profile-position'
+    ).textContent =
+        faculty.position;
+
+
+    document.getElementById(
+        'profile-phone'
+    ).textContent =
+        faculty.phone;
+
+
+    document.getElementById(
+        'profile-email'
+    ).textContent =
+        faculty.email;
+
+
+    document.getElementById(
+        'profile-status'
+    ).textContent =
+        faculty.status;
+
+
+    document.getElementById(
+        'gen-email'
+    ).textContent =
+        faculty.email;
+
+
+    document.getElementById(
+        'gen-department'
+    ).textContent =
+        faculty.department;
+
+
+    document.getElementById(
+        'gen-access-role'
+    ).textContent =
+        faculty.role ||
+        faculty.position;
+
+
+    document.getElementById(
+        'gen-academic-rank'
+    ).textContent =
+        faculty.academicRank ||
+        faculty.position;
+
+
+    document.getElementById(
+        'gen-years'
+    ).textContent =
+        faculty.yearsInService ||
+        '-';
+
+
+    document.getElementById(
+        'gen-shift'
+    ).textContent =
+        faculty.shift ||
+        '-';
+
+
+    document.getElementById(
+        'gen-teaching-status'
+    ).textContent =
+        faculty.teachingStatus ||
+        faculty.status ||
+        'Active';
+
+
+    document.getElementById(
+        'con-contract-type'
+    ).textContent =
+        faculty.contractType ||
+        'N/A';
+
+
+    document.getElementById(
+        'con-start-date'
+    ).textContent =
+        faculty.startDate ||
+        '-';
+
+
+    document.getElementById(
+        'con-end-date'
+    ).textContent =
+        faculty.endDate ||
+        'N/A';
+
+
+    document.getElementById(
+        'con-employment-type'
+    ).textContent =
+        faculty.employmentType ||
+        'N/A';
+
+
+    document.getElementById(
+        'con-salary'
+    ).textContent =
+        hasPermission('viewSalary')
+            ? (
+                faculty.salary !== ''
+                    ? `₱${Number(faculty.salary).toLocaleString()}`
+                    : 'N/A'
+            )
+            : '₱XX,XXX';
+
+
+    document.getElementById(
+        'con-renewal'
+    ).textContent =
+        faculty.renewal ||
+        'N/A';
+
+
+    const avatar =
+        document.getElementById(
+            'profile-avatar'
+        );
+
+
+    if (faculty.photoUrl) {
+
+        avatar.innerHTML = `
+            <img
+                src="${escapeHtml(faculty.photoUrl)}"
+                alt="${escapeHtml(faculty.name)}"
+                class="w-full h-full object-cover"
+            >
+        `;
+
     }
 
-    function toggleStatus() {
-        const statusEl = document.getElementById('profile-status');
-        if (currentStatus === 'Active') {
-            currentStatus = 'Inactive';
-            statusEl.textContent = 'Inactive';
-            statusEl.className = 'cursor-pointer px-6 py-1.5 rounded-3xl text-sm font-medium bg-red-100 text-red-700';
-        } else {
-            currentStatus = 'Active';
-            statusEl.textContent = 'Active';
-            statusEl.className = 'cursor-pointer px-6 py-1.5 rounded-3xl text-sm font-medium bg-emerald-100 text-emerald-700';
-        }
-        persistSelectedFacultyStatus();
+    else {
+
+        avatar.textContent =
+            initials(
+                faculty.name
+            );
+
     }
 
-    async function persistSelectedFacultyStatus() {
-        if (!selectedFacultyId) return;
-        const { error } = await supabaseClient
+
+    currentStatus =
+        String(
+            faculty.status
+        ).toLowerCase() === 'inactive'
+            ? 'Inactive'
+            : 'Active';
+
+
+    updateProfileStatusUI();
+
+    switchTab(0);
+
+}
+
+
+/* ================================================================
+   PROFILE STATUS UI
+================================================================ */
+
+function updateProfileStatusUI() {
+
+    const status =
+        document.getElementById(
+            'profile-status'
+        );
+
+
+    status.textContent =
+        currentStatus;
+
+
+    status.className =
+        currentStatus === 'Active'
+
+            ? 'cursor-pointer px-6 py-1.5 rounded-3xl text-sm font-medium bg-emerald-100 text-emerald-700'
+
+            : 'cursor-pointer px-6 py-1.5 rounded-3xl text-sm font-medium bg-red-100 text-red-700';
+
+}
+
+
+/* ================================================================
+   BACK
+================================================================ */
+
+function backToList() {
+
+    document.getElementById(
+        'profile-view'
+    ).classList.add(
+        'hidden'
+    );
+
+
+    document.getElementById(
+        'list-view'
+    ).classList.remove(
+        'hidden'
+    );
+
+
+    selectedFacultyId =
+        null;
+
+}
+
+
+/* ================================================================
+   TABS
+================================================================ */
+
+function switchTab(tab) {
+
+    document.getElementById(
+        'personal-content'
+    ).classList.add(
+        'hidden'
+    );
+
+
+    document.getElementById(
+        'documents-content'
+    ).classList.add(
+        'hidden'
+    );
+
+
+    document.getElementById(
+        'research-content'
+    ).classList.add(
+        'hidden'
+    );
+
+
+    document.querySelectorAll(
+        '.tab'
+    )
+        .forEach(
+            tabButton =>
+                tabButton.classList.remove(
+                    'tab-active'
+                )
+        );
+
+
+    if (tab === 0) {
+
+        document.getElementById(
+            'personal-content'
+        ).classList.remove(
+            'hidden'
+        );
+
+
+        document.getElementById(
+            'personal-tab'
+        ).classList.add(
+            'tab-active'
+        );
+
+    }
+
+    else if (tab === 1) {
+
+        document.getElementById(
+            'documents-content'
+        ).classList.remove(
+            'hidden'
+        );
+
+
+        document.getElementById(
+            'documents-tab'
+        ).classList.add(
+            'tab-active'
+        );
+
+    }
+
+    else {
+
+        document.getElementById(
+            'research-content'
+        ).classList.remove(
+            'hidden'
+        );
+
+
+        document.getElementById(
+            'research-tab'
+        ).classList.add(
+            'tab-active'
+        );
+
+    }
+
+}
+
+
+/* ================================================================
+   STATUS
+================================================================ */
+
+function toggleStatus() {
+
+    if (
+        !hasPermission(
+            'editFaculty'
+        )
+    ) {
+
+        alert(
+            'You do not have permission to change faculty status.'
+        );
+
+        return;
+
+    }
+
+
+    currentStatus =
+        currentStatus === 'Active'
+            ? 'Inactive'
+            : 'Active';
+
+
+    updateProfileStatusUI();
+
+    persistSelectedFacultyStatus();
+
+}
+
+
+/* ================================================================
+   SAVE STATUS
+================================================================ */
+
+async function persistSelectedFacultyStatus() {
+
+    if (!selectedFacultyId) {
+        return;
+    }
+
+
+    const {
+        error
+    } =
+        await supabaseClient
             .from('faculty')
-            .update({ status: currentStatus, updated_at: new Date().toISOString() })
-            .eq('id', selectedFacultyId);
+            .update({
+
+                status:
+                    currentStatus,
+
+                updated_at:
+                    new Date().toISOString()
+
+            })
+            .eq(
+                'id',
+                selectedFacultyId
+            );
+
+
+    if (error) {
+
+        console.error(
+            'Status update failed:',
+            error
+        );
+
+
+        alert(
+            `Unable to update status: ${error.message}`
+        );
+
+        return;
+
+    }
+
+
+    const faculty =
+        facultyData.find(
+            f =>
+                f.id ===
+                selectedFacultyId
+        );
+
+
+    if (faculty) {
+
+        faculty.status =
+            currentStatus;
+
+        faculty.teachingStatus =
+            currentStatus;
+
+    }
+
+
+    document.getElementById(
+        'gen-teaching-status'
+    ).textContent =
+        currentStatus;
+
+
+    updateStats(
+        facultyData
+    );
+
+
+    renderFacultyCards(
+        facultyData
+    );
+
+}
+
+
+/* ================================================================
+   EDIT MODAL
+================================================================ */
+
+function openEditModal(section) {
+
+    if (
+        !hasPermission(
+            'editFaculty'
+        )
+    ) {
+
+        alert(
+            'You do not have permission to edit faculty information.'
+        );
+
+        return;
+
+    }
+
+
+    const faculty =
+        facultyData.find(
+            f =>
+                f.id ===
+                selectedFacultyId
+        );
+
+
+    if (!faculty) {
+        return;
+    }
+
+
+    currentEditSection =
+        section;
+
+
+    const modal =
+        document.getElementById(
+            'editModal'
+        );
+
+
+    const body =
+        document.getElementById(
+            'modalBody'
+        );
+
+
+    const title =
+        document.getElementById(
+            'modalTitle'
+        );
+
+
+    if (section === 'general') {
+
+        title.textContent =
+            'Edit General Information';
+
+
+        body.innerHTML = `
+
+            <div class="space-y-6">
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Active Email
+                    </label>
+
+                    <input
+                        id="edit-email"
+                        type="email"
+                        value="${escapeHtml(faculty.email)}"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Department
+                    </label>
+
+                    <select
+                        id="edit-department"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                        <option value="BSIT" ${faculty.department === 'BSIT' ? 'selected' : ''}>
+                            BSIT
+                        </option>
+
+                        <option value="BIT" ${faculty.department === 'BIT' ? 'selected' : ''}>
+                            BIT
+                        </option>
+
+                        <option value="BSIE" ${faculty.department === 'BSIE' ? 'selected' : ''}>
+                            BSIE
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Teaching Status
+                    </label>
+
+                    <select
+                        id="edit-teaching-status"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                        <option value="Active" ${faculty.teachingStatus === 'Active' ? 'selected' : ''}>
+                            Active
+                        </option>
+
+                        <option value="Inactive" ${faculty.teachingStatus === 'Inactive' ? 'selected' : ''}>
+                            Inactive
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Academic Rank
+                    </label>
+
+                    <select
+                        id="edit-academic-rank"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                        <option value="Associate Degree" ${faculty.academicRank === 'Associate Degree' ? 'selected' : ''}>
+                            Associate Degree
+                        </option>
+
+                        <option value="Bachelor's Degree" ${faculty.academicRank === "Bachelor's Degree" ? 'selected' : ''}>
+                            Bachelor's Degree
+                        </option>
+
+                        <option value="Master's Degree" ${faculty.academicRank === "Master's Degree" ? 'selected' : ''}>
+                            Master's Degree
+                        </option>
+
+                        <option value="Doctoral Degree" ${faculty.academicRank === 'Doctoral Degree' ? 'selected' : ''}>
+                            Doctoral Degree
+                        </option>
+
+                        <option value="Professional Degree" ${faculty.academicRank === 'Professional Degree' ? 'selected' : ''}>
+                            Professional Degree
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Years in Service
+                    </label>
+
+                    <input
+                        id="edit-years"
+                        type="number"
+                        min="0"
+                        value="${escapeHtml(faculty.yearsInService)}"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Shift
+                    </label>
+
+                    <select
+                        id="edit-shift"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                        <option value="Morning" ${faculty.shift === 'Morning' ? 'selected' : ''}>
+                            Morning
+                        </option>
+
+                        <option value="Afternoon" ${faculty.shift === 'Afternoon' ? 'selected' : ''}>
+                            Afternoon
+                        </option>
+
+                        <option value="Night" ${faculty.shift === 'Night' ? 'selected' : ''}>
+                            Night
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
+
+    else {
+
+        title.textContent =
+            'Edit Contract Information';
+
+
+        body.innerHTML = `
+
+            <div class="space-y-6">
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Contract Type
+                    </label>
+
+                    <select
+                        id="edit-contract-type"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                        <option ${faculty.contractType === 'Full-Time' ? 'selected' : ''}>
+                            Full-Time
+                        </option>
+
+                        <option ${faculty.contractType === 'Part-Time' ? 'selected' : ''}>
+                            Part-Time
+                        </option>
+
+                        <option ${faculty.contractType === 'Temporary' ? 'selected' : ''}>
+                            Temporary
+                        </option>
+
+                        <option ${faculty.contractType === 'Visiting' ? 'selected' : ''}>
+                            Visiting
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Start Date
+                    </label>
+
+                    <input
+                        id="edit-start-date"
+                        type="date"
+                        value="${escapeHtml(faculty.startDate)}"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        End Date
+                    </label>
+
+                    <input
+                        id="edit-end-date"
+                        type="date"
+                        value="${escapeHtml(faculty.endDate)}"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Employment Type
+                    </label>
+
+                    <select
+                        id="edit-employment-type"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                        <option ${faculty.employmentType === 'Regular' ? 'selected' : ''}>
+                            Regular
+                        </option>
+
+                        <option ${faculty.employmentType === 'Probationary' ? 'selected' : ''}>
+                            Probationary
+                        </option>
+
+                        <option ${faculty.employmentType === 'Contractual' ? 'selected' : ''}>
+                            Contractual
+                        </option>
+
+                        <option ${faculty.employmentType === 'Job Order' ? 'selected' : ''}>
+                            Job Order
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Salary
+                    </label>
+
+                    <input
+                        id="edit-salary"
+                        type="number"
+                        min="0"
+                        value="${escapeHtml(faculty.salary)}"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                </div>
+
+
+                <div>
+
+                    <label class="block text-sm text-gray-600 mb-1">
+                        Renewal
+                    </label>
+
+                    <select
+                        id="edit-renewal"
+                        class="w-full border border-gray-300 rounded-2xl px-4 py-3"
+                    >
+
+                        <option ${faculty.renewal === 'For Renewal' ? 'selected' : ''}>
+                            For Renewal
+                        </option>
+
+                        <option ${faculty.renewal === 'Renewed' ? 'selected' : ''}>
+                            Renewed
+                        </option>
+
+                        <option ${faculty.renewal === 'Not Renewed' ? 'selected' : ''}>
+                            Not Renewed
+                        </option>
+
+                        <option ${faculty.renewal === 'N/A (Permanent)' ? 'selected' : ''}>
+                            N/A (Permanent)
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
+
+
+    modal.classList.remove(
+        'hidden'
+    );
+
+    modal.classList.add(
+        'flex'
+    );
+
+
+    document.body.style.overflow =
+        'hidden';
+
+}
+
+
+/* ================================================================
+   CLOSE EDIT
+================================================================ */
+
+function closeEditModal() {
+
+    const modal =
+        document.getElementById(
+            'editModal'
+        );
+
+
+    modal.classList.add(
+        'hidden'
+    );
+
+    modal.classList.remove(
+        'flex'
+    );
+
+
+    document.body.style.overflow =
+        '';
+
+}
+
+
+/* ================================================================
+   SAVE EDIT
+================================================================ */
+
+async function saveEditChanges() {
+
+    if (!selectedFacultyId) {
+        return;
+    }
+
+
+    if (
+        !hasPermission(
+            'editFaculty'
+        )
+    ) {
+
+        alert(
+            'You do not have permission to edit faculty information.'
+        );
+
+        return;
+
+    }
+
+
+    try {
+
+        let updateData = {};
+
+
+        if (
+            currentEditSection ===
+            'general'
+        ) {
+
+            const email =
+                document.getElementById(
+                    'edit-email'
+                ).value
+                    .trim()
+                    .toLowerCase();
+
+
+            const department =
+                document.getElementById(
+                    'edit-department'
+                ).value;
+
+
+            const status =
+                document.getElementById(
+                    'edit-teaching-status'
+                ).value;
+
+
+            const academicRank =
+                document.getElementById(
+                    'edit-academic-rank'
+                ).value;
+
+
+            const years =
+                document.getElementById(
+                    'edit-years'
+                ).value;
+
+
+            const shift =
+                document.getElementById(
+                    'edit-shift'
+                ).value;
+
+
+            if (
+                !email ||
+                !isEmail(email)
+            ) {
+
+                alert(
+                    'Please enter a valid email address.'
+                );
+
+                return;
+
+            }
+
+
+            updateData = {
+
+                email,
+
+                private_email:
+                    email,
+
+                department,
+
+                status,
+
+                teaching_status:
+                    status,
+
+                academic_rank:
+                    academicRank,
+
+                years_in_service:
+                    years
+                        ? Number(years)
+                        : null,
+
+                years_experience:
+                    years
+                        ? Number(years)
+                        : 0,
+
+                shift,
+
+                updated_at:
+                    new Date().toISOString()
+
+            };
+
+        }
+
+        else {
+
+            updateData = {
+
+                contract_type:
+                    document.getElementById(
+                        'edit-contract-type'
+                    ).value,
+
+                start_date:
+                    document.getElementById(
+                        'edit-start-date'
+                    ).value ||
+                    null,
+
+                end_date:
+                    document.getElementById(
+                        'edit-end-date'
+                    ).value ||
+                    null,
+
+                employment_type:
+                    document.getElementById(
+                        'edit-employment-type'
+                    ).value,
+
+                salary:
+                    document.getElementById(
+                        'edit-salary'
+                    ).value
+                        ? Number(
+                            document.getElementById(
+                                'edit-salary'
+                            ).value
+                        )
+                        : null,
+
+                renewal:
+                    document.getElementById(
+                        'edit-renewal'
+                    ).value,
+
+                updated_at:
+                    new Date().toISOString()
+
+            };
+
+        }
+
+
+        const {
+            error
+        } =
+            await supabaseClient
+                .from('faculty')
+                .update(
+                    updateData
+                )
+                .eq(
+                    'id',
+                    selectedFacultyId
+                );
+
 
         if (error) {
-            console.error('Status update failed:', error);
-            alert(`Unable to update status: ${error.message}`);
-            return;
+            throw error;
         }
 
-        const target = facultyData.find(f => f.id === selectedFacultyId);
-        if (target) target.status = currentStatus;
-        updateStats(facultyData);
-        renderFacultyCards(facultyData);
-    }
-
-    function openEditModal(section) {
-        currentEditSection = section;
-        const modal = document.getElementById('editModal');
-        const body = document.getElementById('modalBody');
-        const title = document.getElementById('modalTitle');
-
-        if (section === 'general') {
-            title.textContent = "Edit General Information";
-            body.innerHTML = `
-                <div class="space-y-6">
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Employee ID</label>
-                        <input id="edit-employee-id" type="text" value="${document.getElementById('gen-employee-id').textContent}" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Access Role</label>
-                        <select id="edit-access-role" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                            <option value="Admin">Admin</option>
-                            <option value="Faculty" selected>Faculty</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Department</label>
-                        <select id="edit-department" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                            <option value="BSIT">BSIT</option>
-                            <option value="BIT">BIT</option>
-                            <option value="BSIE">BSIE</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Teaching Status</label>
-                        <select id="edit-teaching-status" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                            <option value="Active">Active</option>
-                            <option value="Inactive">Inactive</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Academic Rank</label>
-                        <select id="edit-academic-rank" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                            <option value="Associate Degree">Associate Degree</option>
-                            <option value="Bachelor's Degree">Bachelor's Degree</option>
-                            <option value="Master's Degree">Master's Degree</option>
-                            <option value="Doctoral Degree">Doctoral Degree</option>
-                            <option value="Professional Degree">Professional Degree</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Years in Service</label>
-                        <input id="edit-years" type="number" value="${document.getElementById('gen-years').textContent.replace(' Years', '')}" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Shift</label>
-                        <select id="edit-shift" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                            <option value="Morning">Morning</option>
-                            <option value="Afternoon">Afternoon</option>
-                            <option value="Night">Night</option>
-                        </select>
-                    </div>
-                </div>
-            `;
-        } else if (section === 'contract') {
-            title.textContent = "Edit Contract Information";
-            body.innerHTML = `
-                <div class="space-y-6">
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Contract Type</label>
-                        <select id="edit-contract-type" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                            <option value="Full-Time">Full-Time</option>
-                            <option value="Part-Time">Part-Time</option>
-                            <option value="Temporary">Temporary</option>
-                            <option value="Visiting">Visiting</option>
-                            <option value="Research Faculty">Research Faculty</option>
-                            <option value="Administrative Faculty">Administrative Faculty</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Start Date</label>
-                        <input id="edit-start-date" type="date" value="${document.getElementById('con-start-date').textContent}" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">End Date</label>
-                        <input id="edit-end-date" type="date" value="${document.getElementById('con-end-date').textContent === 'N/A' ? '' : document.getElementById('con-end-date').textContent}" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Employment Type</label>
-                        <select id="edit-employment-type" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                            <option value="Regular">Regular</option>
-                            <option value="Probationary">Probationary</option>
-                            <option value="Contractual">Contractual</option>
-                            <option value="Job Order">Job Order</option>
-                            <option value="Part-Time">Part-Time</option>
-                            <option value="Project Based">Project Based</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Salary (₱)</label>
-                        <input id="edit-salary" type="text" value="${document.getElementById('con-salary').textContent.replace('₱', '').trim()}" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">Renewal</label>
-                        <select id="edit-renewal" class="w-full border border-gray-300 rounded-2xl px-4 py-3">
-                            <option value="For Renewal">For Renewal</option>
-                            <option value="Renewed">Renewed</option>
-                            <option value="Not Renewed">Not Renewed</option>
-                            <option value="N/A (Permanent)">N/A (Permanent)</option>
-                        </select>
-                    </div>
-                </div>
-            `;
-        }
-
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-    }
-
-    function closeEditModal() {
-        const modal = document.getElementById('editModal');
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
-
-    function saveEditChanges() {
-        if (currentEditSection === 'general') {
-            document.getElementById('gen-employee-id').textContent = document.getElementById('edit-employee-id').value || '123456';
-            document.getElementById('gen-access-role').textContent = document.getElementById('edit-access-role').value || 'Faculty';
-            document.getElementById('gen-department').textContent = document.getElementById('edit-department').value || 'BSIT';
-            document.getElementById('gen-teaching-status').textContent = document.getElementById('edit-teaching-status').value || 'Active';
-            document.getElementById('gen-academic-rank').textContent = document.getElementById('edit-academic-rank').value || 'Associate Professor';
-            document.getElementById('gen-years').textContent = (document.getElementById('edit-years').value || '8') + ' Years';
-            document.getElementById('gen-shift').textContent = document.getElementById('edit-shift').value || 'Morning';
-        } else if (currentEditSection === 'contract') {
-            document.getElementById('con-contract-type').textContent = document.getElementById('edit-contract-type').value || 'Full-time';
-            document.getElementById('con-start-date').textContent = document.getElementById('edit-start-date').value || '2018-08-15';
-            document.getElementById('con-end-date').textContent = document.getElementById('edit-end-date').value || 'N/A';
-            document.getElementById('con-employment-type').textContent = document.getElementById('edit-employment-type').value || 'Regular';
-            document.getElementById('con-salary').textContent = '₱' + (document.getElementById('edit-salary').value || 'XX,XXX');
-            document.getElementById('con-renewal').textContent = document.getElementById('edit-renewal').value || 'N/A';
-        }
 
         closeEditModal();
-        alert("Changes saved successfully!");
-    }
 
-    function newRequest() { alert("New Request functionality would open here."); }
-    function uploadDocument() { alert("Upload Documents modal would open here."); }
-    function viewDocument() { alert("Viewing document..."); }
-    function downloadDocument() { alert("Downloading document..."); }
-    function deleteDocument(btn) {
-        if (confirm("Are you sure you want to delete this document?")) {
-            btn.closest('tr').remove();
-        }
-    }
-    function viewResearch(id) { alert("Opened Research Project " + id); }
-    function downloadResearch() { alert("Downloading IoT_Research_Final.pdf..."); }
-    function viewLink() { alert("Opening research link: https://example.com/research/iot-campus"); }
+        await loadFacultyProfiles();
 
-    // Add Faculty Modal
-    function openAddFacultyModal() {
-        document.getElementById('addFacultyModal').classList.remove('hidden');
-        document.getElementById('addFacultyModal').classList.add('flex');
-        generatePassword();
-    }
 
-    function closeAddFacultyModal() {
-        document.getElementById('addFacultyModal').classList.add('hidden');
-        document.getElementById('addFacultyModal').classList.remove('flex');
-    }
+        if (
+            facultyData.some(
+                f =>
+                    f.id ===
+                    selectedFacultyId
+            )
+        ) {
 
-    function generatePassword() {
-        const passwordField = document.getElementById('add-password');
-        const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-        const lower = 'abcdefghijkmnopqrstuvwxyz';
-        const nums = '23456789';
-        const special = '!@#$%';
-        const all = upper + lower + nums + special;
-        const pick = (chars) => chars[Math.floor(Math.random() * chars.length)];
-        const raw = [pick(upper), pick(lower), pick(nums), pick(special)];
-        while (raw.length < 12) raw.push(pick(all));
-        passwordField.value = raw.sort(() => Math.random() - 0.5).join('');
-        // Re-hide whenever a new password is generated.
-        passwordField.type = 'password';
-        const toggleBtn = document.getElementById('toggle-password-btn');
-        if (toggleBtn) toggleBtn.textContent = '👁';
-    }
+            openProfile(
+                selectedFacultyId
+            );
 
-    function togglePasswordVisibility() {
-        const passwordField = document.getElementById('add-password');
-        const toggleBtn = document.getElementById('toggle-password-btn');
-        if (passwordField.type === 'password') {
-            passwordField.type = 'text';
-            toggleBtn.textContent = '🙈';
-        } else {
-            passwordField.type = 'password';
-            toggleBtn.textContent = '👁';
-        }
-    }
-
-    function generateFacultyId() {
-        const year = new Date().getFullYear();
-        const uniquePart = String(Date.now()).slice(-6);
-        const randomPart = Math.floor(10 + Math.random() * 90);
-        return `FAC-${year}-${uniquePart}${randomPart}`;
-    }
-
-    function isEmail(value) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-    }
-
-    function clearAddFacultyForm() {
-        document.getElementById('add-employee-id-email').value = '';
-        document.getElementById('add-private-email').value = '';
-        document.getElementById('add-contract-type').value = 'Full-Time';
-        document.getElementById('add-employment-type').value = 'Regular';
-        document.getElementById('add-start-date').value = '';
-        document.getElementById('add-end-date').value = '';
-        document.getElementById('add-salary').value = '';
-        document.getElementById('add-renewal').value = 'For Renewal';
-        generatePassword();
-    }
-
-    // Sends the generated credentials to the faculty member's private email and
-    // notifies the admin that this happened. This calls a Supabase Edge Function
-    // ('send-faculty-credentials') which is expected to handle the actual email
-    // delivery (e.g. via Resend/SendGrid/SMTP). Wire that function up on the
-    // Supabase side; this call will simply fail gracefully if it isn't deployed yet.
-    async function sendCredentialsEmail({ privateEmail, facultyId, password, fullName, loginEmail }) {
-        const attempt = async () => {
-            const { error } = await supabaseClient.functions.invoke('send-faculty-credentials', {
-                body: {
-                    to: privateEmail,
-                    adminNotifyEmail: ADMIN_NOTIFICATION_EMAIL,
-                    facultyId,
-                    password,
-                    fullName,
-                    loginEmail
-                }
-            });
-            if (error) throw error;
-        };
-
-        // Retry once after a short delay in case of a transient network/gateway blip
-        // (e.g. an intermittent 404 on the CORS preflight to the Edge Function).
-        try {
-            await attempt();
-            return true;
-        } catch (firstError) {
-            console.warn('Credential email attempt 1 failed, retrying in 1.5s:', firstError);
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-            try {
-                await attempt();
-                return true;
-            } catch (secondError) {
-                console.warn('Credential email delivery could not be confirmed after retry:', secondError);
-                return false;
-            }
-        }
-    }
-
-    function showFacultyCredentialsModal(privateEmail, emailSent) {
-        const modal = document.getElementById('facultyCredentialsModal');
-        const header = modal.querySelector('.bg-emerald-50');
-        const titleEl = header.querySelector('h3');
-        const subtitleEl = header.querySelector('p');
-        const sentBlock = document.getElementById('confirmSentToEmail').closest('.bg-gray-50');
-        const adminBlock = modal.querySelector('.bg-blue-50');
-
-        document.getElementById('confirmSentToEmail').textContent = privateEmail;
-
-        const failedWarning = document.getElementById('emailFailedWarning');
-
-        if (emailSent) {
-            header.classList.remove('bg-red-50');
-            header.classList.add('bg-emerald-50');
-            titleEl.textContent = 'Faculty Account Created';
-            subtitleEl.textContent = 'Credentials were emailed — not shown on screen.';
-            sentBlock.classList.remove('hidden');
-            adminBlock.classList.remove('hidden');
-            failedWarning.classList.add('hidden');
-        } else {
-            header.classList.remove('bg-emerald-50');
-            header.classList.add('bg-red-50');
-            titleEl.textContent = 'Account Created, but Email Failed';
-            subtitleEl.textContent = 'The faculty account exists, but we could not confirm the credential email was sent.';
-            sentBlock.classList.add('hidden');
-            adminBlock.classList.add('hidden');
-            failedWarning.classList.remove('hidden');
         }
 
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
+
+        alert(
+            'Changes saved successfully!'
+        );
+
     }
 
-    function closeFacultyCredentialsModal() {
-        document.getElementById('facultyCredentialsModal').classList.add('hidden');
-        document.getElementById('facultyCredentialsModal').classList.remove('flex');
+    catch (error) {
+
+        console.error(
+            'Save faculty changes failed:',
+            error
+        );
+
+
+        alert(
+            `Unable to save changes.\n\n${error.message || 'Unknown error.'}`
+        );
+
     }
 
-    function deriveNamePartsFromEmail(email) {
-        const local = email.split('@')[0] || 'faculty';
-        const tokens = local
-            .replace(/[^a-zA-Z0-9._-]/g, '')
-            .split(/[._-]+/)
-            .filter(Boolean);
-        if (!tokens.length) {
-            return { firstName: 'Faculty', lastName: 'User', fullName: 'Faculty User' };
-        }
-        const normalized = tokens.map((t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
-        const firstName = normalized[0];
-        const lastName = normalized.slice(1).join(' ') || 'Faculty';
-        const fullName = `${firstName} ${lastName}`.trim();
-        return { firstName, lastName, fullName };
+}
+
+
+/* ================================================================
+   DELETE FACULTY
+================================================================ */
+
+function confirmDeleteFaculty() {
+
+    if (
+        !hasPermission(
+            'deleteFaculty'
+        )
+    ) {
+
+        alert(
+            'You do not have permission to delete faculty accounts.'
+        );
+
+        return;
+
     }
 
-    async function createFacultyAccount() {
-        const createBtn = document.getElementById('createFacultyAccountBtn');
-        const emailInput = document.getElementById('add-employee-id-email').value.trim();
-        const privateEmailInput = document.getElementById('add-private-email').value.trim();
-        const tempPassword = document.getElementById('add-password').value.trim();
-        const contractType = document.getElementById('add-contract-type').value;
-        const employmentType = document.getElementById('add-employment-type').value;
-        const startDate = document.getElementById('add-start-date').value || null;
-        const endDate = document.getElementById('add-end-date').value || null;
-        const salary = document.getElementById('add-salary').value.trim();
-        const renewal = document.getElementById('add-renewal').value;
 
-        if (!emailInput || !isEmail(emailInput)) {
-            alert('Please enter a valid faculty email. This is used by Supabase Auth behind the Faculty ID login.');
-            return;
-        }
-        if (!privateEmailInput || !isEmail(privateEmailInput)) {
-            alert('Please enter a valid temporary (private) email. The generated credentials will be sent there.');
-            return;
-        }
-        if (!tempPassword || tempPassword.length < 8) {
-            alert('Please generate a valid temporary password first.');
-            return;
-        }
+    const faculty =
+        facultyData.find(
+            f =>
+                f.id ===
+                selectedFacultyId
+        );
 
-        const email = emailInput.toLowerCase();
-        const privateEmail = privateEmailInput.toLowerCase();
-        const { firstName, lastName, fullName } = deriveNamePartsFromEmail(email);
-        const generatedEmployeeId = generateFacultyId();
-        const role = 'Faculty';
-        const parsedSalary = salary ? Number(String(salary).replace(/,/g, '')) : null;
-        if (salary && (Number.isNaN(parsedSalary) || parsedSalary < 0)) {
-            alert('Salary must be a valid non-negative number.');
-            return;
-        }
 
-        // This assumes the 'faculty' table has a private_email column
-        // (ALTER TABLE faculty ADD COLUMN private_email text;). If you ever see a
-        // "Could not find the 'private_email' column" error again, that column
-        // was removed/renamed — either re-add it or delete this line.
-        const buildFacultyPayload = (authUserId) => ({
-            auth_user_id: authUserId,
-            name: fullName,
-            full_name: fullName,
-            email,
-            existing_email: email,
-            private_email: privateEmail,
-            employee_id: generatedEmployeeId,
-            position: 'Faculty',
-            status: 'Active',
-            department: 'N/A',
-            phone: '',
-            birthdate: null,
-            profile_photo_url: null,
-            contract_type: contractType,
-            employment_type: employmentType,
-            start_date: startDate,
-            end_date: endDate,
-            salary: parsedSalary,
-            renewal,
-            role,
-            profile_completed: false,
-            must_change_password: true,
-            updated_at: new Date().toISOString()
-        });
+    if (!faculty) {
 
-        createBtn.disabled = true;
-        createBtn.textContent = 'Creating...';
+        alert(
+            'Faculty profile not found.'
+        );
 
-        try {
-            const { data: signUpData, error: signUpError } = await onboardingClient.auth.signUp({
-                email,
-                password: tempPassword,
-                options: {
-                    data: {
-                        first_name: firstName,
-                        last_name: lastName,
-                        id_number: generatedEmployeeId,
-                        full_name: fullName,
-                        role,
-                        employee_id: generatedEmployeeId,
-                        profile_completed: false,
-                        must_change_password: true
+        return;
+
+    }
+
+
+    if (!faculty.authUserId) {
+
+        alert(
+            'This faculty profile is not linked to a Supabase Auth user.'
+        );
+
+        return;
+
+    }
+
+
+    document.getElementById(
+        'deleteFacultyName'
+    ).textContent =
+        faculty.name;
+
+
+    const modal =
+        document.getElementById(
+            'deleteFacultyModal'
+        );
+
+
+    modal.classList.remove(
+        'hidden'
+    );
+
+    modal.classList.add(
+        'flex'
+    );
+
+}
+
+
+/* ================================================================
+   CLOSE DELETE
+================================================================ */
+
+function closeDeleteFacultyModal() {
+
+    const modal =
+        document.getElementById(
+            'deleteFacultyModal'
+        );
+
+
+    modal.classList.add(
+        'hidden'
+    );
+
+    modal.classList.remove(
+        'flex'
+    );
+
+}
+
+
+/* ================================================================
+   DELETE SELECTED FACULTY
+================================================================ */
+
+async function deleteSelectedFaculty() {
+
+    if (
+        !hasPermission(
+            'deleteFaculty'
+        )
+    ) {
+        return;
+    }
+
+
+    const faculty =
+        facultyData.find(
+            f =>
+                f.id ===
+                selectedFacultyId
+        );
+
+
+    if (!faculty) {
+        return;
+    }
+
+
+    const button =
+        document.getElementById(
+            'confirmDeleteFacultyBtn'
+        );
+
+
+    button.disabled =
+        true;
+
+
+    button.innerHTML =
+        '<i class="fa-solid fa-spinner fa-spin"></i> Deleting...';
+
+
+    try {
+
+        const {
+            data,
+            error
+        } =
+            await supabaseClient.functions.invoke(
+                'delete-faculty',
+                {
+                    body: {
+
+                        facultyId:
+                            faculty.id,
+
+                        authUserId:
+                            faculty.authUserId
+
                     }
                 }
-            });
+            );
 
-            if (signUpError) throw signUpError;
 
-            // Supabase may return an empty identities array when the email is already registered.
-            if (signUpData?.user && Array.isArray(signUpData.user.identities) && signUpData.user.identities.length === 0) {
-                throw new Error('This email is already registered. Please use a different email or reset the existing account password.');
-            }
+        if (error) {
 
-            const userId = signUpData?.user?.id;
-            if (!userId) throw new Error('Account created but user id was not returned.');
+            throw await extractFunctionError(
+                error
+            );
 
-            const { error: profileError } = await supabaseClient
-                .from('faculty')
-                .upsert(buildFacultyPayload(userId), { onConflict: 'auth_user_id' });
-            if (profileError) throw profileError;
-
-            // Email the credentials to the faculty's private email and notify the admin.
-            const emailSent = await sendCredentialsEmail({
-                privateEmail,
-                facultyId: generatedEmployeeId,
-                password: tempPassword,
-                fullName,
-                loginEmail: email
-            });
-            if (!emailSent) {
-                console.warn('Faculty account was created, but the credential email could not be confirmed as sent. Check the send-faculty-credentials Edge Function.');
-            }
-
-            closeAddFacultyModal();
-            clearAddFacultyForm();
-            await loadFacultyProfiles();
-            showFacultyCredentialsModal(privateEmail, emailSent);
-        } catch (error) {
-            console.error('Create faculty account failed:', error);
-            if (String(error.message || '').toLowerCase().includes('database error saving new user')) {
-                alert('Failed to create faculty account: database trigger rejected the user insert. Please verify your Supabase auth trigger required fields and try again.');
-            } else {
-                alert(`Failed to create faculty account: ${error.message}`);
-            }
-        } finally {
-            await onboardingClient.auth.signOut();
-            createBtn.disabled = false;
-            createBtn.textContent = 'Create Faculty Account';
         }
+
+
+        if (!data?.success) {
+
+            throw new Error(
+                data?.error ||
+                data?.message ||
+                'Unable to delete faculty account.'
+            );
+
+        }
+
+
+        closeDeleteFacultyModal();
+
+
+        selectedFacultyId =
+            null;
+
+
+        document.getElementById(
+            'profile-view'
+        ).classList.add(
+            'hidden'
+        );
+
+
+        document.getElementById(
+            'list-view'
+        ).classList.remove(
+            'hidden'
+        );
+
+
+        await loadFacultyProfiles();
+
+
+        alert(
+            data.message ||
+            'Faculty account deleted successfully.'
+        );
+
     }
 
-    window.onload = async () => {
-        await loadSidebar();
-        await loadFacultyProfiles();
+    catch (error) {
+
+        console.error(
+            'Delete faculty error:',
+            error
+        );
+
+
+        alert(
+            'Unable to delete faculty account.\n\n' +
+            (
+                error.message ||
+                'Unknown error.'
+            )
+        );
+
+    }
+
+    finally {
+
+        button.disabled =
+            false;
+
+
+        button.innerHTML =
+            '<i class="fa-solid fa-trash"></i> Delete User';
+
+    }
+
+}
+
+
+/* ================================================================
+   ADD FACULTY
+================================================================ */
+
+function openAddFacultyModal() {
+
+    if (
+        !hasPermission(
+            'addFaculty'
+        )
+    ) {
+
+        alert(
+            'You do not have permission to add faculty members.'
+        );
+
+        return;
+
+    }
+
+
+    applyAccessUI();
+
+
+    clearAddFacultyForm();
+
+
+    const modal =
+        document.getElementById(
+            'addFacultyModal'
+        );
+
+
+    modal.classList.remove(
+        'hidden'
+    );
+
+    modal.classList.add(
+        'flex'
+    );
+
+
+    document.body.style.overflow =
+        'hidden';
+
+}
+
+
+/* ================================================================
+   CLOSE ADD FACULTY
+================================================================ */
+
+function closeAddFacultyModal() {
+
+    const modal =
+        document.getElementById(
+            'addFacultyModal'
+        );
+
+
+    modal.classList.add(
+        'hidden'
+    );
+
+    modal.classList.remove(
+        'flex'
+    );
+
+
+    document.body.style.overflow =
+        '';
+
+}
+
+
+/* ================================================================
+   VALIDATE EMAIL
+================================================================ */
+
+function isEmail(value) {
+
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        .test(
+            value
+        );
+
+}
+
+
+/* ================================================================
+   CLEAR FORM
+================================================================ */
+
+function clearAddFacultyForm() {
+
+    document.getElementById(
+        'add-first-name'
+    ).value =
+        '';
+
+
+    document.getElementById(
+        'add-middle-name'
+    ).value =
+        '';
+
+
+    document.getElementById(
+        'add-last-name'
+    ).value =
+        '';
+
+
+    document.getElementById(
+        'add-private-email'
+    ).value =
+        '';
+
+
+    document.getElementById(
+        'add-position'
+    ).value =
+        'Faculty';
+
+
+    const departmentSelect =
+        document.getElementById(
+            'add-department'
+        );
+
+
+    if (
+        hasPermission(
+            'viewAllDepartments'
+        )
+    ) {
+
+        departmentSelect.value =
+            'BSIT';
+
+    }
+
+    else {
+
+        departmentSelect.value =
+            currentUser.department ||
+            'BSIT';
+
+    }
+
+}
+
+
+/* ================================================================
+   FULL NAME
+================================================================ */
+
+function buildFullName(
+    first,
+    middle,
+    last
+) {
+
+    return [
+        first,
+        middle,
+        last
+    ]
+        .map(
+            value =>
+                String(
+                    value || ''
+                )
+                    .trim()
+        )
+        .filter(Boolean)
+        .join(' ');
+
+}
+
+
+/* ================================================================
+   EDGE FUNCTION ERROR HANDLER
+================================================================ */
+
+async function extractFunctionError(error) {
+
+    if (!error) {
+
+        return new Error(
+            'Unknown Edge Function error.'
+        );
+
+    }
+
+
+    let message =
+        error.message ||
+        'Edge Function request failed.';
+
+
+    try {
+
+        if (
+            error.context &&
+            typeof error.context.json === 'function'
+        ) {
+
+            const body =
+                await error.context.json();
+
+
+            message =
+                body?.error ||
+                body?.message ||
+                message;
+
+        }
+
+    }
+
+    catch (_) {
+
+        try {
+
+            if (
+                error.context &&
+                typeof error.context.text === 'function'
+            ) {
+
+                const text =
+                    await error.context.text();
+
+
+                if (text) {
+
+                    try {
+
+                        const parsed =
+                            JSON.parse(
+                                text
+                            );
+
+
+                        message =
+                            parsed?.error ||
+                            parsed?.message ||
+                            text;
+
+                    }
+
+                    catch {
+
+                        message =
+                            text;
+
+                    }
+
+                }
+
+            }
+
+        }
+
+        catch (_) {}
+
+    }
+
+
+    return new Error(
+        message
+    );
+
+}
+
+
+/* ================================================================
+   EMAILJS
+================================================================ */
+
+async function sendWelcomeEmail({
+
+    email,
+
+    fullName,
+
+    temporaryPassword,
+
+    role,
+
+    department
+
+}) {
+
+    // =========================================================
+    // VALIDATION
+    // =========================================================
+
+    if (!email) {
+
+        throw new Error(
+            'No recipient email address was provided.'
+        );
+
+    }
+
+
+    if (!temporaryPassword) {
+
+        throw new Error(
+            'No temporary password was returned by the create-faculty function.'
+        );
+
+    }
+
+
+    if (!fullName) {
+
+        throw new Error(
+            'No faculty name was provided.'
+        );
+
+    }
+
+
+    console.log(
+        'Sending faculty welcome email to:',
+        email
+    );
+
+
+    // =========================================================
+    // EMAILJS TEMPLATE PARAMETERS
+    // =========================================================
+    //
+    // These names correspond to the placeholders in your
+    // EmailJS template.
+    //
+    // Your current email template uses:
+    //
+    // {{name}}
+    // {{email}}
+    // {{temporary_password}}
+    // {{role}}
+    // {{department}}
+    //
+    // Additional aliases are included so you can use them
+    // elsewhere in the EmailJS template if needed.
+    // =========================================================
+
+    const templateParams = {
+
+        // -----------------------------------------------------
+        // RECIPIENT
+        // -----------------------------------------------------
+
+        to_email:
+            email,
+
+        recipient_email:
+            email,
+
+        email:
+            email,
+
+        login_email:
+            email,
+
+
+        // -----------------------------------------------------
+        // FACULTY NAME
+        // -----------------------------------------------------
+
+        to_name:
+            fullName,
+
+        name:
+            fullName,
+
+        full_name:
+            fullName,
+
+
+        // -----------------------------------------------------
+        // LOGIN CREDENTIALS
+        // -----------------------------------------------------
+
+        temporary_password:
+            temporaryPassword,
+
+        password:
+            temporaryPassword,
+
+
+        // -----------------------------------------------------
+        // ACCOUNT INFORMATION
+        // -----------------------------------------------------
+
+        role:
+            role || 'Faculty',
+
+        position:
+            role || 'Faculty',
+
+        department:
+            department || 'Not specified'
+
     };
+
+
+    console.log(
+        'EmailJS template parameters prepared.'
+    );
+
+
+    // =========================================================
+    // SEND EMAIL
+    // =========================================================
+
+    const response =
+        await emailjs.send(
+            EMAILJS_SERVICE_ID,
+            EMAILJS_TEMPLATE_ID,
+            templateParams
+        );
+
+
+    console.log(
+        'EmailJS response:',
+        response
+    );
+
+
+    // =========================================================
+    // VERIFY EMAILJS RESPONSE
+    // =========================================================
+
+    if (
+        !response ||
+        response.status !== 200
+    ) {
+
+        throw new Error(
+            `EmailJS returned an unexpected response: ${
+                response?.status || 'unknown'
+            }`
+        );
+
+    }
+
+
+    console.log(
+        'Faculty credential email sent successfully.'
+    );
+
+
+    return true;
+
+}
+/* ================================================================
+   UPDATE EMAIL STATUS
+================================================================ */
+
+async function updateCredentialEmailStatus({
+
+    facultyId,
+    sent,
+    errorMessage = null
+
+}) {
+
+    if (!facultyId) {
+        return;
+    }
+
+
+    const updateData =
+        sent
+
+            ? {
+
+                credential_email_status:
+                    'sent',
+
+                credential_email_sent_at:
+                    new Date().toISOString(),
+
+                credential_email_failed_at:
+                    null,
+
+                credential_email_error:
+                    null,
+
+                updated_at:
+                    new Date().toISOString()
+
+            }
+
+            : {
+
+                credential_email_status:
+                    'failed',
+
+                credential_email_failed_at:
+                    new Date().toISOString(),
+
+                credential_email_error:
+                    String(
+                        errorMessage ||
+                        'Unable to send credential email.'
+                    ),
+
+                updated_at:
+                    new Date().toISOString()
+
+            };
+
+
+    const {
+        error
+    } =
+        await supabaseClient
+            .from('faculty')
+            .update(
+                updateData
+            )
+            .eq(
+                'id',
+                facultyId
+            );
+
+
+    if (error) {
+
+        console.warn(
+            'Could not update credential email status:',
+            error
+        );
+
+    }
+
+}
+
+
+/* ================================================================
+   CREATE FACULTY ACCOUNT
+================================================================ */
+
+async function createFacultyAccount() {
+
+    const button =
+        document.getElementById(
+            'createFacultyAccountBtn'
+        );
+
+    const firstName =
+        document.getElementById(
+            'add-first-name'
+        ).value.trim();
+
+    const middleName =
+        document.getElementById(
+            'add-middle-name'
+        ).value.trim();
+
+    const lastName =
+        document.getElementById(
+            'add-last-name'
+        ).value.trim();
+
+    const email =
+        document.getElementById(
+            'add-private-email'
+        ).value.trim()
+        .toLowerCase();
+
+    const position =
+        document.getElementById(
+            'add-position'
+        ).value.trim();
+
+    const department =
+        document.getElementById(
+            'add-department'
+        ).value.trim();
+
+
+    // =========================================================
+    // PERMISSION
+    // =========================================================
+
+    if (!hasPermission('addFaculty')) {
+
+        alert(
+            'You do not have permission to add faculty members.'
+        );
+
+        return;
+    }
+
+
+    // =========================================================
+    // VALIDATION
+    // =========================================================
+
+    if (!firstName) {
+
+        alert(
+            'Please enter the first name.'
+        );
+
+        return;
+    }
+
+
+    if (!lastName) {
+
+        alert(
+            'Please enter the last name.'
+        );
+
+        return;
+    }
+
+
+    if (!email || !isEmail(email)) {
+
+        alert(
+            'Please enter a valid active email address.'
+        );
+
+        return;
+    }
+
+
+    if (!position) {
+
+        alert(
+            'Please select a position.'
+        );
+
+        return;
+    }
+
+
+    if (!department) {
+
+        alert(
+            'Please select a department.'
+        );
+
+        return;
+    }
+
+
+    // =========================================================
+    // DISABLE BUTTON
+    // =========================================================
+
+    button.disabled = true;
+
+    button.innerHTML =
+        '<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
+
+
+    try {
+
+        const fullName =
+            buildFullName(
+                firstName,
+                middleName,
+                lastName
+            );
+
+
+        // =====================================================
+        // STEP 1 — GET CURRENT SESSION
+        // =====================================================
+
+        console.log(
+            'Checking Supabase session...'
+        );
+
+
+        let {
+            data: sessionData,
+            error: sessionError
+        } =
+            await supabaseClient.auth.getSession();
+
+
+        if (sessionError) {
+
+            console.error(
+                'Session error:',
+                sessionError
+            );
+
+            throw new Error(
+                'Unable to verify your login session. Please log in again.'
+            );
+
+        }
+
+
+        let session =
+            sessionData?.session;
+
+
+        // =====================================================
+        // TRY SESSION REFRESH IF NECESSARY
+        // =====================================================
+
+        if (!session) {
+
+            console.warn(
+                'No active session. Attempting refresh...'
+            );
+
+
+            const {
+                data: refreshData,
+                error: refreshError
+            } =
+                await supabaseClient.auth.refreshSession();
+
+
+            if (refreshError) {
+
+                console.error(
+                    'Session refresh error:',
+                    refreshError
+                );
+
+                throw new Error(
+                    'Your login session has expired. Please log in again.'
+                );
+
+            }
+
+
+            session =
+                refreshData?.session;
+
+        }
+
+
+        if (!session?.access_token) {
+
+            throw new Error(
+                'No valid Supabase access token was found. Please log in again.'
+            );
+
+        }
+
+
+        console.log(
+            'Supabase session verified.'
+        );
+
+
+        // =====================================================
+        // STEP 2 — VERIFY CURRENT USER
+        // =====================================================
+
+        const {
+            data: userData,
+            error: userError
+        } =
+            await supabaseClient.auth.getUser(
+                session.access_token
+            );
+
+
+        if (userError || !userData?.user) {
+
+            console.error(
+                'Current user verification failed:',
+                userError
+            );
+
+            throw new Error(
+                'Your Supabase login session is invalid. Please log out, log in again, and try creating the faculty account again.'
+            );
+
+        }
+
+
+        console.log(
+            'Authenticated user:',
+            userData.user.email
+        );
+
+
+        // =====================================================
+        // STEP 3 — CALL CREATE-FACULTY EDGE FUNCTION
+        // =====================================================
+
+        console.log(
+            'Calling create-faculty Edge Function...'
+        );
+
+
+        const {
+            data,
+            error
+        } =
+            await supabaseClient.functions.invoke(
+                'create-faculty',
+                {
+
+                    body: {
+
+                        firstName,
+
+                        middleName,
+
+                        lastName,
+
+                        email,
+
+                        position,
+
+                        department
+
+                    },
+
+                    headers: {
+
+                        Authorization:
+                            `Bearer ${session.access_token}`
+
+                    }
+
+                }
+            );
+
+
+        console.log(
+            'CREATE FACULTY RESPONSE:',
+            data
+        );
+
+
+        // =====================================================
+        // STEP 4 — HANDLE EDGE FUNCTION ERROR
+        // =====================================================
+
+        if (error) {
+
+            console.error(
+                'create-faculty Edge Function error:',
+                error
+            );
+
+
+            let message =
+                error.message ||
+                'Unable to create faculty account.';
+
+
+            try {
+
+                if (error.context) {
+
+                    const responseText =
+                        await error.context.text();
+
+
+                    console.error(
+                        'Edge Function response:',
+                        responseText
+                    );
+
+
+                    if (responseText) {
+
+                        try {
+
+                            const parsed =
+                                JSON.parse(
+                                    responseText
+                                );
+
+
+                            message =
+                                parsed.error ||
+                                parsed.message ||
+                                message;
+
+                        }
+
+                        catch (_) {
+
+                            if (
+                                responseText.length < 1000
+                            ) {
+
+                                message =
+                                    responseText;
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+            catch (parseError) {
+
+                console.warn(
+                    'Could not read Edge Function error response:',
+                    parseError
+                );
+
+            }
+
+
+            // =================================================
+            // JWT ERROR
+            // =================================================
+
+            if (
+                String(message)
+                    .toLowerCase()
+                    .includes(
+                        'invalid jwt'
+                    )
+            ) {
+
+                throw new Error(
+                    'Your Supabase login token is invalid or expired. Please log out, log in again, and try creating the faculty account again.'
+                );
+
+            }
+
+
+            throw new Error(
+                message
+            );
+
+        }
+
+
+        // =====================================================
+        // STEP 5 — VERIFY FUNCTION RESULT
+        // =====================================================
+
+        if (!data?.success) {
+
+            throw new Error(
+                data?.error ||
+                data?.message ||
+                'Faculty account creation failed.'
+            );
+
+        }
+
+
+        console.log(
+            'Faculty account successfully created.'
+        );
+
+
+        // =====================================================
+        // STEP 6 — GET CREDENTIALS
+        // =====================================================
+
+        const credentials =
+            data.credentials;
+
+
+        if (!credentials) {
+
+            throw new Error(
+                'The faculty account was created, but no credentials were returned by the server.'
+            );
+
+        }
+
+
+        const loginEmail =
+            credentials.loginEmail ||
+            email;
+
+
+        const temporaryPassword =
+            credentials.temporaryPassword;
+
+
+        if (!temporaryPassword) {
+
+            throw new Error(
+                'The faculty account was created, but the temporary password was not returned.'
+            );
+
+        }
+
+
+        // =====================================================
+        // STEP 7 — SEND EMAIL USING EMAILJS
+        // =====================================================
+
+        let emailSent = false;
+
+        let emailErrorMessage = null;
+
+
+        try {
+
+            console.log(
+                'Sending faculty credentials through EmailJS...'
+            );
+
+
+            await sendWelcomeEmail({
+
+                email:
+                    loginEmail,
+
+                fullName,
+
+                temporaryPassword,
+
+                role:
+                    'Faculty',
+
+                department:
+                    department
+
+            });
+
+
+            emailSent = true;
+
+
+            console.log(
+                'Faculty credential email sent successfully.'
+            );
+
+        }
+
+        catch (emailError) {
+
+            console.error(
+                'EMAILJS ERROR:',
+                emailError
+            );
+
+
+            emailSent = false;
+
+
+            emailErrorMessage =
+                emailError?.message ||
+                'EmailJS could not send the welcome email.';
+
+        }
+
+
+        // =====================================================
+        // STEP 8 — UPDATE EMAIL STATUS
+        // =====================================================
+
+        const createdFacultyId =
+            data?.faculty?.id ||
+            data?.facultyId ||
+            data?.id ||
+            null;
+
+
+        if (createdFacultyId) {
+
+            const emailStatusUpdate = {
+
+                credential_email_status:
+                    emailSent
+                        ? 'sent'
+                        : 'failed',
+
+                credential_email_sent_at:
+                    emailSent
+                        ? new Date().toISOString()
+                        : null,
+
+                credential_email_failed_at:
+                    !emailSent
+                        ? new Date().toISOString()
+                        : null,
+
+                credential_email_error:
+                    emailSent
+                        ? null
+                        : emailErrorMessage,
+
+                updated_at:
+                    new Date().toISOString()
+
+            };
+
+
+            const {
+                error: statusError
+            } =
+                await supabaseClient
+                    .from('faculty')
+                    .update(
+                        emailStatusUpdate
+                    )
+                    .eq(
+                        'id',
+                        createdFacultyId
+                    );
+
+
+            if (statusError) {
+
+                console.warn(
+                    'Could not update credential email status:',
+                    statusError
+                );
+
+            }
+
+        }
+
+
+        // =====================================================
+        // STEP 9 — CLOSE ADD MODAL
+        // =====================================================
+
+        closeAddFacultyModal();
+
+
+        clearAddFacultyForm();
+
+
+        // =====================================================
+        // STEP 10 — REFRESH FACULTY LIST
+        // =====================================================
+
+        await loadFacultyProfiles();
+
+
+        // =====================================================
+        // STEP 11 — SHOW RESULT
+        // =====================================================
+
+        showFacultyCredentialsModal(
+            loginEmail,
+            emailSent
+        );
+
+
+        document.body.style.overflow =
+            'hidden';
+
+
+    }
+
+    catch (error) {
+
+        console.error(
+            'CREATE FACULTY ACCOUNT FAILED:',
+            error
+        );
+
+
+        alert(
+            'Unable to create faculty account.\n\n' +
+            (
+                error?.message ||
+                'Unknown error occurred.'
+            )
+        );
+
+    }
+
+    finally {
+
+        button.disabled =
+            false;
+
+        button.innerHTML =
+            'Create Account';
+
+    }
+
+}
+/* ================================================================
+   CREDENTIAL MODAL
+================================================================ */
+
+function showFacultyCredentialsModal(
+    email,
+    emailSent,
+    errorMessage = null
+) {
+
+    const modal =
+        document.getElementById(
+            'facultyCredentialsModal'
+        );
+
+
+    const title =
+        document.getElementById(
+            'credentialModalTitle'
+        );
+
+
+    const subtitle =
+        document.getElementById(
+            'credentialModalSubtitle'
+        );
+
+
+    const emailDisplay =
+        document.getElementById(
+            'confirmSentToEmail'
+        );
+
+
+    const warning =
+        document.getElementById(
+            'emailFailedWarning'
+        );
+
+
+    const successMessage =
+        document.getElementById(
+            'emailSuccessMessage'
+        );
+
+
+    const header =
+        document.getElementById(
+            'credentialHeader'
+        );
+
+
+    const icon =
+        document.getElementById(
+            'credentialIcon'
+        );
+
+
+    emailDisplay.textContent =
+        email;
+
+
+    if (emailSent) {
+
+        title.textContent =
+            'Faculty Account Created';
+
+
+        subtitle.textContent =
+            'Login credentials were sent to the active email.';
+
+
+        warning.classList.add(
+            'hidden'
+        );
+
+
+        successMessage.classList.remove(
+            'hidden'
+        );
+
+
+        header.className =
+            'px-4 py-3 border-b bg-emerald-50 flex items-start gap-2.5';
+
+
+        icon.className =
+            'w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center';
+
+
+        icon.textContent =
+            '✉️';
+
+    }
+
+    else {
+
+        title.textContent =
+            'Account Created, but Email Failed';
+
+
+        subtitle.textContent =
+            'The faculty account exists, but the credential email could not be sent.';
+
+
+        warning.classList.remove(
+            'hidden'
+        );
+
+
+        warning.textContent =
+            'The faculty account was created successfully, but EmailJS could not send the welcome email.' +
+            (
+                errorMessage
+                    ? ` Error: ${errorMessage}`
+                    : ''
+            );
+
+
+        successMessage.classList.add(
+            'hidden'
+        );
+
+
+        header.className =
+            'px-4 py-3 border-b bg-red-50 flex items-start gap-2.5';
+
+
+        icon.className =
+            'w-8 h-8 rounded-full bg-red-100 flex items-center justify-center';
+
+
+        icon.textContent =
+            '⚠️';
+
+    }
+
+
+    modal.classList.remove(
+        'hidden'
+    );
+
+    modal.classList.add(
+        'flex'
+    );
+
+}
+
+
+/* ================================================================
+   CLOSE CREDENTIAL MODAL
+================================================================ */
+
+function closeFacultyCredentialsModal() {
+
+    const modal =
+        document.getElementById(
+            'facultyCredentialsModal'
+        );
+
+
+    modal.classList.add(
+        'hidden'
+    );
+
+    modal.classList.remove(
+        'flex'
+    );
+
+
+    document.body.style.overflow =
+        '';
+
+}
+
+
+/* ================================================================
+   PLACEHOLDER FUNCTIONS
+================================================================ */
+
+function newRequest() {
+
+    alert(
+        'New Request functionality will open here.'
+    );
+
+}
+
+
+function uploadDocument() {
+
+    alert(
+        'Upload Documents functionality will open here.'
+    );
+
+}
+
+
+function viewDocument() {
+
+    alert(
+        'Viewing document...'
+    );
+
+}
+
+
+function downloadDocument() {
+
+    alert(
+        'Downloading document...'
+    );
+
+}
+
+
+function viewResearch(id) {
+
+    alert(
+        'Opened Research Project ' +
+        id
+    );
+
+}
+
+
+/* ================================================================
+   INITIALIZE
+================================================================ */
+
+window.onload =
+    async function () {
+
+        try {
+
+            await loadSidebar();
+
+        }
+
+        catch (error) {
+
+            console.warn(
+                'Sidebar failed to load:',
+                error
+            );
+
+        }
+
+
+        await resolveCurrentUser();
+
+        applyAccessUI();
+
+        await loadFacultyProfiles();
+
+    };
+
 </script>
 
-<script src="../nav.js" defer></script>
+
+<script
+    src="../nav.js"
+    defer
+></script>
+
+<script
+    src="../shared/system-ui.js"
+></script>
+
 <div id="message-container"></div>
+
 </body>
 </html>
