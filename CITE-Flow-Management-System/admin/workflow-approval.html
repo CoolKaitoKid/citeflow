@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workflow Approval - CITE-Flow</title>
-    <!-- Updated admin workflow page: .html navigation, task detail page, submission file preview/download, clickable notifications. -->
+    <!-- Updated admin workflow page: .html navigation, full-width fluid layout, task detail page, file preview, clickable notifications. -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
@@ -13,19 +14,16 @@
     
     <style>
         * { font-family: 'Inter', sans-serif; }
-
         /* ─── Main Surface ──────────────────────────────────────────── */
         .main-surface { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04); }
         .stat-card { background: #fff; border-radius: 14px; border: 1px solid #f0f0f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.2s; }
         .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-
         /* ─── Table ─────────────────────────────────────────────────── */
         .data-table thead th { background: #fafafa; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af; text-transform: uppercase; padding: 14px 20px; border-bottom: 1px solid #f3f4f6; }
         .data-table tbody tr { border-bottom: 1px solid #f9fafb; transition: background 0.15s; }
         .data-table tbody tr:last-child { border-bottom: none; }
         .data-table tbody tr:hover { background: #fafafa; }
         .data-table tbody td { padding: 16px 20px; font-size: 13.5px; color: #374151; vertical-align: middle; }
-
         /* ─── 7 Status Badges ───────────────────────────────────────── */
         .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; padding: 4px 10px; border-radius: 6px; }
         .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
@@ -47,18 +45,15 @@
         .badge-approved     .badge-dot { background: #10b981; }
         .badge-revision     .badge-dot { background: #f59e0b; }
         .badge-rejected     .badge-dot { background: #6b7280; }
-
         /* ─── Progress Bars ─────────────────────────────────────────── */
         .prog-track { height: 6px; background: #f3f4f6; border-radius: 99px; overflow: hidden; }
         .prog-fill  { height: 100%; border-radius: 99px; transition: width 0.5s cubic-bezier(.4,0,.2,1); }
         .prog-clickable { cursor: pointer; transition: opacity 0.2s; }
         .prog-clickable:hover { opacity: 0.8; }
-
         /* ─── Countdown ─────────────────────────────────────────────── */
         .countdown-urgent { color: #dc2626; }
         .countdown-warn   { color: #d97706; }
         .countdown-ok     { color: #059669; }
-
         /* ─── Modals ─────────────────────────────────────────────────── */
         .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); display: none; align-items: center; justify-content: center; z-index: 50; }
         .modal-backdrop.open { display: flex; }
@@ -67,7 +62,6 @@
         .modal-header { padding: 24px 28px 20px; border-bottom: 1px solid #f3f4f6; }
         .modal-body { padding: 24px 28px; }
         .modal-footer { padding: 20px 28px; border-top: 1px solid #f3f4f6; display: flex; gap: 10px; }
-
         /* ─── Form Controls ─────────────────────────────────────────── */
         .field-label { font-size: 12px; font-weight: 500; color: #6b7280; margin-bottom: 6px; display: block; }
         .field-input { width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; color: #111827; outline: none; transition: border-color 0.15s, box-shadow 0.15s; background: #fff; }
@@ -75,10 +69,9 @@
         .field-input::placeholder { color: #9ca3af; }
         textarea.field-input { resize: vertical; min-height: 90px; }
         select.field-input { appearance: none; cursor: pointer; }
-
         /* ─── Buttons ────────────────────────────────────────────────── */
         .btn { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 500; padding: 9px 18px; border-radius: 8px; cursor: pointer; transition: all 0.15s; border: none; outline: none; }
-        .btn-primary {  background:var(--cite-theme); color: #fff; }
+        .btn-primary {  background: #621708; color: #fff; }
         .btn-primary:hover { background: #7c1e0a; }
         .btn-ghost { background: transparent; color: #374151; border: 1px solid #e5e7eb; }
         .btn-ghost:hover { background: #f9fafb; border-color: #d1d5db; }
@@ -90,45 +83,36 @@
         .btn-danger:hover { background: #b91c1c; }
         .btn-sm { padding: 6px 13px; font-size: 12.5px; }
         .btn-full { width: 100%; justify-content: center; }
-
         /* ─── Realtime Indicator ─────────────────────────────────────── */
         @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .rt-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
-
         /* ─── Scrollbar ──────────────────────────────────────────────── */
         .modal-panel::-webkit-scrollbar { width: 5px; }
         .modal-panel::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 99px; }
-
         /* ─── File Chip ──────────────────────────────────────────────── */
         .file-chip { display: flex; align-items: center; justify-content: space-between; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
         .file-chip-name { display: flex; align-items: center; gap: 9px; color: #374151; }
         .file-chip-dl { font-size: 12px; color: #621708; font-weight: 500; cursor: pointer; }
         .file-chip-dl:hover { text-decoration: underline; }
-
         /* ─── Divider ────────────────────────────────────────────────── */
         .section-divider { border: none; border-top: 1px solid #f3f4f6; margin: 0; }
-
         /* ─── Review Records ─────────────────────────────────────────── */
         .approval-record { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; font-size: 12.5px; color: #166534; }
         .decline-record { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; font-size: 12.5px; color: #991b1b; }
         .revision-record { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; font-size: 12.5px; color: #92400e; }
-
         /* ─── Delegate Row ───────────────────────────────────────────── */
         .delegate-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid #f0f0f0; border-radius: 10px; background: #fafafa; }
-
         /* ─── Notification Bell ──────────────────────────────────────── */
         .notif-bell { position: relative; cursor: pointer; padding: 8px; border-radius: 10px; transition: background 0.2s; }
         .notif-bell:hover { background: #f3f4f6; }
         .notif-badge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; background: #dc2626; color: #fff; font-size: 10px; font-weight: 600; border-radius: 99px; display: flex; align-items: center; justify-content: center; padding: 0 5px; animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-
         /* ─── Activity Log ───────────────────────────────────────────── */
         .activity-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f3f4f6; }
         .activity-item:last-child { border-bottom: none; }
         .activity-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
         .activity-content { flex: 1; }
         .activity-time { font-size: 11px; color: #9ca3af; margin-top: 2px; }
-
         /* ─── Timeline View ──────────────────────────────────────────── */
         .timeline { position: relative; padding-left: 24px; }
         .timeline::before { content: ''; position: absolute; left: 7px; top: 4px; bottom: 4px; width: 2px; background: #e5e7eb; }
@@ -137,19 +121,16 @@
         .timeline-dot { position: absolute; left: -24px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; }
         .timeline-dot.active { border-color: #621708; background: #621708; }
         .timeline-dot svg { width: 8px; height: 8px; stroke: #fff; stroke-width: 3; }
-
         /* ─── Comment Thread ─────────────────────────────────────────── */
         .comment { background: #f9fafb; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
         .comment-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
         .comment-author { font-size: 12.5px; font-weight: 600; color: #374151; }
         .comment-time { font-size: 11px; color: #9ca3af; }
         .comment-body { font-size: 13px; color: #4b5563; line-height: 1.5; }
-
         /* ─── Tabs ───────────────────────────────────────────────────── */
         .tab-btn { padding: 8px 16px; font-size: 13px; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; transition: all 0.2s; cursor: pointer; }
         .tab-btn:hover { color: #374151; }
         .tab-btn.active { color: #621708; border-bottom-color: #621708; }
-
         /* ─── Dropdown Menu ──────────────────────────────────────────── */
         .dropdown { position: relative; display: inline-block; }
         .dropdown-menu { position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); min-width: 180px; z-index: 60; display: none; padding: 6px; }
@@ -157,22 +138,17 @@
         .dropdown-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 13px; color: #374151; border-radius: 6px; cursor: pointer; transition: background 0.15s; }
         .dropdown-item:hover { background: #f3f4f6; }
         .dropdown-item.danger { color: #dc2626; }
-
         /* ─── Action Menu ───────────────────────────────────────────── */
         .action-menu { position: relative; }
         .action-dropdown { position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); min-width: 160px; z-index: 60; display: none; padding: 6px; margin-top: 4px; }
         .action-dropdown.open { display: block; }
         .action-dropdown.open-up { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 4px; }
-
-
-
-
         /* ─── Updated Task Layout and Analytics ─────────────────────── */
         .view-toggle { display:inline-flex; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; background:#fff; }
         .view-toggle button { padding:9px 13px; font-size:12.5px; font-weight:600; color:#6b7280; border:0; background:transparent; cursor:pointer; }
-        .view-toggle button.active {  background:var(--cite-theme); color:#fff; }
-        .task-card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
-        .task-folder-card { background:#fff; border:1px solid #f0f0f0; border-radius:16px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.05); cursor:pointer; transition:transform .15s, box-shadow .15s, border-color .15s; }
+        .view-toggle button.active { background: #621708; color:#fff; }
+        .task-card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:20px; }
+        .task-folder-card { background:#fff; border:1px solid #f0f0f0; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); cursor:pointer; transition:transform .15s, box-shadow .15s, border-color .15s; }
         .task-folder-card:hover { transform:translateY(-2px); box-shadow:0 10px 26px rgba(0,0,0,.08); border-color:#ead7ce; }
         .folder-icon { width:46px; height:34px; border-radius:8px 8px 10px 10px; background:#f5e8c7; position:relative; border:1px solid #edd6a7; }
         .folder-icon::before { content:''; position:absolute; top:-7px; left:6px; width:22px; height:10px; border-radius:7px 7px 0 0; background:#f5e8c7; border:1px solid #edd6a7; border-bottom:0; }
@@ -183,10 +159,9 @@
         .analytics-pie-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:2; flex-direction:column; }
         .analytics-bar { height:10px; background:#f3f4f6; border-radius:99px; overflow:hidden; }
         .analytics-bar > div { height:100%; border-radius:99px; }
-
         /* --- Task detail page and file preview actions --- */
         .detail-card { background:#fff; border:1px solid #f0f0f0; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
-        .submission-card { border:1px solid #eef0f3; border-radius:14px; background:#fff; padding:16px; transition:border-color .2s, box-shadow .2s, background .2s; }
+        .submission-card { border:1px solid #eef0f3; border-radius:14px; background:#fff; padding:18px; transition:border-color .2s, box-shadow .2s, background .2s; }
         .submission-card:hover { border-color:#e5e7eb; box-shadow:0 4px 14px rgba(0,0,0,0.05); }
         .submission-card.highlighted { border-color:#621708; background:#fff7ed; box-shadow:0 0 0 3px rgba(98,23,8,0.10); }
         .file-chip-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
@@ -201,240 +176,230 @@
         .preview-frame { width:100%; height:68vh; border:1px solid #e5e7eb; border-radius:10px; background:#f9fafb; }
     </style>
 </head>
-<body class="bg-[#f5f5f5] text-gray-900">
+<body class="bg-[#f5f5f5] text-gray-900 overflow-x-hidden">
+<div class="flex min-h-screen w-full">
+    <!-- SIDEBAR -->
+    <div id="sidebar-container" class="flex-shrink-0"></div>
 
-<div class="flex h-screen overflow-hidden">
-
-    <!-- ══════════════════════════════════════════════════════════════
-         SIDEBAR — original, untouched
-    ═══════════════════════════════════════════════════════════════ -->
-    <div id="sidebar-container"></div>
-
-    <main class="flex-1 overflow-y-auto ml-[220px]">
+    <!-- MAIN SURFACE -->
+    <main class="flex-1 w-full min-w-0 bg-[#f5f5f5] ml-[220px]">
+        <!-- Top Navbar Container -->
         <div id="navbar-container"></div>
-        <div class="mt-16">
-    
-    <div class="flex-1 overflow-y-auto">
-        <div id="workflowMainView" class="max-w-6xl mx-auto px-8 py-8">
 
-            <!-- Page Header -->
-            <div class="flex items-start justify-between mb-8">
-                <div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <h1 class="text-[22px] font-semibold text-gray-900 tracking-tight">Document Submissions</h1>
-                        <div class="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
-                            <div class="rt-dot w-2 h-2 rounded-full bg-emerald-500"></div>
-                            <span class="text-xs font-medium text-emerald-700">Live</span>
+        <div class="mt-16 w-full">
+            <!-- MAIN TABLE / FOLDER VIEW -->
+            <div id="workflowMainView" class="w-full px-6 lg:px-10 py-8">
+                <!-- Page Header -->
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Document Submissions</h1>
+                            <div class="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+                                <div class="rt-dot w-2 h-2 rounded-full bg-emerald-500"></div>
+                                <span class="text-xs font-medium text-emerald-700">Live</span>
+                            </div>
+                        </div>
+                        <p class="text-sm text-gray-500">Review and manage faculty document submissions in real time</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <div class="notif-bell" onclick="toggleNotifications()">
+                            <svg style="width:20px;height:20px;stroke:#6b7280;stroke-width:2;fill:none;" viewBox="0 0 24 24">
+                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                            </svg>
+                            <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
+                        </div>
+                        <button onclick="openAccessModal()" class="btn btn-ghost">
+                            <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                            Manage Access
+                        </button>
+                        <button onclick="openAssignModal()" class="btn btn-primary">
+                            <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Assign New Task
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats row -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="stat-card p-5">
+                        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Pending Review</div>
+                        <div class="flex items-end gap-2">
+                            <span id="stat-pending" class="text-3xl font-semibold text-gray-900">—</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 mt-2">
+                            <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+                            <span class="text-xs text-gray-500">Awaiting decision</span>
                         </div>
                     </div>
-                    <p class="text-sm text-gray-500">Review and manage faculty document submissions in real time</p>
+                    <div class="stat-card p-5">
+                        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Approved</div>
+                        <div class="flex items-end gap-2">
+                            <span id="stat-approved" class="text-3xl font-semibold text-gray-900">—</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 mt-2">
+                            <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                            <span class="text-xs text-gray-500">Completed</span>
+                        </div>
+                    </div>
+                    <div class="stat-card p-5">
+                        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Needs Revision</div>
+                        <div class="flex items-end gap-2">
+                            <span id="stat-revision" class="text-3xl font-semibold text-gray-900">—</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 mt-2">
+                            <div class="w-2 h-2 rounded-full bg-red-400"></div>
+                            <span class="text-xs text-gray-500">Returned to faculty</span>
+                        </div>
+                    </div>
+                    <div class="stat-card p-5">
+                        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Declined</div>
+                        <div class="flex items-end gap-2">
+                            <span id="stat-declined" class="text-3xl font-semibold text-gray-900">—</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 mt-2">
+                            <div class="w-2 h-2 rounded-full bg-gray-400"></div>
+                            <span class="text-xs text-gray-500">Not accepted</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="flex items-center gap-2.5">
-                    <div class="notif-bell" onclick="toggleNotifications()">
-                        <svg style="width:20px;height:20px;stroke:#6b7280;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+
+                <!-- Filter bar -->
+                <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                    <div class="relative flex-1">
+                        <svg style="width:15px;height:15px;position:absolute;left:14px;top:50%;transform:translateY(-50%);stroke:#9ca3af;stroke-width:2;fill:none;" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                         </svg>
-                        <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
+                        <input id="searchInput" type="text" placeholder="Search by task or faculty name..."
+                               oninput="filterSubmissions()"
+                               class="field-input pl-10">
                     </div>
-                    <button onclick="openAccessModal()" class="btn btn-ghost">
-                        <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                        </svg>
-                        Manage Access
-                    </button>
-                    <button onclick="openAssignModal()" class="btn btn-primary">
-                        <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Assign New Task
-                    </button>
+                    <select id="statusFilter" onchange="filterSubmissions()" class="field-input sm:w-[180px]">
+                        <option value="">All Task Status</option>
+                        <option value="notsubmitted">No Submission</option>
+                        <option value="underreview">In Progress</option>
+                        <option value="approved">Completed</option>
+                    </select>
+                    <select id="deptFilter" onchange="filterSubmissions()" class="field-input sm:w-[160px]">
+                        <option value="">All Departments</option>
+                        <option value="BSIT">BSIT</option>
+                        <option value="BSIE">BSIE</option>
+                        <option value="BIT">BIT</option>
+                    </select>
+                    <div class="view-toggle" title="Switch main page task layout">
+                        <button id="listViewBtn" class="active" onclick="setTaskViewMode('list')">List</button>
+                        <button id="folderViewBtn" onclick="setTaskViewMode('folder')">Folder</button>
+                    </div>
                 </div>
+
+                <!-- Submissions Table -->
+                <div id="taskTableSurface" class="main-surface overflow-x-auto w-full">
+                    <table class="data-table w-full">
+                        <thead>
+                            <tr>
+                                <th class="text-left" style="width:38%">Task</th>
+                                <th class="text-left">Assigned To</th>
+                                <th class="text-left">Deadline</th>
+                                <th class="text-left">Status</th>
+                                <th class="text-left" style="width:80px">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="submissionsTableBody">
+                            <tr>
+                                <td colspan="5" class="text-center text-gray-400 py-12 text-sm">Loading tasks...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="taskCardContainer" class="task-card-grid hidden w-full"></div>
             </div>
 
-            <!-- Stats row -->
-            <div class="grid grid-cols-4 gap-4 mb-6">
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Pending Review</div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-pending" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-amber-400"></div>
-                        <span class="text-xs text-gray-500">Awaiting decision</span>
-                    </div>
-                </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Approved</div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-approved" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
-                        <span class="text-xs text-gray-500">Completed</span>
-                    </div>
-                </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Needs Revision</div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-revision" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-red-400"></div>
-                        <span class="text-xs text-gray-500">Returned to faculty</span>
-                    </div>
-                </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Declined</div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-declined" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-gray-400"></div>
-                        <span class="text-xs text-gray-500">Not accepted</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Filter bar -->
-            <div class="flex gap-3 mb-4">
-                <div class="relative flex-1">
-                    <svg style="width:15px;height:15px;position:absolute;left:14px;top:50%;transform:translateY(-50%);stroke:#9ca3af;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <input id="searchInput" type="text" placeholder="Search by task or faculty name..."
-                           oninput="filterSubmissions()"
-                           class="field-input pl-10">
-                </div>
-                <select id="statusFilter" onchange="filterSubmissions()" class="field-input" style="width:180px;">
-                    <option value="">All Task Status</option>
-                    <option value="notsubmitted">No Submission</option>
-                    <option value="underreview">In Progress</option>
-                    <option value="approved">Completed</option>
-                </select>
-                <select id="deptFilter" onchange="filterSubmissions()" class="field-input" style="width:160px;">
-                    <option value="">All Departments</option>
-                    <option value="BSIT">BSIT</option>
-                    <option value="BSIE">BSIE</option>
-                    <option value="BIT">BIT</option>
-                </select>
-                <div class="view-toggle" title="Switch main page task layout">
-                    <button id="listViewBtn" class="active" onclick="setTaskViewMode('list')">List</button>
-                    <button id="folderViewBtn" onclick="setTaskViewMode('folder')">Folder</button>
-                </div>
-            </div>
-
-            <!-- Submissions Table -->
-            <div id="taskTableSurface" class="main-surface overflow-visible">
-                <table class="data-table w-full">
-                    <thead>
-                        <tr>
-                            <th class="text-left" style="width:36%">Task</th>
-                            <th class="text-left">Assigned To</th>
-                            <th class="text-left">Deadline</th>
-                            <th class="text-left">Status</th>
-                            <th class="text-left">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="submissionsTableBody">
-                        <tr>
-                            <td colspan="5" class="text-center text-gray-400 py-12 text-sm">Loading tasks...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="taskCardContainer" class="task-card-grid hidden"></div>
-
-        </div>
-
-        <!-- TASK DETAIL PAGE -->
-        <div id="taskDetailPage" class="hidden max-w-6xl mx-auto px-8 py-8">
-            <div class="flex items-start justify-between mb-6">
-                <div>
-                    <button onclick="returnToWorkflowMain()" class="btn btn-ghost btn-sm mb-4">
-                        <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-                        Back to Tasks
-                    </button>
-                    <div class="flex items-center gap-3">
-                        <h1 id="detailTaskTitle" class="text-[22px] font-semibold text-gray-900 tracking-tight">Task Details</h1>
-                        <span id="detailTaskStatusBadge"></span>
-                    </div>
-                    <p id="detailTaskMeta" class="text-sm text-gray-500 mt-1"></p>
-                </div>
-                <div class="flex items-center gap-2.5">
-                    <button onclick="openActivityLogModal()" class="btn btn-ghost btn-sm">Activity Log</button>
-                    <button onclick="openAssignModal()" class="btn btn-primary btn-sm">Assign New Task</button>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-4 gap-4 mb-6">
-                <div class="detail-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Assigned</div>
-                    <div id="detailAssignedCount" class="text-2xl font-semibold text-gray-900">0</div>
-                    <div id="detailAssignedLabel" class="detail-muted mt-1"></div>
-                </div>
-                <div class="detail-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Submitted</div>
-                    <div id="detailSubmittedCount" class="text-2xl font-semibold text-gray-900">0</div>
-                    <div class="detail-muted mt-1">Faculty with uploads</div>
-                </div>
-                <div class="detail-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Pending</div>
-                    <div id="detailPendingCount" class="text-2xl font-semibold text-gray-900">0</div>
-                    <div class="detail-muted mt-1">No submission yet</div>
-                </div>
-                <div class="detail-card p-5 cursor-pointer" onclick="openAnalyticsModal(activeTaskDetailId)" title="Click to view analytics">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Progress Analytics</div>
-                    <div id="detailProgressPercent" class="text-2xl font-semibold text-gray-900">0%</div>
-                    <div class="prog-track mt-3"><div id="detailProgressFill" class="prog-fill bg-emerald-500" style="width:0%"></div></div>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-6">
-                <div class="col-span-2 space-y-6">
-                    <div class="main-surface p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h2 class="text-sm font-semibold text-gray-700">Submitted Part</h2>
-                            <span id="detailSubmittedSummary" class="text-xs text-gray-400"></span>
+            <!-- TASK DETAIL PAGE -->
+            <div id="taskDetailPage" class="hidden w-full px-6 lg:px-10 py-8">
+                <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
+                    <div>
+                        <button onclick="returnToWorkflowMain()" class="btn btn-ghost btn-sm mb-4">
+                            <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+                            Back to Tasks
+                        </button>
+                        <div class="flex items-center gap-3">
+                            <h1 id="detailTaskTitle" class="text-2xl font-bold text-gray-900 tracking-tight">Task Details</h1>
+                            <span id="detailTaskStatusBadge"></span>
                         </div>
-                        <div id="detailSubmissionList" class="space-y-3"></div>
+                        <p id="detailTaskMeta" class="text-sm text-gray-500 mt-1"></p>
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <button onclick="openActivityLogModal()" class="btn btn-ghost btn-sm">Activity Log</button>
+                        <button onclick="openAssignModal()" class="btn btn-primary btn-sm">Assign New Task</button>
                     </div>
                 </div>
 
-                <div class="space-y-6">
-                    <div class="main-surface p-6">
-                        <h2 class="text-sm font-semibold text-gray-700 mb-3">Task Information</h2>
-                        <div class="space-y-3 text-sm">
-                            <div>
-                                <div class="field-label">Deadline</div>
-                                <div id="detailTaskDeadline" class="text-gray-800"></div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="detail-card p-5">
+                        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Assigned</div>
+                        <div id="detailAssignedCount" class="text-2xl font-semibold text-gray-900">0</div>
+                        <div id="detailAssignedLabel" class="detail-muted mt-1"></div>
+                    </div>
+                    <div class="detail-card p-5">
+                        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Submitted</div>
+                        <div id="detailSubmittedCount" class="text-2xl font-semibold text-gray-900">0</div>
+                        <div class="detail-muted mt-1">Faculty with uploads</div>
+                    </div>
+                    <div class="detail-card p-5">
+                        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Pending</div>
+                        <div id="detailPendingCount" class="text-2xl font-semibold text-gray-900">0</div>
+                        <div class="detail-muted mt-1">No submission yet</div>
+                    </div>
+                    <div class="detail-card p-5 cursor-pointer" onclick="openAnalyticsModal(activeTaskDetailId)" title="Click to view analytics">
+                        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Progress Analytics</div>
+                        <div id="detailProgressPercent" class="text-2xl font-semibold text-gray-900">0%</div>
+                        <div class="prog-track mt-3"><div id="detailProgressFill" class="prog-fill bg-emerald-500" style="width:0%"></div></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div class="lg:col-span-8 space-y-6">
+                        <div class="main-surface p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h2 class="text-base font-semibold text-gray-800">Submitted Documents</h2>
+                                <span id="detailSubmittedSummary" class="text-xs font-medium text-gray-400"></span>
                             </div>
-                            <div>
-                                <div class="field-label">Instructions</div>
-                                <div id="detailTaskInstructions" class="text-gray-700 leading-relaxed whitespace-pre-wrap"></div>
-                            </div>
-                            <div>
-                                <div class="field-label">Task Attachments</div>
-                                <div id="detailTaskAttachments" class="space-y-2"></div>
-                            </div>
+                            <div id="detailSubmissionList" class="space-y-4"></div>
                         </div>
                     </div>
-
-                    <div class="main-surface p-6">
-                        <h2 class="text-sm font-semibold text-gray-700 mb-3">Submission Progress</h2>
-                        <div id="detailDepartmentProgress" class="space-y-4"></div>
+                    <div class="lg:col-span-4 space-y-6">
+                        <div class="main-surface p-6">
+                            <h2 class="text-base font-semibold text-gray-800 mb-4">Task Information</h2>
+                            <div class="space-y-4 text-sm">
+                                <div>
+                                    <div class="field-label">Deadline</div>
+                                    <div id="detailTaskDeadline" class="text-gray-800 font-medium"></div>
+                                </div>
+                                <div>
+                                    <div class="field-label">Instructions</div>
+                                    <div id="detailTaskInstructions" class="text-gray-700 leading-relaxed whitespace-pre-wrap bg-gray-50 p-3.5 rounded-lg border border-gray-100 text-[13px]"></div>
+                                </div>
+                                <div>
+                                    <div class="field-label">Task Attachments</div>
+                                    <div id="detailTaskAttachments" class="space-y-2"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="main-surface p-6">
+                            <h2 class="text-base font-semibold text-gray-800 mb-4">Submission Progress</h2>
+                            <div id="detailDepartmentProgress" class="space-y-4"></div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-
-    </div>
+    </main>
 </div>
 
 <!-- MODAL: Assign New Task -->
-        </div>
-    </main>
-
 <div id="assignModal" class="modal-backdrop">
     <div class="modal-panel" style="max-width:560px; margin:0 16px;">
         <div class="modal-header">
@@ -453,7 +418,6 @@
                 <label class="field-label">Task Title <span class="text-red-500">*</span></label>
                 <input id="taskTitle" type="text" class="field-input" placeholder="e.g., Annual Research Report">
             </div>
-
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="field-label">Faculty Group <span class="text-red-500">*</span></label>
@@ -475,7 +439,6 @@
                     </select>
                 </div>
             </div>
-
             <div id="specificUsersContainer" class="hidden">
                 <label class="field-label">Select Specific Faculty</label>
                 <select id="specificUsers" multiple class="field-input" style="height:110px;">
@@ -487,7 +450,6 @@
                 </select>
                 <p class="text-xs text-gray-400 mt-1.5">Hold Ctrl / Cmd to select multiple</p>
             </div>
-
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="field-label">Due Date <span class="text-red-500">*</span></label>
@@ -498,7 +460,6 @@
                     <input id="dueTime" type="time" value="17:00" class="field-input">
                 </div>
             </div>
-
             <div>
                 <label class="field-label">Instructions</label>
                 <textarea id="taskDesc" class="field-input" placeholder="Provide clear instructions for faculty members..."></textarea>
@@ -520,24 +481,19 @@
         <div class="modal-header">
             <h2 id="deptTitle" class="text-base font-semibold">Department Details</h2>
         </div>
-
         <div class="modal-body">
             <h3 class="text-sm font-medium mb-2">Submitted</h3>
             <div id="submittedList" class="mb-4 text-sm text-gray-600"></div>
-
             <h3 class="text-sm font-medium mb-2">Not Submitted</h3>
             <div id="notSubmittedList" class="text-sm text-gray-600"></div>
         </div>
-
         <div class="modal-footer">
             <button onclick="closeDeptModal()" class="btn btn-ghost w-full">Close</button>
         </div>
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════
-     MODAL: Review Submission
-═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Review Submission -->
 <div id="reviewModal" class="modal-backdrop">
     <div class="modal-panel" style="max-width:600px; margin:0 16px;">
         <div class="modal-header">
@@ -551,9 +507,7 @@
                 </button>
             </div>
         </div>
-
         <div class="modal-body space-y-5">
-            <!-- Deadline status -->
             <div id="deadlineBlock" class="hidden">
                 <div class="flex items-center gap-2 text-xs text-gray-500">
                     <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
@@ -563,30 +517,20 @@
                     <span id="modalCountdown" class="font-medium"></span>
                 </div>
             </div>
-
-            <!-- Prior review record -->
             <div id="reviewRecord" class="hidden"></div>
-
-            <!-- Files -->
             <div>
                 <p class="field-label mb-3">Submitted Files</p>
                 <div id="modalFiles" class="space-y-2"></div>
             </div>
-
             <hr class="section-divider">
-
-            <!-- Remarks -->
             <div>
                 <label class="field-label" for="adminComment">Remarks / Comments</label>
                 <textarea id="adminComment" class="field-input" placeholder="Provide feedback or notes for the faculty member..."></textarea>
                 <p class="text-xs text-gray-400 mt-1.5">Remarks are required when requesting revision or declining.</p>
             </div>
         </div>
-
         <div class="modal-footer flex-wrap gap-2">
-            <button onclick="closeReviewModal()" class="btn btn-ghost" style="margin-right:auto;">
-                Close
-            </button>
+            <button onclick="closeReviewModal()" class="btn btn-ghost" style="margin-right:auto;">Close</button>
             <button onclick="declineSubmission()" class="btn btn-danger btn-sm">
                 <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 Decline
@@ -602,8 +546,6 @@
         </div>
     </div>
 </div>
-
-
 
 <!-- MODAL: Task Analytics -->
 <div id="taskAnalyticsModal" class="modal-backdrop">
@@ -653,9 +595,7 @@
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════
-     MODAL: Manage Access
-═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Manage Access -->
 <div id="accessModal" class="modal-backdrop">
     <div class="modal-panel" style="max-width:600px; margin:0 16px;">
         <div class="modal-header">
@@ -669,19 +609,14 @@
                 </button>
             </div>
         </div>
-
         <div class="modal-body space-y-6">
-            <!-- Current delegates -->
             <div>
                 <p class="field-label mb-3">Current Access Grants</p>
                 <div id="currentDelegates" class="space-y-2">
                     <p class="text-sm text-gray-400">No delegated access configured.</p>
                 </div>
             </div>
-
             <hr class="section-divider">
-
-            <!-- Grant new -->
             <div>
                 <p class="field-label mb-4">Grant New Access</p>
                 <div class="grid grid-cols-2 gap-4 mb-4">
@@ -730,9 +665,7 @@
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════
-     NOTIFICATION DROPDOWN
-═══════════════════════════════════════════════════════ -->
+<!-- NOTIFICATION DROPDOWN -->
 <div id="notifDropdown" class="dropdown-menu" style="top:45px;right:0;width:320px;max-height:400px;overflow-y:auto;">
     <div class="px-3 py-2 border-b border-gray-100">
         <div class="flex items-center justify-between">
@@ -745,9 +678,7 @@
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════
-     MODAL: Activity Log
-═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Activity Log -->
 <div id="activityLogModal" class="modal-backdrop">
     <div class="modal-panel" style="max-width:500px; margin:0 16px;">
         <div class="modal-header">
@@ -770,9 +701,7 @@
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════
-     MODAL: Timeline View
-═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Timeline View -->
 <div id="timelineModal" class="modal-backdrop">
     <div class="modal-panel" style="max-width:500px; margin:0 16px;">
         <div class="modal-header">
@@ -795,9 +724,7 @@
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════
-     MODAL: Comments Thread
-═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Comments Thread -->
 <div id="commentsModal" class="modal-backdrop">
     <div class="modal-panel" style="max-width:500px; margin:0 16px;">
         <div class="modal-header">
@@ -824,10 +751,9 @@
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════
-     TOAST
-═══════════════════════════════════════════════════════ -->
+<!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:28px;right:28px;z-index:100;display:none;"></div>
+<div id="message-container"></div>
 
 <script>
 const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined'
@@ -839,6 +765,10 @@ const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined'
 const ADMIN_NAME = 'Administrator';
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let currentUser = null;
+let currentProfile = null;
+let editingTaskId = null;
 
 var workflowState = window.workflowState || {
     faculty: [],
@@ -996,9 +926,6 @@ function recomputeSubmissionMatrix() {
     });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   RENDER FUNCTIONS
-   ═══════════════════════════════════════════════════════════════ */
 function renderAll() {
     recomputeSubmissionMatrix();
     updateStats();
@@ -1023,7 +950,6 @@ function updateStats() {
 function updateProgress() {
     const progressIds = ['prog-bsit', 'prog-bsie', 'prog-bit'];
     if (!progressIds.some(id => document.getElementById(id))) return;
-
     const depts = { BSIT: { submitted: 0, total: 0 }, BSIE: { submitted: 0, total: 0 }, BIT: { submitted: 0, total: 0 } };
     allSubmissions.forEach(s => {
         if (depts[s.department_code]) {
@@ -1042,9 +968,6 @@ function updateProgress() {
     });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   STATUS BADGE - 7 STATUS TYPES
-   ═══════════════════════════════════════════════════════════════ */
 function statusBadge(status) {
     const map = {
         notsubmitted: ['badge-notsubmitted', 'Not Submitted'],
@@ -1059,7 +982,6 @@ function statusBadge(status) {
     const [cls, label] = map[status] || map.notsubmitted;
     return `<span class="badge ${cls}"><span class="badge-dot"></span>${label}</span>`;
 }
-
 
 function deadlineCountdown(dueIso) {
     if (!dueIso) return '';
@@ -1089,7 +1011,6 @@ function taskSummaryStatus(submittedCount, totalAssigned) {
     if (submittedCount >= totalAssigned && totalAssigned > 0) return { label: 'Completed', className: 'badge-approved' };
     return { label: 'In Progress', className: 'badge-underreview' };
 }
-
 
 function setTaskViewMode(mode) {
     taskViewMode = mode === 'folder' ? 'folder' : 'list';
@@ -1184,7 +1105,7 @@ function renderTaskCardContainer(taskRows) {
                     <div class="folder-icon"></div>
                     <span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span>
                 </div>
-                <div class="font-semibold text-gray-900 leading-snug mb-1">${escapeHtml(task.title)}</div>
+                <div class="font-semibold text-gray-900 leading-snug mb-1 text-base">${escapeHtml(task.title)}</div>
                 <div class="text-xs text-gray-500 mb-4">${escapeHtml(r.assignedLabel)} | Due ${formatDate(task.due_at)}</div>
                 <div class="flex justify-between text-xs text-gray-500 mb-2"><span>Progress</span><span>${r.submittedCount}/${r.totalAssigned}</span></div>
                 <div class="mini-bar-track mb-4"><div class="mini-bar-fill" style="width:${pct}%"></div></div>
@@ -1201,7 +1122,6 @@ function filterSubmissions() {
     const search  = (document.getElementById('searchInput').value || '').toLowerCase();
     const status  = document.getElementById('statusFilter').value;
     const dept    = document.getElementById('deptFilter').value;
-
     const taskRows = workflowState.tasks.map(task => {
         const assigns = workflowState.assignments.filter(a => a.task_id === task.id);
         const assignees = assigns.map(a => getFacultyById(a.faculty_id)).filter(Boolean);
@@ -1213,7 +1133,6 @@ function filterSubmissions() {
         const summary = taskSummaryStatus(submittedCount, totalAssigned);
         return { task, assignees, submittedCount, totalAssigned, summary, assignedLabel: deriveAssignedLabel(task.id) };
     });
-
     const filtered = taskRows.filter(r => {
         const task = r.task;
         const matchSearch = !search || normalizeText(task.title).includes(search) || r.assignees.some(a => normalizeText(a.full_name).includes(search));
@@ -1222,7 +1141,6 @@ function filterSubmissions() {
         const matchStatus = !status || statusKey === status;
         return matchSearch && matchDept && matchStatus;
     });
-
     const tableSurface = document.getElementById('taskTableSurface');
     const cardContainer = document.getElementById('taskCardContainer');
     if (taskViewMode === 'folder') {
@@ -1233,13 +1151,11 @@ function filterSubmissions() {
     }
     tableSurface?.classList.remove('hidden');
     cardContainer?.classList.add('hidden');
-
     const tbody = document.getElementById('submissionsTableBody');
     if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" class="text-center text-gray-400 py-12 text-sm">No tasks found.</td></tr>`;
         return;
     }
-
     tbody.innerHTML = filtered.map(r => {
         const task = r.task;
         const countdown = deadlineCountdown(task.due_at);
@@ -1390,7 +1306,6 @@ function openTaskDetailsPage(taskId, options = {}) {
     document.getElementById('taskDetailPage').classList.remove('hidden');
     renderTaskDetailPage(taskId, options);
     document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open', 'open-up'));
-
     if (options.updateHash !== false) {
         const focus = options.focusFacultyId ? `&faculty=${encodeURIComponent(options.focusFacultyId)}` : '';
         history.pushState(null, '', `#task=${encodeURIComponent(taskId)}${focus}`);
@@ -1413,7 +1328,6 @@ function renderTaskDetailPage(taskId, options = {}) {
     const pending = total - submitted;
     const pct = total ? Math.round((submitted / total) * 100) : 0;
     const summary = taskSummaryStatus(submitted, total);
-
     document.getElementById('detailTaskTitle').textContent = task.title;
     document.getElementById('detailTaskMeta').textContent = `Assigned to ${deriveAssignedLabel(taskId)} | Due ${formatDate(task.due_at)} | Created ${formatDateTime(task.created_at)}`;
     document.getElementById('detailTaskStatusBadge').innerHTML = `<span class="badge ${summary.className}"><span class="badge-dot"></span>${escapeHtml(summary.label)}</span>`;
@@ -1427,10 +1341,8 @@ function renderTaskDetailPage(taskId, options = {}) {
     document.getElementById('detailTaskDeadline').innerHTML = `${formatDateTime(task.due_at)} <span class="ml-2">${deadlineCountdown(task.due_at)}</span>`;
     document.getElementById('detailTaskInstructions').textContent = task.instructions || 'No instructions provided.';
     document.getElementById('detailTaskAttachments').innerHTML = renderFileList(getTaskAttachments(task), 'No task attachments.');
-
     renderDetailDepartmentProgress(rows);
     renderDetailSubmissionList(rows);
-
     if (options.focusFacultyId) {
         setTimeout(() => focusSubmissionCard(options.focusFacultyId), 80);
     }
@@ -1484,7 +1396,7 @@ function renderDetailSubmissionList(rows) {
             <div id="submission-card-${s.faculty_id}" class="submission-card">
                 <div class="flex items-start justify-between gap-4 mb-3">
                     <div>
-                        <div class="font-semibold text-gray-900">${escapeHtml(s.faculty_name)}</div>
+                        <div class="font-semibold text-gray-900 text-base">${escapeHtml(s.faculty_name)}</div>
                         <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(s.department_code)} | ${submittedText}</div>
                     </div>
                     ${statusBadge(s.status)}
@@ -1531,12 +1443,9 @@ function toggleActionMenu(taskId) {
             m.classList.remove('open', 'open-up');
         }
     });
-
     const menu = document.getElementById(`action-${taskId}`);
     if (!menu) return;
-
     menu.classList.toggle('open');
-
     if (menu.classList.contains('open')) {
         menu.classList.remove('open-up');
         const rect = menu.getBoundingClientRect();
@@ -1545,7 +1454,6 @@ function toggleActionMenu(taskId) {
     }
 }
 
-// Close action menus when clicking outside
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.action-menu')) {
         document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open', 'open-up'));
@@ -1555,17 +1463,12 @@ document.addEventListener('click', function(e) {
     }
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   ASSIGN TASK MODAL
-   ═══════════════════════════════════════════════════════════════ */
 async function openAssignModal() {
     editingTaskId = null;
-
     const ws = ensureWorkflowState();
     if (!ws.faculty.length) {
         await fetchAllData();
     }
-
     const titleEl = document.querySelector('#assignModal h2');
     if (titleEl) titleEl.textContent = 'Assign New Task';
     const submitBtn = document.querySelector('#assignModal .modal-footer .btn-primary');
@@ -1575,7 +1478,6 @@ async function openAssignModal() {
             Assign Task
         `;
     }
-
     document.getElementById('taskTitle').value = '';
     document.getElementById('taskDesc').value = '';
     document.getElementById('dueDate').value = '';
@@ -1584,15 +1486,16 @@ async function openAssignModal() {
     if (document.getElementById('targetType')) document.getElementById('targetType').value = 'all_types';
     const attachments = document.getElementById('taskAttachments');
     if (attachments) attachments.value = '';
-
     renderSpecificUsers();
     toggleSpecificUsers();
     document.getElementById('assignModal').classList.add('open');
 }
+
 function closeAssignModal() {
     document.getElementById('assignModal').classList.remove('open');
     editingTaskId = null;
 }
+
 function toggleSpecificUsers() {
     const typeVal = document.getElementById('targetType')?.value || '';
     document.getElementById('specificUsersContainer').classList.toggle('hidden', typeVal !== 'specific');
@@ -1603,15 +1506,12 @@ async function openEditTaskModal(taskId) {
     if (!ws.faculty.length) {
         await fetchAllData();
     }
-
     const task = getTaskById(taskId);
     if (!task) {
         showToast('Task not found.', 'error');
         return;
     }
-
     editingTaskId = taskId;
-
     const titleEl = document.querySelector('#assignModal h2');
     if (titleEl) titleEl.textContent = 'Edit Task';
     const submitBtn = document.querySelector('#assignModal .modal-footer .btn-primary');
@@ -1621,10 +1521,8 @@ async function openEditTaskModal(taskId) {
             Save Changes
         `;
     }
-
     document.getElementById('taskTitle').value = task.title || '';
     document.getElementById('taskDesc').value = task.instructions || '';
-
     const due = task.due_at ? new Date(task.due_at) : null;
     if (due && !Number.isNaN(due.getTime())) {
         document.getElementById('dueDate').value = due.toISOString().slice(0, 10);
@@ -1633,27 +1531,21 @@ async function openEditTaskModal(taskId) {
         document.getElementById('dueDate').value = '';
         document.getElementById('dueTime').value = '17:00';
     }
-
     const scope = task.assigned_scope || 'all';
     const target = document.getElementById('targetGroup');
     const typeTarget = document.getElementById('targetType');
     target.value = target.querySelector(`option[value="${scope}"]`) ? scope : 'all';
     if (typeTarget) typeTarget.value = task.assigned_type || 'all_types';
-
     const attachments = document.getElementById('taskAttachments');
     if (attachments) attachments.value = '';
-
     renderSpecificUsers();
     toggleSpecificUsers();
-
     const assignedIds = workflowState.assignments
         .filter(a => String(a.task_id) === String(taskId))
         .map(a => String(a.faculty_id));
-
     Array.from(document.getElementById('specificUsers').options).forEach(opt => {
         opt.selected = assignedIds.includes(String(opt.value));
     });
-
     document.getElementById('assignModal').classList.add('open');
 }
 
@@ -1665,19 +1557,15 @@ function createNewTask() {
     const desc    = document.getElementById('taskDesc').value.trim();
     const group   = document.getElementById('targetGroup').value;
     const type    = document.getElementById('targetType')?.value || 'all_types';
-
     if (!title)   { showToast('Please enter a task title.', 'error'); return; }
     if (!dueDate) { showToast('Please select a due date.', 'error'); return; }
-
     const dueAt = new Date(`${dueDate}T${dueTime || '17:00'}`).toISOString();
     const selected = Array.from(document.getElementById('specificUsers').selectedOptions).map(o => String(o.value));
     let assigned = [];
-
     assigned = ws.faculty.slice();
     if (group === 'all_bsit') assigned = assigned.filter(f => f.department_code === 'BSIT');
     if (group === 'all_bsie') assigned = assigned.filter(f => f.department_code === 'BSIE');
     if (group === 'all_bit') assigned = assigned.filter(f => f.department_code === 'BIT');
-
     if (type === 'regular') assigned = assigned.filter(f => normalizeText(f.employment_status).includes('regular') || normalizeText(f.employment_status).includes('organic'));
     if (type === 'part_time') assigned = assigned.filter(f => normalizeText(f.employment_status).includes('part') || normalizeText(f.employment_status).includes('part-time'));
     if (type === 'chairperson') assigned = assigned.filter(f => normalizeText(f.role).includes('chair') || normalizeText(f.position).includes('chair'));
@@ -1685,15 +1573,12 @@ function createNewTask() {
         assigned = ws.faculty.filter(f => selected.includes(String(f.id)));
         if (!assigned.length) { showToast('Select at least one faculty member.', 'error'); return; }
     }
-
     if (!assigned.length) {
         showToast('No faculty found for the selected target group.', 'error');
         return;
     }
-
     const attachmentInput = document.getElementById('taskAttachments');
     const files = Array.from(attachmentInput?.files || []).map(f => f.name);
-
     let assignedLabel = 'Specific Faculty';
     if (group === 'all') assignedLabel = 'All Faculty';
     if (group === 'all_bsit') assignedLabel = 'BSIT';
@@ -1703,7 +1588,6 @@ function createNewTask() {
     if (type === 'part_time') assignedLabel += ' | Part-Time';
     if (type === 'chairperson') assignedLabel += ' | Chairperson';
     if (type === 'specific') assignedLabel = `${assigned.length} specific faculty`;
-
     const payload = { title, instructions: desc, dueAt, assigned, files, assignedLabel, assignedScope: group, assignedType: type };
     if (editingTaskId) {
         updateTaskRealtime({ taskId: editingTaskId, ...payload });
@@ -1769,7 +1653,6 @@ async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files,
         target: title,
         log_type: 'created'
     });
-
     showToast(`Task "${title}" assigned to ${assigned.length} faculty.`);
     closeAssignModal();
     document.getElementById('taskTitle').value = '';
@@ -1777,7 +1660,6 @@ async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files,
     document.getElementById('dueDate').value = '';
     if (document.getElementById('taskAttachments')) document.getElementById('taskAttachments').value = '';
 }
-
 
 async function updateTaskRealtime({ taskId, title, instructions, dueAt, assigned, files, assignedLabel, assignedScope, assignedType }) {
     const { error: updateError } = await updateTaskWithOptionalColumns(taskId, {
@@ -1833,36 +1715,27 @@ async function deleteTask(taskId) {
     await fetchAllData();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   DEPARTMENT DETAILS MODAL
-   ═══════════════════════════════════════════════════════════════ */
 function openDeptDetails(dept) {
     document.getElementById('deptModal').classList.add('open');
     document.getElementById('deptTitle').textContent = dept + " Department";
-
     const submitted = [];
     const notSubmitted = [];
-
     allSubmissions.forEach(s => {
         if (s.department_code === dept && s.status !== 'notsubmitted') {
             submitted.push(s.faculty_name);
         }
     });
-
     const totalFaculty = workflowState.faculty
         .filter(f => f.department_code === dept)
         .map(f => f.full_name);
-
     totalFaculty.forEach(name => {
         if (!submitted.includes(name)) {
             notSubmitted.push(name);
         }
     });
-
     document.getElementById('submittedList').innerHTML = submitted.length > 0 
         ? submitted.map(n => `<div class="flex items-center gap-2 py-1"><span class="text-green-500">✓</span> ${n}</div>`).join('') 
         : '<span class="text-gray-400">None yet</span>';
-
     document.getElementById('notSubmittedList').innerHTML = notSubmitted.length > 0 
         ? notSubmitted.map(n => `<div class="flex items-center gap-2 py-1"><span class="text-red-400">○</span> ${n}</div>`).join('') 
         : '<span class="text-green-500">All submitted!</span>';
@@ -1872,13 +1745,9 @@ function closeDeptModal() {
     document.getElementById('deptModal').classList.remove('open');
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   REVIEW MODAL
-   ═══════════════════════════════════════════════════════════════ */
 async function openReviewModal(taskId, facultyRef) {
     const taskIdText = String(taskId);
     const facultyRefText = String(facultyRef);
-
     const findLocalSubmission = () => allSubmissions.find(s =>
         String(s.task_id) === taskIdText &&
         (
@@ -1887,17 +1756,11 @@ async function openReviewModal(taskId, facultyRef) {
             String(s.submission_id || '') === facultyRefText
         )
     );
-
     let sub = findLocalSubmission();
-
-    // If the admin page was already open while the faculty submitted,
-    // refresh once before showing the error.
     if (!sub) {
         await fetchAllData();
         sub = findLocalSubmission();
     }
-
-    // Last-resort fallback: read the submission directly from Supabase.
     if (!sub) {
         const { data, error } = await db
             .from('wf_submissions')
@@ -1905,7 +1768,6 @@ async function openReviewModal(taskId, facultyRef) {
             .eq('task_id', taskId)
             .eq('faculty_id', facultyRef)
             .maybeSingle();
-
         if (!error && data) {
             const faculty = getFacultyById(data.faculty_id) || {};
             sub = {
@@ -1924,7 +1786,6 @@ async function openReviewModal(taskId, facultyRef) {
             };
         }
     }
-
     if (!sub) {
         showToast('Submission record not found. Please refresh the admin page and try again.', 'error');
         return;
@@ -1935,11 +1796,9 @@ async function openReviewModal(taskId, facultyRef) {
     }
     activeReviewId = `${sub.task_id}|${sub.faculty_id}`;
     const task = getTaskById(sub.task_id);
-
     document.getElementById('modalTaskTitle').textContent = task ? task.title : 'Submission Review';
     document.getElementById('modalSubmitter').textContent =
         `${sub.faculty_name} | ${sub.department_code} | Submitted ${formatDateTime(sub.submitted_at)}`;
-
     if (task) {
         document.getElementById('deadlineBlock').classList.remove('hidden');
         document.getElementById('modalDeadline').textContent = formatDate(task.due_at);
@@ -1947,7 +1806,6 @@ async function openReviewModal(taskId, facultyRef) {
     } else {
         document.getElementById('deadlineBlock').classList.add('hidden');
     }
-
     const recEl = document.getElementById('reviewRecord');
     if (sub.reviewed_at) {
         recEl.classList.remove('hidden');
@@ -1960,12 +1818,12 @@ async function openReviewModal(taskId, facultyRef) {
     } else {
         recEl.classList.add('hidden');
     }
-
     document.getElementById('modalFiles').innerHTML = renderFileList(sub.files, 'No submitted files saved.');
     document.getElementById('adminComment').value = '';
     document.getElementById('reviewModal').classList.add('open');
     document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
 }
+
 function closeReviewModal() {
     document.getElementById('reviewModal').classList.remove('open');
     activeReviewId = null;
@@ -1983,6 +1841,7 @@ function applyReview(newStatus) {
     const types  = { approved: 'success', revision: 'warn', rejected: 'error' };
     applyReviewRealtime(sub.submission_id, newStatus, comment, labels, types, sub);
 }
+
 async function applyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
     const { error } = await db
         .from('wf_submissions')
@@ -2016,13 +1875,11 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
     closeReviewModal();
     if (activeTaskDetailId) renderTaskDetailPage(activeTaskDetailId, { focusFacultyId: sub.faculty_id });
 }
+
 function approveSubmission()  { applyReview('approved'); }
 function requestRevision()    { applyReview('revision'); }
 function declineSubmission()  { applyReview('rejected'); }
 
-/* ═══════════════════════════════════════════════════════════════
-   ACCESS / DELEGATION MODAL
-   ═══════════════════════════════════════════════════════════════ */
 function renderDelegates() {
     const el = document.getElementById('currentDelegates');
     const delegatedAccess = workflowState.delegatedAccess || [];
@@ -2052,9 +1909,11 @@ function openAccessModal() {
     renderDelegates();
     document.getElementById('accessModal').classList.add('open');
 }
+
 function closeAccessModal() {
     document.getElementById('accessModal').classList.remove('open');
 }
+
 function grantAccess() {
     const user = document.getElementById('accessUserSelect').value;
     if (!user) { showToast('Please select a user.', 'error'); return; }
@@ -2068,6 +1927,7 @@ function grantAccess() {
     }
     grantAccessRealtime(user, depts);
 }
+
 async function grantAccessRealtime(user, depts) {
     const { error } = await db.from('wf_delegated_access').insert({
         grantee_name: user,
@@ -2086,6 +1946,7 @@ async function grantAccessRealtime(user, depts) {
     document.getElementById('deptBIT').checked = false;
     await fetchAllData();
 }
+
 async function removeAccess(index) {
     const row = workflowState.delegatedAccess[index];
     if (!row) return;
@@ -2098,9 +1959,6 @@ async function removeAccess(index) {
     await fetchAllData();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   NOTIFICATIONS
-   ═══════════════════════════════════════════════════════════════ */
 function toggleNotifications() {
     const dropdown = document.getElementById('notifDropdown');
     dropdown.classList.toggle('open');
@@ -2158,7 +2016,6 @@ function resolveNotificationTarget(notification) {
     let taskId = notification.task_id || notification.target_task_id || notification.related_task_id || null;
     let facultyId = notification.faculty_id || notification.target_faculty_id || notification.related_faculty_id || null;
     let submissionId = notification.submission_id || notification.target_submission_id || notification.related_submission_id || null;
-
     if (submissionId) {
         const sub = workflowState.submissions.find(s => String(s.id) === String(submissionId));
         if (sub) {
@@ -2166,7 +2023,6 @@ function resolveNotificationTarget(notification) {
             facultyId = facultyId || sub.faculty_id;
         }
     }
-
     const message = notification.message || '';
     if (!taskId || !facultyId) {
         let match = message.match(/new\s+submission\s+from\s+(.+?):\s*(.+)$/i);
@@ -2179,12 +2035,10 @@ function resolveNotificationTarget(notification) {
             submissionId = submissionId || sub?.id || null;
         }
     }
-
     if (!taskId) {
         let match = message.match(/new\s+task\s+"(.+?)"/i) || message.match(/task\s+"(.+?)"/i);
         if (match) taskId = findTaskByTitle(match[1])?.id || null;
     }
-
     if (!facultyId) {
         let match = message.match(/^(approved|revision requested|rejected|declined):\s*(.+?)(?:\s+-\s+(.+))?$/i);
         if (match) {
@@ -2198,7 +2052,6 @@ function resolveNotificationTarget(notification) {
             }
         }
     }
-
     if (!submissionId && taskId && facultyId) {
         submissionId = getSubmission(taskId, facultyId)?.id || null;
     }
@@ -2210,7 +2063,6 @@ async function openNotificationTarget(notificationId) {
     if (!notification) return;
     await markNotificationRead(notificationId, true);
     document.getElementById('notifDropdown').classList.remove('open');
-
     const target = resolveNotificationTarget(notification);
     if (!target) {
         showToast('Could not connect this notification to a task or submission.', 'warn');
@@ -2253,9 +2105,6 @@ async function markAllRead() {
     showToast('All notifications marked as read.', 'success');
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   ACTIVITY LOG MODAL
-   ═══════════════════════════════════════════════════════════════ */
 function openActivityLogModal() {
     document.getElementById('activityLogModal').classList.add('open');
     renderActivityLog();
@@ -2289,9 +2138,6 @@ function renderActivityLog() {
     `).join('');
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   TIMELINE MODAL
-   ═══════════════════════════════════════════════════════════════ */
 function findSubmissionByTaskAndFaculty(taskId, facultyRef) {
     return allSubmissions.find(s => s.task_id === taskId && (s.faculty_id === facultyRef || s.faculty_name === facultyRef));
 }
@@ -2323,7 +2169,6 @@ function renderTimeline() {
     if (sub.reviewed_at) {
         events.push({ time: sub.reviewed_at, label: sub.status === 'approved' ? 'Approved' : sub.status === 'rejected' ? 'Rejected' : 'Revision Requested', active: true });
     }
-
     list.innerHTML = events.map((e, i) => `
         <div class="timeline-item">
             <div class="timeline-dot ${e.active ? 'active' : ''}">
@@ -2337,9 +2182,6 @@ function renderTimeline() {
     `).join('');
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   COMMENTS MODAL
-   ═══════════════════════════════════════════════════════════════ */
 function openCommentsModal(taskId, facultyRef) {
     const sub = findSubmissionByTaskAndFaculty(taskId, facultyRef);
     if (!sub) return;
@@ -2377,6 +2219,7 @@ function addComment() {
     document.getElementById('newComment').value = '';
     addCommentRealtime(activeReviewId, text);
 }
+
 async function addCommentRealtime(pair, text) {
     const [taskId, facultyId] = pair.split('|');
     const { error } = await db.from('wf_comments').insert({
@@ -2398,6 +2241,7 @@ async function addCommentRealtime(pair, text) {
     showToast('Comment added.', 'success');
     renderComments();
 }
+
 function renderSpecificUsers() {
     const ws = ensureWorkflowState();
     const select = document.getElementById('specificUsers');
@@ -2425,6 +2269,58 @@ function normalizeWorkflowFaculty(row) {
     };
 }
 
+function renderProfile(profile, user) {
+    const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || user?.email || 'Administrator';
+    const role = profile.role || 'Administrator';
+    const avatarUrl = profile.avatar_url || '';
+    
+    const profileNameEl = document.getElementById('profileName');
+    const profileRoleEl = document.getElementById('profileRole');
+    if (profileNameEl) profileNameEl.textContent = fullName;
+    if (profileRoleEl) profileRoleEl.textContent = role;
+
+    const sidebarAvatar = document.getElementById('sidebarAvatar');
+    const sidebarAvatarFallback = document.getElementById('sidebarAvatarFallback');
+    if (sidebarAvatar && sidebarAvatarFallback) {
+        if (avatarUrl) {
+            sidebarAvatar.src = avatarUrl;
+            sidebarAvatar.classList.remove('hidden');
+            sidebarAvatarFallback.classList.add('hidden');
+        } else {
+            sidebarAvatar.src = '';
+            sidebarAvatar.classList.add('hidden');
+            sidebarAvatarFallback.classList.remove('hidden');
+        }
+    }
+}
+
+async function loadAdminProfile() {
+    const { data: authData } = await db.auth.getUser();
+    currentUser = authData?.user || null;
+    if (!currentUser) {
+        const profileNameEl = document.getElementById('profileName');
+        const profileRoleEl = document.getElementById('profileRole');
+        if (profileNameEl) profileNameEl.textContent = 'Administrator';
+        if (profileRoleEl) profileRoleEl.textContent = 'Administrator';
+        return;
+    }
+    let profile = {
+        first_name: currentUser.user_metadata?.first_name || '',
+        last_name: currentUser.user_metadata?.last_name || '',
+        email: currentUser.email,
+        role: currentUser.user_metadata?.role || 'Administrator',
+        avatar_url: currentUser.user_metadata?.avatar_url || ''
+    };
+    try {
+        const { data } = await db.from('admin_profiles').select('*').eq('id', currentUser.id).maybeSingle();
+        if (data) profile = { ...profile, ...data };
+    } catch (error) {
+        console.warn('Admin profile skipped:', error.message);
+    }
+    currentProfile = profile;
+    renderProfile(profile, currentUser);
+}
+
 async function fetchAllData() {
     const [faculty, tasks, assignments, submissions, files, notifications, activity, comments, delegates] = await Promise.all([
         db.from('faculty').select('*').order('full_name', { ascending: true }),
@@ -2437,13 +2333,11 @@ async function fetchAllData() {
         db.from('wf_comments').select('*').order('created_at', { ascending: false }),
         db.from('wf_delegated_access').select('*').eq('is_active', true)
     ]);
-
     if (faculty.error || tasks.error || assignments.error || submissions.error || files.error || notifications.error || activity.error || comments.error || delegates.error) {
         console.error({ faculty, tasks, assignments, submissions, files, notifications, activity, comments, delegates });
         showToast('Unable to load workflow data. Check Supabase tables and columns.', 'error');
         return;
     }
-
     workflowState.faculty = (faculty.data || [])
         .map(normalizeWorkflowFaculty)
         .filter(f => String(f.status || 'Active').toLowerCase() === 'active');
@@ -2455,7 +2349,6 @@ async function fetchAllData() {
     workflowState.activity = activity.data || [];
     workflowState.comments = comments.data || [];
     workflowState.delegatedAccess = delegates.data || [];
-
     renderAll();
     updateNotificationBadge();
 }
@@ -2476,8 +2369,17 @@ function initRealtime() {
         .subscribe();
 }
 
-async function init() {
-    await loadSidebar();
+window.addEventListener('hashchange', () => {
+    if (window.location.hash.startsWith('#task=')) openTaskFromHash();
+    else if (activeTaskDetailId) returnToWorkflowMain(false);
+});
+
+window.addEventListener('load', async () => {
+    if (typeof loadSidebar === 'function') {
+        await loadSidebar();
+    }
+    await loadAdminProfile();
+
     if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON === 'YOUR_ANON_KEY') {
         showToast('Set __SUPABASE_URL__ and __SUPABASE_ANON__ to enable realtime.', 'warn');
         return;
@@ -2495,15 +2397,8 @@ async function init() {
     renderSpecificUsers();
     openTaskFromHash();
     initRealtime();
-}
-window.addEventListener('hashchange', () => {
-    if (window.location.hash.startsWith('#task=')) openTaskFromHash();
-    else if (activeTaskDetailId) returnToWorkflowMain(false);
 });
-init();
 </script>
-
-<div id="message-container"></div>
 <script src="../nav.js" defer></script>
 <script src="../shared/system-ui.js"></script>
 </body>
