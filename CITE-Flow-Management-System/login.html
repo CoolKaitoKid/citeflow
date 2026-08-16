@@ -920,6 +920,12 @@ loginForm.addEventListener(
             }
 
 
+            console.log(
+                'Authenticated user:',
+                user.id
+            );
+
+
             /* =============================================
                EMAIL CONFIRMATION
             ============================================= */
@@ -938,21 +944,163 @@ loginForm.addEventListener(
 
 
             /* =============================================
-               GET ROLE
+               CHECK MAIN PROFILE FIRST
+               
+               IMPORTANT:
+               profiles.is_admin is the authoritative
+               administrator check.
             ============================================= */
 
-            let role =
-                String(
-                    user.user_metadata?.role ||
-                    ''
-                )
-                .toLowerCase()
-                .trim();
+            console.log(
+                'Checking CiteFlow profile...'
+            );
+
+
+            const {
+                data: mainProfile,
+                error: mainProfileError
+            } =
+                await supabaseClient
+                    .from('profiles')
+                    .select(
+                        `
+                        id,
+                        first_name,
+                        last_name,
+                        email,
+                        id_number,
+                        role,
+                        is_admin
+                        `
+                    )
+                    .eq(
+                        'id',
+                        user.id
+                    )
+                    .maybeSingle();
+
+
+            if (mainProfileError) {
+
+                console.error(
+                    'Main profile check error:',
+                    mainProfileError
+                );
+
+            }
+
+
+            /* =============================================
+               ADMIN LOGIN
+               
+               CHECK ADMIN BEFORE FACULTY.
+            ============================================= */
+
+            if (
+                mainProfile &&
+                mainProfile.is_admin === true
+            ) {
+
+                console.log(
+                    'Administrator account detected:',
+                    mainProfile
+                );
+
+
+                const adminUserInfo = {
+
+                    id:
+                        user.id,
+
+                    email:
+                        user.email,
+
+                    name:
+                        `${mainProfile.first_name || ''} ${mainProfile.last_name || ''}`
+                            .trim() ||
+                        user.user_metadata?.full_name ||
+                        user.email?.split('@')[0] ||
+                        'Administrator',
+
+                    role:
+                        'admin',
+
+                    is_admin:
+                        true
+
+                };
+
+
+                /* -----------------------------------------
+                   SAVE ADMIN USER
+                ----------------------------------------- */
+
+                localStorage.setItem(
+                    'citeflow_user',
+                    JSON.stringify(
+                        adminUserInfo
+                    )
+                );
+
+
+                /* -----------------------------------------
+                   REMEMBER ME
+                ----------------------------------------- */
+
+                if (rememberMe.checked) {
+
+                    localStorage.setItem(
+                        'citeflow_remembered_email',
+                        email
+                    );
+
+                } else {
+
+                    localStorage.removeItem(
+                        'citeflow_remembered_email'
+                    );
+
+                }
+
+
+                /* -----------------------------------------
+                   ADMIN REDIRECT
+                ----------------------------------------- */
+
+                showMessage(
+                    'Login successful. Redirecting to administrator dashboard...',
+                    'success'
+                );
+
+
+                setTimeout(
+                    function() {
+
+                        window.location.replace(
+                            'admin/faculty-profiles.html'
+                        );
+
+                    },
+                    500
+                );
+
+
+                return;
+
+            }
 
 
             /* =============================================
                CHECK FACULTY PROFILE
+               
+               Only accounts that are NOT administrators
+               reach this section.
             ============================================= */
+
+            console.log(
+                'Checking faculty profile...'
+            );
+
 
             const {
                 data: facultyProfile,
@@ -991,9 +1139,9 @@ loginForm.addEventListener(
             }
 
 
-            /* =================================================
+            /* =============================================
                FACULTY LOGIN
-            ================================================= */
+            ============================================= */
 
             if (facultyProfile) {
 
@@ -1003,9 +1151,9 @@ loginForm.addEventListener(
                 );
 
 
-                /* ---------------------------------------------
+                /* -----------------------------------------
                    CHECK FACULTY STATUS
-                --------------------------------------------- */
+                ----------------------------------------- */
 
                 if (
                     facultyProfile.status &&
@@ -1027,9 +1175,9 @@ loginForm.addEventListener(
                 }
 
 
-                /* ---------------------------------------------
-                   CHECK ACCESS
-                --------------------------------------------- */
+                /* -----------------------------------------
+                   CHECK FACULTY ACCESS
+                ----------------------------------------- */
 
                 if (
                     facultyProfile.access_enabled === false
@@ -1048,9 +1196,9 @@ loginForm.addEventListener(
                 }
 
 
-                /* ---------------------------------------------
+                /* -----------------------------------------
                    SAVE FACULTY USER
-                --------------------------------------------- */
+                ----------------------------------------- */
 
                 const facultyUserInfo = {
 
@@ -1084,9 +1232,9 @@ loginForm.addEventListener(
                 );
 
 
-                /* ---------------------------------------------
+                /* -----------------------------------------
                    REMEMBER ME
-                --------------------------------------------- */
+                ----------------------------------------- */
 
                 if (rememberMe.checked) {
 
@@ -1104,9 +1252,9 @@ loginForm.addEventListener(
                 }
 
 
-                /* ---------------------------------------------
+                /* -----------------------------------------
                    FORCE ACCOUNT SETUP
-                --------------------------------------------- */
+                ----------------------------------------- */
 
                 if (
                     facultyProfile.must_change_password === true
@@ -1134,9 +1282,9 @@ loginForm.addEventListener(
                 }
 
 
-                /* ---------------------------------------------
+                /* -----------------------------------------
                    FACULTY DASHBOARD
-                --------------------------------------------- */
+                ----------------------------------------- */
 
                 showMessage(
                     'Login successful. Redirecting to your faculty dashboard...',
@@ -1161,142 +1309,9 @@ loginForm.addEventListener(
             }
 
 
-            /* =================================================
-               ADMIN LOGIN
-            ================================================= */
-
-            const adminRole =
-                String(
-                    user.user_metadata?.role ||
-                    ''
-                )
-                .toLowerCase()
-                .trim();
-
-
-            const adminRoles = [
-                'administrator',
-                'admin',
-                'dean',
-                'chairperson'
-            ];
-
-
-            /* -----------------------------------------------
-               CHECK ADMIN PROFILE
-            ------------------------------------------------ */
-
-            const {
-                data: adminProfile,
-                error: adminProfileError
-            } =
-                await supabaseClient
-                    .from('admin_profiles')
-                    .select(
-                        'id, role'
-                    )
-                    .eq(
-                        'id',
-                        user.id
-                    )
-                    .maybeSingle();
-
-
-            if (adminProfileError) {
-
-                console.warn(
-                    'Admin profile check:',
-                    adminProfileError
-                );
-
-            }
-
-
-            if (
-                adminProfile ||
-                adminRoles.includes(adminRole)
-            ) {
-
-                const finalAdminRole =
-                    String(
-                        adminProfile?.role ||
-                        adminRole ||
-                        'administrator'
-                    )
-                    .toLowerCase()
-                    .trim();
-
-
-                const adminUserInfo = {
-
-                    id:
-                        user.id,
-
-                    email:
-                        user.email,
-
-                    name:
-                        user.user_metadata?.full_name ||
-                        user.user_metadata?.name ||
-                        user.email?.split('@')[0] ||
-                        'Administrator',
-
-                    role:
-                        finalAdminRole
-
-                };
-
-
-                localStorage.setItem(
-                    'citeflow_user',
-                    JSON.stringify(
-                        adminUserInfo
-                    )
-                );
-
-
-                if (rememberMe.checked) {
-
-                    localStorage.setItem(
-                        'citeflow_remembered_email',
-                        email
-                    );
-
-                } else {
-
-                    localStorage.removeItem(
-                        'citeflow_remembered_email'
-                    );
-
-                }
-
-
-                showMessage(
-                    'Login successful. Redirecting...',
-                    'success'
-                );
-
-
-                setTimeout(
-                    function() {
-
-                        window.location.replace(
-                            'admin/faculty-profiles.html'
-                        );
-
-                    },
-                    500
-                );
-
-
-                return;
-
-            }
-
-
-            /* =================================================
+            /* =============================================
                UNKNOWN ACCOUNT
-            ================================================= */
+            ============================================= */
 
             await supabaseClient.auth.signOut();
 
@@ -1462,8 +1477,6 @@ loginForm.addEventListener(
 
     }
 );
-
-
 /* =====================================================
    EXISTING SESSION
 ===================================================== */
