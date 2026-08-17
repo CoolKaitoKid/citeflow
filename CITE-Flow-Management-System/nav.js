@@ -271,4 +271,4 @@ window.openMessages = function() {
     if (window.CiteFlowMessenger) {
         window.CiteFlowMessenger.openMessages();
     }
-};
+};
