@@ -468,11 +468,11 @@
 <!-- CREDENTIALS SENT CONFIRMATION MODAL -->
 <div id="facultyCredentialsModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[2600] p-4">
     <div class="bg-white rounded-3xl w-full max-w-md mx-4 overflow-hidden shadow-2xl">
-        <div class="px-6 py-5 border-b bg-emerald-50 flex items-start gap-3">
-            <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-lg flex-shrink-0"><i class="fa-solid fa-envelope"></i></div>
+        <div id="credHeader" class="px-6 py-5 border-b bg-emerald-50 flex items-start gap-3">
+            <div id="credHeaderIcon" class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-lg flex-shrink-0"><i class="fa-solid fa-envelope"></i></div>
             <div>
-                <h3 class="text-xl font-semibold text-gray-900">Faculty Account Created</h3>
-                <p class="text-sm text-gray-600 mt-1">Credentials were emailed — not shown on screen.</p>
+                <h3 id="credHeaderTitle" class="text-xl font-semibold text-gray-900">Faculty Account Created</h3>
+                <p id="credHeaderSub" class="text-sm text-gray-600 mt-1">Credentials were emailed — not shown on screen.</p>
             </div>
         </div>
         <div class="p-6 space-y-4">
@@ -483,11 +483,29 @@
             <div class="bg-blue-50 rounded-2xl p-4 border border-blue-200 text-sm text-blue-800 leading-relaxed">
                 A notification has also been sent to your admin email confirming that these credentials were delivered.
             </div>
-            <div id="emailFailedWarning" class="hidden bg-red-50 rounded-2xl p-4 border border-red-200 text-sm text-red-800 leading-relaxed">
-                We couldn't confirm the credential email reached the faculty member's private email. Check the <code>send-faculty-credentials</code> Edge Function logs in Supabase, then try resending, or share the login details with them directly for now.
+            <div id="emailFailedWarning" class="hidden bg-amber-50 rounded-2xl p-4 border border-amber-200 text-sm text-amber-900 space-y-3">
+                <div class="font-semibold text-amber-950 flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> Automatic email delivery failed.
+                </div>
+                <div class="text-xs text-amber-800">
+                    The account was created in Supabase. Share these login credentials directly with the faculty member:
+                </div>
+                <div class="bg-white p-3.5 rounded-xl border border-amber-200 font-mono text-xs text-gray-900 space-y-2 shadow-sm">
+                    <div class="flex items-center justify-between border-b pb-1.5">
+                        <span class="text-gray-500 font-sans font-medium">Login Email:</span>
+                        <span id="failedCredEmail" class="font-bold select-all text-gray-900">-</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-500 font-sans font-medium">Temp Password:</span>
+                        <span id="failedCredPassword" class="font-bold select-all text-gray-900">-</span>
+                    </div>
+                </div>
+                <button type="button" id="copyCredsBtn" onclick="copyFailedCredentials()" class="w-full bg-[#621708] hover:bg-[#8c2a10] text-white py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm">
+                    <i class="fa-regular fa-copy"></i> Copy Email & Password to Clipboard
+                </button>
             </div>
-            <p class="text-xs text-gray-500">
-                For security, the password is not displayed here. Ask the faculty member to check their private inbox (including spam/junk folder) and to change their password on first login.
+            <p id="credSecurityNote" class="text-xs text-gray-500">
+                Ask the faculty member to check their private inbox (including spam/junk folder) and to change their password on first login.
             </p>
         </div>
         <div class="border-t px-6 py-4 flex justify-end bg-gray-50">
@@ -501,6 +519,9 @@
     const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
     const { createClient } = supabase;
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    window.supabaseClient = supabaseClient;
+    window.__SUPABASE_URL__ = supabaseUrl;
+    window.__SUPABASE_ANON__ = supabaseAnonKey;
     // Non-persistent client lets admin create faculty auth users without replacing admin session.
     const onboardingClient = createClient(supabaseUrl, supabaseAnonKey, {
         auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
@@ -942,31 +963,37 @@
         }
     }
 
-    function showFacultyCredentialsModal(privateEmail, emailSent) {
+    function showFacultyCredentialsModal(privateEmail, emailSent, loginEmail = '', tempPassword = '') {
         const modal = document.getElementById('facultyCredentialsModal');
-        const header = modal.querySelector('.bg-emerald-50');
-        const titleEl = header.querySelector('h3');
-        const subtitleEl = header.querySelector('p');
+        const header = document.getElementById('credHeader');
+        const iconContainer = document.getElementById('credHeaderIcon');
+        const titleEl = document.getElementById('credHeaderTitle');
+        const subtitleEl = document.getElementById('credHeaderSub');
         const sentBlock = document.getElementById('confirmSentToEmail').closest('.bg-gray-50');
         const adminBlock = modal.querySelector('.bg-blue-50');
-
-        document.getElementById('confirmSentToEmail').textContent = privateEmail;
-
         const failedWarning = document.getElementById('emailFailedWarning');
 
+        document.getElementById('confirmSentToEmail').textContent = privateEmail;
+        if (document.getElementById('failedCredEmail')) document.getElementById('failedCredEmail').textContent = loginEmail;
+        if (document.getElementById('failedCredPassword')) document.getElementById('failedCredPassword').textContent = tempPassword;
+
+        window._lastTempCreds = { loginEmail, tempPassword, privateEmail };
+
         if (emailSent) {
-            header.classList.remove('bg-red-50');
-            header.classList.add('bg-emerald-50');
+            header.className = 'px-6 py-5 border-b bg-emerald-50 flex items-start gap-3';
+            iconContainer.className = 'w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-lg flex-shrink-0';
+            iconContainer.innerHTML = '<i class="fa-solid fa-check"></i>';
             titleEl.textContent = 'Faculty Account Created';
             subtitleEl.textContent = 'Credentials were emailed — not shown on screen.';
             sentBlock.classList.remove('hidden');
             adminBlock.classList.remove('hidden');
             failedWarning.classList.add('hidden');
         } else {
-            header.classList.remove('bg-emerald-50');
-            header.classList.add('bg-red-50');
-            titleEl.textContent = 'Account Created, but Email Failed';
-            subtitleEl.textContent = 'The faculty account exists, but we could not confirm the credential email was sent.';
+            header.className = 'px-6 py-5 border-b bg-amber-50 flex items-start gap-3';
+            iconContainer.className = 'w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-lg flex-shrink-0';
+            iconContainer.innerHTML = '<i class="fa-solid fa-key"></i>';
+            titleEl.textContent = 'Account Created (Manual Dispatch Required)';
+            subtitleEl.textContent = 'Faculty account exists, but automatic email delivery failed.';
             sentBlock.classList.add('hidden');
             adminBlock.classList.add('hidden');
             failedWarning.classList.remove('hidden');
@@ -974,6 +1001,22 @@
 
         modal.classList.remove('hidden');
         modal.classList.add('flex');
+    }
+
+    function copyFailedCredentials() {
+        const creds = window._lastTempCreds || {};
+        const text = `Faculty Account Credentials:\nLogin Email: ${creds.loginEmail || ''}\nTemporary Password: ${creds.tempPassword || ''}`;
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('copyCredsBtn');
+            if (btn) {
+                btn.innerHTML = `<i class="fa-solid fa-check text-sm"></i> Credentials Copied!`;
+                setTimeout(() => {
+                    btn.innerHTML = `<i class="fa-regular fa-copy"></i> Copy Email & Password to Clipboard`;
+                }, 2500);
+            }
+        }).catch(() => {
+            alert('Credentials:\n' + text);
+        });
     }
 
     function closeFacultyCredentialsModal() {
@@ -1114,7 +1157,7 @@
             closeAddFacultyModal();
             clearAddFacultyForm();
             await loadFacultyProfiles();
-            showFacultyCredentialsModal(privateEmail, emailSent);
+            showFacultyCredentialsModal(privateEmail, emailSent, email, tempPassword);
         } catch (error) {
             console.error('Create faculty account failed:', error);
             if (String(error.message || '').toLowerCase().includes('database error saving new user')) {

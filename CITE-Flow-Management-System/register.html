@@ -1,482 +1,744 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>CTU – Create Account</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CiteFlow – Administrator Registration</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
+    
+    <!-- Supabase JS Client & Centralized Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="shared/supabase-config.js"></script>
+    <script src="shared/auth.js"></script>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #9c2f1f;
+            --primary-dark: #621708;
+            --primary-light: #bc3926;
+            --primary-subtle: rgba(156, 47, 31, 0.08);
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --bg-body: #f8fafc;
+            --border-color: #e2e8f0;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --shadow-card: 0 20px 40px -15px rgba(98, 23, 8, 0.12);
+        }
 
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-  <!-- Supabase JS CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+        body {
+            font-family: 'Plus Jakarta Sans', 'Poppins', sans-serif;
+            min-height: 100vh;
+            background: var(--bg-body);
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+        .auth-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #ffffff;
+        }
 
-    body {
-      font-family: 'Poppins', sans-serif;
-      background: white;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0;
-      overflow: hidden;
-    }
+        /* LEFT HERO SECTION */
+        .hero-side {
+            flex: 1;
+            position: relative;
+            background: url('assets/bldg2.jpg') center/cover no-repeat;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 48px;
+            overflow: hidden;
+        }
 
-    .signup-layout {
-      width: 90%;
-      max-width: 1200px;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      gap: clamp(30px, 4vw, 70px);
-      overflow: hidden;
-    }
+        .hero-side::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(98, 23, 8, 0.92) 0%, rgba(156, 47, 31, 0.82) 100%);
+            z-index: 1;
+        }
 
-    .form-section {
-      flex: 0.9;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      text-align: center;
-      padding: 40px 0;
-    }
+        .hero-header {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
 
-    .brand-logo {
-      width: clamp(3.4rem, 4.3vw, 4.6rem);
-      height: clamp(3.4rem, 4.3vw, 4.6rem);
-      border-radius: 50%;
-      object-fit: contain;
-      background: #efefef;
-      margin: 0 auto 8px;
-      box-shadow: 0 3px 12px rgba(0,0,0,0.07);
-    }
+        .hero-logo {
+            width: 52px;
+            height: 52px;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3));
+        }
 
-    h1 {
-      font-size: clamp(1.35rem, 1.95vw, 1.8rem);
-      font-weight: 700;
-      color: #000;
-      margin-bottom: 4px;
-    }
+        .hero-brand {
+            color: #ffffff;
+        }
 
-    .subtitle {
-      font-size: 0.83rem;
-      color: #666;
-      margin-bottom: 18px;
-    }
+        .hero-brand h2 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
 
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
+        .hero-brand span {
+            font-size: 0.82rem;
+            opacity: 0.85;
+            font-weight: 500;
+        }
 
-    .field {
-      text-align: left;
-    }
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 480px;
+            color: #ffffff;
+        }
 
-    label {
-      display: block;
-      font-size: 0.76rem;
-      color: #333;
-      margin-bottom: 3px;
-      font-weight: 500;
-    }
+        .security-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 30px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
 
-    .input-wrapper {
-      height: 42px;
-      background: #ffffff;
-      border: 1px solid #bbb;
-      border-radius: 0.875rem;
-      padding: 0 14px;
-      display: flex;
-      align-items: center;
-      transition: border-color 0.2s;
-      position: relative;
-    }
+        .hero-title {
+            font-size: clamp(1.8rem, 2.8vw, 2.4rem);
+            font-weight: 800;
+            line-height: 1.2;
+            letter-spacing: -0.03em;
+            margin-bottom: 16px;
+        }
 
-    .input-wrapper:focus-within {
-      border-color: #9c2f1f;
-      outline: 3px solid rgba(156,47,31,0.1);
-    }
+        .hero-info-box {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius-md);
+            padding: 18px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.55;
+        }
 
-    input {
-      flex: 1;
-      border: none;
-      outline: none;
-      background: transparent;
-      font-size: 0.87rem;
-      font-family: inherit;
-      color: #111;
-    }
+        .hero-info-box strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #ffffff;
+        }
 
-    input::placeholder {
-      color: #999;
-    }
+        .hero-footer {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            padding-top: 24px;
+        }
 
-    .password-field {
-      position: relative;
-    }
+        .dept-badges {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
 
-    .eye-toggle {
-      background: none;
-      border: none;
-      font-size: 1.1rem;
-      color: #555;
-      cursor: pointer;
-      padding: 0 8px;
-      position: absolute;
-      right: 10px;
-      display: none;                    /* Hidden by default */
-    }
+        .dept-logo {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+        }
 
-    .input-wrapper:focus-within .eye-toggle,
-    .password-field input:not(:placeholder-shown) + .eye-toggle {
-      display: block;                   /* Show only when typing or focused */
-    }
+        .hero-copyright {
+            font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.75);
+        }
 
-    .create-btn {
-      width: 100%;
-      height: 46px;
-      margin-top: 16px;
-      background: #9c2f1f;
-      color: white;
-      border: none;
-      border-radius: 0.75rem;
-      font-size: 0.94rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s ease;
-    }
+        /* RIGHT FORM SECTION */
+        .form-side {
+            flex: 1.1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 36px clamp(24px, 4vw, 56px);
+            background: #ffffff;
+            overflow-y: auto;
+        }
 
-    .create-btn:hover {
-      background: #84261a;
-    }
+        .form-card {
+            width: 100%;
+            max-width: 520px;
+        }
 
-    .create-btn:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
+        .form-header {
+            margin-bottom: 20px;
+        }
 
-    .login-prompt {
-      text-align: center;
-      margin-top: 14px;
-      font-size: 0.81rem;
-      color: #555;
-    }
-    .login-prompt a {
-      color: #000;
-      font-weight: 600;
-      text-decoration: none;
-    }
+        .form-title {
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: var(--text-main);
+            letter-spacing: -0.02em;
+            margin-bottom: 4px;
+        }
 
-    .login-prompt a:hover {
-      text-decoration: underline;
-    }
+        .form-subtitle {
+            color: var(--text-muted);
+            font-size: 0.92rem;
+        }
 
-    .department-logos {
-      display: flex;
-      justify-content: center;
-      gap: 12px;
-      margin-top: 8px;
-    }
+        /* RESTRICTION NOTICE BANNER */
+        .restriction-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: #fffbeb;
+            border: 1px solid #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 12px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 0.84rem;
+            color: #92400e;
+            margin-bottom: 20px;
+            line-height: 1.45;
+        }
 
-    .dept-logo {
-      width: 46px;
-      height: 46px;
-      object-fit: contain;
-    }
+        .restriction-banner i {
+            font-size: 1rem;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
 
-    .image-section {
-      flex: 1.2;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
+        /* ALERTS */
+        .alert-banner {
+            display: none;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            font-size: 0.88rem;
+            margin-bottom: 20px;
+            line-height: 1.45;
+            animation: fadeIn 0.25s ease forwards;
+        }
 
-    .image-wrapper {
-      width: 100%;
-      aspect-ratio: 4 / 4;
-      border-radius: 2.5rem;
-      overflow: hidden;
-      box-shadow: 0 10px 35px rgba(0,0,0,0.09);
-    }
+        .alert-banner.error {
+            display: flex;
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
 
-    .image-section img {
-      width: 105%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      clip-path: url(#roundedSlantLeft);
-    }
+        .alert-banner.success {
+            display: flex;
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
 
-    .message {
-      margin-top: 12px;
-      font-size: 0.85rem;
-      padding: 10px;
-      border-radius: 8px;
-    }
-    .success { background: #d4edda; color: #155724; }
-    .error { background: #f8d7da; color: #721c24; }
+        /* FORM GRID */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px 16px;
+            margin-bottom: 20px;
+        }
 
-    @media (max-width: 1024px) {
-      .signup-layout {
-        flex-direction: column-reverse;
-        gap: 35px;
-        height: auto;
-        min-height: 100vh;
-      }
+        .col-span-2 {
+            grid-column: span 2;
+        }
 
-      .form-section {
-        padding: 15px 0;
-      }
+        .input-label {
+            display: block;
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 6px;
+        }
 
-      .image-wrapper {
-        aspect-ratio: 16 / 9;
-        max-height: 42vh;
-      }
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
 
-      .image-section img {
-        clip-path: none;
-        border-radius: 28px;
-      }
+        .form-control {
+            width: 100%;
+            height: 46px;
+            padding: 0 14px;
+            background: #ffffff;
+            border: 1.5px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            font-family: inherit;
+            color: var(--text-main);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-      .form-grid {
-        grid-template-columns: 1fr;
-      }
-    }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--primary-subtle);
+        }
 
-    @media (max-width: 600px) {
-      .signup-layout {
-        width: 95%;
-      }
-    }
-  </style>
+        .passcode-input {
+            letter-spacing: 0.08em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 12px;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 6px;
+            font-size: 0.95rem;
+        }
+
+        /* PASSWORD STRENGTH BAR */
+        .password-strength-wrap {
+            margin-top: 6px;
+        }
+
+        .strength-meter {
+            height: 4px;
+            width: 100%;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+
+        .strength-bar {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s ease;
+            border-radius: 4px;
+        }
+
+        .strength-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* SUBMIT BUTTON */
+        .submit-btn {
+            width: 100%;
+            height: 48px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 0.96rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 10px 20px -6px rgba(156, 47, 31, 0.45);
+            transition: all 0.25s ease;
+            margin-top: 8px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 24px -6px rgba(156, 47, 31, 0.55);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.75;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-spinner {
+            display: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #ffffff;
+            animation: spin 0.7s linear infinite;
+        }
+
+        /* FOOTER PROMPT */
+        .auth-footer {
+            margin-top: 24px;
+            padding-top: 18px;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+        }
+
+        .auth-footer a {
+            color: var(--primary);
+            font-weight: 700;
+            text-decoration: none;
+            margin-left: 4px;
+        }
+
+        .auth-footer a:hover {
+            text-decoration: underline;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 960px) {
+            .hero-side {
+                display: none;
+            }
+            .form-side {
+                padding: 24px 20px;
+            }
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            .col-span-2 {
+                grid-column: span 1;
+            }
+        }
+    </style>
 </head>
 <body>
 
-  <!-- SVG CLIP PATH -->
-  <svg width="0" height="0" style="position:absolute">
-    <defs>
-      <clipPath id="roundedSlantLeft" clipPathUnits="objectBoundingBox">
-        <path d="M 0.14 0.00 Q 0.04 0.00 0.07 0.14 L 0.22 0.92 Q 0.24 1.00 0.34 1.00 L 0.90 1.00 Q 1.00 1.00 1.00 0.90 L 1.00 0.10 Q 1.00 0.00 0.90 0.00 Z"/>
-      </clipPath>
-    </defs>
-  </svg>
-
-  <div class="signup-layout">
-
-    <section class="form-section">
-
-      <img src="assets/ctu-logo.png" alt="Cebu Technological University Logo" class="brand-logo">
-
-      <h1>Create an account!</h1>
-      <div class="subtitle">Create your CiteFlow account</div>
-
-      <form id="signup-form">
-
-        <div class="form-grid">
-
-          <div class="field">
-            <label>First Name</label>
-            <div class="input-wrapper">
-              <input type="text" id="first-name" placeholder="Juan" required>
+    <div class="auth-container">
+        <!-- LEFT HERO SECTION -->
+        <section class="hero-side">
+            <div class="hero-header">
+                <img src="assets/ctu-logo.png" alt="CTU Logo" class="hero-logo">
+                <div class="hero-brand">
+                    <h2>CiteFlow</h2>
+                    <span>Administration Control</span>
+                </div>
             </div>
-          </div>
 
-          <div class="field">
-            <label>Last Name</label>
-            <div class="input-wrapper">
-              <input type="text" id="last-name" placeholder="Dela Cruz" required>
+            <div class="hero-content">
+                <div class="security-badge">
+                    <i class="fas fa-lock"></i> Restricted Portal
+                </div>
+                <h1 class="hero-title">Administrator Registration</h1>
+                <p style="font-size: 0.96rem; opacity: 0.9; line-height: 1.6;">
+                    Authorized university personnel and system officers can register an administrator account with verified institutional access credentials.
+                </p>
+                <div class="hero-info-box">
+                    <strong><i class="fas fa-info-circle"></i> Faculty Registration Notice</strong>
+                    Faculty members do not self-register here. All faculty accounts are directly issued and managed by college administrators via the User Management portal.
+                </div>
             </div>
-          </div>
 
-          <div class="field">
-            <label>Email Address</label>
-            <div class="input-wrapper">
-              <input type="email" id="email" placeholder="name@ctu.edu.ph" required autocomplete="email">
+            <div class="hero-footer">
+                <div class="dept-badges">
+                    <img src="assets/bit_logo.png" alt="BIT" class="dept-logo">
+                    <img src="assets/bsit_logo.png" alt="BSIT" class="dept-logo">
+                    <img src="assets/bsie_logo.png" alt="BSIE" class="dept-logo">
+                </div>
+                <div class="hero-copyright">
+                    © 2026 Cebu Technological University
+                </div>
             </div>
-          </div>
+        </section>
 
-          <div class="field">
-            <label>ID Number</label>
-            <div class="input-wrapper">
-              <input type="text" id="id-number" placeholder="2023-00123" required>
+        <!-- RIGHT REGISTRATION FORM -->
+        <section class="form-side">
+            <div class="form-card">
+                <div class="form-header">
+                    <h1 class="form-title">Admin Registration</h1>
+                    <p class="form-subtitle">Register a designated administrator profile</p>
+                </div>
+
+                <div class="restriction-banner">
+                    <i class="fas fa-shield-alt"></i>
+                    <div>
+                        <strong>Institutional Access Only</strong><br>
+                        Requires a verified Admin Authorization Passcode issued by the College Dean or System Administrator.
+                    </div>
+                </div>
+
+                <div id="alertBanner" class="alert-banner">
+                    <i id="alertIcon" class="fas fa-exclamation-circle"></i>
+                    <span id="alertMessage"></span>
+                </div>
+
+                <form id="adminRegisterForm">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label class="input-label" for="firstName">First Name</label>
+                            <div class="input-wrapper">
+                                <input type="text" id="firstName" class="form-control" placeholder="e.g. Admin" required>
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <label class="input-label" for="lastName">Last Name</label>
+                            <div class="input-wrapper">
+                                <input type="text" id="lastName" class="form-control" placeholder="e.g. Officer" required>
+                            </div>
+                        </div>
+
+                        <div class="field col-span-2">
+                            <label class="input-label" for="email">Administrator Email</label>
+                            <div class="input-wrapper">
+                                <input type="email" id="email" class="form-control" placeholder="admin@ctu.edu.ph" required autocomplete="email">
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <label class="input-label" for="employeeId">Admin / Officer ID</label>
+                            <div class="input-wrapper">
+                                <input type="text" id="employeeId" class="form-control" placeholder="e.g. ADM-2024-01" required>
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <label class="input-label" for="adminPasscode">Admin Authorization Passcode</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="adminPasscode" class="form-control passcode-input" placeholder="Enter Security Code" required autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <label class="input-label" for="password">Password</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="password" class="form-control" placeholder="Min. 8 characters" required autocomplete="new-password">
+                                <button type="button" class="toggle-password" id="togglePass1" aria-label="Toggle password visibility">
+                                    <i class="fas fa-eye" id="toggleIcon1"></i>
+                                </button>
+                            </div>
+                            <div class="password-strength-wrap">
+                                <div class="strength-meter">
+                                    <div id="strengthBar" class="strength-bar"></div>
+                                </div>
+                                <span id="strengthLabel" class="strength-label">Password strength</span>
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <label class="input-label" for="confirmPassword">Confirm Password</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="confirmPassword" class="form-control" placeholder="Repeat password" required autocomplete="new-password">
+                                <button type="button" class="toggle-password" id="togglePass2" aria-label="Toggle password visibility">
+                                    <i class="fas fa-eye" id="toggleIcon2"></i>
+                                </button>
+                            </div>
+                            <div id="matchNotice" style="font-size: 0.75rem; margin-top: 4px; color: var(--text-muted);"></div>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="submit-btn">
+                        <span class="btn-spinner" id="btnSpinner"></span>
+                        <span id="btnText">Register Administrator</span>
+                    </button>
+                </form>
+
+                <div class="auth-footer">
+                    Already have an account? 
+                    <a href="login.html">Back to Sign In</a>
+                </div>
             </div>
-          </div>
-
-          <div class="field">
-            <label>Password</label>
-            <div class="input-wrapper password-field">
-              <input type="password" id="password" placeholder="••••••••" required autocomplete="new-password">
-              <button type="button" class="eye-toggle" aria-label="Toggle password visibility">
-                <i class="far fa-eye"></i>
-              </button>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Confirm Password</label>
-            <div class="input-wrapper password-field">
-              <input type="password" id="confirm-password" placeholder="••••••••" required autocomplete="new-password">
-              <button type="button" class="eye-toggle" aria-label="Toggle password visibility">
-                <i class="far fa-eye"></i>
-              </button>
-            </div>
-          </div>
-
-        </div>
-
-        <button type="submit" id="create-btn" class="create-btn">Create Account</button>
-
-        <div id="message" class="message" style="display:none;"></div>
-
-        <div class="login-prompt">
-          Already have an account? <a href="login.html">Login</a>
-          <div class="department-logos">
-            <img src="assets/bit_logo.png" alt="BIT Logo" class="dept-logo">
-            <img src="assets/bsit_logo.png" alt="BSIT Logo" class="dept-logo">
-            <img src="assets/bsie_logo.png" alt="BSIE Logo" class="dept-logo">
-          </div>
-        </div>
-
-      </form>
-
-    </section>
-
-    <div class="image-section">
-      <div class="image-wrapper">
-        <img src="assets/bldg2.jpg" alt="CTU Campus Building">
-      </div>
+        </section>
     </div>
 
-  </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('adminRegisterForm');
+            const firstNameInput = document.getElementById('firstName');
+            const lastNameInput = document.getElementById('lastName');
+            const emailInput = document.getElementById('email');
+            const employeeIdInput = document.getElementById('employeeId');
+            const adminPasscodeInput = document.getElementById('adminPasscode');
+            const passwordInput = document.getElementById('password');
+            const confirmPasswordInput = document.getElementById('confirmPassword');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const btnSpinner = document.getElementById('btnSpinner');
+            const alertBanner = document.getElementById('alertBanner');
+            const alertMessage = document.getElementById('alertMessage');
+            const alertIcon = document.getElementById('alertIcon');
+            const strengthBar = document.getElementById('strengthBar');
+            const strengthLabel = document.getElementById('strengthLabel');
+            const matchNotice = document.getElementById('matchNotice');
 
-  <script>
-    // ================== SUPABASE CONFIG ==================
-    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-
-    const { createClient } = supabase;
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-
-    // Password visibility toggle - FIXED
-    document.addEventListener('DOMContentLoaded', function() {
-      const eyeToggles = document.querySelectorAll('.eye-toggle');
-
-      eyeToggles.forEach(toggle => {
-        const input = toggle.parentElement.querySelector('input');
-        const icon = toggle.querySelector('i');
-
-        toggle.addEventListener('click', function() {
-          if (input.type === 'password') {
-            input.type = 'text';
-            icon.classList.remove('fa-eye');
-            icon.classList.add('fa-eye-slash');
-          } else {
-            input.type = 'password';
-            icon.classList.remove('fa-eye-slash');
-            icon.classList.add('fa-eye');
-          }
-        });
-      });
-    });
-
-    // Form submission with strong password validation
-    const form = document.getElementById('signup-form');
-    const createBtn = document.getElementById('create-btn');
-    const messageDiv = document.getElementById('message');
-
-    form.addEventListener('submit', async function(e) {
-      e.preventDefault();
-      messageDiv.style.display = 'none';
-
-      createBtn.disabled = true;
-      createBtn.textContent = 'Creating account...';
-
-      const firstName = document.getElementById('first-name').value.trim();
-      const lastName = document.getElementById('last-name').value.trim();
-      const email = document.getElementById('email').value.trim();
-      const idNumber = document.getElementById('id-number').value.trim();
-      const password = document.getElementById('password').value;
-      const confirmPassword = document.getElementById('confirm-password').value;
-
-      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-
-      if (password !== confirmPassword) {
-        showMessage('Passwords do not match!', 'error');
-        resetButton();
-        return;
-      }
-      if (password.length < 8) {
-        showMessage('Password must be at least 8 characters long.', 'error');
-        resetButton();
-        return;
-      }
-      if (!passwordRegex.test(password)) {
-        showMessage('Password must contain uppercase, lowercase, number & special character.', 'error');
-        resetButton();
-        return;
-      }
-
-      try {
-        const { data, error } = await supabaseClient.auth.signUp({
-          email: email,
-          password: password,
-          options: {
-            data: {
-              first_name: firstName,
-              last_name: lastName,
-              id_number: idNumber
+            // Password Toggle Setup
+            function setupToggle(btnId, inputId, iconId) {
+                const btn = document.getElementById(btnId);
+                const input = document.getElementById(inputId);
+                const icon = document.getElementById(iconId);
+                btn.addEventListener('click', () => {
+                    const isPass = input.type === 'password';
+                    input.type = isPass ? 'text' : 'password';
+                    icon.classList.toggle('fa-eye', !isPass);
+                    icon.classList.toggle('fa-eye-slash', isPass);
+                });
             }
-          }
+            setupToggle('togglePass1', 'password', 'toggleIcon1');
+            setupToggle('togglePass2', 'confirmPassword', 'toggleIcon2');
+
+            // Live Password Strength Indicator
+            passwordInput.addEventListener('input', () => {
+                const val = passwordInput.value;
+                let score = 0;
+                if (val.length >= 8) score++;
+                if (/[A-Z]/.test(val)) score++;
+                if (/[0-9]/.test(val)) score++;
+                if (/[^A-Za-z0-9]/.test(val)) score++;
+
+                if (val.length === 0) {
+                    strengthBar.style.width = '0%';
+                    strengthLabel.textContent = 'Password strength';
+                    strengthLabel.style.color = 'var(--text-muted)';
+                } else if (score <= 1) {
+                    strengthBar.style.width = '25%';
+                    strengthBar.style.backgroundColor = '#ef4444';
+                    strengthLabel.textContent = 'Weak';
+                    strengthLabel.style.color = '#ef4444';
+                } else if (score === 2 || score === 3) {
+                    strengthBar.style.width = '65%';
+                    strengthBar.style.backgroundColor = '#f59e0b';
+                    strengthLabel.textContent = 'Moderate';
+                    strengthLabel.style.color = '#d97706';
+                } else {
+                    strengthBar.style.width = '100%';
+                    strengthBar.style.backgroundColor = '#10b981';
+                    strengthLabel.textContent = 'Strong password';
+                    strengthLabel.style.color = '#059669';
+                }
+                checkMatch();
+            });
+
+            confirmPasswordInput.addEventListener('input', checkMatch);
+
+            function checkMatch() {
+                if (!confirmPasswordInput.value) {
+                    matchNotice.textContent = '';
+                    return;
+                }
+                if (passwordInput.value === confirmPasswordInput.value) {
+                    matchNotice.textContent = '✓ Passwords match';
+                    matchNotice.style.color = '#059669';
+                } else {
+                    matchNotice.textContent = '✕ Passwords do not match';
+                    matchNotice.style.color = '#dc2626';
+                }
+            }
+
+            function showAlert(msg, type = 'error') {
+                alertBanner.className = `alert-banner ${type}`;
+                alertMessage.textContent = msg;
+                alertIcon.className = type === 'error' ? 'fas fa-exclamation-circle' : 'fas fa-check-circle';
+                alertBanner.style.display = 'flex';
+            }
+
+            function hideAlert() {
+                alertBanner.style.display = 'none';
+            }
+
+            // Form Submit
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideAlert();
+
+                const firstName = firstNameInput.value.trim();
+                const lastName = lastNameInput.value.trim();
+                const email = emailInput.value.trim();
+                const employeeId = employeeIdInput.value.trim();
+                const adminPasscode = adminPasscodeInput.value.trim();
+                const password = passwordInput.value;
+                const confirmPassword = confirmPasswordInput.value;
+
+                if (password !== confirmPassword) {
+                    showAlert('Passwords do not match. Please re-enter.');
+                    return;
+                }
+
+                if (password.length < 8) {
+                    showAlert('Password must be at least 8 characters in length.');
+                    return;
+                }
+
+                if (!adminPasscode) {
+                    showAlert('Please enter the Admin Authorization Passcode.');
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                btnText.textContent = 'Authorizing...';
+                btnSpinner.style.display = 'inline-block';
+
+                try {
+                    await CiteFlowAuth.registerAdmin({
+                        firstName,
+                        lastName,
+                        email,
+                        employeeId,
+                        adminPasscode,
+                        password
+                    });
+
+                    showAlert('Administrator account created successfully! Redirecting to login...', 'success');
+
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 1800);
+
+                } catch (err) {
+                    console.error('Registration error:', err);
+                    let msg = 'Registration failed. Please try again.';
+
+                    if (err.message && err.message.includes('Invalid Admin Authorization Passcode')) {
+                        msg = 'Invalid Admin Passcode. Only authorized administrators can register here.';
+                    } else if (err.message && (err.message.includes('already registered') || err.message.includes('already exists'))) {
+                        msg = 'An account with this email address already exists. Please log in.';
+                    } else if (err.message) {
+                        msg = err.message;
+                    }
+
+                    showAlert(msg, 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    btnText.textContent = 'Register Administrator';
+                    btnSpinner.style.display = 'none';
+                }
+            });
         });
-
-        if (error) throw error;
-
-        showMessage('Account created successfully! Please check your email (including spam) to confirm your account.', 'success');
-
-        setTimeout(() => {
-          window.location.href = 'login.html';
-        }, 4000);
-
-      } catch (err) {
-        console.error('Signup Error:', err);
-        let msg = 'Failed to create account. Please try again.';
-
-        if (err.message.includes('already registered') || err.message.includes('already exists')) {
-          msg = 'An account with this email already exists. Please login instead.';
-        } else if (err.message.includes('Failed to fetch')) {
-          msg = 'Network error. Please check your internet connection.';
-        }
-
-        showMessage(msg, 'error');
-      } finally {
-        resetButton();
-      }
-    });
-
-    function showMessage(text, type) {
-      messageDiv.textContent = text;
-      messageDiv.className = `message ${type}`;
-      messageDiv.style.display = 'block';
-    }
-
-    function resetButton() {
-      createBtn.disabled = false;
-      createBtn.textContent = 'Create Account';
-    }
-  </script>
-
+    </script>
 </body>
 </html>

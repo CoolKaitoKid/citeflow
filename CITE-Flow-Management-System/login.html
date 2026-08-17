@@ -3,10 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CiteFlow - Login</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>CiteFlow – Portal Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
+    
+    <!-- Supabase JS Client & Centralized Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="shared/supabase-config.js"></script>
+    <script src="shared/auth.js"></script>
+
     <style>
+        :root {
+            --primary: #9c2f1f;
+            --primary-dark: #621708;
+            --primary-light: #bc3926;
+            --primary-subtle: rgba(156, 47, 31, 0.08);
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --bg-body: #f8fafc;
+            --border-color: #e2e8f0;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --shadow-subtle: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+            --shadow-card: 0 20px 40px -15px rgba(98, 23, 8, 0.12);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -14,381 +38,647 @@
         }
 
         body {
-            font-family: 'Poppins', sans-serif;
+            font-family: 'Plus Jakarta Sans', 'Poppins', sans-serif;
             min-height: 100vh;
-            overflow: hidden;
-            background: #f8f9fa;
-        }
-
-        .container {
-            display: flex;
-            width: 100%;
-            height: 100vh;
-        }
-
-        /* LEFT SIDE - BUILDING IMAGE */
-        .left-side {
-            flex: 1;
-            position: relative;
-            background: url('assets/bldg1.jpg') center/cover no-repeat;
-            overflow: hidden;
-        }
-
-        .left-side::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(transparent, rgba(0,0,0,0.28));
-        }
-
-        /* Department Logos */
-        .dept-logos {
-            position: absolute;
-            bottom: 45px;
-            left: 45px;
-            display: flex;
-            gap: 20px;
-            z-index: 2;
-        }
-
-        .dept-logo {
-            width: 78px;
-            height: 78px;
-            object-fit: contain;
-            filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4));
-            transition: transform 0.3s ease;
-        }
-
-        .dept-logo:hover {
-            transform: scale(1.1);
-        }
-
-        /* RIGHT SIDE */
-        .right-side {
-            flex: 1;
+            background: var(--bg-body);
+            color: var(--text-main);
             display: flex;
             align-items: center;
             justify-content: center;
-            background: white;
-            padding: 20px;
         }
 
-        .form-container {
-            width: 100%;
-            max-width: 420px;
+        .auth-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #ffffff;
         }
 
-        .logo {
-            width: 90px;
-            height: 90px;
+        /* LEFT SIDE - VISUAL BRANDING HERO */
+        .hero-side {
+            flex: 1.15;
+            position: relative;
+            background: url('assets/bldg1.jpg') center/cover no-repeat;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 48px;
+            overflow: hidden;
+        }
+
+        .hero-side::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(98, 23, 8, 0.85) 0%, rgba(156, 47, 31, 0.72) 100%);
+            z-index: 1;
+        }
+
+        .hero-header {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .hero-logo {
+            width: 52px;
+            height: 52px;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3));
+        }
+
+        .hero-brand {
+            color: #ffffff;
+        }
+
+        .hero-brand h2 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
+
+        .hero-brand span {
+            font-size: 0.82rem;
+            opacity: 0.85;
+            font-weight: 500;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 520px;
+            color: #ffffff;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 30px;
+            font-size: 0.82rem;
+            font-weight: 600;
             margin-bottom: 20px;
         }
 
-        h1 {
-            font-size: 2.1rem;
-            color: #1f2937;
-            margin-bottom: 8px;
+        .hero-title {
+            font-size: clamp(2rem, 3.2vw, 2.75rem);
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -0.03em;
+            margin-bottom: 16px;
         }
 
-        .subtitle {
-            color: #64748b;
-            font-size: 1rem;
-            margin-bottom: 35px;
+        .hero-desc {
+            font-size: 1.02rem;
+            line-height: 1.6;
+            opacity: 0.9;
+            font-weight: 400;
         }
 
-        .input-group {
-            margin-bottom: 22px;
+        .hero-footer {
             position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            padding-top: 24px;
         }
 
-        .input-group label {
-            display: block;
-            font-size: 0.9rem;
-            margin-bottom: 8px;
-            color: #374151;
+        .dept-badges {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .dept-logo {
+            width: 44px;
+            height: 44px;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .dept-logo:hover {
+            transform: translateY(-4px) scale(1.08);
+        }
+
+        .hero-copyright {
+            font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.75);
             font-weight: 500;
+        }
+
+        /* RIGHT SIDE - FORM CONTAINER */
+        .form-side {
+            flex: 0.95;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px clamp(24px, 5vw, 64px);
+            background: #ffffff;
+            overflow-y: auto;
+        }
+
+        .form-card {
+            width: 100%;
+            max-width: 440px;
+        }
+
+        .form-header {
+            margin-bottom: 32px;
+        }
+
+        .mobile-brand {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .mobile-brand img {
+            width: 44px;
+            height: 44px;
+        }
+
+        .form-title {
+            font-size: 1.85rem;
+            font-weight: 800;
+            color: var(--text-main);
+            letter-spacing: -0.02em;
+            margin-bottom: 6px;
+        }
+
+        .form-subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        /* ALERTS / NOTICES */
+        .alert-banner {
+            display: none;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            margin-bottom: 22px;
+            line-height: 1.45;
+            animation: fadeIn 0.25s ease forwards;
+        }
+
+        .alert-banner.error {
+            display: flex;
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .alert-banner.success {
+            display: flex;
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .alert-icon {
+            font-size: 1.1rem;
+            margin-top: 1px;
+            flex-shrink: 0;
+        }
+
+        /* INPUT GROUPS */
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 0.86rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 8px;
         }
 
         .input-wrapper {
             position: relative;
-        }
-
-        .input-wrapper input {
-            width: 100%;
-            height: 54px;
-            padding: 0 16px 0 50px;
-            border: 1.5px solid #e2e8f0;
-            border-radius: 12px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .input-wrapper input:focus {
-            outline: none;
-            border-color: #9c2f1f;
-            box-shadow: 0 0 0 4px rgba(156, 47, 31, 0.15);
+            display: flex;
+            align-items: center;
         }
 
         .input-icon {
             position: absolute;
-            left: 18px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #64748b;
-            font-size: 1.25rem;
+            left: 16px;
+            color: #94a3b8;
+            font-size: 1.05rem;
+            pointer-events: none;
+            transition: color 0.2s ease;
+        }
+
+        .form-control {
+            width: 100%;
+            height: 50px;
+            padding: 0 16px 0 46px;
+            background: #ffffff;
+            border: 1.5px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 0.94rem;
+            font-family: inherit;
+            color: var(--text-main);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .form-control:hover {
+            border-color: #cbd5e1;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--primary-subtle);
+        }
+
+        .form-control:focus + .input-icon,
+        .input-wrapper:focus-within .input-icon {
+            color: var(--primary);
         }
 
         .toggle-password {
             position: absolute;
-            right: 18px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #64748b;
+            right: 14px;
+            background: none;
+            border: none;
+            color: #94a3b8;
             cursor: pointer;
-            font-size: 1.2rem;
+            padding: 8px;
+            font-size: 1rem;
+            transition: color 0.2s ease;
         }
 
-        .options {
+        .toggle-password:hover {
+            color: var(--text-main);
+        }
+
+        /* FORM OPTIONS */
+        .form-options {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin: 18px 0 28px;
-            font-size: 0.93rem;
+            justify-content: space-between;
+            margin: 6px 0 26px;
+            font-size: 0.88rem;
         }
 
-        .remember {
+        .remember-wrapper {
             display: flex;
             align-items: center;
             gap: 8px;
-            color: #374151;
-        }
-
-        .forgot {
-            color: #9c2f1f;
-            text-decoration: none;
+            color: #475569;
             font-weight: 500;
-        }
-
-        .login-btn {
-            width: 100%;
-            height: 56px;
-            background: linear-gradient(135deg, #9c2f1f, #c2412d);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 1.08rem;
-            font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 8px 20px rgba(156, 47, 31, 0.3);
+            user-select: none;
         }
 
-        .login-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 25px rgba(156, 47, 31, 0.4);
+        .remember-wrapper input[type="checkbox"] {
+            width: 17px;
+            height: 17px;
+            accent-color: var(--primary);
+            border-radius: 4px;
+            cursor: pointer;
         }
 
-        .login-btn:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-
-        .message {
-            padding: 12px 16px;
-            margin: 15px 0;
-            border-radius: 10px;
-            font-size: 0.95rem;
-            display: none;
-        }
-
-        .message.error {
-            background: #fee2e2;
-            color: #b91c1c;
-            border: 1px solid #fecaca;
-        }
-
-        .register {
-            text-align: center;
-            margin-top: 30px;
-            font-size: 0.95rem;
-            color: #64748b;
-        }
-
-        .register a {
-            color: #9c2f1f;
+        .forgot-link {
+            color: var(--primary);
             font-weight: 600;
             text-decoration: none;
+            transition: color 0.2s ease;
         }
 
-        @media (max-width: 900px) {
-            .container {
-                flex-direction: column;
+        .forgot-link:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+
+        /* SUBMIT BUTTON */
+        .submit-btn {
+            width: 100%;
+            height: 52px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 10px 22px -6px rgba(156, 47, 31, 0.45);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 26px -6px rgba(156, 47, 31, 0.55);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.75;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2.5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #ffffff;
+            animation: spin 0.7s linear infinite;
+        }
+
+        /* FOOTER PROMPT */
+        .auth-footer {
+            margin-top: 32px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            font-size: 0.92rem;
+            color: var(--text-muted);
+        }
+
+        .auth-footer a {
+            color: var(--primary);
+            font-weight: 700;
+            text-decoration: none;
+            margin-left: 4px;
+            transition: color 0.2s ease;
+        }
+
+        .auth-footer a:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* RESPONSIVENESS */
+        @media (max-width: 960px) {
+            .hero-side {
+                display: none;
             }
-            .left-side {
-                height: 320px;
+
+            .mobile-brand {
+                display: flex;
             }
-            .dept-logos {
-                bottom: 25px;
-                left: 25px;
-                gap: 15px;
-            }
-            .dept-logo {
-                width: 62px;
-                height: 62px;
+
+            .form-side {
+                flex: 1;
+                padding: 32px 24px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Left Side -->
-        <div class="left-side">
-            <div class="dept-logos">
-                <img src="assets/bit_logo.png" alt="BIT Logo" class="dept-logo">
-                <img src="assets/bsit_logo.png" alt="BSIT Logo" class="dept-logo">
-                <img src="assets/bsie_logo.png" alt="BSIE Logo" class="dept-logo">
-            </div>
-        </div>
 
-        <!-- Right Side Form -->
-        <div class="right-side">
-            <div class="form-container">
-                <img src="assets/ctu-logo.png" alt="CTU Logo" class="logo">
-
-                <h1>Welcome Back!</h1>
-                <p class="subtitle">Access your CiteFlow account</p>
-
-                <div id="message" class="message"></div>
-
-                <form id="loginForm">
-                    <div class="input-group">
-                        <label>Email Address</label>
-                        <div class="input-wrapper">
-                            <i class="fas fa-envelope input-icon"></i>
-                            <input type="email" id="email" placeholder="Enter email" required>
-                        </div>
-                    </div>
-
-                    <div class="input-group">
-                        <label>Password</label>
-                        <div class="input-wrapper">
-                            <i class="fas fa-lock input-icon"></i>
-                            <input type="password" id="password" placeholder="Enter password" required>
-                            <i class="fas fa-eye toggle-password" id="togglePassword"></i>
-                        </div>
-                    </div>
-
-                    <div class="options">
-                        <label class="remember">
-                            <input type="checkbox"> Remember me
-                        </label>
-                        <a href="#" class="forgot">Forgot Password?</a>
-                    </div>
-
-                    <button type="submit" id="loginBtn" class="login-btn">Log in</button>
-                </form>
-
-                <div class="register">
-                    Don't have an account? 
-                    <a href="register.html">Register</a>
+    <div class="auth-container">
+        <!-- LEFT HERO SECTION -->
+        <section class="hero-side">
+            <div class="hero-header">
+                <img src="assets/ctu-logo.png" alt="CTU Logo" class="hero-logo">
+                <div class="hero-brand">
+                    <h2>CiteFlow</h2>
+                    <span>Faculty & Academic Management Portal</span>
                 </div>
             </div>
-        </div>
+
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <i class="fas fa-shield-alt"></i> Secure Institutional Access
+                </div>
+                <h1 class="hero-title">Streamline Your Academic Workflows.</h1>
+                <p class="hero-desc">
+                    Centralized platform for workload tracking, research records, document vault, and faculty portfolio management across CITE departments.
+                </p>
+            </div>
+
+            <div class="hero-footer">
+                <div class="dept-badges">
+                    <img src="assets/bit_logo.png" alt="BIT" title="Bachelor of Industrial Technology" class="dept-logo">
+                    <img src="assets/bsit_logo.png" alt="BSIT" title="Bachelor of Science in Information Technology" class="dept-logo">
+                    <img src="assets/bsie_logo.png" alt="BSIE" title="Bachelor of Science in Industrial Engineering" class="dept-logo">
+                </div>
+                <div class="hero-copyright">
+                    © 2026 Cebu Technological University
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT LOGIN FORM SECTION -->
+        <section class="form-side">
+            <div class="form-card">
+                <div class="mobile-brand">
+                    <img src="assets/ctu-logo.png" alt="CTU Logo">
+                    <div>
+                        <h2 style="font-size: 1.25rem; font-weight: 800; color: #1e293b;">CiteFlow</h2>
+                        <span style="font-size: 0.8rem; color: #64748b;">Academic Management System</span>
+                    </div>
+                </div>
+
+                <div class="form-header">
+                    <h1 class="form-title">Welcome Back</h1>
+                    <p class="form-subtitle">Log in with your university credentials to continue</p>
+                </div>
+
+                <div id="alertBanner" class="alert-banner">
+                    <i id="alertIcon" class="fas fa-exclamation-circle alert-icon"></i>
+                    <span id="alertMessage"></span>
+                </div>
+
+                <form id="loginForm" autocomplete="on">
+                    <div class="input-group">
+                        <label class="input-label" for="email">Institutional Email</label>
+                        <div class="input-wrapper">
+                            <input 
+                                type="email" 
+                                id="email" 
+                                class="form-control" 
+                                placeholder="name@ctu.edu.ph" 
+                                required 
+                                autocomplete="email"
+                            >
+                            <i class="fas fa-envelope input-icon"></i>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label" for="password">Password</label>
+                        <div class="input-wrapper">
+                            <input 
+                                type="password" 
+                                id="password" 
+                                class="form-control" 
+                                placeholder="Enter your password" 
+                                required 
+                                autocomplete="current-password"
+                            >
+                            <i class="fas fa-lock input-icon"></i>
+                            <button type="button" class="toggle-password" id="togglePasswordBtn" aria-label="Toggle password visibility">
+                                <i class="fas fa-eye" id="toggleIcon"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-options">
+                        <label class="remember-wrapper">
+                            <input type="checkbox" id="rememberMe">
+                            <span>Remember this device</span>
+                        </label>
+                        <a href="forgot.html" class="forgot-link">Forgot Password?</a>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="submit-btn">
+                        <span class="btn-spinner" id="btnSpinner"></span>
+                        <span id="btnText">Sign In</span>
+                        <i class="fas fa-arrow-right" id="btnArrow"></i>
+                    </button>
+                </form>
+
+                <div class="auth-footer">
+                    <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 6px;">
+                        New faculty member? Initial accounts are issued by the College Administration.
+                    </p>
+                    <span style="font-size: 0.82rem;">Authorized College Admin? <a href="register.html">Admin Registration</a></span>
+                </div>
+            </div>
+        </section>
     </div>
 
     <script>
-        // ================== PASSWORD TOGGLE ==================
-        const togglePassword = document.getElementById('togglePassword');
-        const passwordField = document.getElementById('password');
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('loginForm');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const rememberMeCheckbox = document.getElementById('rememberMe');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const btnSpinner = document.getElementById('btnSpinner');
+            const btnArrow = document.getElementById('btnArrow');
+            const alertBanner = document.getElementById('alertBanner');
+            const alertMessage = document.getElementById('alertMessage');
+            const alertIcon = document.getElementById('alertIcon');
+            const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+            const toggleIcon = document.getElementById('toggleIcon');
 
-        togglePassword.addEventListener('click', () => {
-            const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
-            passwordField.setAttribute('type', type);
-            togglePassword.classList.toggle('fa-eye');
-            togglePassword.classList.toggle('fa-eye-slash');
-        });
-
-        // ================== SUPABASE CONFIG ==================
-        const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-
-        const { createClient } = supabase;
-        const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-
-        // ================== LOGIN HANDLER ==================
-        const loginForm = document.getElementById('loginForm');
-        const loginBtn = document.getElementById('loginBtn');
-        const messageDiv = document.getElementById('message');
-
-        loginForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            messageDiv.style.display = 'none';
-
-            loginBtn.disabled = true;
-            loginBtn.textContent = 'Logging in...';
-
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-
-            try {
-                const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
-                    email: email,
-                    password: password
-                });
-
-                if (authError) throw authError;
-
-                const user = authData?.user;
-                const role = String(user?.user_metadata?.role || '').toLowerCase();
-
-                // Store user info
-                const userInfo = {
-                    id: user.id,
-                    email: user.email,
-                    name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-                    role: role
-                };
-                localStorage.setItem('citeflow_user', JSON.stringify(userInfo));
-
-                const { data: facultyProfile } = await supabaseClient
-                    .from('faculty')
-                    .select('id')
-                    .eq('auth_user_id', user.id)
-                    .maybeSingle();
-
-                if (role === 'faculty' || facultyProfile) {
-                    await supabaseClient.auth.signOut();
-                    throw new Error('Faculty accounts are not allowed in the admin portal. Please use Faculty Login.');
-                }
-
-                window.location.href = 'admin/faculty-profiles.html';
-
-            } catch (err) {
-                console.error('Login Error:', err);
-                let msg = 'Invalid email or password. Please try again.';
-
-                if (err.message.includes('Invalid login credentials')) {
-                    msg = 'Incorrect email or password.';
-                } else if (err.message.includes('not allowed in the admin portal')) {
-                    msg = err.message;
-                } else if (err.message.includes('Email not confirmed')) {
-                    msg = 'Please confirm your email before logging in.';
-                } else if (err.message.includes('Failed to fetch')) {
-                    msg = 'Network error. Please check your internet connection.';
-                }
-
-                showMessage(msg, 'error');
-            } finally {
-                loginBtn.disabled = false;
-                loginBtn.textContent = 'Log in';
+            // Load remembered email
+            const savedEmail = localStorage.getItem('citeflow_saved_email');
+            if (savedEmail) {
+                emailInput.value = savedEmail;
+                rememberMeCheckbox.checked = true;
             }
-        });
 
-        function showMessage(text, type) {
-            messageDiv.textContent = text;
-            messageDiv.className = `message ${type}`;
-            messageDiv.style.display = 'block';
-        }
+            // Password Toggle
+            togglePasswordBtn.addEventListener('click', () => {
+                const isPassword = passwordInput.type === 'password';
+                passwordInput.type = isPassword ? 'text' : 'password';
+                toggleIcon.classList.toggle('fa-eye', !isPassword);
+                toggleIcon.classList.toggle('fa-eye-slash', isPassword);
+            });
+
+            // Show feedback alert
+            function showAlert(message, type = 'error') {
+                alertBanner.className = `alert-banner ${type}`;
+                alertMessage.textContent = message;
+                alertIcon.className = type === 'error' ? 'fas fa-exclamation-circle alert-icon' : 'fas fa-check-circle alert-icon';
+                alertBanner.style.display = 'flex';
+            }
+
+            function hideAlert() {
+                alertBanner.style.display = 'none';
+            }
+
+            // Form Submit Handler
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideAlert();
+
+                const email = emailInput.value.trim();
+                const password = passwordInput.value;
+
+                if (!email || !password) {
+                    showAlert('Please enter both email and password.');
+                    return;
+                }
+
+                // UI loading state
+                submitBtn.disabled = true;
+                btnText.textContent = 'Signing in...';
+                btnSpinner.style.display = 'inline-block';
+                btnArrow.style.display = 'none';
+
+                try {
+                    // Remember email handling
+                    if (rememberMeCheckbox.checked) {
+                        localStorage.setItem('citeflow_saved_email', email);
+                    } else {
+                        localStorage.removeItem('citeflow_saved_email');
+                    }
+
+                    // Authenticate using Centralized Auth Engine
+                    const result = await CiteFlowAuth.login(email, password);
+
+                    showAlert('Login successful! Redirecting...', 'success');
+
+                    // Route user to appropriate portal
+                    setTimeout(() => {
+                        window.location.href = result.destination;
+                    }, 600);
+
+                } catch (err) {
+                    console.error('Login error:', err);
+                    let msg = 'Invalid email or password. Please verify your credentials.';
+
+                    if (err.message && err.message.includes('Invalid login credentials')) {
+                        msg = 'Incorrect email or password. Please try again.';
+                    } else if (err.message && err.message.includes('Email not confirmed')) {
+                        msg = 'Your email has not been confirmed yet. Please check your inbox.';
+                    } else if (err.message && err.message.includes('Failed to fetch')) {
+                        msg = 'Network connection failed. Please check your internet.';
+                    } else if (err.message) {
+                        msg = err.message;
+                    }
+
+                    showAlert(msg, 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    btnText.textContent = 'Sign In';
+                    btnSpinner.style.display = 'none';
+                    btnArrow.style.display = 'inline-block';
+                }
+            });
+        });
     </script>
 </body>
 </html>

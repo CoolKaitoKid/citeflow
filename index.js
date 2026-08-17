@@ -12,16 +12,31 @@ app.use(express.static(path.join(__dirname, "CITE-Flow-Management-System")));
 app.use("/admin", express.static(path.join(__dirname, "CITE-Flow-Management-System", "admin")));
 app.use("/faculty", express.static(path.join(__dirname, "CITE-Flow-Management-System", "faculty")));
 
-// ================= CUSTOM ROUTES =================
+// ================= AUTH & PORTAL ROUTES =================
 
-// Home → Login
-app.get("/", (req, res) => {
+// Home & Login → Unified Smart Login
+app.get(["/", "/login"], (req, res) => {
   res.sendFile(path.join(__dirname, "CITE-Flow-Management-System", "login.html"));
 });
 
-// Faculty Login
+// Register
+app.get("/register", (req, res) => {
+  res.sendFile(path.join(__dirname, "CITE-Flow-Management-System", "register.html"));
+});
+
+// Faculty Onboarding Wizard
+app.get("/onboarding", (req, res) => {
+  res.sendFile(path.join(__dirname, "CITE-Flow-Management-System", "onboarding.html"));
+});
+
+// Password Recovery
+app.get(["/forgot", "/forgot-password"], (req, res) => {
+  res.sendFile(path.join(__dirname, "CITE-Flow-Management-System", "forgot.html"));
+});
+
+// Legacy Faculty Login Redirect → Unified Login
 app.get("/faculty-login", (req, res) => {
-  res.sendFile(path.join(__dirname, "CITE-Flow-Management-System", "faculty-login.html"));
+  res.redirect("/login");
 });
 
 // Admin Dashboard (clean URL)
@@ -106,13 +121,15 @@ app.use((req, res) => {
   res.status(404).send(`
     <h1>404 - Page Not Found</h1>
     <p>The page you are looking for does not exist.</p>
-    <a href="/dashboard" style="color: #621708;">← Go back to Admin Dashboard</a>
+    <a href="/login" style="color: #621708;">← Go back to Login</a>
   `);
 });
 
 // ================= START SERVER =================
 app.listen(PORT, () => {
   console.log(`✅ Server is running at http://localhost:${PORT}`);
+  console.log(`   Unified Portal → http://localhost:${PORT}/login`);
   console.log(`   Admin Dashboard → http://localhost:${PORT}/dashboard`);
   console.log(`   Faculty Dashboard → http://localhost:${PORT}/faculty/dashboard`);
-});
+  console.log(`   Onboarding Setup → http://localhost:${PORT}/onboarding`);
+});
