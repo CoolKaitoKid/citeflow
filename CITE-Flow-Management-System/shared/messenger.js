@@ -450,15 +450,20 @@ window.CiteFlowMessenger = (function () {
     /**
      * Initialize current user and start real-time listener
      */
+    
     async function init() {
-        mountDOM();
-        const hasUser = await resolveCurrentUser();
-        if (hasUser) {
-            await loadConversations();
-            subscribeToInbox();
-            State.initialized = true;
-        }
+    if (State.initialized) return;
+
+    mountDOM();
+
+    const hasUser = await resolveCurrentUser();
+
+    if (hasUser) {
+        await loadConversations();
+        subscribeToInbox();
+        State.initialized = true;
     }
+}
 
     async function openPanel() {
         mountDOM();
@@ -638,7 +643,7 @@ window.CiteFlowMessenger = (function () {
             }
 
             // 7. Assemble enriched conversations
-            const enriched = (convData || []).map((conv) => {
+            let enriched = (convData || []).map((conv) => {
                 const myLastRead = pMap.get(conv.id) || null;
                 const lastMsg = lastMsgMap.get(String(conv.id)) || null;
 
@@ -1029,22 +1034,55 @@ window.CiteFlowMessenger = (function () {
     }
 
     function subscribeToInbox() {
-        const sb = getClient();
-        if (!sb) return;
+    const sb = getClient();
+    if (!sb) return;
 
-        if (State.inboxChannel) sb.removeChannel(State.inboxChannel);
+    // Remove existing inbox listener first
+    if (State.inboxChannel) {
+        try {
+            sb.removeChannel(State.inboxChannel);
+        } catch (e) {
+            console.warn("CiteFlowMessenger: Could not remove old inbox channel:", e);
+        }
 
-        State.inboxChannel = sb
-            .channel("msgr-inbox-listener")
-            .on(
-                "postgres_changes",
-                { event: "INSERT", schema: "public", table: "messages" },
-                async () => {
-                    await loadConversations();
-                }
-            )
-            .subscribe();
+        State.inboxChannel = null;
     }
+
+    const channel = sb.channel("msgr-inbox-listener");
+
+    channel.on(
+        "postgres_changes",
+        {
+            event: "INSERT",
+            schema: "public",
+            table: "messages"
+        },
+        async () => {
+            try {
+                await loadConversations();
+            } catch (err) {
+                console.error(
+                    "CiteFlowMessenger: Realtime conversation refresh failed:",
+                    err
+                );
+            }
+        }
+    );
+
+    State.inboxChannel = channel;
+
+    channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+            console.log("CiteFlowMessenger: Inbox realtime listener connected.");
+        }
+
+        if (status === "CHANNEL_ERROR") {
+            console.error(
+                "CiteFlowMessenger: Inbox realtime listener failed."
+            );
+        }
+    });
+}
 
     function updateUnreadBadge() {
         const count = State.conversations.filter((c) => c.unread).length;
