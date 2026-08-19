@@ -1,4 +1,4 @@
-/* Global CITE-Flow UI utilities: notifications + theme */
+/* Global CITE-Flow UI utilities: notifications + auto-contrast theme */
 (function initCiteFlowUI() {
     const LEGACY_THEME_KEY = 'citeflow_theme_color';
     const THEME_KEY_PREFIX = 'citeflow_theme_color_v2';
@@ -8,7 +8,7 @@
     const PAGE_PATH = window.location.pathname.toLowerCase();
 
     const THEMES = ['#740A03', '#BB1919', '#250505', '#000000', '#E2E2B6'];
-    const DEFAULT_THEME = '#740A03';
+    const DEFAULT_THEME = '#621708';
 
     function getRoleFromPath() {
         const path = window.location.pathname.toLowerCase();
@@ -39,11 +39,10 @@
         if (scopedTheme) return scopedTheme;
 
         const legacyTheme = localStorage.getItem(LEGACY_THEME_KEY);
-
-if (legacyTheme) {
-    localStorage.setItem(scopedKey, legacyTheme);
-    return legacyTheme;
-}
+        if (legacyTheme) {
+            localStorage.setItem(scopedKey, legacyTheme);
+            return legacyTheme;
+        }
         return DEFAULT_THEME;
     }
 
@@ -93,38 +92,95 @@ if (legacyTheme) {
         );
     }
 
+    /* Auto-Contrast Engine: Calculates text, border, hover, and panel palettes */
     function adjustTheme(color) {
         const theme = color || DEFAULT_THEME;
         const lum = luminance(theme);
-        const text = lum > 0.55 ? '#111827' : '#FFFFFF';
-        const hover = lum > 0.55 ? mix(theme, '#000000', 0.18) : mix(theme, '#FFFFFF', 0.14);
-        const panel = lum > 0.55 ? mix(theme, '#FFFFFF', 0.74) : mix(theme, '#FFFFFF', 0.16);
-        const panelText = luminance(panel) > 0.62 ? '#111827' : '#FFFFFF';
-        return { theme, text, hover, panel, panelText };
+        const isLight = lum > 0.52; // Threshold for bright/white backgrounds
+
+        const text = isLight ? '#0f172a' : '#FFFFFF';
+        const textMuted = isLight ? '#475569' : 'rgba(255, 255, 255, 0.75)';
+        const border = isLight ? '#d1d5db' : 'rgba(255, 255, 255, 0.12)';
+        const hover = isLight ? mix(theme, '#000000', 0.12) : mix(theme, '#FFFFFF', 0.16);
+        const activeNav = isLight ? mix(theme, '#000000', 0.18) : mix(theme, '#000000', 0.25);
+        const panel = isLight ? mix(theme, '#FFFFFF', 0.78) : mix(theme, '#FFFFFF', 0.16);
+        const panelText = luminance(panel) > 0.55 ? '#0f172a' : '#FFFFFF';
+
+        return { theme, text, textMuted, border, hover, activeNav, panel, panelText, isLight };
     }
 
     function applyTheme() {
         const selected = getStoredTheme();
         const palette = adjustTheme(selected);
         const root = document.documentElement;
+
         root.style.setProperty('--cite-theme', palette.theme);
         root.style.setProperty('--cite-theme-text', palette.text);
+        root.style.setProperty('--cite-theme-text-muted', palette.textMuted);
+        root.style.setProperty('--cite-theme-border', palette.border);
         root.style.setProperty('--cite-theme-hover', palette.hover);
+        root.style.setProperty('--cite-theme-active', palette.activeNav);
         root.style.setProperty('--cite-theme-soft', palette.panel);
         root.style.setProperty('--cite-theme-soft-text', palette.panelText);
 
         const css = `
-            .sidebar { background-color: var(--cite-theme) !important; color: var(--cite-theme-text) !important; }
-            
-            .nav-item:hover, .nav-item.active { background-color: var(--cite-theme-hover) !important; }
+            .sidebar { 
+                background-color: var(--cite-theme) !important; 
+                color: var(--cite-theme-text) !important; 
+                border-right: 1px solid var(--cite-theme-border) !important;
+            }
+            .sidebar .logo-area h2 {
+                color: var(--cite-theme-text) !important;
+            }
+            .sidebar .section-title {
+                color: var(--cite-theme-text-muted) !important;
+            }
+            .sidebar .nav-item {
+                color: var(--cite-theme-text) !important;
+            }
+            .sidebar .nav-item:hover { 
+                background-color: var(--cite-theme-hover) !important; 
+            }
+            .sidebar .nav-item.active { 
+                background-color: var(--cite-theme-active) !important; 
+                color: var(--cite-theme-text) !important;
+            }
+            .navbar {
+                background-color: var(--cite-theme) !important;
+                border-bottom: 1px solid var(--cite-theme-border) !important;
+            }
+            .navbar .nav-btn, .navbar .drawer-push-btn {
+                color: var(--cite-theme-text) !important;
+                background-color: ${palette.isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.15)'} !important;
+                border: 1px solid var(--cite-theme-border) !important;
+            }
+            .navbar .nav-btn:hover, .navbar .drawer-push-btn:hover {
+                background-color: ${palette.isLight ? 'rgba(15, 23, 42, 0.14)' : 'rgba(255, 255, 255, 0.25)'} !important;
+            }
             button[class*="bg-[#621708]"], .bg-\\[\\#621708\\], [data-theme-primary="true"] {
                 background-color: var(--cite-theme) !important;
                 color: var(--cite-theme-text) !important;
+                border: 1px solid var(--cite-theme-border) !important;
             }
-            button[class*="hover:bg-[#4a1206]"], button[class*="hover:bg-[#8c2a10]"] {
+            button[class*="hover:bg-[#4a1206]"]:hover, button[class*="hover:bg-[#8c2a10]"]:hover {
                 background-color: var(--cite-theme-hover) !important;
             }
-            .theme-soft { background-color: var(--cite-theme-soft) !important; color: var(--cite-theme-soft-text) !important; }
+            .theme-soft { 
+                background-color: var(--cite-theme-soft) !important; 
+                color: var(--cite-theme-soft-text) !important; 
+            }
+            .profile-header {
+                background-color: var(--cite-theme) !important;
+                color: var(--cite-theme-text) !important;
+            }
+            .profile-header h2, .profile-header p {
+                color: var(--cite-theme-text) !important;
+            }
+            .logout-btn {
+                background-color: var(--cite-theme) !important;
+                color: var(--cite-theme-text) !important;
+                border: 1px solid var(--cite-theme-border) !important;
+            }
         `;
 
         let styleEl = document.getElementById('citeflow-theme-style');
@@ -208,7 +264,6 @@ if (legacyTheme) {
         if (!rawLink) return '';
         if (rawLink.startsWith('http')) return rawLink;
         const link = rawLink.replace(/\\/g, '/');
-        const rolePrefix = ROLE === 'admin' ? '/admin/' : '/faculty/';
         if (link.startsWith('/admin/') || link.startsWith('/faculty/')) {
             const filename = link.split('/').pop();
             return filename ? filename : '';
@@ -218,116 +273,17 @@ if (legacyTheme) {
         return link;
     }
 
-    function renderBell() {
-        if (document.getElementById('citeflow-bell-wrap')) return;
-
-        const wrap = document.createElement('div');
-        wrap.id = 'citeflow-bell-wrap';
-        wrap.style.position = 'fixed';
-        wrap.style.top = '16px';
-        wrap.style.right = '22px';
-        wrap.style.zIndex = '1000';
-        wrap.innerHTML = `
-            <div style="position: relative;">
-                <button id="citeflow-bell-btn" aria-label="Notifications"
-                    style="width:44px;height:44px;border:none;border-radius:12px;background:var(--cite-theme);color:var(--cite-theme-text);cursor:pointer;box-shadow:0 8px 18px rgba(0,0,0,.16);font-size:18px;">
-                    🔔
-                </button>
-                <span id="citeflow-bell-badge"
-                    style="position:absolute;top:-5px;right:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#dc2626;color:#fff;font-size:11px;line-height:18px;text-align:center;display:none;">0</span>
-            </div>
-            <div id="citeflow-notif-panel"
-                style="display:none;position:absolute;right:0;top:52px;width:330px;max-height:420px;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 14px 28px rgba(0,0,0,.2);border:1px solid #e5e7eb;">
-                <div style="padding:12px 14px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">
-                    <strong style="font-size:14px;">Notifications</strong>
-                    <button id="citeflow-mark-all" style="border:none;background:none;color:var(--cite-theme);font-size:12px;cursor:pointer;">Mark all read</button>
-                </div>
-                <div id="citeflow-notif-list" style="padding:8px;"></div>
-            </div>
-        `;
-        document.body.appendChild(wrap);
-
-        const bell = document.getElementById('citeflow-bell-btn');
-        const panel = document.getElementById('citeflow-notif-panel');
-        const markAllBtn = document.getElementById('citeflow-mark-all');
-
-        bell.addEventListener('click', function () {
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-            renderNotificationList();
-        });
-
-        markAllBtn.addEventListener('click', function () {
-            markAllReadForRole();
-            refreshBell();
-            renderNotificationList();
-        });
-
-        document.addEventListener('click', function (event) {
-            if (!wrap.contains(event.target)) {
-                panel.style.display = 'none';
-            }
-        });
-
-        refreshBell();
-    }
-
-    function renderNotificationList() {
-        const listEl = document.getElementById('citeflow-notif-list');
-        if (!listEl) return;
-        const items = getVisibleNotifications().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-        if (!items.length) {
-            listEl.innerHTML = '<div style="padding:14px;color:#6b7280;font-size:13px;">No notifications yet.</div>';
-            return;
-        }
-
-        listEl.innerHTML = items.map((n) => `
-            <button data-id="${n.id}" data-link="${n.link || ''}" class="citeflow-notif-item"
-                style="width:100%;text-align:left;border:1px solid #f1f5f9;background:${n.read ? '#fff' : '#fef2f2'};border-radius:10px;padding:10px 11px;margin-bottom:7px;cursor:pointer;">
-                <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
-                    <div style="font-size:13px;font-weight:600;color:#111827;">${n.title}</div>
-                    ${n.read ? '' : '<span style="width:8px;height:8px;background:#dc2626;border-radius:999px;display:inline-block;flex:none;margin-top:4px;"></span>'}
-                </div>
-                <div style="font-size:12px;color:#4b5563;margin-top:3px;">${n.message || ''}</div>
-                <div style="font-size:11px;color:#9ca3af;margin-top:6px;">${new Date(n.timestamp).toLocaleString()}</div>
-            </button>
-        `).join('');
-
-        listEl.querySelectorAll('.citeflow-notif-item').forEach((el) => {
-            el.addEventListener('click', function () {
-                const id = el.getAttribute('data-id');
-                const link = resolveLink(el.getAttribute('data-link'));
-                markAsRead(id);
-                refreshBell();
-                renderNotificationList();
-                if (link) window.location.href = link;
-            });
-        });
-    }
-
-    function refreshBell() {
-        const badge = document.getElementById('citeflow-bell-badge');
-        if (!badge) return;
-        const unread = unreadCount();
-        badge.textContent = String(unread);
-        badge.style.display = unread > 0 ? 'inline-block' : 'none';
-    }
-
     function addNotification(payload) {
         const list = getNotifications();
         list.unshift(normalizeNotification(payload));
         setNotifications(list);
-        refreshBell();
     }
 
     window.CiteFlowUI = {
         setTheme: function (hexColor) {
-
-    saveTheme(hexColor);
-
-    applyTheme();
-
-},
+            saveTheme(hexColor);
+            applyTheme();
+        },
         getTheme: function () {
             return getStoredTheme();
         },
@@ -337,8 +293,6 @@ if (legacyTheme) {
         addNotification: addNotification,
         refreshNotifications: function () {
             migrateLegacyFeedbackNotifications();
-            refreshBell();
-            renderNotificationList();
         },
         routeFor: function (relativePath) {
             const clean = String(relativePath || '').replace(/^\/+/, '');
@@ -348,11 +302,9 @@ if (legacyTheme) {
 
     applyTheme();
     migrateLegacyFeedbackNotifications();
+
     document.addEventListener('DOMContentLoaded', function () {
-        // Do not inject a floating notification bell.
-        // Pages already provide their own notification UI (dropdown + sidebar badges).
         if (!PAGE_PATH.includes('/auth') && !PAGE_PATH.includes('login')) {
-            // Keep data up to date for pages that read notifications from localStorage.
             migrateLegacyFeedbackNotifications();
         }
     });

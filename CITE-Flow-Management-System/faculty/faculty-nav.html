@@ -66,8 +66,8 @@
         </button>
 
         <div class="search-box">
-            <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
-            <input type="text" id="facultySearchInput" placeholder="Search...">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="facultySearchInput" placeholder="Search Something...">
         </div>
     </div>
 
@@ -76,36 +76,127 @@
             <i class="fa-solid fa-bell"></i>
         </button>
         <button class="nav-btn" onclick="toggleFacultyProfileModal()" title="Profile Menu">
-            <i class="fa-solid fa-user"></i>
+            <i class="fa-regular fa-circle-user"></i>
         </button>
     </div>
 
 </nav>
 
-<!-- Profile Modal Backdrop -->
-<div id="facultyProfileBackdrop" class="modal-backdrop" onclick="toggleFacultyProfileModal()"></div>
+<div id="facultyProfileBackdrop" class="profile-backdrop"></div>
 
-<!-- Profile Dropdown Modal -->
+<!-- Profile Dropdown Modal (Admin Style Redesign) -->
 <div id="facultyProfileModal" class="profile-modal">
-    <div class="p-4 border-b border-gray-100 flex items-center gap-3">
-        <div class="w-10 h-10 rounded-full bg-[#621708] text-white flex items-center justify-center font-bold">
-            <i class="fa-solid fa-user"></i>
+
+    <div class="profile-header">
+        <div class="profile-info">
+            <h2 id="facultyNavProfileName">Faculty Member</h2>
+            <p id="facultyNavProfileRole">CITE Faculty</p>
         </div>
-        <div>
-            <div id="facultyNavProfileName" class="font-semibold text-sm text-gray-900">Faculty Member</div>
-            <div id="facultyNavProfileRole" class="text-xs text-gray-500">CITE Faculty</div>
+        <i class="fa-regular fa-circle-user profile-icon"></i>
+    </div>
+
+    <div class="profile-body">
+        <div class="profile-row">
+            <strong>Department:</strong>
+            <span id="facultyNavDept">BSIT</span>
+        </div>
+
+        <div class="profile-row">
+            <strong>Role:</strong>
+            <span id="facultyNavRoleDetail">Faculty Member</span>
+        </div>
+
+        <button type="button" class="profile-link" onclick="window.location.href='faculty-profile.html'">
+            <i class="fa-solid fa-user"></i>
+            My Profile
+        </button>
+
+        <button type="button" class="profile-link" onclick="window.location.href='system-settings.html'">
+            <i class="fa-solid fa-gear"></i>
+            Settings
+        </button>
+
+        <button type="button" class="profile-link" onclick="alert('Help & Support')">
+            <i class="fa-solid fa-circle-question"></i>
+            Help & Support
+        </button>
+
+        <button type="button" class="logout-btn" onclick="facultyLogout()">
+            Logout
+        </button>
+    </div>
+
+</div>
+
+<div class="message-btn" onclick="openFacultyMessages()">
+    <i class="fa-solid fa-comments"></i>
+</div>
+
+<!-- =========================================================
+     MESSENGER — chat panel
+     ========================================================= -->
+
+<div id="msgrBackdrop" class="msgr-backdrop"></div>
+<div class="msgr-dropdown" id="msgrDropdown" style="display:none;"></div>
+
+<div id="msgrPanel" class="msgr-panel">
+    <div class="msgr-header">
+        <h2>Chats</h2>
+        <div class="msgr-header-actions">
+            <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrHeaderOptionsBtn" title="Options">
+                <i class="fa-solid fa-ellipsis"></i>
+            </button>
+            <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" title="Expand" id="msgrExpandBtn">
+                <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+            </button>
+            <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrNewBtn" title="New Message">
+                <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+            <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrCloseBtn" title="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
         </div>
     </div>
-    <div class="p-2 space-y-1">
-        <div class="nav-item text-gray-700 hover:bg-gray-100 rounded-xl" data-page="faculty-profile.html">
-            <i class="fa-solid fa-id-card"></i> View Profile
+
+    <div class="msgr-search">
+        <input type="text" id="msgrConvoSearch" placeholder="Search Messenger">
+    </div>
+
+    <div class="msgr-filter-tabs" id="msgrFilterTabs">
+        <button type="button" class="msgr-filter-tab active" data-filter="all">All</button>
+        <button type="button" class="msgr-filter-tab" data-filter="unread">Unread</button>
+        <button type="button" class="msgr-filter-tab" data-filter="groups">Groups</button>
+        <button type="button" class="msgr-filter-tab" data-filter="archived">Archived</button>
+    </div>
+
+    <div class="msgr-search-results" id="msgrSearchResults" style="display:none;"></div>
+
+    <div class="msgr-list" id="msgrList">
+        <div class="msgr-empty">
+            <i class="fa-regular fa-comments"></i>
+            No conversations yet. Click the compose icon to start one.
         </div>
-        <div class="nav-item text-gray-700 hover:bg-gray-100 rounded-xl" data-page="system-settings.html">
-            <i class="fa-solid fa-sliders"></i> Settings
+    </div>
+
+    <div class="msgr-chat" id="msgrChat">
+        <div class="msgr-chat-header">
+            <button type="button" class="msgr-back-btn" id="msgrBackBtn" title="Back to conversations">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <div class="msgr-avatar" id="msgrChatAvatar"></div>
+            <div class="msgr-chat-title">
+                <div class="name" id="msgrChatName">Chat</div>
+                <div class="sub" id="msgrChatSub">Online</div>
+            </div>
         </div>
-        <div class="border-t border-gray-100 my-1"></div>
-        <div class="nav-item text-red-600 hover:bg-red-50 rounded-xl" onclick="facultyLogout()">
-            <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+
+        <div class="msgr-messages" id="msgrMessages"></div>
+
+        <div class="msgr-composer">
+            <textarea id="msgrInput" rows="1" placeholder="Type a message..."></textarea>
+            <button type="button" class="msgr-send-btn" id="msgrSendBtn" disabled>
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
         </div>
     </div>
 </div>
