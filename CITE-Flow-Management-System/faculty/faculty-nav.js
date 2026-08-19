@@ -30,7 +30,42 @@ function facultyPageMap(pageName) {
     }[key] || `${key}.html`;
 }
 
+// ==========================================
+// MOBILE DRAWER TOGGLE & BACKDROP LOGIC
+// ==========================================
+function toggleFacultyMobileSidebar(forceClose = false) {
+    const sidebar = document.querySelector("aside.sidebar, .sidebar");
+    let backdrop = document.getElementById("facultySidebarBackdrop");
+
+    if (!backdrop) {
+        backdrop = document.createElement("div");
+        backdrop.id = "facultySidebarBackdrop";
+        backdrop.className = "sidebar-backdrop";
+        backdrop.onclick = () => toggleFacultyMobileSidebar(true);
+        document.body.appendChild(backdrop);
+    }
+
+    if (!sidebar) return;
+
+    const isOpen = sidebar.classList.contains("open");
+
+    if (forceClose || isOpen) {
+        sidebar.classList.remove("open");
+        backdrop.classList.remove("show");
+        document.body.style.overflow = "";
+    } else {
+        sidebar.classList.add("open");
+        backdrop.classList.add("show");
+        document.body.style.overflow = "hidden";
+    }
+}
+
+window.toggleFacultyMobileSidebar = toggleFacultyMobileSidebar;
+
 function navigateToFacultyPage(pageFile) {
+    if (typeof toggleFacultyMobileSidebar === "function") {
+        toggleFacultyMobileSidebar(true);
+    }
     const mapped = facultyPageMap(pageFile);
     window.location.href = mapped;
 }
@@ -69,18 +104,38 @@ function updateFacultyActiveMenu(fileName) {
 
 function attachFacultyNavEvents() {
     document.addEventListener("click", (e) => {
-        const item = e.target.closest(".sidebar .nav-item, .sidebar .logo-area[data-page], #facultyProfileModal .nav-item[data-page]");
+        // Toggle mobile drawer inig pislit sa hamburger push button
+        const mobileToggleBtn = e.target.closest("#mobileSidebarToggle, .drawer-push-btn, .mobile-toggle-btn");
+        if (mobileToggleBtn) {
+            e.preventDefault();
+            toggleFacultyMobileSidebar();
+            return;
+        }
+
+        const item = e.target.closest(".sidebar .nav-item, .sidebar .logo-area[data-page], #facultyProfileModal .nav-item[data-page], .profile-link[data-page]");
         if (!item) return;
         const pageFile = item.getAttribute("data-page");
         if (!pageFile) return;
         e.preventDefault();
         navigateToFacultyPage(pageFile);
     });
+
+    const modal = document.getElementById("facultyProfileModal");
+    const backdrop = document.getElementById("facultyProfileBackdrop");
+    if (modal && backdrop) {
+        document.addEventListener("click", (e) => {
+            const profileBtn = e.target.closest("[onclick='toggleFacultyProfileModal()']");
+            if (modal.classList.contains("show") && !modal.contains(e.target) && !profileBtn) {
+                modal.classList.remove("show");
+                backdrop.classList.remove("show");
+            }
+        });
+    }
 }
 
 async function loadFacultyNavigation() {
     try {
-        const candidateUrls = ["faculty-nav.html", "/faculty/faculty-nav.html", "faculty/faculty-nav.html"];
+        const candidateUrls = ["faculty-nav.html", "/faculty/faculty-nav.html", "faculty/faculty-nav.html", "../faculty-nav.html"];
         let response = null;
         for (const url of candidateUrls) {
             try {
@@ -106,11 +161,9 @@ async function loadFacultyNavigation() {
         attachFacultyNavEvents();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
 
-        // Ensure CiteFlowMessenger is initialized
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
         } else {
-            // Load messenger.js dynamically if not already on the page
             const script = document.createElement("script");
             script.src = "../shared/messenger.js";
             script.onload = () => {
@@ -145,6 +198,7 @@ window.addEventListener("load", async () => {
     if (!document.querySelector("aside.sidebar")) {
         await loadFacultyNavigation();
     } else {
+        attachFacultyNavEvents();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         window.CiteFlowMessenger?.init();
     }

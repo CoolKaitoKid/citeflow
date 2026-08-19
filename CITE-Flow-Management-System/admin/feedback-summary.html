@@ -14,32 +14,146 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-*{font-family:'Inter',sans-serif}.app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}.panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}.soft-card{background:#fff;border:1px solid #eef2f7;box-shadow:0 12px 30px rgba(15,23,42,.05)}.field{border:1px solid #d1d5db;border-radius:16px;padding:11px 13px;font-size:14px;outline:none;background:white}.field:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}.icon-btn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:14px;background:#fff;color:#334155}.icon-btn:hover{background:#f8fafc}.badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700}.table-wrap{overflow:auto}.table-wrap table{min-width:1060px}
+* { font-family: 'Inter', sans-serif; }
+.app-surface { background: linear-gradient(135deg, #f8fafc, #f7f7fb 48%, #f9fafb); }
+.panel { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 18px 45px rgba(15, 23, 42, .06); }
+.soft-card { background: #fff; border: 1px solid #eef2f7; box-shadow: 0 12px 30px rgba(15, 23, 42, .05); }
+.field { border: 1px solid #d1d5db; border-radius: 14px; padding: 10px 12px; font-size: 13px; outline: none; background: white; width: 100%; }
+.field:focus { border-color: #621708; box-shadow: 0 0 0 4px rgba(98, 23, 8, .08); }
+.icon-btn { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; color: #334155; transition: all 0.15s ease; }
+.icon-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+.badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; font-size: 11px; font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+.table-wrap table { min-width: 850px; }
 </style>
 </head>
-<body class="bg-gray-50">
-<div class="flex h-screen w-screen overflow-hidden">
+<body class="bg-gray-50 overflow-x-hidden min-h-screen">
+<div class="flex min-h-screen">
     <div id="sidebar-container"></div>
 
-    <main class="flex-1 overflow-y-auto ml-[220px] app-surface">
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] app-surface w-full overflow-x-hidden transition-all duration-300">
         <div id="navbar-container"></div>
 
-        <div class="max-w-[1500px] mx-auto px-8 py-8 mt-16">
-            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-7">
-                <div><p class="text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase">Administration</p><h1 class="text-3xl font-semibold text-slate-950 mt-2">Seminar Feedback Summary</h1><p class="text-sm text-slate-500 mt-1">Realtime summary of faculty feedback submitted from the user calendar.</p></div>
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6 sm:mb-8">
+                <div>
+                    <p class="text-[11px] sm:text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase mb-1.5">Administration</p>
+                    <h1 class="text-2xl sm:text-3xl font-bold text-slate-950">Seminar Feedback Summary</h1>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">Realtime summary of faculty feedback submitted from the user calendar.</p>
+                </div>
                 <div id="realtime-status" class="sr-only" aria-live="polite"></div>
-                 </header>
-            <section id="notification-panel" class="panel rounded-[1.75rem] p-5 mb-6 hidden"><div class="flex items-center justify-between gap-4"><div class="flex items-start gap-4"><div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 border border-amber-100 flex items-center justify-center"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0a3 3 0 0 1-6 0"/></svg></div><div><div class="text-sm font-semibold text-slate-950">New Feedback Received</div><div id="notification-text" class="text-sm text-slate-500 mt-1"></div></div></div><button onclick="markNotificationsRead()" class="text-sm font-semibold text-[#621708] hover:underline">Mark all as read</button></div></section>
-            <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6" id="stats-cards"></section>
-            <section class="panel rounded-[2rem] p-5 mb-6"><div class="grid grid-cols-1 lg:grid-cols-5 gap-4 items-end"><div><label class="text-xs font-semibold text-slate-500">Event</label><select id="eventFilter" class="field w-full mt-1" onchange="applyFilters()"></select></div><div><label class="text-xs font-semibold text-slate-500">Faculty</label><select id="facultyFilter" class="field w-full mt-1" onchange="applyFilters()"></select></div><div><label class="text-xs font-semibold text-slate-500">From</label><input id="fromDateFilter" type="date" class="field w-full mt-1" onchange="applyFilters()"></div><div><label class="text-xs font-semibold text-slate-500">To</label><input id="toDateFilter" type="date" class="field w-full mt-1" onchange="applyFilters()"></div><div class="flex gap-2"><button onclick="resetFilters()" class="flex-1 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50">Reset</button></div></div></section>
-            <div class="grid grid-cols-1 2xl:grid-cols-[420px_1fr] gap-6">
-                <aside class="space-y-6"><section class="panel rounded-[2rem] p-6"><div class="flex items-center justify-between mb-4"><div><h2 class="font-semibold text-slate-950">Rating Distribution</h2><p class="text-sm text-slate-500 mt-1">Overall faculty ratings</p></div></div><div class="h-[280px] flex items-center justify-center"><canvas id="ratingChart"></canvas></div><div id="ratingLegend" class="grid grid-cols-1 gap-2 mt-5 text-sm"></div></section><section class="panel rounded-[2rem] p-6"><div class="flex items-start justify-between gap-3 mb-4"><div><h2 class="font-semibold text-slate-950">Export Feedback</h2><p class="text-sm text-slate-500 mt-1">Select records or select all filtered results.</p></div><span id="selected-count" class="badge bg-slate-100 text-slate-600">0 selected</span></div><label class="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-4"><input id="select-all" type="checkbox" onchange="toggleSelectAll(this.checked)" class="accent-[#621708]">Select all filtered records</label><div class="grid grid-cols-3 gap-2"><button onclick="exportSelected('pdf')" class="px-3 py-3 rounded-2xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800">PDF</button><button onclick="exportSelected('excel')" class="px-3 py-3 rounded-2xl bg-[#621708] text-white text-sm font-semibold hover:bg-[#8c2a10]">Excel</button><button onclick="exportSelected('word')" class="px-3 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50">Word</button></div></section></aside>
-                <section class="panel rounded-[2rem] overflow-hidden"><div class="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4"><div><h2 class="font-semibold text-slate-950">Feedback Submissions</h2><p id="table-subtitle" class="text-sm text-slate-500 mt-1">Loading records...</p></div><div class="relative"><input id="searchInput" oninput="applyFilters()" placeholder="Search feedback..." class="field w-full md:w-72 pl-10"><svg class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z"/></svg></div></div><div id="feedback-table" class="table-wrap"></div></section>
+            </header>
+
+            <section id="notification-panel" class="panel rounded-2xl sm:rounded-[1.75rem] p-4 sm:p-5 mb-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                    <div class="flex items-start gap-3 sm:gap-4">
+                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-50 text-amber-700 border border-amber-100 flex items-center justify-center shrink-0">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0a3 3 0 0 1-6 0"/></svg>
+                        </div>
+                        <div>
+                            <div class="text-xs sm:text-sm font-bold text-slate-950">New Feedback Received</div>
+                            <div id="notification-text" class="text-xs text-slate-500 mt-0.5"></div>
+                        </div>
+                    </div>
+                    <button onclick="markNotificationsRead()" class="text-xs sm:text-sm font-semibold text-[#621708] hover:underline self-start sm:self-auto">Mark all as read</button>
+                </div>
+            </section>
+
+            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 mb-6" id="stats-cards"></section>
+
+            <section class="panel rounded-2xl sm:rounded-[2rem] p-4 sm:p-5 mb-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 items-end">
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase">Event</label>
+                        <select id="eventFilter" class="field mt-1.5" onchange="applyFilters()"></select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase">Faculty</label>
+                        <select id="facultyFilter" class="field mt-1.5" onchange="applyFilters()"></select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase">From</label>
+                        <input id="fromDateFilter" type="date" class="field mt-1.5" onchange="applyFilters()">
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase">To</label>
+                        <input id="toDateFilter" type="date" class="field mt-1.5" onchange="applyFilters()">
+                    </div>
+                    <div>
+                        <button onclick="resetFilters()" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs sm:text-sm font-bold hover:bg-slate-50 shadow-sm">Reset Filters</button>
+                    </div>
+                </div>
+            </section>
+
+            <div class="grid grid-cols-1 2xl:grid-cols-[400px_1fr] gap-6">
+                <aside class="space-y-5 sm:space-y-6">
+                    <section class="panel rounded-2xl sm:rounded-[2rem] p-5 sm:p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <h2 class="font-bold text-base sm:text-lg text-slate-950">Rating Distribution</h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Overall faculty ratings</p>
+                            </div>
+                        </div>
+                        <div class="h-[240px] sm:h-[260px] flex items-center justify-center">
+                            <canvas id="ratingChart"></canvas>
+                        </div>
+                        <div id="ratingLegend" class="grid grid-cols-1 gap-2 mt-4 text-xs sm:text-sm"></div>
+                    </section>
+
+                    <section class="panel rounded-2xl sm:rounded-[2rem] p-5 sm:p-6">
+                        <div class="flex items-start justify-between gap-3 mb-3">
+                            <div>
+                                <h2 class="font-bold text-base sm:text-lg text-slate-950">Export Feedback</h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Select records or export all filtered results.</p>
+                            </div>
+                            <span id="selected-count" class="badge bg-slate-100 text-slate-600">0 selected</span>
+                        </div>
+                        <label class="flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-700 mb-3 cursor-pointer">
+                            <input id="select-all" type="checkbox" onchange="toggleSelectAll(this.checked)" class="w-4 h-4 accent-[#621708]">
+                            Select all filtered records
+                        </label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="exportSelected('pdf')" class="px-3 py-2.5 rounded-xl bg-slate-900 text-white text-xs sm:text-sm font-bold hover:bg-slate-800 shadow-sm">PDF</button>
+                            <button onclick="exportSelected('excel')" class="px-3 py-2.5 rounded-xl bg-[#621708] text-white text-xs sm:text-sm font-bold hover:bg-[#8c2a10] shadow-sm">Excel</button>
+                            <button onclick="exportSelected('word')" class="px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs sm:text-sm font-bold hover:bg-slate-50 shadow-sm">Word</button>
+                        </div>
+                    </section>
+                </aside>
+
+                <section class="panel rounded-2xl sm:rounded-[2rem] overflow-hidden">
+                    <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <h2 class="font-bold text-base sm:text-lg text-slate-950">Feedback Submissions</h2>
+                            <p id="table-subtitle" class="text-xs text-slate-500 mt-0.5">Loading records...</p>
+                        </div>
+                        <div class="relative w-full sm:w-72">
+                            <input id="searchInput" oninput="applyFilters()" placeholder="Search feedback..." class="field pl-9 text-xs sm:text-sm py-2 sm:py-2.5">
+                            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z"/></svg>
+                        </div>
+                    </div>
+                    <div id="feedback-table" class="table-wrap"></div>
+                </section>
             </div>
         </div>
     </main>
 </div>
-<div id="detailsModal" class="hidden fixed inset-0 z-[2500] bg-slate-950/50 backdrop-blur-sm items-center justify-center p-4"><div class="bg-white rounded-[2rem] w-full max-w-3xl shadow-2xl overflow-hidden"><div class="px-7 py-5 border-b border-slate-100 flex justify-between items-start gap-4"><div><p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Feedback Details</p><h3 id="detailsTitle" class="text-xl font-semibold text-slate-950 mt-1"></h3></div><button onclick="closeDetailsModal()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div id="detailsContent" class="p-7 space-y-4 max-h-[70vh] overflow-y-auto"></div></div></div>
+
+<!-- DETAILS MODAL -->
+<div id="detailsModal" class="hidden fixed inset-0 z-[2500] bg-slate-950/50 backdrop-blur-sm items-center justify-center p-3 sm:p-4">
+    <div class="bg-white rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-start gap-3 bg-slate-50/50">
+            <div class="min-w-0">
+                <p class="text-[10px] sm:text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Feedback Details</p>
+                <h3 id="detailsTitle" class="text-base sm:text-xl font-bold text-slate-950 mt-0.5 truncate"></h3>
+            </div>
+            <button onclick="closeDetailsModal()" class="icon-btn">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div id="detailsContent" class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1"></div>
+    </div>
+</div>
+
 <script>
 const supabaseUrl='https://uforealazougjckepggc.supabase.co';
 const supabaseAnonKey='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
@@ -57,15 +171,15 @@ function subscribe(){supabaseClient.channel('feedback-summary-realtime').on('pos
 function populateFilters(){let ev=[...new Set(allFeedbacks.map(f=>f._event))].sort(),fac=[...new Set(allFeedbacks.map(f=>f.faculty_name||'Unknown Faculty'))].sort();document.getElementById('eventFilter').innerHTML='<option value="">All Events</option>'+ev.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');document.getElementById('facultyFilter').innerHTML='<option value="">All Faculty</option>'+fac.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}
 function applyFilters(){let e=document.getElementById('eventFilter').value,fac=document.getElementById('facultyFilter').value,from=document.getElementById('fromDateFilter').value,to=document.getElementById('toDateFilter').value,q=document.getElementById('searchInput')?.value.toLowerCase()||'';filteredFeedbacks=allFeedbacks.filter(f=>{let d=submitted(f),hay=[f._event,f.faculty_name,f.faculty_email,f.feedback_summary,f.suggestions].join(' ').toLowerCase();return(!e||f._event===e)&&(!fac||(f.faculty_name||'Unknown Faculty')===fac)&&(!from||d>=new Date(from+'T00:00:00'))&&(!to||d<=new Date(to+'T23:59:59'))&&(!q||hay.includes(q))});selectedIds=new Set([...selectedIds].filter(id=>filteredFeedbacks.some(f=>String(f.id)===id)));renderDashboard()}
 function resetFilters(){['eventFilter','facultyFilter','fromDateFilter','toDateFilter','searchInput'].forEach(id=>{let el=document.getElementById(id);if(el)el.value=''});applyFilters()}
-function renderStats(){let total=filteredFeedbacks.length,avg=total?(filteredFeedbacks.reduce((s,f)=>s+Number(f.overall_rating||0),0)/total).toFixed(1):'0.0',att=total?Math.round(filteredFeedbacks.filter(f=>(f.attendance_status||'').toLowerCase().includes('attended')&&!(f.attendance_status||'').toLowerCase().includes('not')).length/total*100):0,last=total?submitted(filteredFeedbacks[0]).toLocaleDateString():'—';document.getElementById('stats-cards').innerHTML=`<div class="soft-card rounded-[1.7rem] p-6"><div class="text-sm text-slate-500">Total Feedback</div><div class="text-4xl font-semibold text-slate-950 mt-3">${total}</div></div><div class="soft-card rounded-[1.7rem] p-6"><div class="text-sm text-slate-500">Average Rating</div><div class="text-4xl font-semibold text-[#621708] mt-3">${avg}/5</div></div><div class="soft-card rounded-[1.7rem] p-6"><div class="text-sm text-slate-500">Attendance Rate</div><div class="text-4xl font-semibold text-emerald-700 mt-3">${att}%</div></div><div class="soft-card rounded-[1.7rem] p-6"><div class="text-sm text-slate-500">Latest Submission</div><div class="text-xl font-semibold text-slate-950 mt-4">${last}</div></div>`}
-function renderChart(){let counts={5:0,4:0,3:0,2:0,1:0};filteredFeedbacks.forEach(f=>{let r=Number(f.overall_rating);if(counts[r]!==undefined)counts[r]++});if(ratingChart)ratingChart.destroy();ratingChart=new Chart(document.getElementById('ratingChart'),{type:'doughnut',data:{labels:['5 Excellent','4 Very Good','3 Good','2 Fair','1 Needs Improvement'],datasets:[{data:[counts[5],counts[4],counts[3],counts[2],counts[1]],backgroundColor:['#166534','#2563eb','#ca8a04','#ea580c','#dc2626'],borderWidth:0,cutout:'65%'}]},options:{plugins:{legend:{display:false}},maintainAspectRatio:false}});document.getElementById('ratingLegend').innerHTML=Object.entries(counts).reverse().map(([r,c])=>`<div class="flex justify-between rounded-2xl bg-slate-50 px-4 py-2"><span class="text-slate-600">Rating ${r}</span><span class="font-semibold text-slate-950">${c}</span></div>`).join('')}
-function renderTable(){document.getElementById('table-subtitle').textContent=`Showing ${filteredFeedbacks.length} of ${allFeedbacks.length} feedback records`;document.getElementById('selected-count').textContent=`${selectedIds.size} selected`;document.getElementById('select-all').checked=filteredFeedbacks.length>0&&selectedIds.size===filteredFeedbacks.length;let box=document.getElementById('feedback-table');if(!filteredFeedbacks.length){box.innerHTML='<div class="text-center py-20 text-slate-500">No feedback submissions found.</div>';return}box.innerHTML=`<table class="w-full text-sm"><thead class="bg-slate-50 text-left text-slate-500"><tr><th class="px-5 py-4"><input type="checkbox" onchange="toggleSelectAll(this.checked)" ${filteredFeedbacks.length&&selectedIds.size===filteredFeedbacks.length?'checked':''} class="accent-[#621708]"></th><th class="px-5 py-4 font-semibold">Event</th><th class="px-5 py-4 font-semibold">Faculty</th><th class="px-5 py-4 font-semibold">Attendance</th><th class="px-5 py-4 font-semibold">Rating</th><th class="px-5 py-4 font-semibold">Submitted</th><th class="px-5 py-4 font-semibold">Action</th></tr></thead><tbody class="divide-y divide-slate-100">${filteredFeedbacks.map((f,i)=>`<tr class="hover:bg-slate-50"><td class="px-5 py-4"><input type="checkbox" onchange="toggleOne('${f.id}',this.checked)" ${selectedIds.has(String(f.id))?'checked':''} class="accent-[#621708]"></td><td class="px-5 py-4"><div class="font-semibold text-slate-950">${esc(f._event)}</div><div class="text-xs text-slate-500 mt-1">${esc(f._date)} • ${esc(f._venue)}</div></td><td class="px-5 py-4"><div class="font-medium text-slate-800">${esc(f.faculty_name||'Unknown Faculty')}</div><div class="text-xs text-slate-500 mt-1">${esc(f.faculty_email||'')}</div></td><td class="px-5 py-4"><span class="badge bg-slate-100 text-slate-700">${esc(f.attendance_status||'')}</span></td><td class="px-5 py-4"><span class="badge bg-amber-50 text-amber-700">${esc(f.overall_rating||'0')} / 5</span></td><td class="px-5 py-4 text-slate-600">${submitted(f).toLocaleString()}</td><td class="px-5 py-4"><button onclick="openDetails(${i})" class="font-semibold text-[#621708] hover:underline">View</button></td></tr>`).join('')}</tbody></table>`}
+function renderStats(){let total=filteredFeedbacks.length,avg=total?(filteredFeedbacks.reduce((s,f)=>s+Number(f.overall_rating||0),0)/total).toFixed(1):'0.0',att=total?Math.round(filteredFeedbacks.filter(f=>(f.attendance_status||'').toLowerCase().includes('attended')&&!(f.attendance_status||'').toLowerCase().includes('not')).length/total*100):0,last=total?submitted(filteredFeedbacks[0]).toLocaleDateString():'—';document.getElementById('stats-cards').innerHTML=`<div class="soft-card rounded-2xl sm:rounded-[1.7rem] p-4 sm:p-5"><div class="text-xs sm:text-sm text-slate-500 font-medium">Total Feedback</div><div class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2">${total}</div></div><div class="soft-card rounded-2xl sm:rounded-[1.7rem] p-4 sm:p-5"><div class="text-xs sm:text-sm text-slate-500 font-medium">Average Rating</div><div class="text-2xl sm:text-3xl font-bold text-[#621708] mt-1 sm:mt-2">${avg}/5</div></div><div class="soft-card rounded-2xl sm:rounded-[1.7rem] p-4 sm:p-5"><div class="text-xs sm:text-sm text-slate-500 font-medium">Attendance Rate</div><div class="text-2xl sm:text-3xl font-bold text-emerald-700 mt-1 sm:mt-2">${att}%</div></div><div class="soft-card rounded-2xl sm:rounded-[1.7rem] p-4 sm:p-5"><div class="text-xs sm:text-sm text-slate-500 font-medium">Latest Submission</div><div class="text-base sm:text-lg font-bold text-slate-950 mt-2 sm:mt-3">${last}</div></div>`}
+function renderChart(){let counts={5:0,4:0,3:0,2:0,1:0};filteredFeedbacks.forEach(f=>{let r=Number(f.overall_rating);if(counts[r]!==undefined)counts[r]++});if(ratingChart)ratingChart.destroy();ratingChart=new Chart(document.getElementById('ratingChart'),{type:'doughnut',data:{labels:['5 Excellent','4 Very Good','3 Good','2 Fair','1 Needs Improvement'],datasets:[{data:[counts[5],counts[4],counts[3],counts[2],counts[1]],backgroundColor:['#166534','#2563eb','#ca8a04','#ea580c','#dc2626'],borderWidth:0,cutout:'65%'}]},options:{plugins:{legend:{display:false}},maintainAspectRatio:false}});document.getElementById('ratingLegend').innerHTML=Object.entries(counts).reverse().map(([r,c])=>`<div class="flex justify-between rounded-xl bg-slate-50 px-3.5 py-2"><span class="text-slate-600 font-medium">Rating ${r}</span><span class="font-bold text-slate-950">${c}</span></div>`).join('')}
+function renderTable(){document.getElementById('table-subtitle').textContent=`Showing ${filteredFeedbacks.length} of ${allFeedbacks.length} feedback records`;document.getElementById('selected-count').textContent=`${selectedIds.size} selected`;document.getElementById('select-all').checked=filteredFeedbacks.length>0&&selectedIds.size===filteredFeedbacks.length;let box=document.getElementById('feedback-table');if(!filteredFeedbacks.length){box.innerHTML='<div class="text-center py-16 text-xs sm:text-sm text-slate-500">No feedback submissions found.</div>';return}box.innerHTML=`<table class="w-full text-xs sm:text-sm"><thead class="bg-slate-50 text-left text-slate-500 border-b border-slate-100 text-[11px] uppercase tracking-wider font-bold"><tr><th class="px-4 sm:px-5 py-3.5"><input type="checkbox" onchange="toggleSelectAll(this.checked)" ${filteredFeedbacks.length&&selectedIds.size===filteredFeedbacks.length?'checked':''} class="w-3.5 h-3.5 accent-[#621708]"></th><th class="px-4 sm:px-5 py-3.5">Event</th><th class="px-4 sm:px-5 py-3.5">Faculty</th><th class="px-4 sm:px-5 py-3.5">Attendance</th><th class="px-4 sm:px-5 py-3.5">Rating</th><th class="px-4 sm:px-5 py-3.5">Submitted</th><th class="px-4 sm:px-5 py-3.5 text-right">Action</th></tr></thead><tbody class="divide-y divide-slate-100">${filteredFeedbacks.map((f,i)=>`<tr class="hover:bg-slate-50/80 transition-colors"><td class="px-4 sm:px-5 py-3.5"><input type="checkbox" onchange="toggleOne('${f.id}',this.checked)" ${selectedIds.has(String(f.id))?'checked':''} class="w-3.5 h-3.5 accent-[#621708]"></td><td class="px-4 sm:px-5 py-3.5"><div class="font-bold text-slate-950">${esc(f._event)}</div><div class="text-[11px] text-slate-500 mt-0.5">${esc(f._date)} • ${esc(f._venue)}</div></td><td class="px-4 sm:px-5 py-3.5"><div class="font-semibold text-slate-800">${esc(f.faculty_name||'Unknown Faculty')}</div><div class="text-[11px] text-slate-500 mt-0.5">${esc(f.faculty_email||'')}</div></td><td class="px-4 sm:px-5 py-3.5"><span class="badge bg-slate-100 text-slate-700">${esc(f.attendance_status||'')}</span></td><td class="px-4 sm:px-5 py-3.5"><span class="badge bg-amber-50 text-amber-700">${esc(f.overall_rating||'0')} / 5</span></td><td class="px-4 sm:px-5 py-3.5 text-slate-600 whitespace-nowrap">${submitted(f).toLocaleDateString()}</td><td class="px-4 sm:px-5 py-3.5 text-right"><button onclick="openDetails(${i})" class="font-bold text-[#621708] hover:underline">View</button></td></tr>`).join('')}</tbody></table>`}
 function renderDashboard(){renderStats();renderChart();renderTable()}
 function toggleOne(id,on){on?selectedIds.add(String(id)):selectedIds.delete(String(id));renderTable()}function toggleSelectAll(on){selectedIds=on?new Set(filteredFeedbacks.map(f=>String(f.id))):new Set();renderTable()}
 function selectedRows(){let rows=filteredFeedbacks.filter(f=>selectedIds.has(String(f.id)));if(!rows.length){alert('Please select at least one feedback record.');return null}return rows}
 function rowData(list){return list.map(f=>({'Event':f._event,'Event Date':f._date,'Venue':f._venue,'Faculty Name':f.faculty_name||'','Faculty Email':f.faculty_email||'','Attendance':f.attendance_status||'','Overall Rating':f.overall_rating||'','Content Quality':f.content_quality||'','Speaker Quality':f.speaker_quality||'','Feedback Summary':f.feedback_summary||'','Suggestions':f.suggestions||'','Submitted At':submitted(f).toLocaleString()}))}
 function exportSelected(type){let chosen=selectedRows();if(!chosen)return;let rows=rowData(chosen),stamp=new Date().toISOString().slice(0,10);if(type==='excel'){let ws=XLSX.utils.json_to_sheet(rows),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Feedback Summary');XLSX.writeFile(wb,`feedback-summary-${stamp}.xlsx`);return}if(type==='pdf'){let doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'});doc.setFontSize(16);doc.text('Seminar Feedback Summary',40,40);doc.setFontSize(9);doc.text(`Generated: ${new Date().toLocaleString()} | Records: ${rows.length}`,40,58);doc.autoTable({startY:76,head:[['Event','Date','Faculty','Attendance','Rating','Summary','Suggestions','Submitted']],body:rows.map(r=>[r.Event,r['Event Date'],r['Faculty Name'],r.Attendance,String(r['Overall Rating']),r['Feedback Summary'],r.Suggestions,r['Submitted At']]),styles:{fontSize:7,cellPadding:4,overflow:'linebreak'},headStyles:{fillColor:[98,23,8]},columnStyles:{5:{cellWidth:170},6:{cellWidth:160}}});doc.save(`feedback-summary-${stamp}.pdf`);return}let body=rows.map(r=>`<h2>${esc(r.Event)}</h2><table>${Object.entries(r).map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>`).join('<br>');let html=`<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#111827}h1{font-size:22px}h2{font-size:16px;margin-top:22px}table{border-collapse:collapse;width:100%;margin-top:8px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{width:180px;background:#f3f4f6}</style></head><body><h1>Seminar Feedback Summary</h1><p>Generated: ${new Date().toLocaleString()}<br>Records: ${rows.length}</p>${body}</body></html>`;let blob=new Blob([html],{type:'application/msword'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`feedback-summary-${stamp}.doc`;a.click();URL.revokeObjectURL(url)}
-function openDetails(i){let f=filteredFeedbacks[i];if(!f)return;document.getElementById('detailsTitle').textContent=f._event;document.getElementById('detailsContent').innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm"><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">Faculty</div><div class="font-semibold mt-1">${esc(f.faculty_name)}</div></div><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">Submitted</div><div class="font-semibold mt-1">${submitted(f).toLocaleString()}</div></div><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">Attendance</div><div class="font-semibold mt-1">${esc(f.attendance_status)}</div></div><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">Rating</div><div class="font-semibold mt-1">${esc(f.overall_rating)} / 5</div></div></div><div><div class="text-sm font-semibold text-slate-500 mb-2">Feedback Summary</div><div class="rounded-2xl border border-slate-100 p-4 text-slate-700">${esc(f.feedback_summary||'No summary provided.')}</div></div><div><div class="text-sm font-semibold text-slate-500 mb-2">Suggestions</div><div class="rounded-2xl border border-slate-100 p-4 text-slate-700">${esc(f.suggestions||'No suggestions provided.')}</div></div>`;let m=document.getElementById('detailsModal');m.classList.remove('hidden');m.classList.add('flex')}
+function openDetails(i){let f=filteredFeedbacks[i];if(!f)return;document.getElementById('detailsTitle').textContent=f._event;document.getElementById('detailsContent').innerHTML=`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm"><div class="bg-slate-50 rounded-xl p-3.5"><div class="text-[11px] text-slate-400 font-medium">Faculty</div><div class="font-bold text-slate-900 mt-0.5">${esc(f.faculty_name)}</div></div><div class="bg-slate-50 rounded-xl p-3.5"><div class="text-[11px] text-slate-400 font-medium">Submitted</div><div class="font-bold text-slate-900 mt-0.5">${submitted(f).toLocaleString()}</div></div><div class="bg-slate-50 rounded-xl p-3.5"><div class="text-[11px] text-slate-400 font-medium">Attendance</div><div class="font-bold text-slate-900 mt-0.5">${esc(f.attendance_status)}</div></div><div class="bg-slate-50 rounded-xl p-3.5"><div class="text-[11px] text-slate-400 font-medium">Rating</div><div class="font-bold text-slate-900 mt-0.5">${esc(f.overall_rating)} / 5</div></div></div><div><div class="text-xs font-bold text-slate-600 mb-1.5">Feedback Summary</div><div class="rounded-xl border border-slate-200 p-3.5 text-xs sm:text-sm text-slate-700 leading-relaxed">${esc(f.feedback_summary||'No summary provided.')}</div></div><div><div class="text-xs font-bold text-slate-600 mb-1.5">Suggestions</div><div class="rounded-xl border border-slate-200 p-3.5 text-xs sm:text-sm text-slate-700 leading-relaxed">${esc(f.suggestions||'No suggestions provided.')}</div></div>`;let m=document.getElementById('detailsModal');m.classList.remove('hidden');m.classList.add('flex')}
 function closeDetailsModal(){let m=document.getElementById('detailsModal');m.classList.add('hidden');m.classList.remove('flex')}
 function renderNotifications(){let last=localStorage.getItem('feedbackSummaryLastSeen')||'1970-01-01T00:00:00.000Z',unread=allFeedbacks.filter(f=>submitted(f)>new Date(last)).length,panel=document.getElementById('notification-panel');if(unread>0){document.getElementById('notification-text').textContent=`${unread} new feedback submission${unread>1?'s':''} need review.`;panel.classList.remove('hidden')}else panel.classList.add('hidden')}
 function markNotificationsRead(){localStorage.setItem('feedbackSummaryLastSeen',new Date().toISOString());renderNotifications()}
