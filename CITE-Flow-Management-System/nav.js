@@ -565,6 +565,21 @@ window.addEventListener("load", async () => {
 
 
 
+async function adminLogout() {
+    try {
+        if (window.CiteFlowAuth && typeof window.CiteFlowAuth.logout === "function") {
+            await window.CiteFlowAuth.logout();
+            return;
+        }
+        if (window.supabaseClient && window.supabaseClient.auth) {
+            await window.supabaseClient.auth.signOut();
+        }
+    } catch (_) {}
+    const isSub = window.location.pathname.toLowerCase().includes('/admin/') || window.location.pathname.toLowerCase().includes('/faculty/');
+    window.location.href = isSub ? '../login.html' : 'login.html';
+}
+window.adminLogout = adminLogout;
+
 // Global compatibility trigger for floating messages button
 
 window.openMessages = function() {

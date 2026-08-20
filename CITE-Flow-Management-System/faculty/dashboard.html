@@ -394,14 +394,14 @@ async function loadFacultyProfile() {
 
     if (!currentUser) {
         document.getElementById('welcomeName').textContent = 'Faculty';
-        document.getElementById('profileName')?.replaceChildren(document.createTextNode('Faculty Member'));
+        if (typeof updateFacultyNavProfile === 'function') updateFacultyNavProfile(null);
         return;
     }
 
     const { data, error } = await supabaseClient
         .from('faculty')
         .select('*')
-        .eq('auth_user_id', currentUser.id)
+        .or(`auth_user_id.eq.${currentUser.id},email.ilike.${currentUser.email}`)
         .maybeSingle();
 
     if (error) {
@@ -414,22 +414,39 @@ async function loadFacultyProfile() {
         currentFaculty?.full_name ||
         currentFaculty?.name ||
         currentUser.user_metadata?.full_name ||
+        currentUser.user_metadata?.name ||
         currentUser.email ||
         'Faculty Member';
 
     const firstName = String(name).split(' ')[0] || 'Faculty';
-    const role = currentFaculty?.position || currentFaculty?.role || 'Faculty Member';
+    const role = currentFaculty?.position || currentFaculty?.role || currentUser.user_metadata?.role || 'Faculty Member';
+    const department = currentFaculty?.department || currentUser.user_metadata?.department || 'BSIT';
 
-    document.getElementById('welcomeName').textContent = firstName;
+    const welcomeEl = document.getElementById('welcomeName');
+    if (welcomeEl) welcomeEl.textContent = firstName;
 
-    const navProfileName = document.getElementById('profileName');
-    const navProfileRole = document.getElementById('profileRole');
-    const navProfileDepartment = document.getElementById('profileDepartment');
-    const navProfileRoleDetail = document.getElementById('profileRoleDetail');
-    if (navProfileName) navProfileName.textContent = name;
-    if (navProfileRole) navProfileRole.textContent = role;
-    if (navProfileDepartment) navProfileDepartment.textContent = currentFaculty?.department || 'N/A';
-    if (navProfileRoleDetail) navProfileRoleDetail.textContent = role;
+    if (typeof updateFacultyNavProfile === 'function') {
+        updateFacultyNavProfile({
+            full_name: name,
+            name: name,
+            role: role,
+            position: role,
+            department: department
+        });
+    } else {
+        const setEl = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+        setEl('facultyNavProfileName', name);
+        setEl('profileName', name);
+        setEl('facultyNavProfileRole', role);
+        setEl('profileRole', role);
+        setEl('facultyNavDept', department);
+        setEl('profileDepartment', department);
+        setEl('facultyNavRoleDetail', role);
+        setEl('profileRoleDetail', role);
+    }
 }
 
 async function loadAcademicPeriod() {

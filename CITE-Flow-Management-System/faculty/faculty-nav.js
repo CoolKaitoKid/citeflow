@@ -133,6 +133,77 @@ function attachFacultyNavEvents() {
     }
 }
 
+function updateFacultyNavProfile(profileData) {
+    if (!profileData) {
+        try {
+            const cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
+            if (cached && (cached.name || cached.full_name)) {
+                profileData = {
+                    name: cached.name || cached.full_name,
+                    full_name: cached.name || cached.full_name,
+                    role: cached.role || 'Faculty Member',
+                    position: cached.role || 'Faculty Member',
+                    department: cached.department || 'CITE Faculty'
+                };
+            }
+        } catch (_) {}
+    }
+
+    if (!profileData && window.supabaseClient && window.supabaseClient.auth) {
+        window.supabaseClient.auth.getUser().then(({ data }) => {
+            const user = data?.user;
+            if (user) {
+                const meta = user.user_metadata || {};
+                const name = meta.full_name || meta.name || user.email?.split('@')[0] || 'Faculty Member';
+                updateFacultyNavProfile({
+                    name: name,
+                    full_name: name,
+                    role: meta.role || 'Faculty Member',
+                    position: meta.role || 'Faculty Member',
+                    department: meta.department || 'CITE Faculty'
+                });
+            }
+        }).catch(() => {});
+        return;
+    }
+
+    if (!profileData) return;
+
+    const name = profileData.full_name || profileData.name || profileData.email || 'Faculty Member';
+    const role = profileData.position || profileData.role || 'Faculty Member';
+    const dept = profileData.department || 'CITE Faculty';
+
+    const setEl = (idOrSel, val) => {
+        if (!val) return;
+        const el = idOrSel.startsWith('#') || idOrSel.startsWith('.') 
+            ? document.querySelector(idOrSel) 
+            : document.getElementById(idOrSel);
+        if (el) el.textContent = val;
+    };
+
+    setEl('facultyNavProfileName', name);
+    setEl('profileName', name);
+    setEl('#facultyProfileModal #facultyNavProfileName', name);
+    setEl('#facultyProfileModal #profileName', name);
+
+    setEl('facultyNavProfileRole', role);
+    setEl('profileRole', role);
+    setEl('#facultyProfileModal #facultyNavProfileRole', role);
+    setEl('#facultyProfileModal #profileRole', role);
+
+    setEl('facultyNavDept', dept);
+    setEl('profileDepartment', dept);
+    setEl('#facultyProfileModal #facultyNavDept', dept);
+    setEl('#facultyProfileModal #profileDepartment', dept);
+
+    setEl('facultyNavRoleDetail', role);
+    setEl('profileRoleDetail', role);
+    setEl('#facultyProfileModal #facultyNavRoleDetail', role);
+    setEl('#facultyProfileModal #profileRoleDetail', role);
+}
+
+window.updateFacultyNavProfile = updateFacultyNavProfile;
+
 async function loadFacultyNavigation() {
     try {
         const candidateUrls = ["faculty-nav.html", "/faculty/faculty-nav.html", "faculty/faculty-nav.html", "../faculty-nav.html"];
@@ -160,6 +231,7 @@ async function loadFacultyNavigation() {
 
         attachFacultyNavEvents();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
+        updateFacultyNavProfile();
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
@@ -189,6 +261,16 @@ async function facultyLogout() {
     window.location.href = "../login.html";
 }
 
+function openFacultyMessages() {
+    if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.openPanel === 'function') {
+        window.CiteFlowMessenger.openPanel();
+    } else {
+        const panel = document.getElementById("msgrPanel");
+        if (panel) panel.classList.add("show");
+    }
+}
+
+window.openFacultyMessages = openFacultyMessages;
 window.loadSidebar = loadFacultyNavigation;
 window.loadFacultyNavigation = loadFacultyNavigation;
 window.toggleFacultyProfileModal = toggleFacultyProfileModal;
@@ -200,6 +282,7 @@ window.addEventListener("load", async () => {
     } else {
         attachFacultyNavEvents();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
+        updateFacultyNavProfile();
         window.CiteFlowMessenger?.init();
     }
 });
