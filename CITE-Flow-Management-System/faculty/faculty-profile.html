@@ -1644,6 +1644,68 @@ function clearResearchUploadForm() {
     document.getElementById('researchEndDate').value = '';
     document.getElementById('researchFile').value = '';
 }
+// =========================================================
+// EMAILJS - SEND FACULTY LOGIN CREDENTIALS
+// =========================================================
+
+async function sendCredentialsEmail({
+    privateEmail,
+    fullName,
+    loginEmail,
+    password,
+    role,
+    department
+}) {
+    try {
+        if (!window.emailjs) {
+            console.error('EmailJS SDK is not loaded.');
+            return false;
+        }
+
+        const templateParams = {
+            name: fullName,
+            email: loginEmail,
+            temporary_password: password,
+            role: role,
+            department: department
+        };
+
+        console.log('Sending faculty credentials email...');
+        console.log('Recipient:', privateEmail);
+        console.log('Template parameters:', {
+            name: fullName,
+            email: loginEmail,
+            role,
+            department
+        });
+
+        const response = await emailjs.send(
+            'service_kmzgyii',
+            'template_lzzwr4e',
+            templateParams
+        );
+
+        console.log(
+            'Faculty credentials email sent successfully:',
+            response.status,
+            response.text
+        );
+
+        return true;
+
+    } catch (error) {
+        console.error('Failed to send faculty credentials email:', error);
+        return false;
+    }
+    const emailSent = await sendCredentialsEmail({
+    privateEmail,
+    fullName,
+    loginEmail: email,
+    password: tempPassword,
+    role,
+    department
+});
+}
 
 window.addEventListener('load', async () => {
     await loadSidebar();
@@ -1657,5 +1719,16 @@ window.addEventListener('load', async () => {
 
 <script src="../shared/system-ui.js"></script>
 <script src="faculty-nav.js"></script>
+<!-- EmailJS -->
+<script
+    type="text/javascript"
+    src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js">
+</script>
+
+<script>
+    emailjs.init({
+        publicKey: 'VDfsAHXPAWgLCmHnk'
+    });
+</script>
 </body>
 </html>
