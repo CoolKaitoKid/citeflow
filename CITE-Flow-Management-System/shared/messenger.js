@@ -103,6 +103,148 @@ window.CiteFlowMessenger = (function () {
     }
 
     /**
+     * Toast notification system
+     */
+    function showCustomToast(message, duration = 3200) {
+        if (!message) return;
+        let toast = document.getElementById("citeflowGlobalToast");
+        if (!toast) {
+            toast = document.createElement("div");
+            toast.id = "citeflowGlobalToast";
+            toast.className = "citeflow-toast";
+            document.body.appendChild(toast);
+        }
+        toast.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#10b981;"></i> <span>${message}</span>`;
+        toast.classList.add("show");
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => {
+            toast.classList.remove("show");
+        }, duration);
+    }
+
+    /**
+     * Professional custom Modal dialog system replacing native alert/confirm/prompt
+     */
+    function createModalDOM() {
+        if (document.getElementById("citeflowModalOverlay")) return;
+
+        const overlay = document.createElement("div");
+        overlay.id = "citeflowModalOverlay";
+        overlay.className = "citeflow-modal-overlay";
+        overlay.innerHTML = `
+            <div class="citeflow-modal-card">
+                <div class="citeflow-modal-header">
+                    <div class="citeflow-modal-icon" id="citeflowModalIcon">
+                        <i class="fa-solid fa-circle-info"></i>
+                    </div>
+                    <h3 id="citeflowModalTitle" class="citeflow-modal-title">CITE-Flow</h3>
+                </div>
+                <div class="citeflow-modal-body">
+                    <p id="citeflowModalMessage" class="citeflow-modal-message"></p>
+                    <input type="text" id="citeflowModalInput" class="citeflow-modal-input" style="display:none;" />
+                </div>
+                <div class="citeflow-modal-footer">
+                    <button type="button" id="citeflowModalCancelBtn" class="citeflow-modal-btn citeflow-modal-cancel">Cancel</button>
+                    <button type="button" id="citeflowModalConfirmBtn" class="citeflow-modal-btn citeflow-modal-confirm">Confirm</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+
+    function showModalDialog(options) {
+        return new Promise((resolve) => {
+            createModalDOM();
+            const overlay = document.getElementById("citeflowModalOverlay");
+            const iconEl = document.getElementById("citeflowModalIcon");
+            const titleEl = document.getElementById("citeflowModalTitle");
+            const messageEl = document.getElementById("citeflowModalMessage");
+            const inputEl = document.getElementById("citeflowModalInput");
+            const cancelBtn = document.getElementById("citeflowModalCancelBtn");
+            const confirmBtn = document.getElementById("citeflowModalConfirmBtn");
+
+            const type = options.type || "alert";
+            titleEl.textContent = options.title || "CITE-Flow System";
+            messageEl.textContent = options.message || "";
+
+            if (options.isDanger) {
+                iconEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>`;
+                iconEl.className = "citeflow-modal-icon danger";
+            } else if (type === "prompt") {
+                iconEl.innerHTML = `<i class="fa-solid fa-pen-to-square"></i>`;
+                iconEl.className = "citeflow-modal-icon info";
+            } else if (type === "confirm") {
+                iconEl.innerHTML = `<i class="fa-solid fa-circle-question"></i>`;
+                iconEl.className = "citeflow-modal-icon info";
+            } else {
+                iconEl.innerHTML = `<i class="fa-solid fa-circle-info"></i>`;
+                iconEl.className = "citeflow-modal-icon info";
+            }
+
+            if (type === "prompt") {
+                inputEl.style.display = "block";
+                inputEl.value = options.defaultValue || "";
+                inputEl.placeholder = options.placeholder || "Enter value...";
+                setTimeout(() => {
+                    inputEl.focus();
+                    inputEl.select();
+                }, 100);
+            } else {
+                inputEl.style.display = "none";
+            }
+
+            confirmBtn.textContent = options.confirmText || (type === "confirm" ? "Confirm" : "OK");
+            confirmBtn.className = `citeflow-modal-btn citeflow-modal-confirm ${options.isDanger ? "danger" : ""}`;
+
+            if (type === "alert") {
+                cancelBtn.style.display = "none";
+            } else {
+                cancelBtn.style.display = "inline-flex";
+                cancelBtn.textContent = options.cancelText || "Cancel";
+            }
+
+            function cleanup() {
+                overlay.classList.remove("show");
+                confirmBtn.onclick = null;
+                cancelBtn.onclick = null;
+                inputEl.onkeyup = null;
+            }
+
+            confirmBtn.onclick = () => {
+                cleanup();
+                if (type === "prompt") resolve(inputEl.value.trim());
+                else if (type === "confirm") resolve(true);
+                else resolve(true);
+            };
+
+            cancelBtn.onclick = () => {
+                cleanup();
+                if (type === "prompt") resolve(null);
+                else if (type === "confirm") resolve(false);
+                else resolve(false);
+            };
+
+            if (type === "prompt") {
+                inputEl.onkeyup = (e) => {
+                    if (e.key === "Enter") confirmBtn.click();
+                    if (e.key === "Escape") cancelBtn.click();
+                };
+            }
+
+            overlay.classList.add("show");
+        });
+    }
+
+    const CiteFlowModal = {
+        alert: (message, title) => showModalDialog({ type: "alert", message, title }),
+        confirm: (message, title, options = {}) => showModalDialog({ type: "confirm", message, title, ...options }),
+        prompt: (message, defaultValue, title) => showModalDialog({ type: "prompt", message, defaultValue, title }),
+        toast: (message, duration) => showCustomToast(message, duration)
+    };
+
+    window.CiteFlowModal = CiteFlowModal;
+
+    /**
      * Inject Messenger DOM elements if not already present
      */
     function mountDOM() {
@@ -1375,7 +1517,7 @@ window.CiteFlowMessenger = (function () {
                     return !matchedInDb;
                 });
 
-                const combined = [...data, ...unconfirmedTemp];
+                const combined = (data.length === 0 && localMsgs.length > 0) ? localMsgs : [...data, ...unconfirmedTemp];
                 combined.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
                 saveLocalMessages(conversationId, combined);
@@ -2167,6 +2309,7 @@ window.CiteFlowMessenger = (function () {
         const isGroup = conv.is_group;
         const isUnread = conv.unread;
         const isPinned = conv.isPinned;
+        const isArchivedMode = Boolean(conv.isArchived || conv.isSoftDeleted || State.activeFilter === "archived");
 
         dropdown.innerHTML = `
             <div class="msgr-dropdown-menu">
@@ -2187,9 +2330,9 @@ window.CiteFlowMessenger = (function () {
                     Mute notifications
                 </button>
                 <div class="msgr-dropdown-divider"></div>
-                <button class="msgr-dropdown-item" data-action="archive">
-                    <i class="fa-solid fa-box-archive"></i>
-                    Archive chat
+                <button class="msgr-dropdown-item" data-action="${isArchivedMode ? 'unarchive' : 'archive'}">
+                    <i class="fa-solid ${isArchivedMode ? 'fa-box-open' : 'fa-box-archive'}"></i>
+                    ${isArchivedMode ? 'Unarchive chat' : 'Archive chat'}
                 </button>
                 <button class="msgr-dropdown-item msgr-dropdown-danger" data-action="delete">
                     <i class="fa-solid fa-trash-can"></i>
@@ -2484,17 +2627,17 @@ window.CiteFlowMessenger = (function () {
                 if (State.mutedConvoIds.has(convoId)) {
                     State.mutedConvoIds.delete(convoId);
                     saveMutedState();
-                    alert('Notifications unmuted for this chat.');
+                    showCustomToast('Notifications unmuted for this chat');
                 } else {
                     State.mutedConvoIds.add(convoId);
                     saveMutedState();
-                    alert('Notifications muted for this chat.');
+                    showCustomToast('Notifications muted for this chat');
                 }
                 break;
             case 'rename':
             case 'customize':
                 const currentName = conv.displayName || '';
-                const newName = prompt('Enter a new name or nickname for this chat:', currentName);
+                const newName = await CiteFlowModal.prompt('Enter a new name or nickname for this chat:', currentName, 'Rename Chat');
                 if (newName && newName.trim() && newName.trim() !== currentName) {
                     const cleanName = newName.trim();
                     conv.displayName = cleanName;
@@ -2517,7 +2660,7 @@ window.CiteFlowMessenger = (function () {
                 }
                 break;
             case 'archive':
-                State.archivedConvoIds.add(convoId);
+                State.archivedConvoIds.add(String(convoId));
                 saveArchivedState();
                 if (conv) conv.isArchived = true;
                 saveLocalConvos();
@@ -2525,20 +2668,37 @@ window.CiteFlowMessenger = (function () {
                 renderConversationList("");
                 renderExpandedConvoList();
                 updateUnreadBadge();
-                openArchivedModal();
+                showCustomToast('Chat moved to Archive');
+                break;
+            case 'unarchive':
+                State.archivedConvoIds.delete(String(convoId));
+                State.deletedConvoIds.delete(String(convoId));
+                saveArchivedState();
+                saveDeletedState();
+                if (conv) {
+                    conv.isArchived = false;
+                    conv.isSoftDeleted = false;
+                }
+                saveLocalConvos();
+                renderConversationList("");
+                renderExpandedConvoList();
+                updateUnreadBadge();
+                showCustomToast('Chat restored from Archive');
                 break;
             case 'delete':
-                if (confirm('Delete this chat for you? The conversation will be moved to Archive and can be restored. The other person will not be affected.')) {
-                    // Soft-delete: hidden only for this user, moves to Archive
+                const confirmed = await CiteFlowModal.confirm(
+                    'Delete this chat for you? The conversation will be moved to Archive and can be restored anytime. The other person will not be affected.',
+                    'Delete Chat',
+                    { isDanger: true, confirmText: 'Delete' }
+                );
+                if (confirmed) {
                     State.deletedConvoIds.add(String(convoId));
                     saveDeletedState();
-
-                    // Also archive it so it shows under Archive tab and can be restored
                     State.archivedConvoIds.add(String(convoId));
                     saveArchivedState();
                     if (conv) {
                         conv.isArchived = true;
-                        conv.isHidden = true;
+                        conv.isSoftDeleted = true;
                     }
 
                     saveLocalConvos();
@@ -2546,20 +2706,19 @@ window.CiteFlowMessenger = (function () {
                     renderConversationList("");
                     renderExpandedConvoList();
                     updateUnreadBadge();
-
-                    // Show a brief toast
-                    const toast = document.createElement('div');
-                    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:8px;z-index:99999;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
-                    toast.textContent = 'Chat hidden. Find it in Archive to restore.';
-                    document.body.appendChild(toast);
-                    setTimeout(() => toast.remove(), 3500);
+                    showCustomToast('Chat moved to Archive');
                 }
                 break;
             case 'report':
-                alert('This conversation has been reported. Thank you.');
+                await CiteFlowModal.alert('This conversation has been reported. Thank you for helping keep our platform safe.', 'Report Chat');
                 break;
             case 'leave':
-                if (confirm('Leave this group? You will no longer receive messages.')) {
+                const leaveConfirmed = await CiteFlowModal.confirm(
+                    'Leave this group? You will no longer receive messages.',
+                    'Leave Group',
+                    { isDanger: true, confirmText: 'Leave' }
+                );
+                if (leaveConfirmed) {
                     try {
                         if (sb) {
                             await sb.from('conversation_participants').delete()
@@ -2572,9 +2731,9 @@ window.CiteFlowMessenger = (function () {
                         renderConversationList("");
                         renderExpandedConvoList();
                         updateUnreadBadge();
+                        showCustomToast('Left group conversation');
                     } catch (e) {
-                        console.error('Error leaving group:', e);
-                        alert('Could not leave group: ' + (e.message || 'Database error'));
+                        await CiteFlowModal.alert('Could not leave group: ' + (e.message || 'Database error'), 'Error');
                     }
                 }
                 break;
@@ -2910,7 +3069,7 @@ window.CiteFlowMessenger = (function () {
                     return !matchedInDb;
                 });
 
-                const combined = [...data, ...unconfirmedTemp];
+                const combined = (data.length === 0 && localMsgs.length > 0) ? localMsgs : [...data, ...unconfirmedTemp];
                 combined.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
                 saveLocalMessages(conversationId, combined);
