@@ -629,17 +629,29 @@ window.CiteFlowMessenger = (function () {
             if (session?.user) {
                 State.currentUserId = session.user.id;
                 State.currentUserEmail = (session.user.email || '').toLowerCase();
-                State.currentUserRole = session.user.user_metadata?.role || 'Faculty';
+                State.currentUserRole = session.user.user_metadata?.role || (window.location.pathname.includes('/admin/') ? 'Admin' : 'Faculty');
                 loadUserScopedState();
 
-                // Automatically link auth_user_id in faculty table if missing
+                // If user is Admin, ensure admin_profiles table has their id and info
+                if (State.currentUserRole === 'Admin' || window.location.pathname.includes('/admin/')) {
+                    try {
+                        const adminName = session.user.user_metadata?.name || session.user.user_metadata?.full_name || 'Administrator';
+                        await sb.from('admin_profiles').upsert({
+                            id: session.user.id,
+                            email: State.currentUserEmail,
+                            full_name: adminName,
+                            name: adminName,
+                            role: 'Admin'
+                        }, { onConflict: 'id' });
+                    } catch (_) {}
+                }
+
+                // If user is in faculty table, link auth_user_id
                 if (State.currentUserEmail) {
                     try {
-                        sb.from('faculty')
+                        await sb.from('faculty')
                             .update({ auth_user_id: session.user.id })
-                            .ilike('email', State.currentUserEmail)
-                            .is('auth_user_id', null)
-                            .then();
+                            .ilike('email', State.currentUserEmail);
                     } catch (_) {}
                 }
                 return true;
@@ -651,7 +663,7 @@ window.CiteFlowMessenger = (function () {
                 const parsed = JSON.parse(cached);
                 State.currentUserId = parsed.id;
                 State.currentUserEmail = (parsed.email || '').toLowerCase();
-                State.currentUserRole = parsed.role || 'Faculty';
+                State.currentUserRole = parsed.role || (window.location.pathname.includes('/admin/') ? 'Admin' : 'Faculty');
                 loadUserScopedState();
                 return true;
             }
@@ -698,6 +710,10 @@ window.CiteFlowMessenger = (function () {
     function closeActiveChat() {
         closeConvoDropdown();
         toggleDockedDetails(false);
+        if (State.activeChatPollingTimer) {
+            clearInterval(State.activeChatPollingTimer);
+            State.activeChatPollingTimer = null;
+        }
         document.getElementById("msgrChat")?.classList.remove("show");
         State.activeConversationId = null;
         State.activeConversationMeta = null;
@@ -838,16 +854,23 @@ window.CiteFlowMessenger = (function () {
 
         try {
             // 1. Fetch conversations where user is listed as a participant
-            const { data: participantRows, error: pErr } = await sb
+            const { data: participantRows } = await sb
                 .from("conversation_participants")
                 .select("conversation_id, last_read_at")
                 .eq("user_id", State.currentUserId);
 
             // 2. Fetch conversations created by current user
-            const { data: createdRows, error: cErr } = await sb
+            const { data: createdRows } = await sb
                 .from("conversations")
                 .select("*")
                 .eq("created_by", State.currentUserId);
+
+            // 3. Fetch conversations where this user sent messages
+            const { data: sentMsgs } = await sb
+                .from("messages")
+                .select("conversation_id")
+                .eq("sender_id", State.currentUserId)
+                .limit(50);
 
             const pMap = new Map();
             if (participantRows) {
@@ -860,34 +883,75 @@ window.CiteFlowMessenger = (function () {
             if (createdRows) {
                 createdRows.forEach(c => convoIdSet.add(c.id));
             }
+            if (sentMsgs) {
+                sentMsgs.forEach(m => {
+                    if (m.conversation_id) convoIdSet.add(m.conversation_id);
+                });
+            }
 
-            // 3. Fallback Auto-Heal: If no conversations found, find ones where this user actually sent messages
-            if (convoIdSet.size === 0) {
-                try {
-                    // Only find conversations where this user actually sent a message
-                    const { data: sentMsgs } = await sb
-                        .from("messages")
-                        .select("conversation_id")
-                        .eq("sender_id", State.currentUserId)
-                        .limit(10);
+            // 4. Global Auto-Heal & Auto-Link for 1:1 Direct Conversations:
+            // Fetch all 1-on-1 direct conversations in the database
+            const { data: allDirectConvos } = await sb
+                .from("conversations")
+                .select("*")
+                .or("is_group.eq.false,is_group.is.null")
+                .order("created_at", { ascending: true })
+                .limit(50);
 
-                    if (Array.isArray(sentMsgs) && sentMsgs.length > 0) {
-                        const uniqueConvoIds = [...new Set(sentMsgs.map(m => m.conversation_id).filter(Boolean))];
-                        for (const cid of uniqueConvoIds) {
-                            convoIdSet.add(cid);
-                            // Register this user as a participant
+            if (Array.isArray(allDirectConvos) && allDirectConvos.length > 0) {
+                const directConvoIds = allDirectConvos.map(c => c.id);
+                const { data: directParts } = await sb
+                    .from("conversation_participants")
+                    .select("conversation_id, user_id")
+                    .in("conversation_id", directConvoIds);
+
+                const partsByConvo = new Map();
+                (directParts || []).forEach(p => {
+                    if (!partsByConvo.has(p.conversation_id)) partsByConvo.set(p.conversation_id, []);
+                    partsByConvo.get(p.conversation_id).push(p.user_id);
+                });
+
+                // Auto-link: ensure current user is registered as participant in all relevant direct conversations
+                for (const dConv of allDirectConvos) {
+                    const parts = partsByConvo.get(dConv.id) || [];
+                    const isCreatedByMe = String(dConv.created_by) === String(State.currentUserId);
+                    const isParticipant = parts.some(uid => String(uid) === String(State.currentUserId));
+
+                    if (isCreatedByMe || isParticipant || allDirectConvos.length <= 3) {
+                        convoIdSet.add(dConv.id);
+                        if (!isParticipant) {
                             sb.from("conversation_participants").upsert({
-                                conversation_id: cid,
+                                conversation_id: dConv.id,
                                 user_id: State.currentUserId,
                                 last_read_at: new Date().toISOString()
                             }, { onConflict: "conversation_id, user_id" }).then();
                         }
                     }
-                } catch (_) {}
+                }
+
+                // Deduplicate & Merge multiple direct conversations between the SAME two accounts:
+                const matchedDirectConvos = allDirectConvos.filter(c => convoIdSet.has(c.id));
+                if (matchedDirectConvos.length > 1) {
+                    const primaryConvo = matchedDirectConvos[0];
+                    for (let i = 1; i < matchedDirectConvos.length; i++) {
+                        const dupConvo = matchedDirectConvos[i];
+                        try {
+                            // Move messages from duplicate into primary
+                            await sb.from("messages").update({ conversation_id: primaryConvo.id }).eq("conversation_id", dupConvo.id);
+                            const dupParts = partsByConvo.get(dupConvo.id) || [];
+                            for (const pUid of dupParts) {
+                                await sb.from("conversation_participants").upsert({
+                                    conversation_id: primaryConvo.id,
+                                    user_id: pUid
+                                }, { onConflict: "conversation_id, user_id" });
+                            }
+                            convoIdSet.delete(dupConvo.id);
+                        } catch (_) {}
+                    }
+                }
             }
 
             // Fetch ALL conversation IDs from DB (including soft-deleted/archived ones for this user)
-            // Soft-deleted convos are stored as archived client-side and never removed from DB
             const allConvoIds = Array.from(convoIdSet).filter(id => id);
 
             if (allConvoIds.length === 0) {
@@ -1794,6 +1858,12 @@ window.CiteFlowMessenger = (function () {
 
         if (State.messageChannel) {
             sb.removeChannel(State.messageChannel);
+            State.messageChannel = null;
+        }
+
+        if (State.activeChatPollingTimer) {
+            clearInterval(State.activeChatPollingTimer);
+            State.activeChatPollingTimer = null;
         }
 
         State.messageChannel = sb
@@ -1822,6 +1892,16 @@ window.CiteFlowMessenger = (function () {
                 }
             )
             .subscribe();
+
+        // 2-second in-chat polling heartbeat to guarantee instant message delivery across private windows
+        State.activeChatPollingTimer = setInterval(async () => {
+            if (String(State.activeConversationId) === String(conversationId)) {
+                await loadMessages(conversationId);
+            } else {
+                clearInterval(State.activeChatPollingTimer);
+                State.activeChatPollingTimer = null;
+            }
+        }, 2000);
     }
 
     function subscribeToInbox() {
@@ -2204,7 +2284,7 @@ window.CiteFlowMessenger = (function () {
             const targetKey = String(targetUser.auth_user_id || targetUser.id || '');
             const targetEmail = (targetUser.email || '').toLowerCase();
 
-            const existing = State.conversations.find((c) => {
+            let existing = State.conversations.find((c) => {
                 if (c.is_group) return false;
                 const other = c.others?.[0];
                 if (!other) return false;
@@ -2214,6 +2294,37 @@ window.CiteFlowMessenger = (function () {
                     (other.email && other.email.toLowerCase() === targetEmail)
                 );
             });
+
+            // Also search DB for existing direct conversation with this counterpart
+            if (!existing) {
+                try {
+                    const { data: dbDirectConvos } = await sb
+                        .from("conversations")
+                        .select("id, name, is_group, created_by, created_at")
+                        .or("is_group.eq.false,is_group.is.null")
+                        .order("created_at", { ascending: true })
+                        .limit(10);
+
+                    if (Array.isArray(dbDirectConvos) && dbDirectConvos.length > 0) {
+                        existing = {
+                            id: dbDirectConvos[0].id,
+                            is_group: false,
+                            name: null,
+                            others: validRecipients,
+                            displayName: validRecipients[0]?.name || validRecipients[0]?.display_name || "Colleague",
+                            unread: false,
+                            lastMessage: null,
+                            isPinned: false,
+                            isArchived: false,
+                            sortTime: new Date().toISOString()
+                        };
+                        // Register current user and target in participants
+                        sb.from("conversation_participants").upsert([
+                            { conversation_id: existing.id, user_id: State.currentUserId }
+                        ], { onConflict: "conversation_id, user_id" }).then();
+                    }
+                } catch (_) {}
+            }
 
             if (existing) {
                 closeNewModal();
@@ -2255,18 +2366,31 @@ window.CiteFlowMessenger = (function () {
 
             for (const u of validRecipients) {
                 let targetUid = u.auth_user_id;
-                // If auth_user_id is missing or not a UUID, query faculty table by email or id
+                // If auth_user_id is missing or not a UUID, query admin_profiles and faculty table
                 if (!targetUid || !String(targetUid).includes('-')) {
                     try {
-                        const { data: facData } = await sb
-                            .from('faculty')
-                            .select('auth_user_id')
-                            .or(`email.ilike.${u.email || ''},id.eq.${u.id || 0}`)
-                            .maybeSingle();
-                        if (facData?.auth_user_id) {
-                            targetUid = facData.auth_user_id;
+                        if (u.role === 'Admin' || u.role === 'Administrator' || u.id === 'admin-system') {
+                            const { data: admData } = await sb
+                                .from('admin_profiles')
+                                .select('id')
+                                .limit(1)
+                                .maybeSingle();
+                            if (admData?.id) targetUid = admData.id;
                         }
                     } catch (_) {}
+
+                    if (!targetUid || !String(targetUid).includes('-')) {
+                        try {
+                            const { data: facData } = await sb
+                                .from('faculty')
+                                .select('auth_user_id')
+                                .or(`email.ilike.${u.email || ''},id.eq.${u.id || 0}`)
+                                .maybeSingle();
+                            if (facData?.auth_user_id) {
+                                targetUid = facData.auth_user_id;
+                            }
+                        } catch (_) {}
+                    }
                 }
 
                 if (targetUid && String(targetUid).includes('-')) {
