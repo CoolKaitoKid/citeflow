@@ -877,18 +877,22 @@
                 }
             }
 
-            // Also keep faculty record in sync if one exists for this user/email
+            // Also keep faculty record in sync so directory search and faculty portal always find updated profile
             try {
-                await supabaseClient.from('faculty').update({
+                await supabaseClient.from('faculty').upsert({
+                    auth_user_id: currentUser.id,
+                    email: payload.email || currentUser.email,
                     name: fullName,
                     full_name: fullName,
                     first_name: payload.first_name,
                     last_name: payload.last_name,
                     avatar_url: payload.avatar_url,
                     profile_photo_url: payload.avatar_url,
-                    department: payload.department,
-                    phone_number: payload.phone_number
-                }).or(`auth_user_id.eq.${currentUser.id},email.ilike.${payload.email}`);
+                    department: payload.department || 'CITE Administration',
+                    phone_number: payload.phone_number,
+                    role: 'Admin',
+                    position: 'Administrator'
+                }, { onConflict: 'email' });
             } catch (_) {}
 
             currentProfile = { ...payload, full_name: fullName, name: fullName };

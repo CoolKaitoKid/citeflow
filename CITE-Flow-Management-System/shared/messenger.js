@@ -954,17 +954,17 @@ window.CiteFlowMessenger = (function () {
                 if (u.email) userMap.set(String(u.email).toLowerCase(), u);
             });
 
-            // Always query admin_profiles for all participant IDs to guarantee fresh name & avatar
+            // Always query admin_profiles & faculty for all participant IDs to guarantee fresh name & avatar
             if (allOtherUserIds.length > 0) {
                 try {
                     const { data: adminMatches } = await sb
                         .from('admin_profiles')
-                        .select('id, full_name, first_name, last_name, email, avatar_url, department')
+                        .select('id, full_name, name, first_name, last_name, email, avatar_url, profile_photo_url, department')
                         .in('id', allOtherUserIds);
 
                     if (Array.isArray(adminMatches)) {
                         for (const a of adminMatches) {
-                            const adminName = a.full_name || `${a.first_name || ''} ${a.last_name || ''}`.trim() || 'Administrator';
+                            const adminName = a.full_name || a.name || `${a.first_name || ''} ${a.last_name || ''}`.trim() || a.email || 'Administrator';
                             const adminEntry = {
                                 id: a.id,
                                 auth_user_id: a.id,
@@ -982,18 +982,57 @@ window.CiteFlowMessenger = (function () {
                     }
                 } catch (_) {}
 
-                // For any still-unmapped IDs, add a generic fallback
+                // Try querying faculty table by auth_user_id or id for any unmapped IDs
+                const unmappedIds = allOtherUserIds.filter(uid => !userMap.has(String(uid)));
+                if (unmappedIds.length > 0) {
+                    try {
+                        const { data: facMatches } = await sb
+                            .from('faculty')
+                            .select('*')
+                            .in('auth_user_id', unmappedIds);
+
+                        if (Array.isArray(facMatches)) {
+                            for (const f of facMatches) {
+                                const fName = f.full_name || f.name || f.email || (f.role === 'Admin' ? 'Administrator' : 'Faculty Member');
+                                const fEntry = {
+                                    id: f.auth_user_id || f.id,
+                                    auth_user_id: f.auth_user_id || f.id,
+                                    name: fName,
+                                    display_name: fName,
+                                    email: f.email,
+                                    avatar_url: f.avatar_url || f.profile_photo_url || null,
+                                    department: f.department || 'BSIT',
+                                    role: f.role || 'Faculty Member',
+                                    position: f.position || f.role || 'Faculty Member'
+                                };
+                                userMap.set(String(f.auth_user_id || f.id), fEntry);
+                                if (f.email) userMap.set(f.email.toLowerCase(), fEntry);
+                            }
+                        }
+                    } catch (_) {}
+                }
+
+                // Check directoryCache for any remaining unmapped IDs before creating default placeholder
                 for (const uid of allOtherUserIds) {
                     if (!userMap.has(String(uid))) {
-                        userMap.set(String(uid), {
-                            id: uid,
-                            auth_user_id: uid,
-                            name: 'Administrator',
-                            display_name: 'Administrator',
-                            email: null,
-                            avatar_url: null,
-                            role: 'Administrator'
-                        });
+                        const matchedCache = State.directoryCache.find(u =>
+                            String(u.auth_user_id) === String(uid) ||
+                            String(u.id) === String(uid) ||
+                            (u.email && u.email.toLowerCase() === String(uid).toLowerCase())
+                        );
+                        if (matchedCache) {
+                            userMap.set(String(uid), matchedCache);
+                        } else {
+                            userMap.set(String(uid), {
+                                id: uid,
+                                auth_user_id: uid,
+                                name: State.currentUserRole === 'Faculty' ? 'Administrator' : 'Faculty Member',
+                                display_name: State.currentUserRole === 'Faculty' ? 'Administrator' : 'Faculty Member',
+                                email: null,
+                                avatar_url: null,
+                                role: 'Administrator'
+                            });
+                        }
                     }
                 }
             }
@@ -1799,12 +1838,12 @@ window.CiteFlowMessenger = (function () {
             State.inboxChannel = null;
         }
 
-        const channel = sb.channel("msgr-inbox-listener");
+        const channel = sb.channel("msgr-inbox-listener-" + (State.currentUserId || 'anon'));
 
         channel.on(
             "postgres_changes",
             {
-                event: "INSERT",
+                event: "*",
                 schema: "public",
                 table: "messages"
             },
@@ -1813,9 +1852,23 @@ window.CiteFlowMessenger = (function () {
                     if (State.deletedConvoIds.has(String(payload.new.conversation_id))) {
                         State.deletedConvoIds.delete(String(payload.new.conversation_id));
                         saveDeletedState();
+                        State.archivedConvoIds.delete(String(payload.new.conversation_id));
+                        saveArchivedState();
                     }
                     handleRealtimeMessageReceived(payload.new);
                 }
+            }
+        ).on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "admin_profiles" },
+            () => {
+                loadConversations();
+            }
+        ).on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "faculty" },
+            () => {
+                loadConversations();
             }
         );
 
@@ -1829,6 +1882,31 @@ window.CiteFlowMessenger = (function () {
                 console.error("CiteFlowMessenger: Inbox realtime listener failed.");
             }
         });
+
+        // 4-second Polling Heartbeat: guarantees message delivery even if WebSockets are blocked/throttled
+        if (!State.inboxPollingTimer) {
+            State.inboxPollingTimer = setInterval(async () => {
+                if (State.currentUserId) {
+                    const lastKnownMsg = State.conversations[0]?.lastMessage;
+                    if (lastKnownMsg?.created_at) {
+                        try {
+                            const { data: newMsgs } = await sb
+                                .from("messages")
+                                .select("*")
+                                .gt("created_at", lastKnownMsg.created_at)
+                                .order("created_at", { ascending: true })
+                                .limit(20);
+
+                            if (Array.isArray(newMsgs) && newMsgs.length > 0) {
+                                for (const msg of newMsgs) {
+                                    handleRealtimeMessageReceived(msg);
+                                }
+                            }
+                        } catch (_) {}
+                    }
+                }
+            }, 4000);
+        }
     }
 
     function updateUnreadBadge() {
