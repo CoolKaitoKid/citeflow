@@ -4,6 +4,12 @@
 // ==============================================================================
 
 window.CiteFlowMessenger = (function () {
+
+    // Helper: get user-scoped localStorage key
+    function scopedKey(base, userId) {
+        return userId ? `${base}_${userId}` : base;
+    }
+
     const State = {
         currentUserId: null,
         currentUserEmail: null,
@@ -20,28 +26,42 @@ window.CiteFlowMessenger = (function () {
         activeFilter: "all",
         isExpanded: false,
         openDropdownId: null,
-        pinnedConvoIds: new Set(JSON.parse(localStorage.getItem('citeflow_pinned_convos') || '[]')),
-        archivedConvoIds: new Set(JSON.parse(localStorage.getItem('citeflow_archived_convos') || '[]')),
-        manuallyUnreadConvoIds: new Set(JSON.parse(localStorage.getItem('citeflow_unread_convos') || '[]')),
-        mutedConvoIds: new Set(JSON.parse(localStorage.getItem('citeflow_muted_convos') || '[]')),
-        deletedConvoIds: new Set(JSON.parse(localStorage.getItem('citeflow_deleted_convos') || '[]')),
+        // These are loaded lazily after user resolves (see loadUserScopedState)
+        pinnedConvoIds: new Set(),
+        archivedConvoIds: new Set(),
+        manuallyUnreadConvoIds: new Set(),
+        mutedConvoIds: new Set(),
+        deletedConvoIds: new Set(),
         activeConversationParticipants: []
     };
 
+    /** Load per-user state from localStorage after user ID is known */
+    function loadUserScopedState() {
+        const uid = State.currentUserId;
+        try {
+            State.pinnedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_pinned_convos', uid)) || '[]'));
+            State.archivedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_archived_convos', uid)) || '[]'));
+            State.manuallyUnreadConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_unread_convos', uid)) || '[]'));
+            State.mutedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_muted_convos', uid)) || '[]'));
+            State.deletedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_deleted_convos', uid)) || '[]'));
+        } catch (_) {}
+    }
+
     function savePinnedState() {
-        localStorage.setItem('citeflow_pinned_convos', JSON.stringify(Array.from(State.pinnedConvoIds)));
+        localStorage.setItem(scopedKey('citeflow_pinned_convos', State.currentUserId), JSON.stringify(Array.from(State.pinnedConvoIds)));
     }
     function saveArchivedState() {
-        localStorage.setItem('citeflow_archived_convos', JSON.stringify(Array.from(State.archivedConvoIds)));
+        localStorage.setItem(scopedKey('citeflow_archived_convos', State.currentUserId), JSON.stringify(Array.from(State.archivedConvoIds)));
     }
     function saveUnreadState() {
-        localStorage.setItem('citeflow_unread_convos', JSON.stringify(Array.from(State.manuallyUnreadConvoIds)));
+        localStorage.setItem(scopedKey('citeflow_unread_convos', State.currentUserId), JSON.stringify(Array.from(State.manuallyUnreadConvoIds)));
     }
     function saveMutedState() {
-        localStorage.setItem('citeflow_muted_convos', JSON.stringify(Array.from(State.mutedConvoIds)));
+        localStorage.setItem(scopedKey('citeflow_muted_convos', State.currentUserId), JSON.stringify(Array.from(State.mutedConvoIds)));
     }
     function saveDeletedState() {
-        localStorage.setItem('citeflow_deleted_convos', JSON.stringify(Array.from(State.deletedConvoIds)));
+        // "deleted" means hidden-for-this-user only — never affects other users
+        localStorage.setItem(scopedKey('citeflow_deleted_convos', State.currentUserId), JSON.stringify(Array.from(State.deletedConvoIds)));
     }
 
     function saveConvoMeta(convoId, meta) {
@@ -468,6 +488,7 @@ window.CiteFlowMessenger = (function () {
                 State.currentUserId = session.user.id;
                 State.currentUserEmail = (session.user.email || '').toLowerCase();
                 State.currentUserRole = session.user.user_metadata?.role || 'Faculty';
+                loadUserScopedState();
 
                 // Automatically link auth_user_id in faculty table if missing
                 if (State.currentUserEmail) {
@@ -489,6 +510,7 @@ window.CiteFlowMessenger = (function () {
                 State.currentUserId = parsed.id;
                 State.currentUserEmail = (parsed.email || '').toLowerCase();
                 State.currentUserRole = parsed.role || 'Faculty';
+                loadUserScopedState();
                 return true;
             }
         } catch (e) {
@@ -722,7 +744,9 @@ window.CiteFlowMessenger = (function () {
                 } catch (_) {}
             }
 
-            const allConvoIds = Array.from(convoIdSet).filter(id => id && !State.deletedConvoIds.has(String(id)));
+            // Fetch ALL conversation IDs from DB (including soft-deleted/archived ones for this user)
+            // Soft-deleted convos are stored as archived client-side and never removed from DB
+            const allConvoIds = Array.from(convoIdSet).filter(id => id);
 
             if (allConvoIds.length === 0) {
                 if (localCache.length > 0) {
@@ -903,7 +927,9 @@ window.CiteFlowMessenger = (function () {
                 ));
 
                 const isPinned = State.pinnedConvoIds.has(conv.id);
-                const isArchived = State.archivedConvoIds.has(conv.id);
+                // Soft-deleted convos are treated as archived (hidden in main list, visible in Archive)
+                const isSoftDeleted = State.deletedConvoIds.has(String(conv.id));
+                const isArchived = isSoftDeleted || State.archivedConvoIds.has(conv.id);
 
                 let displayName = conv.name || null;
                 if (conv.is_group) {
@@ -922,23 +948,23 @@ window.CiteFlowMessenger = (function () {
                     unread,
                     isPinned,
                     isArchived,
+                    isSoftDeleted,
                     displayName,
                     sortTime: lastMsg?.created_at || conv.last_message_at || conv.created_at || new Date().toISOString()
                 };
             });
 
-            // Filter out any deleted conversations
-            enriched = enriched.filter(c => c && c.id && !State.deletedConvoIds.has(String(c.id)));
+            // Never drop soft-deleted convos from State — they live in Archive tab
 
             // Merge with local cache so newly created conversations and custom edits are never lost
             const combinedMap = new Map();
             enriched.forEach(c => {
-                if (c && c.id && !State.deletedConvoIds.has(String(c.id))) {
+                if (c && c.id) {
                     combinedMap.set(String(c.id), c);
                 }
             });
             localCache.forEach(c => {
-                if (c && c.id && !State.deletedConvoIds.has(String(c.id))) {
+                if (c && c.id) {
                     if (!combinedMap.has(String(c.id))) {
                         combinedMap.set(String(c.id), c);
                     } else {
@@ -949,13 +975,15 @@ window.CiteFlowMessenger = (function () {
                             const locTime = new Date(c.lastMessage.created_at || 0).getTime();
                             bestLastMsg = srvTime >= locTime ? srv.lastMessage : c.lastMessage;
                         }
+                        const isSoftDeleted = State.deletedConvoIds.has(String(c.id));
                         combinedMap.set(String(c.id), {
                             ...c,
                             ...srv,
                             lastMessage: bestLastMsg,
                             displayName: (c.isCustomNickname && c.customNickname) ? c.customNickname : srv.displayName,
                             isPinned: State.pinnedConvoIds.has(c.id) || srv.isPinned || false,
-                            isArchived: State.archivedConvoIds.has(c.id) || srv.isArchived || false
+                            isArchived: isSoftDeleted || State.archivedConvoIds.has(c.id) || srv.isArchived || false,
+                            isSoftDeleted
                         });
                     }
                 }
@@ -964,7 +992,7 @@ window.CiteFlowMessenger = (function () {
             // Strict deduplication: keep only one 1:1 conversation per person (latest sortTime)
             const dedupedKeys = new Set();
             let finalConvos = Array.from(combinedMap.values()).filter(c => {
-                if (!c || !c.id || State.deletedConvoIds.has(String(c.id))) return false;
+                if (!c || !c.id) return false;
                 const safeOthers = (c.others || []).filter(o =>
                     String(o.auth_user_id) !== String(State.currentUserId) &&
                     String(o.id) !== String(State.currentUserId) &&
@@ -1530,10 +1558,18 @@ window.CiteFlowMessenger = (function () {
         if (!msg || !msg.conversation_id) return;
         const cid = String(msg.conversation_id);
 
-        // If a new message arrives in a previously deleted conversation, restore it
+        // If a new message arrives in a previously soft-deleted conversation, restore it to main list
         if (State.deletedConvoIds.has(cid)) {
             State.deletedConvoIds.delete(cid);
             saveDeletedState();
+            // Also un-archive it since a new message was received
+            State.archivedConvoIds.delete(cid);
+            saveArchivedState();
+            const restoredConv = State.conversations.find(c => String(c.id) === cid);
+            if (restoredConv) {
+                restoredConv.isArchived = false;
+                restoredConv.isSoftDeleted = false;
+            }
         }
 
         const conv = State.conversations.find(c => String(c.id) === cid);
@@ -2362,10 +2398,17 @@ window.CiteFlowMessenger = (function () {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const cid = btn.dataset.id;
+                    // Remove from both archived and soft-deleted sets
                     State.archivedConvoIds.delete(cid);
                     saveArchivedState();
+                    State.deletedConvoIds.delete(String(cid));
+                    saveDeletedState();
                     const conv = State.conversations.find(c => String(c.id) === String(cid));
-                    if (conv) conv.isArchived = false;
+                    if (conv) {
+                        conv.isArchived = false;
+                        conv.isSoftDeleted = false;
+                    }
+                    saveLocalConvos();
                     openArchivedModal();
                     renderConversationList("");
                     renderExpandedConvoList();
@@ -2485,25 +2528,31 @@ window.CiteFlowMessenger = (function () {
                 openArchivedModal();
                 break;
             case 'delete':
-                if (confirm('Delete this chat? This cannot be undone.')) {
+                if (confirm('Delete this chat for you? The conversation will be moved to Archive and can be restored. The other person will not be affected.')) {
+                    // Soft-delete: hidden only for this user, moves to Archive
                     State.deletedConvoIds.add(String(convoId));
                     saveDeletedState();
-                    try {
-                        if (sb) {
-                            await sb.from('messages').delete().eq('conversation_id', convoId);
-                            await sb.from('conversation_participants').delete().eq('conversation_id', convoId);
-                            await sb.from('conversations').delete().eq('id', convoId);
-                        }
-                    } catch (e) {
-                        console.warn('Backend delete notice:', e);
+
+                    // Also archive it so it shows under Archive tab and can be restored
+                    State.archivedConvoIds.add(String(convoId));
+                    saveArchivedState();
+                    if (conv) {
+                        conv.isArchived = true;
+                        conv.isHidden = true;
                     }
-                    try { localStorage.removeItem(`citeflow_messages_${convoId}`); } catch (_) {}
-                    State.conversations = State.conversations.filter(c => String(c.id) !== String(convoId));
+
                     saveLocalConvos();
                     if (State.activeConversationId === convoId) closeActiveChat();
                     renderConversationList("");
                     renderExpandedConvoList();
                     updateUnreadBadge();
+
+                    // Show a brief toast
+                    const toast = document.createElement('div');
+                    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:8px;z-index:99999;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+                    toast.textContent = 'Chat hidden. Find it in Archive to restore.';
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3500);
                 }
                 break;
             case 'report':
