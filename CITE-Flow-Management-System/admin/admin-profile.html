@@ -293,10 +293,6 @@
                             <img id="profile-avatar-image" src="" alt="Admin avatar" class="hidden">
                             <span id="profile-avatar-fallback">AD</span>
                         </div>
-                        <input id="avatar-input" type="file" accept="image/*" class="hidden">
-                        <button id="avatar-upload-btn" type="button" onclick="openAvatarPicker()" class="secondary-btn !py-2 !px-4 text-xs">
-                            Upload Photo
-                        </button>
                     </div>
 
                     <div class="flex-1">
@@ -491,6 +487,21 @@
             <div><label class="field-label">Role</label><input id="edit-role" type="text" class="field"></div>
             <div><label class="field-label">Department</label><input id="edit-department" type="text" class="field"></div>
             <div><label class="field-label">Hire Date</label><input id="edit-hire-date" type="date" class="field"></div>
+
+            <!-- Profile Picture Section -->
+            <div class="md:col-span-2 space-y-3 pt-2 border-t border-slate-100 mt-2">
+                <label class="field-label">Profile Picture</label>
+                <div class="flex items-center gap-4">
+                    <div class="avatar w-16 h-16 rounded-2xl text-lg font-semibold flex-shrink-0">
+                        <img id="edit-avatar-preview" src="" alt="Preview" class="hidden w-full h-full object-cover rounded-2xl">
+                        <span id="edit-avatar-fallback">AD</span>
+                    </div>
+                    <div class="flex-1 space-y-2">
+                        <input id="edit-avatar-file" type="file" accept="image/png,image/jpeg,image/webp" class="field text-sm">
+                        <p class="text-xs text-slate-400">Upload a PNG, JPG, or WEBP image (max 5 MB).</p>
+                    </div>
+                </div>
+            </div>
 
             <div class="md:col-span-2 flex justify-end gap-3 pt-2 border-t border-slate-100 mt-2">
                 <button type="button" onclick="closeEditModal()" class="secondary-btn">Cancel</button>
@@ -789,6 +800,42 @@
         document.getElementById('edit-department').value = currentProfile.department || '';
         document.getElementById('edit-hire-date').value = currentProfile.hire_date || '';
 
+        // Avatar preview
+        const avatarUrl = currentProfile.avatar_url || '';
+        const previewImg = document.getElementById('edit-avatar-preview');
+        const previewFallback = document.getElementById('edit-avatar-fallback');
+        if (avatarUrl) {
+            previewImg.src = avatarUrl;
+            previewImg.classList.remove('hidden');
+            if (previewFallback) previewFallback.classList.add('hidden');
+        } else {
+            previewImg.classList.add('hidden');
+            if (previewFallback) {
+                previewFallback.classList.remove('hidden');
+                const fn = currentProfile.first_name || '';
+                const ln = currentProfile.last_name || '';
+                previewFallback.textContent = ((fn[0] || '') + (ln[0] || '')).toUpperCase() || 'AD';
+            }
+        }
+
+        // File input live preview
+        const fileInput = document.getElementById('edit-avatar-file');
+        if (fileInput) {
+            fileInput.value = '';
+            fileInput.onchange = function() {
+                const file = this.files?.[0];
+                if (file && file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        previewImg.src = e.target.result;
+                        previewImg.classList.remove('hidden');
+                        if (previewFallback) previewFallback.classList.add('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+        }
+
         const modal = document.getElementById('edit-profile-modal');
         modal.classList.remove('hidden');
         modal.classList.add('flex');
@@ -816,6 +863,35 @@
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
 
+        // Upload photo if a new file was selected
+        let avatarUrl = currentProfile?.avatar_url || '';
+        let avatarPath = currentProfile?.avatar_path || '';
+        const photoFile = document.getElementById('edit-avatar-file')?.files?.[0];
+        if (photoFile && photoFile.size > 0) {
+            if (photoFile.size > 5 * 1024 * 1024) {
+                alert('Image must be 5 MB or less.');
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Changes';
+                return;
+            }
+            try {
+                const ext = photoFile.name.split('.').pop() || 'jpg';
+                const filePath = `${currentUser.id}/${Date.now()}.${ext}`;
+                const { error: uploadError } = await supabaseClient.storage
+                    .from(avatarBucketName)
+                    .upload(filePath, photoFile, { upsert: true });
+                if (!uploadError) {
+                    const { data: pub } = supabaseClient.storage.from(avatarBucketName).getPublicUrl(filePath);
+                    avatarUrl = pub?.publicUrl || avatarUrl;
+                    avatarPath = filePath;
+                } else {
+                    console.warn('Photo upload notice:', uploadError.message);
+                }
+            } catch (e) {
+                console.warn('Photo upload error:', e);
+            }
+        }
+
         const payload = {
             first_name: document.getElementById('edit-first-name').value.trim(),
             last_name: document.getElementById('edit-last-name').value.trim(),
@@ -826,8 +902,8 @@
             role: document.getElementById('edit-role').value.trim(),
             department: document.getElementById('edit-department').value.trim(),
             hire_date: document.getElementById('edit-hire-date').value || null,
-            avatar_url: currentProfile?.avatar_url || '',
-            avatar_path: currentProfile?.avatar_path || ''
+            avatar_url: avatarUrl,
+            avatar_path: avatarPath
         };
 
         try {
@@ -858,10 +934,10 @@
                     .upsert(
                         {
                             id: currentUser.id,
-                            full_name: fullName,
-                            name: fullName,
-                            display_name: fullName,
-                            ...payload,
+                            first_name: payload.first_name,
+                            last_name: payload.last_name,
+                            email: payload.email,
+                            role: payload.role || 'Administrator',
                             updated_at: new Date().toISOString()
                         },
                         { onConflict: 'id' }
@@ -877,22 +953,31 @@
                 }
             }
 
-            // Also keep faculty record in sync so directory search and faculty portal always find updated profile
+            // Also keep faculty record in sync so messenger can resolve name and avatar
             try {
-                await supabaseClient.from('faculty').upsert({
+                const facultySync = {
                     auth_user_id: currentUser.id,
                     email: payload.email || currentUser.email,
                     name: fullName,
                     full_name: fullName,
                     first_name: payload.first_name,
                     last_name: payload.last_name,
-                    avatar_url: payload.avatar_url,
-                    profile_photo_url: payload.avatar_url,
+                    profile_photo_url: avatarUrl || null,
                     department: payload.department || 'CITE Administration',
-                    phone_number: payload.phone_number,
+                    phone: payload.phone_number,
                     role: 'Admin',
-                    position: 'Administrator'
-                }, { onConflict: 'email' });
+                    position: 'Administrator',
+                    profile_completed: true,
+                    must_change_password: false,
+                    updated_at: new Date().toISOString()
+                };
+                const { error: fErr } = await supabaseClient.from('faculty')
+                    .upsert(facultySync, { onConflict: 'auth_user_id' });
+                if (fErr) {
+                    // Fallback: try by email
+                    await supabaseClient.from('faculty')
+                        .upsert(facultySync, { onConflict: 'email' }).catch(() => {});
+                }
             } catch (_) {}
 
             currentProfile = { ...payload, full_name: fullName, name: fullName };
@@ -1007,109 +1092,6 @@
         );
     }
 
-    function openAvatarPicker() {
-        document.getElementById('avatar-input').click();
-    }
-
-    async function handleAvatarSelected(event) {
-        const file = event.target.files?.[0];
-        if (!file || !currentUser) return;
-
-        if (!file.type.startsWith('image/')) {
-            alert('Please select a valid image file.');
-            event.target.value = '';
-            return;
-        }
-
-        const maxSizeBytes = 5 * 1024 * 1024;
-        if (file.size > maxSizeBytes) {
-            alert('Image size must be 5MB or less.');
-            event.target.value = '';
-            return;
-        }
-
-        const uploadBtn = document.getElementById('avatar-upload-btn');
-        const originalText = uploadBtn.textContent;
-        uploadBtn.disabled = true;
-        uploadBtn.textContent = 'Uploading...';
-
-        try {
-            const extSafeName = sanitizeFileName(file.name);
-            const filePath = `${currentUser.id}/${Date.now()}-${extSafeName}`;
-
-            const { error: uploadError } = await supabaseClient.storage
-                .from(avatarBucketName)
-                .upload(filePath, file, { upsert: false });
-            if (uploadError) throw uploadError;
-
-            const { data: publicData } = supabaseClient.storage
-                .from(avatarBucketName)
-                .getPublicUrl(filePath);
-            const avatarUrl = publicData?.publicUrl || '';
-
-            const profileForSave = {
-                ...(currentProfile || {}),
-                avatar_url: avatarUrl,
-                avatar_path: filePath
-            };
-
-            const metadataUpdate = {
-                first_name: profileForSave.first_name || '',
-                last_name: profileForSave.last_name || '',
-                phone_number: profileForSave.phone_number || '',
-                address: profileForSave.address || '',
-                employee_id: profileForSave.employee_id || '',
-                role: profileForSave.role || 'Administrator',
-                department: profileForSave.department || '',
-                hire_date: profileForSave.hire_date || null,
-                avatar_url: avatarUrl,
-                avatar_path: filePath
-            };
-
-            const { error: authUpdateError } = await supabaseClient.auth.updateUser({
-                data: metadataUpdate
-            });
-            if (authUpdateError) throw authUpdateError;
-
-            if (adminProfilesTableExists) {
-                const { error: upsertError } = await supabaseClient
-                    .from('admin_profiles')
-                    .upsert(
-                        {
-                            id: currentUser.id,
-                            ...profileForSave,
-                            updated_at: new Date().toISOString()
-                        },
-                        { onConflict: 'id' }
-                    );
-
-                if (upsertError) {
-                    if (isAdminProfilesMissingError(upsertError)) {
-                        adminProfilesTableExists = false;
-                        console.warn('admin_profiles table not found while saving avatar. Stored in auth metadata only.');
-                    } else {
-                        throw upsertError;
-                    }
-                }
-            }
-
-            currentProfile = profileForSave;
-            renderProfile(currentProfile, currentUser);
-            alert('Profile photo uploaded successfully.');
-        } catch (error) {
-            console.error('Avatar upload error:', error);
-            if (isStorageBucketMissingError(error)) {
-                alert("Avatar upload failed: storage bucket 'avatars' is missing. Create it in Supabase Storage first.");
-            } else {
-                alert(`Avatar upload failed: ${error.message}`);
-            }
-        } finally {
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = originalText;
-            event.target.value = '';
-        }
-    }
-
     async function logout() {
         if (!confirm("Log out from all devices?")) return;
         const { error } = await supabaseClient.auth.signOut();
@@ -1160,9 +1142,8 @@
         }
     }
 
-    document.getElementById('edit-profile-form').addEventListener('submit', saveProfile);
-    document.getElementById('twofa-verify-form').addEventListener('submit', verify2FA);
-    document.getElementById('avatar-input').addEventListener('change', handleAvatarSelected);
+    document.getElementById('edit-profile-form')?.addEventListener('submit', saveProfile);
+    document.getElementById('twofa-verify-form')?.addEventListener('submit', verify2FA);
     window.addEventListener('load', async () => {
         if (typeof loadSidebar === 'function') await loadSidebar();
         loadAdminProfile();

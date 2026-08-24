@@ -515,7 +515,7 @@
         <div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
             <div>
                 <label class="field-label">Full Name</label>
-                <input id="editFullName" class="field">
+                <input id="editFullName" class="field" readonly style="background:#f8fafc; color:#475569; cursor:not-allowed;" title="Auto-generated from First, Middle, and Last Name">
             </div>
 
             <div>
@@ -525,17 +525,17 @@
 
             <div>
                 <label class="field-label">Last Name</label>
-                <input id="editLastName" class="field" placeholder="Dela Cruz">
+                <input id="editLastName" class="field" placeholder="Dela Cruz" oninput="autoUpdateFullName()">
             </div>
 
             <div>
                 <label class="field-label">First Name</label>
-                <input id="editFirstName" class="field" placeholder="Juan">
+                <input id="editFirstName" class="field" placeholder="Juan" oninput="autoUpdateFullName()">
             </div>
 
             <div>
                 <label class="field-label">Middle Name</label>
-                <input id="editMiddleName" class="field" placeholder="Santos">
+                <input id="editMiddleName" class="field" placeholder="Santos" oninput="autoUpdateFullName()">
             </div>
 
             <div>
@@ -901,6 +901,15 @@ function buildFullName(firstName, middleName, lastName, fallback) {
     return [firstName, middleInitial, lastName].filter(Boolean).join(' ').trim() || fallback || '';
 }
 
+function autoUpdateFullName() {
+    const fn = (document.getElementById('editFirstName')?.value || '').trim();
+    const mn = (document.getElementById('editMiddleName')?.value || '').trim();
+    const ln = (document.getElementById('editLastName')?.value || '').trim();
+    const fullNameEl = document.getElementById('editFullName');
+    if (fullNameEl) {
+        fullNameEl.value = buildFullName(fn, mn, ln, '');
+    }
+}
 function setImageOrInitials(imgId, fallbackId, photoUrl, name) {
     const img = document.getElementById(imgId);
     const fallback = document.getElementById(fallbackId);
@@ -1441,6 +1450,9 @@ function openEditProfileModal() {
     document.getElementById('editEducationalQualification').value = currentFaculty.educational_qualification || '';
     document.getElementById('editEligibility').value = currentFaculty.eligibility || '';
     document.getElementById('editYearsExperience').value = currentFaculty.years_experience || '';
+
+    // Auto-compute full name from name parts
+    autoUpdateFullName();
 
     document.getElementById('editProfileModal').classList.remove('hidden');
     document.getElementById('editProfileModal').classList.add('flex');

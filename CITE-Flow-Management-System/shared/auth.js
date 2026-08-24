@@ -108,6 +108,26 @@ window.CiteFlowAuth = (function () {
         if (role === 'admin' || role === 'administrator') {
             cacheUserInfo(user, 'Admin', null);
             destination = `${prefix}admin/dashboard.html`;
+            // Ensure admin_profiles record exists on login
+            try {
+                const meta = user.user_metadata || {};
+                let firstName = meta.first_name || '';
+                let lastName = meta.last_name || '';
+                if (!firstName && !lastName) {
+                    const rawName = meta.full_name || meta.name || user.email?.split('@')[0] || 'Administrator';
+                    const parts = String(rawName).trim().split(/\s+/);
+                    firstName = parts[0] || 'Administrator';
+                    lastName = parts.slice(1).join(' ') || '';
+                }
+                await sb.from('admin_profiles').upsert({
+                    id: user.id,
+                    email: user.email,
+                    first_name: firstName,
+                    last_name: lastName,
+                    role: 'Administrator',
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+            } catch (_) {}
         } else if (facultyProfile || role === 'faculty' || !role) {
             // User is faculty
             const isFirstTime = facultyProfile?.must_change_password || 
@@ -179,6 +199,25 @@ window.CiteFlowAuth = (function () {
         });
 
         if (authError) throw authError;
+
+        // 3. Immediately insert newly registered administrator into public.admin_profiles table
+        if (authData?.user?.id) {
+            try {
+                await sb.from('admin_profiles').upsert({
+                    id: authData.user.id,
+                    first_name: firstName.trim(),
+                    last_name: lastName.trim(),
+                    email: cleanEmail,
+                    role: 'Administrator',
+                    department: 'CITE Administration',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+            } catch (e) {
+                console.warn("CiteFlowAuth: Notice creating admin_profiles record during registration:", e);
+            }
+        }
+
         return authData;
     }
 
@@ -346,8 +385,39 @@ window.CiteFlowAuth = (function () {
             .upsert(profilePayload, { onConflict: 'auth_user_id' });
 
         if (profileError) {
-            console.warn("CiteFlowAuth: Public faculty record update error:", profileError.message);
-            throw new Error("Profile record save failed: " + profileError.message);
+            console.warn("CiteFlowAuth: Upsert failed (likely no UNIQUE on auth_user_id):", profileError.message, "— trying update fallback.");
+            // Fallback 1: Update by auth_user_id
+            const { error: updateErr1 } = await sb
+                .from('faculty')
+                .update(profilePayload)
+                .eq('auth_user_id', user.id);
+
+            if (updateErr1) {
+                console.warn("CiteFlowAuth: Update by auth_user_id failed:", updateErr1.message, "— trying by email.");
+                // Fallback 2: Update by email
+                const { error: updateErr2 } = await sb
+                    .from('faculty')
+                    .update(profilePayload)
+                    .eq('email', user.email);
+
+                if (updateErr2) {
+                    console.error("CiteFlowAuth: All faculty profile update methods failed:", updateErr2.message);
+                    throw new Error("Profile record save failed: " + updateErr2.message);
+                }
+            }
+        }
+
+        // 4. Also update public.profiles for messenger name resolution
+        try {
+            await sb.from('profiles').upsert({
+                id: user.id,
+                email: user.email,
+                first_name: fn,
+                last_name: ln,
+                role: 'Faculty'
+            }, { onConflict: 'id' });
+        } catch (_) {
+            // Non-critical — profiles is a secondary source
         }
 
         // Cache updated info

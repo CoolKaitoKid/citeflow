@@ -1,5 +1,5 @@
 // ==============================================================================
-// CITE-Flow Universal Messenger Engine
+// CITE-Flow Universal Messenger Engine (Production-Ready Edition)
 // Works seamlessly on Admin and Faculty portals with real-time Supabase sync
 // ==============================================================================
 
@@ -10,71 +10,118 @@ window.CiteFlowMessenger = (function () {
         return userId ? `${base}_${userId}` : base;
     }
 
+    function getConvoSearchFilter() {
+        const el = document.getElementById("msgrConvoSearch");
+        return (el && typeof el.value === 'string' ? el.value : '').trim().toLowerCase();
+    }
+
     const State = {
         currentUserId: null,
         currentUserEmail: null,
         currentUserRole: null,
+        currentUserName: null,
+        currentUserAvatar: null,
         conversations: [],
         activeConversationId: null,
         activeConversationMeta: null,
+        activeConversationParticipants: [],
+        _currentActiveMessages: [],
         directoryCache: [],
+        userResolutionCache: new Map(),
         selectedNewUsers: [],
         messageChannel: null,
         inboxChannel: null,
+        presenceChannel: null,
+        onlineUserIds: new Set(),
+        inboxPollingTimer: null,
+        reconnectTimer: null,
+        isReconnecting: false,
         mounted: false,
         initialized: false,
         activeFilter: "all",
         isExpanded: false,
         openDropdownId: null,
-        // These are loaded lazily after user resolves (see loadUserScopedState)
+        isLoadingConvos: false,
+        isLoadingMessages: false,
+        globalEventsBound: false,
+        _lifecycleBound: false,
+        // Typing indicator tracking
+        isTypingLocally: false,
+        localTypingTimer: null,
+        remoteTypingTimers: new Map(),
+        // User-scoped sets
         pinnedConvoIds: new Set(),
         archivedConvoIds: new Set(),
         manuallyUnreadConvoIds: new Set(),
         mutedConvoIds: new Set(),
         deletedConvoIds: new Set(),
-        activeConversationParticipants: []
+        _lastRenderedMsgSig: null,
+        _lastExpRenderedMsgSig: null,
+        _participantsChanged: false
     };
 
     /** Load per-user state from localStorage after user ID is known */
     function loadUserScopedState() {
         const uid = State.currentUserId;
+        if (!uid) {
+            State.pinnedConvoIds = new Set();
+            State.archivedConvoIds = new Set();
+            State.manuallyUnreadConvoIds = new Set();
+            State.mutedConvoIds = new Set();
+            State.deletedConvoIds = new Set();
+            return;
+        }
         try {
             State.pinnedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_pinned_convos', uid)) || '[]'));
             State.archivedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_archived_convos', uid)) || '[]'));
             State.manuallyUnreadConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_unread_convos', uid)) || '[]'));
             State.mutedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_muted_convos', uid)) || '[]'));
             State.deletedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_deleted_convos', uid)) || '[]'));
-        } catch (_) {}
+        } catch (_) {
+            State.pinnedConvoIds = new Set();
+            State.archivedConvoIds = new Set();
+            State.manuallyUnreadConvoIds = new Set();
+            State.mutedConvoIds = new Set();
+            State.deletedConvoIds = new Set();
+        }
     }
 
     function savePinnedState() {
+        if (!State.currentUserId) return;
         localStorage.setItem(scopedKey('citeflow_pinned_convos', State.currentUserId), JSON.stringify(Array.from(State.pinnedConvoIds)));
     }
     function saveArchivedState() {
+        if (!State.currentUserId) return;
         localStorage.setItem(scopedKey('citeflow_archived_convos', State.currentUserId), JSON.stringify(Array.from(State.archivedConvoIds)));
     }
     function saveUnreadState() {
+        if (!State.currentUserId) return;
         localStorage.setItem(scopedKey('citeflow_unread_convos', State.currentUserId), JSON.stringify(Array.from(State.manuallyUnreadConvoIds)));
     }
     function saveMutedState() {
+        if (!State.currentUserId) return;
         localStorage.setItem(scopedKey('citeflow_muted_convos', State.currentUserId), JSON.stringify(Array.from(State.mutedConvoIds)));
     }
     function saveDeletedState() {
-        // "deleted" means hidden-for-this-user only — never affects other users
+        if (!State.currentUserId) return;
         localStorage.setItem(scopedKey('citeflow_deleted_convos', State.currentUserId), JSON.stringify(Array.from(State.deletedConvoIds)));
     }
 
     function saveConvoMeta(convoId, meta) {
+        if (!State.currentUserId || !convoId) return;
         try {
-            const saved = JSON.parse(localStorage.getItem('citeflow_convo_metas') || '{}');
+            const key = scopedKey('citeflow_convo_metas', State.currentUserId);
+            const saved = JSON.parse(localStorage.getItem(key) || '{}');
             saved[convoId] = Object.assign(saved[convoId] || {}, meta);
-            localStorage.setItem('citeflow_convo_metas', JSON.stringify(saved));
+            localStorage.setItem(key, JSON.stringify(saved));
         } catch (_) {}
     }
 
     function getConvoMeta(convoId) {
+        if (!State.currentUserId || !convoId) return null;
         try {
-            const saved = JSON.parse(localStorage.getItem('citeflow_convo_metas') || '{}');
+            const key = scopedKey('citeflow_convo_metas', State.currentUserId);
+            const saved = JSON.parse(localStorage.getItem(key) || '{}');
             return saved[convoId] || null;
         } catch (_) { return null; }
     }
@@ -105,7 +152,7 @@ window.CiteFlowMessenger = (function () {
     /**
      * Toast notification system
      */
-    function showCustomToast(message, duration = 3200) {
+    function showCustomToast(message, duration = 3000) {
         if (!message) return;
         let toast = document.getElementById("citeflowGlobalToast");
         if (!toast) {
@@ -114,7 +161,7 @@ window.CiteFlowMessenger = (function () {
             toast.className = "citeflow-toast";
             document.body.appendChild(toast);
         }
-        toast.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#10b981;"></i> <span>${message}</span>`;
+        toast.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#10b981;"></i> <span>${escapeHtml(message)}</span>`;
         toast.classList.add("show");
         clearTimeout(toast._timer);
         toast._timer = setTimeout(() => {
@@ -243,6 +290,200 @@ window.CiteFlowMessenger = (function () {
     };
 
     window.CiteFlowModal = CiteFlowModal;
+
+    /**
+     * Clean name formatter helper (e.g. "juan.delacruz@ctu.edu.ph" -> "Juan Delacruz")
+     */
+    function formatNameFromEmail(email) {
+        if (!email || typeof email !== 'string') return null;
+        const prefix = email.split('@')[0] || '';
+        const parts = prefix.replace(/[._\-+]/g, ' ').trim().split(/\s+/);
+        if (parts.length === 0 || !parts[0]) return null;
+        return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+    }
+
+    /**
+     * User resolution helper: ensures name, avatar, and department are never generic placeholders
+     */
+    function resolveUserIdentity(rawUser, fallbackRole = null) {
+        if (!rawUser) {
+            return {
+                id: 'unknown',
+                auth_user_id: 'unknown',
+                name: fallbackRole === 'Admin' ? 'Administrator' : 'Faculty Member',
+                display_name: fallbackRole === 'Admin' ? 'Administrator' : 'Faculty Member',
+                avatar_url: null,
+                department: 'CITE',
+                role: fallbackRole || 'User'
+            };
+        }
+
+        // Check if string ID passed
+        if (typeof rawUser === 'string') {
+            const cached = State.userResolutionCache.get(rawUser) || State.userResolutionCache.get(rawUser.toLowerCase());
+            if (cached) return cached;
+            const fromDir = (State.directoryCache || []).find(d =>
+                String(d.auth_user_id) === rawUser ||
+                String(d.id) === rawUser ||
+                (d.email && d.email.toLowerCase() === rawUser.toLowerCase())
+            );
+            if (fromDir) return fromDir;
+
+            const nameFromMail = rawUser.includes('@') ? formatNameFromEmail(rawUser) : null;
+            return {
+                id: rawUser,
+                auth_user_id: rawUser,
+                name: nameFromMail || (rawUser.includes('admin') ? 'Administrator' : 'Faculty Member'),
+                display_name: nameFromMail || (rawUser.includes('admin') ? 'Administrator' : 'Faculty Member'),
+                email: rawUser.includes('@') ? rawUser : null,
+                avatar_url: null,
+                department: 'CITE',
+                role: rawUser.includes('admin') ? 'Admin' : 'Faculty'
+            };
+        }
+
+        // Raw object passed
+        const email = (rawUser.email || '').trim().toLowerCase();
+        let name = [rawUser.first_name, rawUser.last_name].filter(Boolean).join(' ').trim() ||
+            rawUser.full_name ||
+            rawUser.name ||
+            rawUser.display_name;
+
+        if (!name || name === 'Administrator' || name === 'Faculty Member') {
+            const nameFromMail = formatNameFromEmail(email);
+            if (nameFromMail) name = nameFromMail;
+            else if (!name) {
+                name = rawUser.role === 'Admin' || rawUser.role === 'Administrator' ? 'Administrator' : 'Faculty Member';
+            }
+        }
+
+        const avatar = rawUser.avatar_url || rawUser.profile_photo_url || rawUser.photo_url || rawUser.profilePhotoUrl || null;
+        const role = rawUser.role || (rawUser.position ? 'Faculty' : (email.includes('admin') ? 'Admin' : 'Faculty'));
+        const dept = rawUser.department || (role === 'Admin' ? 'CITE Administration' : 'BSIT');
+
+        const isGenericName = (n) => !n || n === 'Faculty Member' || n === 'Administrator' || n === 'User';
+
+        const resolved = {
+            id: rawUser.auth_user_id || rawUser.id || email || 'unknown',
+            auth_user_id: rawUser.auth_user_id || (rawUser.id && String(rawUser.id).includes('-') ? rawUser.id : null),
+            name: name,
+            display_name: name,
+            email: email || null,
+            avatar_url: avatar,
+            department: dept,
+            role: role,
+            position: rawUser.position || role
+        };
+
+        // Smart cache: don't overwrite real names with generic ones, but DO overwrite generic with real
+        const cacheKeys = [
+            resolved.id ? String(resolved.id) : null,
+            resolved.auth_user_id ? String(resolved.auth_user_id) : null,
+            resolved.email ? resolved.email.toLowerCase() : null
+        ].filter(Boolean);
+
+        for (const key of cacheKeys) {
+            const existing = State.userResolutionCache.get(key);
+            if (existing && !isGenericName(existing.name) && isGenericName(resolved.name)) {
+                // Existing cache has a real name but new resolution is generic — merge instead
+                if (avatar && !existing.avatar_url) existing.avatar_url = avatar;
+                if (email && !existing.email) existing.email = email;
+                if (dept && dept !== 'BSIT' && existing.department === 'BSIT') existing.department = dept;
+                return existing;
+            }
+            State.userResolutionCache.set(key, resolved);
+        }
+
+        return resolved;
+    }
+
+    /**
+     * Batch fetch participant identities across profiles, admin_profiles, and faculty.
+     * Faculty table is the authoritative source for names and avatars.
+     */
+    async function batchFetchParticipants(userIds) {
+        if (!Array.isArray(userIds) || userIds.length === 0) return [];
+        const sb = getClient();
+        if (!sb) return [];
+
+        const cleanIds = Array.from(new Set(userIds.filter(id => id && String(id) !== 'unknown')));
+        if (cleanIds.length === 0) return [];
+
+        try {
+            // Fetch from all three tables in parallel
+            const [profilesRes, adminRes, facultyRes] = await Promise.all([
+                sb.from('profiles').select('*').in('id', cleanIds),
+                sb.from('admin_profiles').select('*').in('id', cleanIds),
+                sb.from('faculty').select('*').in('auth_user_id', cleanIds)
+            ]);
+
+            // Build a map keyed by auth UUID, merging data from all sources
+            const mergedMap = new Map();
+
+            // 1. Process profiles first (lowest priority for names)
+            if (Array.isArray(profilesRes?.data)) {
+                for (const p of profilesRes.data) {
+                    mergedMap.set(String(p.id), {
+                        auth_user_id: p.id,
+                        email: p.email,
+                        first_name: p.first_name,
+                        last_name: p.last_name,
+                        role: p.role || 'Faculty'
+                    });
+                }
+            }
+
+            // 2. Process admin_profiles (overrides profiles for admins)
+            if (Array.isArray(adminRes?.data)) {
+                for (const a of adminRes.data) {
+                    const existing = mergedMap.get(String(a.id)) || {};
+                    const adminName = [a.first_name, a.last_name].filter(Boolean).join(' ').trim();
+                    mergedMap.set(String(a.id), {
+                        ...existing,
+                        auth_user_id: a.id,
+                        first_name: a.first_name,
+                        last_name: a.last_name,
+                        name: adminName || existing.name,
+                        email: a.email || existing.email,
+                        avatar_url: existing.avatar_url || null,
+                        department: 'CITE Administration',
+                        role: 'Administrator'
+                    });
+                }
+            }
+
+            // 3. Process faculty LAST (highest priority — authoritative source)
+            if (Array.isArray(facultyRes?.data)) {
+                for (const f of facultyRes.data) {
+                    const uid = String(f.auth_user_id || f.id);
+                    const existing = mergedMap.get(uid) || {};
+                    mergedMap.set(uid, {
+                        ...existing,
+                        ...f,
+                        auth_user_id: f.auth_user_id || f.id,
+                        avatar_url: f.profile_photo_url || f.avatar_url || existing.avatar_url,
+                        role: f.role || existing.role || 'Faculty'
+                    });
+                }
+            }
+
+            // 4. Resolve all merged entries and force-cache them
+            const resolvedList = [];
+            for (const [uid, data] of mergedMap) {
+                const resolved = resolveUserIdentity(data);
+                // Force-set the cache with the merged (best) data
+                State.userResolutionCache.set(uid, resolved);
+                if (resolved.auth_user_id) State.userResolutionCache.set(String(resolved.auth_user_id), resolved);
+                if (resolved.email) State.userResolutionCache.set(resolved.email.toLowerCase(), resolved);
+                resolvedList.push(resolved);
+            }
+
+            return resolvedList;
+        } catch (err) {
+            console.warn("CiteFlowMessenger: Notice fetching participant batches:", err);
+            return [];
+        }
+    }
 
     /**
      * Inject Messenger DOM elements if not already present
@@ -426,6 +667,7 @@ window.CiteFlowMessenger = (function () {
                     </div>
                 </div>
 
+                <!-- New Message Modal -->
                 <div class="msgr-new-modal" id="msgrNewModal">
                     <div class="msgr-new-card">
                         <div class="msgr-new-header">
@@ -435,7 +677,7 @@ window.CiteFlowMessenger = (function () {
                             </button>
                         </div>
                         <div class="msgr-new-body">
-                            <input type="text" id="msgrUserSearch" placeholder="Search by name, email, or department...">
+                            <input type="text" id="msgrUserSearch" placeholder="Search by name, email, department, or role...">
                             <div class="msgr-group-name-field" id="msgrGroupNameField">
                                 <input type="text" id="msgrGroupNameInput" placeholder="Group Name (e.g. BSIT Committee)">
                             </div>
@@ -469,6 +711,7 @@ window.CiteFlowMessenger = (function () {
         }
 
         bindEvents();
+        setupLifecycleListeners();
         State.mounted = true;
     }
 
@@ -533,7 +776,7 @@ window.CiteFlowMessenger = (function () {
             toggleDockedDetails(false);
         });
 
-        // Enhanced search: shows conversations + directory people
+        // Search in panel
         document.getElementById("msgrConvoSearch")?.addEventListener("input", (e) => {
             handleEnhancedSearch(e.target.value.trim());
         });
@@ -541,22 +784,17 @@ window.CiteFlowMessenger = (function () {
             if (e.target.value.trim()) handleEnhancedSearch(e.target.value.trim());
         });
 
-        // Filter tabs (All, Unread, Groups)
-        document.querySelectorAll(".msgr-filter-tab").forEach((tab) => {
+        // Filter tabs in panel
+        document.querySelectorAll("#msgrFilterTabs .msgr-filter-tab").forEach((tab) => {
             tab.addEventListener("click", () => {
-                document.querySelectorAll(".msgr-filter-tab").forEach(t => t.classList.remove("active"));
+                document.querySelectorAll("#msgrFilterTabs .msgr-filter-tab").forEach(t => t.classList.remove("active"));
                 tab.classList.add("active");
                 State.activeFilter = tab.dataset.filter || "all";
-                renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
+                renderConversationList(getConvoSearchFilter());
             });
         });
 
-        // Expand messenger
-        document.getElementById("msgrExpandBtn")?.addEventListener("click", openExpandedView);
-        document.getElementById("msgrCollapseBtn")?.addEventListener("click", closeExpandedView);
-        document.getElementById("msgrExpNewBtn")?.addEventListener("click", openNewModal);
-
-        // Expanded view filter tabs
+        // Filter tabs in expanded view
         document.querySelectorAll("#msgrExpanded .msgr-filter-tab").forEach((tab) => {
             tab.addEventListener("click", () => {
                 document.querySelectorAll("#msgrExpanded .msgr-filter-tab").forEach(t => t.classList.remove("active"));
@@ -566,23 +804,60 @@ window.CiteFlowMessenger = (function () {
             });
         });
 
-        // Expanded search
+        // Expanded view search
         document.getElementById("msgrExpSearch")?.addEventListener("input", () => renderExpandedConvoList());
 
-        // Expanded composer
+        // Panel composer & typing listeners
+        const input = document.getElementById("msgrInput");
+        const sendBtn = document.getElementById("msgrSendBtn");
+
+        input?.addEventListener("input", () => {
+            input.style.height = "auto";
+            input.style.height = Math.min(input.scrollHeight, 100) + "px";
+            sendBtn.disabled = input.value.trim().length === 0;
+            triggerLocalTyping();
+        });
+
+        input?.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submitChatMessage(false);
+            }
+        });
+
+        input?.addEventListener("blur", () => {
+            stopLocalTypingImmediately();
+        });
+
+        sendBtn?.addEventListener("click", () => submitChatMessage(false));
+
+        // Expanded composer & typing listeners
         const expInput = document.getElementById("msgrExpInput");
         const expSendBtn = document.getElementById("msgrExpSendBtn");
+
         expInput?.addEventListener("input", () => {
             expInput.style.height = "auto";
             expInput.style.height = Math.min(expInput.scrollHeight, 100) + "px";
             expSendBtn.disabled = expInput.value.trim().length === 0;
+            triggerLocalTyping();
         });
-        expInput?.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessageExpanded(); }
-        });
-        expSendBtn?.addEventListener("click", sendMessageExpanded);
 
+        expInput?.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submitChatMessage(true);
+            }
+        });
+
+        expInput?.addEventListener("blur", () => {
+            stopLocalTypingImmediately();
+        });
+
+        expSendBtn?.addEventListener("click", () => submitChatMessage(true));
+
+        // Compose modal events
         document.getElementById("msgrNewBtn")?.addEventListener("click", openNewModal);
+        document.getElementById("msgrExpNewBtn")?.addEventListener("click", openNewModal);
         document.getElementById("msgrNewCloseBtn")?.addEventListener("click", closeNewModal);
         document.getElementById("msgrArchivedCloseBtn")?.addEventListener("click", closeArchivedModal);
         document.getElementById("msgrNewModal")?.addEventListener("click", (e) => {
@@ -597,24 +872,48 @@ window.CiteFlowMessenger = (function () {
         });
 
         document.getElementById("msgrCreateBtn")?.addEventListener("click", createConversation);
+    }
 
-        const input = document.getElementById("msgrInput");
-        const sendBtn = document.getElementById("msgrSendBtn");
+    /**
+     * Resilient lifecycle event listeners (tab visibility, network recovery, window focus)
+     */
+    function setupLifecycleListeners() {
+        if (State._lifecycleBound) return;
+        State._lifecycleBound = true;
 
-        input?.addEventListener("input", () => {
-            input.style.height = "auto";
-            input.style.height = Math.min(input.scrollHeight, 100) + "px";
-            sendBtn.disabled = input.value.trim().length === 0;
-        });
+        const handleWakeSync = async () => {
+            if (!State.currentUserId) return;
+            await loadConversations(false);
+            if (State.activeConversationId) {
+                await loadAndRenderActiveMessages(State.activeConversationId);
+            }
+            if (!State.inboxChannel || State.inboxChannel.state === 'closed' || State.inboxChannel.state === 'errored') {
+                subscribeToInbox();
+            }
+            if (!State.presenceChannel || State.presenceChannel.state === 'closed' || State.presenceChannel.state === 'errored') {
+                subscribeToPresence();
+            }
+            if (State.activeConversationId && (!State.messageChannel || State.messageChannel.state === 'closed' || State.messageChannel.state === 'errored')) {
+                subscribeToActiveConversation(State.activeConversationId);
+            }
+        };
 
-        input?.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                handleWakeSync();
             }
         });
 
-        sendBtn?.addEventListener("click", sendMessage);
+        window.addEventListener('online', () => {
+            CiteFlowModal.toast('Network connected. Messenger synced.');
+            handleWakeSync();
+        });
+
+        window.addEventListener('focus', () => {
+            if (State.currentUserId) {
+                updateUnreadBadge();
+            }
+        });
     }
 
     /**
@@ -625,48 +924,87 @@ window.CiteFlowMessenger = (function () {
         if (!sb) return false;
 
         try {
+            const prevUid = State.currentUserId;
             const { data: { session } } = await sb.auth.getSession();
+            let newUid = null;
+            let newEmail = null;
+            let newRole = null;
+            let newName = null;
+            let newAvatar = null;
+
             if (session?.user) {
-                State.currentUserId = session.user.id;
-                State.currentUserEmail = (session.user.email || '').toLowerCase();
-                State.currentUserRole = session.user.user_metadata?.role || (window.location.pathname.includes('/admin/') ? 'Admin' : 'Faculty');
-                loadUserScopedState();
-
-                // If user is Admin, ensure admin_profiles table has their id and info
-                if (State.currentUserRole === 'Admin' || window.location.pathname.includes('/admin/')) {
-                    try {
-                        const adminName = session.user.user_metadata?.name || session.user.user_metadata?.full_name || 'Administrator';
-                        await sb.from('admin_profiles').upsert({
-                            id: session.user.id,
-                            email: State.currentUserEmail,
-                            full_name: adminName,
-                            name: adminName,
-                            role: 'Admin'
-                        }, { onConflict: 'id' });
-                    } catch (_) {}
+                newUid = session.user.id;
+                newEmail = (session.user.email || '').toLowerCase();
+                const meta = session.user.user_metadata || {};
+                newRole = meta.role || (window.location.pathname.includes('/admin/') ? 'Admin' : 'Faculty');
+                newName = [meta.first_name, meta.last_name].filter(Boolean).join(' ').trim() || meta.full_name || meta.name || formatNameFromEmail(newEmail) || 'User';
+                newAvatar = meta.profile_photo_url || meta.avatar_url || meta.photo_url || null;
+            } else {
+                const cached = localStorage.getItem('citeflow_user');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    newUid = parsed.id;
+                    newEmail = (parsed.email || '').toLowerCase();
+                    newRole = parsed.role || (window.location.pathname.includes('/admin/') ? 'Admin' : 'Faculty');
+                    newName = parsed.name || formatNameFromEmail(newEmail) || 'User';
+                    newAvatar = parsed.profilePhotoUrl || parsed.profile_photo_url || parsed.avatar_url || null;
                 }
-
-                // If user is in faculty table, link auth_user_id
-                if (State.currentUserEmail) {
-                    try {
-                        await sb.from('faculty')
-                            .update({ auth_user_id: session.user.id })
-                            .ilike('email', State.currentUserEmail);
-                    } catch (_) {}
-                }
-                return true;
             }
 
-            // Fallback: Check citeflow_user cache
-            const cached = localStorage.getItem('citeflow_user');
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                State.currentUserId = parsed.id;
-                State.currentUserEmail = (parsed.email || '').toLowerCase();
-                State.currentUserRole = parsed.role || (window.location.pathname.includes('/admin/') ? 'Admin' : 'Faculty');
-                loadUserScopedState();
-                return true;
+            if (!newUid) return false;
+
+            // If user ID changed (account switch / fresh login), reset all in-memory and UI state
+            if (prevUid && String(prevUid) !== String(newUid)) {
+                State.conversations = [];
+                State.activeConversationId = null;
+                State.activeConversationMeta = null;
+                State.activeConversationParticipants = [];
+                State._currentActiveMessages = [];
+                State.userResolutionCache.clear();
+                State.directoryCache = [];
+                State.selectedNewUsers = [];
+                State._lastRenderedMsgSig = null;
+                State._lastExpRenderedMsgSig = null;
+                if (State.messageChannel) {
+                    try { sb.removeChannel(State.messageChannel); } catch (_) {}
+                    State.messageChannel = null;
+                }
+                if (State.inboxChannel) {
+                    try { sb.removeChannel(State.inboxChannel); } catch (_) {}
+                    State.inboxChannel = null;
+                }
+                if (State.presenceChannel) {
+                    try { sb.removeChannel(State.presenceChannel); } catch (_) {}
+                    State.presenceChannel = null;
+                }
             }
+
+            State.currentUserId = newUid;
+            State.currentUserEmail = newEmail;
+            State.currentUserRole = newRole;
+            State.currentUserName = newName;
+            State.currentUserAvatar = newAvatar;
+
+            // Reload user-scoped state strictly for the new user ID
+            loadUserScopedState();
+
+            // Purge any legacy unscoped localStorage caches if present
+            try {
+                localStorage.removeItem('citeflow_convo_metas');
+                localStorage.removeItem('citeflow_convo_cache');
+            } catch (_) {}
+
+            State.userResolutionCache.set(String(newUid), {
+                id: newUid,
+                auth_user_id: newUid,
+                name: newName,
+                display_name: newName,
+                email: newEmail,
+                avatar_url: newAvatar,
+                role: newRole
+            });
+
+            return true;
         } catch (e) {
             console.warn("CiteFlowMessenger: Error resolving user session:", e);
         }
@@ -674,30 +1012,95 @@ window.CiteFlowMessenger = (function () {
     }
 
     /**
-     * Initialize current user and start real-time listener
+     * Realtime Global Presence tracking (tracks who is online)
      */
-    
-    async function init() {
-    if (State.initialized) return;
+    function subscribeToPresence() {
+        const sb = getClient();
+        if (!sb || !State.currentUserId) return;
 
-    mountDOM();
+        if (State.presenceChannel) {
+            try { sb.removeChannel(State.presenceChannel); } catch (_) {}
+            State.presenceChannel = null;
+        }
 
-    const hasUser = await resolveCurrentUser();
+        const channel = sb.channel('msgr-presence-global', {
+            config: { presence: { key: State.currentUserId } }
+        });
 
-    if (hasUser) {
-        await loadConversations();
-        subscribeToInbox();
-        State.initialized = true;
+        channel
+            .on('presence', { event: 'sync' }, () => {
+                const presenceState = channel.presenceState();
+                State.onlineUserIds.clear();
+                for (const key in presenceState) {
+                    (presenceState[key] || []).forEach(p => {
+                        if (p.userId) State.onlineUserIds.add(String(p.userId));
+                    });
+                }
+                // Refresh active messages UI to reflect Sent -> Delivered state in real time
+                if (State.activeConversationId && Array.isArray(State._currentActiveMessages)) {
+                    renderActiveMessagesUI(State._currentActiveMessages);
+                }
+            })
+            .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+                (newPresences || []).forEach(p => {
+                    if (p.userId) State.onlineUserIds.add(String(p.userId));
+                });
+                if (State.activeConversationId && Array.isArray(State._currentActiveMessages)) {
+                    renderActiveMessagesUI(State._currentActiveMessages);
+                }
+            })
+            .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+                (leftPresences || []).forEach(p => {
+                    if (p.userId) State.onlineUserIds.delete(String(p.userId));
+                });
+                if (State.activeConversationId && Array.isArray(State._currentActiveMessages)) {
+                    renderActiveMessagesUI(State._currentActiveMessages);
+                }
+            });
+
+        channel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                try {
+                    await channel.track({
+                        userId: State.currentUserId,
+                        email: State.currentUserEmail,
+                        onlineAt: new Date().toISOString()
+                    });
+                } catch (_) {}
+            }
+        });
+
+        State.presenceChannel = channel;
     }
-}
+
+    /**
+     * Initialize messenger
+     */
+    async function init() {
+        if (State.initialized) return;
+
+        mountDOM();
+
+        const hasUser = await resolveCurrentUser();
+        console.log("CiteFlowMessenger: init() hasUser:", hasUser, "userId:", State.currentUserId);
+        if (hasUser) {
+            await loadConversations(true);
+            subscribeToInbox();
+            subscribeToPresence();
+            State.initialized = true;
+        }
+    }
 
     async function openPanel() {
         mountDOM();
         document.getElementById("msgrPanel")?.classList.add("show");
         document.getElementById("msgrBackdrop")?.classList.add("show");
-        
+
         await resolveCurrentUser();
-        await loadConversations();
+        console.log("CiteFlowMessenger: openPanel() userId:", State.currentUserId);
+        await loadConversations(State.conversations.length === 0);
+        if (!State.inboxChannel) subscribeToInbox();
+        if (!State.presenceChannel) subscribeToPresence();
     }
 
     function closePanel() {
@@ -710,403 +1113,140 @@ window.CiteFlowMessenger = (function () {
     function closeActiveChat() {
         closeConvoDropdown();
         toggleDockedDetails(false);
-        if (State.activeChatPollingTimer) {
-            clearInterval(State.activeChatPollingTimer);
-            State.activeChatPollingTimer = null;
-        }
+        stopLocalTypingImmediately();
+
         document.getElementById("msgrChat")?.classList.remove("show");
         State.activeConversationId = null;
         State.activeConversationMeta = null;
+        State._currentActiveMessages = [];
+
         if (State.messageChannel) {
             const sb = getClient();
-            sb?.removeChannel(State.messageChannel);
+            try {
+                sb?.removeChannel(State.messageChannel);
+            } catch (_) {}
             State.messageChannel = null;
         }
-        renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
+
+        renderConversationList(getConvoSearchFilter());
         renderExpandedConvoList();
     }
 
-    function saveLocalConvos() {
-        try {
-            const seen = new Set();
-            const cleaned = (State.conversations || []).filter(c => {
-                if (!c || !c.id || State.deletedConvoIds.has(String(c.id))) return false;
-                const safeOthers = (c.others || []).filter(o =>
-                    String(o.auth_user_id) !== String(State.currentUserId) &&
-                    String(o.id) !== String(State.currentUserId) &&
-                    (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
-                );
-                const key = c.is_group
-                    ? `group_${c.id}`
-                    : `direct_${safeOthers[0]?.auth_user_id || safeOthers[0]?.id || safeOthers[0]?.email || c.id}`;
-                if (seen.has(key)) return false;
-                seen.add(key);
-                return true;
-            });
-
-            const json = JSON.stringify(cleaned);
-            localStorage.setItem("citeflow_convo_cache", json);
-            if (State.currentUserId) {
-                localStorage.setItem(`citeflow_convo_cache_${State.currentUserId}`, json);
-            }
-        } catch (e) {
-            console.warn("Notice saving local convos:", e);
-        }
-    }
-
-    function loadLocalConvos() {
-        try {
-            let parsed = [];
-            if (State.currentUserId) {
-                const userCached = localStorage.getItem(`citeflow_convo_cache_${State.currentUserId}`);
-                if (userCached) {
-                    parsed = JSON.parse(userCached);
-                }
-            }
-            if (!parsed || parsed.length === 0) {
-                const cached = localStorage.getItem("citeflow_convo_cache");
-                if (cached) {
-                    parsed = JSON.parse(cached);
-                }
-            }
-            if (Array.isArray(parsed)) {
-                const seen = new Set();
-                return parsed.filter(c => {
-                    if (!c || !c.id || State.deletedConvoIds.has(String(c.id))) return false;
-                    const safeOthers = (c.others || []).filter(o =>
-                        String(o.auth_user_id) !== String(State.currentUserId) &&
-                        String(o.id) !== String(State.currentUserId) &&
-                        (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
-                    );
-                    const key = c.is_group
-                        ? `group_${c.id}`
-                        : `direct_${safeOthers[0]?.auth_user_id || safeOthers[0]?.id || safeOthers[0]?.email || c.id}`;
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
-                });
-            }
-        } catch (e) {
-            console.warn("Notice loading local convos:", e);
-        }
-        return [];
-    }
-
-    function saveLocalMessages(conversationId, messages) {
-        if (!conversationId || !Array.isArray(messages)) return;
-        try {
-            localStorage.setItem(`citeflow_messages_${conversationId}`, JSON.stringify(messages.slice(-200)));
-        } catch (e) {
-            console.warn("Notice saving local messages:", e);
-        }
-    }
-
-    function loadLocalMessages(conversationId) {
-        if (!conversationId) return [];
-        try {
-            const cached = localStorage.getItem(`citeflow_messages_${conversationId}`);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed)) return parsed;
-            }
-        } catch (e) {
-            console.warn("Notice loading local messages:", e);
-        }
-        return [];
+    /**
+     * Render conversation list skeleton loaders while loading
+     */
+    function renderSkeletons(targetEl, count = 4) {
+        if (!targetEl) return;
+        targetEl.innerHTML = Array.from({ length: count }).map(() => `
+            <div class="msgr-skeleton-convo">
+                <div class="msgr-skeleton-avatar msgr-skeleton-shimmer"></div>
+                <div class="msgr-skeleton-lines">
+                    <div class="msgr-skeleton-title msgr-skeleton-shimmer"></div>
+                    <div class="msgr-skeleton-subtitle msgr-skeleton-shimmer"></div>
+                </div>
+            </div>
+        `).join('');
     }
 
     /**
-     * Load all conversations for current user using resilient direct queries
+     * Render message bubble skeleton loaders while loading active chat
      */
-    async function loadConversations() {
+    function renderMessageSkeletons(targetEl) {
+        if (!targetEl) return;
+        targetEl.innerHTML = `
+            <div class="msgr-skeleton-bubble-row theirs">
+                <div class="msgr-skeleton-bubble msgr-skeleton-shimmer"></div>
+            </div>
+            <div class="msgr-skeleton-bubble-row mine">
+                <div class="msgr-skeleton-bubble msgr-skeleton-shimmer"></div>
+            </div>
+            <div class="msgr-skeleton-bubble-row theirs">
+                <div class="msgr-skeleton-bubble msgr-skeleton-shimmer" style="width: 240px;"></div>
+            </div>
+        `;
+    }
+
+    /**
+     * Load all conversations for current user strictly restricted to their own participant records
+     */
+    async function loadConversations(showSkeletons = false) {
         const sb = getClient();
         const listEl = document.getElementById("msgrList");
+        const expListEl = document.getElementById("msgrExpList");
 
         if (!State.currentUserId) {
             await resolveCurrentUser();
         }
 
-        const localCache = loadLocalConvos();
-        if (localCache.length > 0 && State.conversations.length === 0) {
-            State.conversations = localCache;
-            renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
-            renderExpandedConvoList();
-            updateUnreadBadge();
-        }
-
         if (!sb || !State.currentUserId) {
-            if (localCache.length > 0) {
-                State.conversations = localCache;
-                renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
-                renderExpandedConvoList();
-                updateUnreadBadge();
-                return;
-            }
-            if (listEl) {
+            if (listEl && State.conversations.length === 0) {
                 listEl.innerHTML = `
                     <div class="msgr-empty">
                         <i class="fa-regular fa-comments"></i>
-                        No conversations yet. Click the compose icon to start chatting.
+                        Please sign in to view your conversations.
                     </div>`;
             }
             return;
         }
 
+        if (showSkeletons && State.conversations.length === 0) {
+            if (listEl) renderSkeletons(listEl);
+            if (expListEl) renderSkeletons(expListEl);
+        }
+
         try {
-            // 1. Fetch conversations where user is listed as a participant
-            const { data: participantRows } = await sb
+            State.isLoadingConvos = true;
+
+            console.log("CiteFlowMessenger: loadConversations for userId:", State.currentUserId);
+
+            // STRICT PRIVACY: Query ONLY conversations where current user is registered as a participant
+            const { data: participantRows, error: pErr } = await sb
                 .from("conversation_participants")
                 .select("conversation_id, last_read_at")
                 .eq("user_id", State.currentUserId);
 
-            // 2. Fetch conversations created by current user
-            const { data: createdRows } = await sb
-                .from("conversations")
-                .select("*")
-                .eq("created_by", State.currentUserId);
+            if (pErr) {
+                console.error("CiteFlowMessenger: Error querying participants:", pErr);
+                throw pErr;
+            }
 
-            // 3. Fetch conversations where this user sent messages
-            const { data: sentMsgs } = await sb
-                .from("messages")
-                .select("conversation_id")
-                .eq("sender_id", State.currentUserId)
-                .limit(50);
+            console.log("CiteFlowMessenger: participantRows found:", participantRows?.length || 0);
 
             const pMap = new Map();
-            if (participantRows) {
+            if (Array.isArray(participantRows)) {
                 participantRows.forEach(r => {
-                    if (r.conversation_id) pMap.set(r.conversation_id, r.last_read_at);
+                    if (r.conversation_id) pMap.set(String(r.conversation_id), r.last_read_at);
                 });
             }
 
-            const convoIdSet = new Set([...pMap.keys()]);
-            if (createdRows) {
-                createdRows.forEach(c => convoIdSet.add(c.id));
-            }
-            if (sentMsgs) {
-                sentMsgs.forEach(m => {
-                    if (m.conversation_id) convoIdSet.add(m.conversation_id);
-                });
-            }
-
-            // 4. Global Auto-Heal & Auto-Link for 1:1 Direct Conversations:
-            // Fetch all 1-on-1 direct conversations in the database
-            const { data: allDirectConvos } = await sb
-                .from("conversations")
-                .select("*")
-                .or("is_group.eq.false,is_group.is.null")
-                .order("created_at", { ascending: true })
-                .limit(50);
-
-            if (Array.isArray(allDirectConvos) && allDirectConvos.length > 0) {
-                const directConvoIds = allDirectConvos.map(c => c.id);
-                const { data: directParts } = await sb
-                    .from("conversation_participants")
-                    .select("conversation_id, user_id")
-                    .in("conversation_id", directConvoIds);
-
-                const partsByConvo = new Map();
-                (directParts || []).forEach(p => {
-                    if (!partsByConvo.has(p.conversation_id)) partsByConvo.set(p.conversation_id, []);
-                    partsByConvo.get(p.conversation_id).push(p.user_id);
-                });
-
-                // Auto-link: ensure current user is registered as participant in all relevant direct conversations
-                for (const dConv of allDirectConvos) {
-                    const parts = partsByConvo.get(dConv.id) || [];
-                    const isCreatedByMe = String(dConv.created_by) === String(State.currentUserId);
-                    const isParticipant = parts.some(uid => String(uid) === String(State.currentUserId));
-
-                    if (isCreatedByMe || isParticipant || allDirectConvos.length <= 3) {
-                        convoIdSet.add(dConv.id);
-                        if (!isParticipant) {
-                            sb.from("conversation_participants").upsert({
-                                conversation_id: dConv.id,
-                                user_id: State.currentUserId,
-                                last_read_at: new Date().toISOString()
-                            }, { onConflict: "conversation_id, user_id" }).then();
-                        }
-                    }
-                }
-
-                // Deduplicate & Merge multiple direct conversations between the SAME two accounts:
-                const matchedDirectConvos = allDirectConvos.filter(c => convoIdSet.has(c.id));
-                if (matchedDirectConvos.length > 1) {
-                    const primaryConvo = matchedDirectConvos[0];
-                    for (let i = 1; i < matchedDirectConvos.length; i++) {
-                        const dupConvo = matchedDirectConvos[i];
-                        try {
-                            // Move messages from duplicate into primary
-                            await sb.from("messages").update({ conversation_id: primaryConvo.id }).eq("conversation_id", dupConvo.id);
-                            const dupParts = partsByConvo.get(dupConvo.id) || [];
-                            for (const pUid of dupParts) {
-                                await sb.from("conversation_participants").upsert({
-                                    conversation_id: primaryConvo.id,
-                                    user_id: pUid
-                                }, { onConflict: "conversation_id, user_id" });
-                            }
-                            convoIdSet.delete(dupConvo.id);
-                        } catch (_) {}
-                    }
-                }
-            }
-
-            // Fetch ALL conversation IDs from DB (including soft-deleted/archived ones for this user)
-            const allConvoIds = Array.from(convoIdSet).filter(id => id);
+            const allConvoIds = Array.from(pMap.keys()).filter(Boolean);
 
             if (allConvoIds.length === 0) {
-                if (localCache.length > 0) {
-                    State.conversations = localCache;
-                } else {
-                    State.conversations = [];
-                }
-                renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
+                State.conversations = [];
+                renderConversationList(getConvoSearchFilter());
                 renderExpandedConvoList();
                 updateUnreadBadge();
                 return;
             }
 
-            // 3. Fetch full conversation rows
-            const { data: convData, error: convError } = await sb
-                .from("conversations")
-                .select("*")
-                .in("id", allConvoIds);
+            const [{ data: convData, error: convError }, { data: allParticipants }, { data: allMessages }] = await Promise.all([
+                sb.from("conversations").select("*").in("id", allConvoIds),
+                sb.from("conversation_participants").select("conversation_id, user_id, last_read_at").in("conversation_id", allConvoIds),
+                sb.from("messages").select("conversation_id, content, created_at, sender_id").in("conversation_id", allConvoIds).order("created_at", { ascending: false })
+            ]);
 
             if (convError) throw convError;
-
-            // 4. Fetch all participants for these conversations
-            const { data: allParticipants } = await sb
-                .from("conversation_participants")
-                .select("conversation_id, user_id")
-                .in("conversation_id", allConvoIds);
-
-            // 5. Fetch directory users for participant resolution
-            // 5. Fetch fresh directory users for participant resolution
-            State.directoryCache = await fetchDirectory();
 
             const allOtherUserIds = Array.from(new Set(
                 (allParticipants || [])
                     .map(p => p.user_id)
-                    .filter(uid => uid && uid !== State.currentUserId)
+                    .concat((convData || []).map(c => c.created_by))
+                    .filter(uid => uid && String(uid) !== String(State.currentUserId))
             ));
 
-            const directoryUsers = allOtherUserIds.length > 0
-                ? await getDirectoryUsersByIds(allOtherUserIds)
-                : [];
-
-            const userMap = new Map();
-            userMap.set('admin-system', { id: 'admin-system', auth_user_id: 'admin-system', name: 'Administrator', display_name: 'Administrator', role: 'Admin', avatar_url: null });
-            
-            State.directoryCache.forEach(u => {
-                // Skip adding self to the userMap to prevent self-resolution as "other"
-                if (String(u.auth_user_id) === String(State.currentUserId)) return;
-                if (String(u.id) === String(State.currentUserId)) return;
-                if (u.email && u.email.toLowerCase() === State.currentUserEmail?.toLowerCase()) return;
-
-                if (u.auth_user_id) userMap.set(String(u.auth_user_id), u);
-                if (u.id) userMap.set(String(u.id), u);
-                if (u.email) userMap.set(String(u.email).toLowerCase(), u);
-            });
-            directoryUsers.forEach(u => {
-                // Skip adding self to the userMap
-                if (String(u.auth_user_id) === String(State.currentUserId)) return;
-                if (String(u.id) === String(State.currentUserId)) return;
-                if (u.email && u.email.toLowerCase() === State.currentUserEmail?.toLowerCase()) return;
-
-                if (u.auth_user_id) userMap.set(String(u.auth_user_id), u);
-                if (u.id) userMap.set(String(u.id), u);
-                if (u.email) userMap.set(String(u.email).toLowerCase(), u);
-            });
-
-            // Always query admin_profiles & faculty for all participant IDs to guarantee fresh name & avatar
             if (allOtherUserIds.length > 0) {
-                try {
-                    const { data: adminMatches } = await sb
-                        .from('admin_profiles')
-                        .select('id, full_name, name, first_name, last_name, email, avatar_url, profile_photo_url, department')
-                        .in('id', allOtherUserIds);
-
-                    if (Array.isArray(adminMatches)) {
-                        for (const a of adminMatches) {
-                            const adminName = a.full_name || a.name || `${a.first_name || ''} ${a.last_name || ''}`.trim() || a.email || 'Administrator';
-                            const adminEntry = {
-                                id: a.id,
-                                auth_user_id: a.id,
-                                name: adminName,
-                                display_name: adminName,
-                                email: a.email,
-                                avatar_url: a.avatar_url || a.profile_photo_url || null,
-                                department: a.department || 'CITE Administration',
-                                role: 'Administrator',
-                                position: 'Administrator'
-                            };
-                            userMap.set(String(a.id), adminEntry);
-                            if (a.email) userMap.set(a.email.toLowerCase(), adminEntry);
-                        }
-                    }
-                } catch (_) {}
-
-                // Try querying faculty table by auth_user_id or id for any unmapped IDs
-                const unmappedIds = allOtherUserIds.filter(uid => !userMap.has(String(uid)));
-                if (unmappedIds.length > 0) {
-                    try {
-                        const { data: facMatches } = await sb
-                            .from('faculty')
-                            .select('*')
-                            .in('auth_user_id', unmappedIds);
-
-                        if (Array.isArray(facMatches)) {
-                            for (const f of facMatches) {
-                                const fName = f.full_name || f.name || f.email || (f.role === 'Admin' ? 'Administrator' : 'Faculty Member');
-                                const fEntry = {
-                                    id: f.auth_user_id || f.id,
-                                    auth_user_id: f.auth_user_id || f.id,
-                                    name: fName,
-                                    display_name: fName,
-                                    email: f.email,
-                                    avatar_url: f.avatar_url || f.profile_photo_url || null,
-                                    department: f.department || 'BSIT',
-                                    role: f.role || 'Faculty Member',
-                                    position: f.position || f.role || 'Faculty Member'
-                                };
-                                userMap.set(String(f.auth_user_id || f.id), fEntry);
-                                if (f.email) userMap.set(f.email.toLowerCase(), fEntry);
-                            }
-                        }
-                    } catch (_) {}
-                }
-
-                // Check directoryCache for any remaining unmapped IDs before creating default placeholder
-                for (const uid of allOtherUserIds) {
-                    if (!userMap.has(String(uid))) {
-                        const matchedCache = State.directoryCache.find(u =>
-                            String(u.auth_user_id) === String(uid) ||
-                            String(u.id) === String(uid) ||
-                            (u.email && u.email.toLowerCase() === String(uid).toLowerCase())
-                        );
-                        if (matchedCache) {
-                            userMap.set(String(uid), matchedCache);
-                        } else {
-                            userMap.set(String(uid), {
-                                id: uid,
-                                auth_user_id: uid,
-                                name: State.currentUserRole === 'Faculty' ? 'Administrator' : 'Faculty Member',
-                                display_name: State.currentUserRole === 'Faculty' ? 'Administrator' : 'Faculty Member',
-                                email: null,
-                                avatar_url: null,
-                                role: 'Administrator'
-                            });
-                        }
-                    }
-                }
+                await batchFetchParticipants(allOtherUserIds);
             }
-
-            // 6. Fetch latest message for each conversation
-            const { data: allMessages } = await sb
-                .from("messages")
-                .select("conversation_id, content, created_at, sender_id")
-                .in("conversation_id", allConvoIds)
-                .order("created_at", { ascending: false });
 
             const lastMsgMap = new Map();
             if (allMessages) {
@@ -1118,49 +1258,37 @@ window.CiteFlowMessenger = (function () {
                 }
             }
 
-            // 7. Assemble enriched conversations
             let enriched = (convData || []).map((conv) => {
-                const myLastRead = pMap.get(conv.id) || null;
+                const myLastRead = pMap.get(String(conv.id)) || null;
                 const lastMsg = lastMsgMap.get(String(conv.id)) || null;
 
                 const convoParticipantIds = (allParticipants || [])
-                    .filter(p => p.conversation_id === conv.id && String(p.user_id) !== String(State.currentUserId))
+                    .filter(p => String(p.conversation_id) === String(conv.id) && String(p.user_id) !== String(State.currentUserId))
                     .map(p => p.user_id);
 
                 if (conv.created_by && String(conv.created_by) !== String(State.currentUserId) && !convoParticipantIds.includes(conv.created_by)) {
                     convoParticipantIds.push(conv.created_by);
                 }
 
-                let resolvedOthers = convoParticipantIds.map(uid => userMap.get(String(uid)) || {
-                    id: uid,
-                    auth_user_id: uid,
-                    name: (String(uid).includes('admin') || String(conv.created_by) === String(uid)) ? "Administrator" : "Faculty Member",
-                    display_name: (String(uid).includes('admin') || String(conv.created_by) === String(uid)) ? "Administrator" : "Faculty Member"
-                });
+                let resolvedOthers = convoParticipantIds.map(uid => resolveUserIdentity(uid));
 
-                // Filter out self completely
-                resolvedOthers = resolvedOthers.filter(o => 
-                    String(o.auth_user_id) !== String(State.currentUserId) && 
-                    String(o.id) !== String(State.currentUserId) && 
+                resolvedOthers = resolvedOthers.filter(o =>
+                    String(o.auth_user_id) !== String(State.currentUserId) &&
+                    String(o.id) !== String(State.currentUserId) &&
                     (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail).toLowerCase())
                 );
 
                 const meta = getConvoMeta(conv.id);
-                if ((!resolvedOthers || resolvedOthers.length === 0) && meta && meta.others) {
-                    resolvedOthers = meta.others.filter(o => 
-                        String(o.auth_user_id) !== String(State.currentUserId) && 
-                        String(o.id) !== String(State.currentUserId) && 
+                if (resolvedOthers.length === 0 && meta?.others) {
+                    resolvedOthers = meta.others.filter(o =>
+                        String(o.auth_user_id) !== String(State.currentUserId) &&
+                        String(o.id) !== String(State.currentUserId) &&
                         (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail).toLowerCase())
                     );
                 }
 
                 if (resolvedOthers.length === 0) {
-                    resolvedOthers = [{
-                        id: 'other',
-                        auth_user_id: 'other',
-                        name: State.currentUserRole === 'Admin' ? "Faculty Member" : "Administrator",
-                        display_name: State.currentUserRole === 'Admin' ? "Faculty Member" : "Administrator"
-                    }];
+                    resolvedOthers = [resolveUserIdentity(null, State.currentUserRole === 'Admin' ? 'Faculty' : 'Admin')];
                 }
 
                 const isManuallyUnread = State.manuallyUnreadConvoIds.has(conv.id);
@@ -1172,17 +1300,23 @@ window.CiteFlowMessenger = (function () {
                 ));
 
                 const isPinned = State.pinnedConvoIds.has(conv.id);
-                // Soft-deleted convos are treated as archived (hidden in main list, visible in Archive)
                 const isSoftDeleted = State.deletedConvoIds.has(String(conv.id));
                 const isArchived = isSoftDeleted || State.archivedConvoIds.has(conv.id);
 
                 let displayName = conv.name || null;
                 if (conv.is_group) {
-                    displayName = conv.name || resolvedOthers.map(o => (o.name || o.display_name || '').split(' ')[0]).filter(Boolean).join(', ') || "Group Chat";
+                    displayName = meta?.customNickname || conv.name || meta?.displayName || resolvedOthers.map(o => (o.name || o.display_name || '').split(' ')[0]).filter(Boolean).join(', ') || "Group Chat";
                 } else {
-                    displayName = resolvedOthers[0]?.name || resolvedOthers[0]?.display_name || "Faculty Member";
-                    if (displayName === "Faculty Member" && meta?.displayName && meta.displayName !== "Faculty Member" && !meta.displayName.toLowerCase().includes(String(State.currentUserEmail).split('@')[0])) {
+                    const otherPerson = resolvedOthers[0];
+                    const otherName = otherPerson?.name || otherPerson?.display_name;
+                    if (meta?.customNickname) {
+                        displayName = meta.customNickname;
+                    } else if (otherName && otherName !== "Faculty Member" && otherName !== "Administrator") {
+                        displayName = otherName;
+                    } else if (meta?.displayName && meta.displayName !== "Faculty Member" && meta.displayName !== "Administrator") {
                         displayName = meta.displayName;
+                    } else {
+                        displayName = otherName || (State.currentUserRole === 'Admin' ? "Faculty Member" : "Administrator");
                     }
                 }
 
@@ -1199,51 +1333,14 @@ window.CiteFlowMessenger = (function () {
                 };
             });
 
-            // Never drop soft-deleted convos from State — they live in Archive tab
-
-            // Merge with local cache so newly created conversations and custom edits are never lost
-            const combinedMap = new Map();
-            enriched.forEach(c => {
-                if (c && c.id) {
-                    combinedMap.set(String(c.id), c);
-                }
-            });
-            localCache.forEach(c => {
-                if (c && c.id) {
-                    if (!combinedMap.has(String(c.id))) {
-                        combinedMap.set(String(c.id), c);
-                    } else {
-                        const srv = combinedMap.get(String(c.id));
-                        let bestLastMsg = srv.lastMessage || c.lastMessage || null;
-                        if (srv.lastMessage && c.lastMessage) {
-                            const srvTime = new Date(srv.lastMessage.created_at || 0).getTime();
-                            const locTime = new Date(c.lastMessage.created_at || 0).getTime();
-                            bestLastMsg = srvTime >= locTime ? srv.lastMessage : c.lastMessage;
-                        }
-                        const isSoftDeleted = State.deletedConvoIds.has(String(c.id));
-                        combinedMap.set(String(c.id), {
-                            ...c,
-                            ...srv,
-                            lastMessage: bestLastMsg,
-                            displayName: (c.isCustomNickname && c.customNickname) ? c.customNickname : srv.displayName,
-                            isPinned: State.pinnedConvoIds.has(c.id) || srv.isPinned || false,
-                            isArchived: isSoftDeleted || State.archivedConvoIds.has(c.id) || srv.isArchived || false,
-                            isSoftDeleted
-                        });
-                    }
-                }
-            });
-
-            // Strict deduplication: keep only one 1:1 conversation per person (latest sortTime)
             const dedupedKeys = new Set();
-            let finalConvos = Array.from(combinedMap.values()).filter(c => {
+            let finalConvos = enriched.filter(c => {
                 if (!c || !c.id) return false;
                 const safeOthers = (c.others || []).filter(o =>
                     String(o.auth_user_id) !== String(State.currentUserId) &&
-                    String(o.id) !== String(State.currentUserId) &&
-                    (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
+                    String(o.id) !== String(State.currentUserId)
                 );
-                
+
                 let recipientKey = null;
                 if (c.is_group) {
                     recipientKey = `group_${c.id}`;
@@ -1259,7 +1356,6 @@ window.CiteFlowMessenger = (function () {
                 return true;
             });
 
-            // Sort: pinned items first, then by sortTime descending
             finalConvos.sort((a, b) => {
                 if (a.isPinned && !b.isPinned) return -1;
                 if (!a.isPinned && b.isPinned) return 1;
@@ -1267,44 +1363,37 @@ window.CiteFlowMessenger = (function () {
             });
 
             State.conversations = finalConvos;
-            saveLocalConvos();
+            console.log("CiteFlowMessenger: Loaded", finalConvos.length, "conversations.");
 
-            renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
+            renderConversationList(getConvoSearchFilter());
             renderExpandedConvoList();
             updateUnreadBadge();
         } catch (err) {
             console.error("CiteFlowMessenger: Error loading conversations:", err);
-            if (localCache.length > 0) {
-                State.conversations = localCache;
-                renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
-                renderExpandedConvoList();
-                updateUnreadBadge();
-            } else if (listEl) {
+            if (listEl && State.conversations.length === 0) {
                 listEl.innerHTML = `
                     <div class="msgr-empty">
                         <i class="fa-regular fa-comments"></i>
-                        No conversations yet. Click the compose icon to start chatting.
+                        Could not load conversations. Please refresh the page.
                     </div>`;
             }
+        } finally {
+            State.isLoadingConvos = false;
         }
     }
 
     /**
-     * Render conversation list items
+     * Render conversation list items with rich unread visual highlighting
      */
     function renderConversationList(filter = "") {
         const listEl = document.getElementById("msgrList");
         if (!listEl) return;
 
-        // Exclude archived conversations unless explicitly viewing archived
         let activeItems = State.conversations.filter(c => !c.isArchived);
-
-        // Apply search text filter
         let items = activeItems.filter((c) =>
             !filter || c.displayName.toLowerCase().includes(filter)
         );
 
-        // Apply tab filter
         const tabFilter = State.activeFilter || "all";
         if (tabFilter === "unread") {
             items = activeItems.filter(c => c.unread);
@@ -1334,11 +1423,9 @@ window.CiteFlowMessenger = (function () {
         }
 
         listEl.innerHTML = items.map((c) => {
-            // Filter self out of others to prevent showing own avatar as "other person"
             const safeOthers = (c.others || []).filter(o =>
                 String(o.auth_user_id) !== String(State.currentUserId) &&
-                String(o.id) !== String(State.currentUserId) &&
-                (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
+                String(o.id) !== String(State.currentUserId)
             );
             const avatarHtml = renderAvatar(c.is_group ? null : safeOthers[0]?.avatar_url, c.displayName, c.is_group);
             const preview = c.lastMessage
@@ -1363,16 +1450,14 @@ window.CiteFlowMessenger = (function () {
                 </div>`;
         }).join("");
 
-        // Wire up click handlers
         listEl.querySelectorAll(".msgr-convo").forEach((el) => {
             el.addEventListener("click", (e) => {
                 if (e.target.closest(".msgr-convo-options")) return;
                 const conv = State.conversations.find((c) => String(c.id) === String(el.dataset.id));
-                if (conv) openConversation(conv);
+                if (conv) activateConversation(conv, false);
             });
         });
 
-        // Wire up context menu buttons
         listEl.querySelectorAll(".msgr-convo-options").forEach((btn) => {
             btn.addEventListener("click", (e) => {
                 e.stopPropagation();
@@ -1381,87 +1466,123 @@ window.CiteFlowMessenger = (function () {
         });
     }
 
-    function renderAvatar(url, name, isGroup) {
-        const cls = "msgr-avatar" + (isGroup ? " group" : "");
-        if (url) {
-            return `<div class="${cls}"><img src="${url}" alt="" onerror="this.parentElement.innerHTML='${initialsOf(name)}'"></div>`;
+    /**
+     * Safe avatar renderer with zero-flash fallback
+     */
+    function renderAvatar(url, name, isGroup, customClass = "") {
+        const cls = `msgr-avatar${isGroup ? " group" : ""} ${customClass}`.trim();
+        const initials = initialsOf(name);
+
+        if (url && typeof url === 'string' && url.trim().length > 0) {
+            const cleanUrl = url.replace(/"/g, '&quot;');
+            return `
+                <div class="${cls}">
+                    <img src="${cleanUrl}" alt="" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+                    <div style="display:none; width:100%; height:100%; align-items:center; justify-content:center;">${initials}</div>
+                </div>`;
         }
         if (isGroup) {
             return `<div class="${cls}"><i class="fa-solid fa-users"></i></div>`;
         }
-        return `<div class="${cls}">${initialsOf(name)}</div>`;
+        return `<div class="${cls}">${initials}</div>`;
     }
 
     function initialsOf(str) {
-        if (!str) return "?";
+        if (!str || typeof str !== 'string') return "?";
         const parts = str.trim().split(/\s+/);
-        return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "?";
+        if (parts.length === 1) return (parts[0].slice(0, 2)).toUpperCase();
+        return ((parts[0]?.[0] || "") + (parts[parts.length - 1]?.[0] || "")).toUpperCase() || "?";
     }
 
     /**
-     * Open active chat view for conversation
+     * Unified Conversation Activation: merged openConversation & openExpandedConversation
      */
-    async function openConversation(conv) {
+    async function activateConversation(conv, isExpandedView = false) {
+        if (!conv) return;
+
         State.activeConversationId = conv.id;
         State.activeConversationMeta = conv;
+        State.isExpanded = isExpandedView;
 
-        // Reset docked details panel if open
         toggleDockedDetails(false);
+        stopLocalTypingImmediately();
 
-        // Optimistic UI: Clear unread badge & status instantly (0ms delay)
+        // Optimistically remove unread highlight immediately upon opening
         conv.unread = false;
         State.manuallyUnreadConvoIds.delete(conv.id);
         saveUnreadState();
         updateUnreadBadge();
 
+        const safeOthers = (conv.others || []).filter(o =>
+            String(o.auth_user_id) !== String(State.currentUserId) &&
+            String(o.id) !== String(State.currentUserId)
+        );
+
+        const meta = getConvoMeta(conv.id);
+        let displayName = conv.displayName;
+        if (meta?.customNickname) {
+            displayName = meta.customNickname;
+        } else if (!conv.is_group && safeOthers.length > 0) {
+            const otherName = safeOthers[0].name || safeOthers[0].display_name;
+            // Only use otherName if it's a real name, not a generic fallback
+            if (otherName && otherName !== 'Faculty Member' && otherName !== 'Administrator' && otherName !== 'User') {
+                displayName = otherName;
+            }
+            // If displayName is still generic, try convo meta
+            if (!displayName || displayName === 'Faculty Member' || displayName === 'Administrator') {
+                displayName = meta?.displayName || conv.displayName || otherName || 'Chat';
+            }
+        }
+
+        const otherAvatarUrl = (safeOthers.length > 0 && !conv.is_group) ? safeOthers[0].avatar_url : (conv.avatar_url || null);
+        const subText = conv.is_group
+            ? `${safeOthers.length + 1} members`
+            : (safeOthers[0]?.department || safeOthers[0]?.role || "Online");
+
+        // Panel View updates
         const nameEl = document.getElementById("msgrChatName");
         const subEl = document.getElementById("msgrChatSub");
         const avatarEl = document.getElementById("msgrChatAvatar");
 
-        // Always filter self out of others to prevent self-identity confusion
-        const safeOthers = (conv.others || []).filter(o =>
-            String(o.auth_user_id) !== String(State.currentUserId) &&
-            String(o.id) !== String(State.currentUserId) &&
-            (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
-        );
-
-        // Determine display name from safeOthers
-        let displayName = conv.displayName;
-        if (!conv.is_group && safeOthers.length > 0) {
-            displayName = safeOthers[0].name || safeOthers[0].display_name || conv.displayName;
-        } else if (!conv.is_group && safeOthers.length === 0) {
-            if (conv.displayName && conv.displayName !== "Administrator" && conv.displayName !== "Faculty Member") {
-                displayName = conv.displayName;
-            } else {
-                displayName = State.currentUserRole === 'Admin' ? "Faculty Member" : "Administrator";
-            }
-        }
-
-        // Determine avatar — never show self avatar as the other person's avatar
-        let otherAvatarUrl = (safeOthers.length > 0 && !conv.is_group) ? safeOthers[0].avatar_url : null;
-        if (!otherAvatarUrl && !conv.is_group) {
-            otherAvatarUrl = conv.avatar_url || conv.profile_photo_url || conv.others?.[0]?.avatar_url || null;
-        }
-
         if (nameEl) nameEl.textContent = displayName;
-        if (subEl) {
-            subEl.textContent = conv.is_group 
-                ? `${(safeOthers.length || 0) + 1} members` 
-                : (safeOthers?.[0]?.department || safeOthers?.[0]?.role || "Member");
-        }
+        if (subEl) subEl.textContent = subText;
         if (avatarEl) {
-            avatarEl.outerHTML = renderAvatar(
-                conv.is_group ? null : otherAvatarUrl,
-                displayName,
-                conv.is_group
-            ).replace('class="msgr-avatar', 'id="msgrChatAvatar" class="msgr-avatar');
+            avatarEl.outerHTML = renderAvatar(conv.is_group ? null : otherAvatarUrl, displayName, conv.is_group)
+                .replace('class="msgr-avatar', 'id="msgrChatAvatar" class="msgr-avatar');
         }
 
-        document.getElementById("msgrChat")?.classList.add("show");
-        renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
+        // Expanded View updates
+        const expNameEl = document.getElementById("msgrExpChatName");
+        const expSubEl = document.getElementById("msgrExpChatSub");
+        const expAvatarEl = document.getElementById("msgrExpChatAvatar");
+        const placeholderEl = document.getElementById("msgrExpChatPlaceholder");
+        const activeEl = document.getElementById("msgrExpChatActive");
 
-        // Load messages and sync DB read status in parallel (non-blocking)
-        loadMessages(conv.id);
+        if (placeholderEl) placeholderEl.style.display = "none";
+        if (activeEl) activeEl.style.display = "flex";
+        if (expNameEl) expNameEl.textContent = displayName;
+        if (expSubEl) expSubEl.textContent = subText;
+        if (expAvatarEl) {
+            expAvatarEl.outerHTML = renderAvatar(conv.is_group ? null : otherAvatarUrl, displayName, conv.is_group)
+                .replace('class="msgr-avatar', 'id="msgrExpChatAvatar" class="msgr-avatar');
+        }
+
+        if (!isExpandedView) {
+            document.getElementById("msgrChat")?.classList.add("show");
+        }
+
+        renderExpandedInfoPanel(conv);
+        renderConversationList(getConvoSearchFilter());
+        renderExpandedConvoList();
+
+        const msgContainer = isExpandedView ? document.getElementById("msgrExpMessages") : document.getElementById("msgrMessages");
+        if (msgContainer) renderMessageSkeletons(msgContainer);
+
+        State._lastRenderedMsgSig = null;
+        State._lastExpRenderedMsgSig = null;
+        State._participantsChanged = true;
+
+        await loadAndRenderActiveMessages(conv.id);
         markConversationRead(conv.id);
         subscribeToActiveConversation(conv.id);
     }
@@ -1486,12 +1607,12 @@ window.CiteFlowMessenger = (function () {
         const isGroup = conv.is_group;
         const safeOthers = (conv.others || []).filter(o =>
             String(o.auth_user_id) !== String(State.currentUserId) &&
-            String(o.id) !== String(State.currentUserId) &&
-            (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
+            String(o.id) !== String(State.currentUserId)
         );
 
-        let displayName = conv.displayName;
-        if (!isGroup && safeOthers.length > 0) {
+        const meta = getConvoMeta(conv.id);
+        let displayName = meta?.customNickname || conv.displayName;
+        if (!isGroup && safeOthers.length > 0 && !meta?.customNickname) {
             displayName = safeOthers[0].name || safeOthers[0].display_name || conv.displayName;
         }
 
@@ -1504,7 +1625,7 @@ window.CiteFlowMessenger = (function () {
         const avatarHtml = renderAvatar(isGroup ? null : otherAvatarUrl, displayName, isGroup);
 
         const allMembers = [
-            { name: 'You', department: State.currentUserRole, isSelf: true, avatar_url: null },
+            { name: 'You', department: State.currentUserRole, isSelf: true, avatar_url: State.currentUserAvatar },
             ...safeOthers
         ];
 
@@ -1570,70 +1691,54 @@ window.CiteFlowMessenger = (function () {
     }
 
     /**
-     * Load messages for active conversation with instant local cache + network sync
+     * Unified message loader and renderer
      */
-    async function loadMessages(conversationId) {
+    async function loadAndRenderActiveMessages(conversationId) {
         if (!conversationId) return;
-
-        // 1. Instant render from local cache
-        const localMsgs = loadLocalMessages(conversationId);
-        if (localMsgs.length > 0) {
-            renderMessages(localMsgs);
-        }
 
         const sb = getClient();
         if (!sb) return;
 
         try {
-            const { data, error } = await sb
-                .from("messages")
-                .select("*")
-                .eq("conversation_id", conversationId)
-                .order("created_at", { ascending: true })
-                .limit(150);
+            const [{ data, error }, { data: partData }] = await Promise.all([
+                sb.from("messages")
+                    .select("*")
+                    .eq("conversation_id", conversationId)
+                    .order("created_at", { ascending: true })
+                    .limit(200),
+                sb.from("conversation_participants")
+                    .select("user_id, last_read_at")
+                    .eq("conversation_id", conversationId)
+            ]);
 
             if (error) {
-                console.warn("CiteFlowMessenger: Notice loading messages from DB:", error);
+                console.warn("CiteFlowMessenger: Error loading messages:", error);
                 return;
             }
 
-            // Fetch participants for seen receipts
-            try {
-                const { data: partData } = await sb
-                    .from("conversation_participants")
-                    .select("user_id, last_read_at")
-                    .eq("conversation_id", conversationId);
-                if (Array.isArray(partData)) {
-                    State.activeConversationParticipants = partData;
-                }
-            } catch (_) {}
+            if (Array.isArray(partData)) {
+                State.activeConversationParticipants = partData;
+            }
 
-            if (Array.isArray(data)) {
-                // Purge temp messages that have been confirmed by database records
-                const unconfirmedTemp = localMsgs.filter(lm => {
-                    if (!String(lm.id).startsWith('temp_')) return false;
-                    const matchedInDb = data.some(dm => 
-                        String(dm.sender_id) === String(lm.sender_id) && 
-                        dm.content === lm.content &&
-                        Math.abs(new Date(dm.created_at) - new Date(lm.created_at)) < 30000
-                    );
-                    return !matchedInDb;
-                });
+            const messages = Array.isArray(data) ? data : [];
+            State._currentActiveMessages = messages;
 
-                const combined = (data.length === 0 && localMsgs.length > 0) ? localMsgs : [...data, ...unconfirmedTemp];
-                combined.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            const newSig = messages.map(m => m.id).join(',');
+            if (State._lastRenderedMsgSig === newSig && !State._participantsChanged) {
+                return;
+            }
+            State._lastRenderedMsgSig = newSig;
+            State._lastExpRenderedMsgSig = newSig;
+            State._participantsChanged = false;
 
-                saveLocalMessages(conversationId, combined);
-                renderMessages(combined);
+            renderActiveMessagesUI(messages);
 
-                if (combined.length > 0) {
-                    const newest = combined[combined.length - 1];
-                    const targetConv = State.conversations.find(c => String(c.id) === String(conversationId));
-                    if (targetConv) {
-                        targetConv.lastMessage = newest;
-                        targetConv.sortTime = newest.created_at || new Date().toISOString();
-                        saveLocalConvos();
-                    }
+            if (messages.length > 0) {
+                const newest = messages[messages.length - 1];
+                const targetConv = State.conversations.find(c => String(c.id) === String(conversationId));
+                if (targetConv) {
+                    targetConv.lastMessage = newest;
+                    targetConv.sortTime = newest.created_at || new Date().toISOString();
                 }
             }
         } catch (err) {
@@ -1641,15 +1746,18 @@ window.CiteFlowMessenger = (function () {
         }
     }
 
-    function renderMessages(messages) {
-        const el = document.getElementById("msgrMessages");
-        if (!el) return;
+    /**
+     * Unified message bubble HTML builder with Sent / Delivered / Seen states and group sender avatars
+     */
+    function renderActiveMessagesUI(messages) {
+        const panelEl = document.getElementById("msgrMessages");
+        const expEl = document.getElementById("msgrExpMessages");
+        if (!panelEl && !expEl) return;
 
         const isGroup = State.activeConversationMeta?.is_group;
         const others = State.activeConversationMeta?.others || [];
         const participants = State.activeConversationParticipants || [];
 
-        // Find last message sent by current user
         let lastMyMsgId = null;
         for (let i = (messages || []).length - 1; i >= 0; i--) {
             if (String(messages[i].sender_id) === String(State.currentUserId)) {
@@ -1658,121 +1766,248 @@ window.CiteFlowMessenger = (function () {
             }
         }
 
-        el.innerHTML = (messages || []).map((m) => {
+        const messagesHtml = (messages || []).map((m) => {
             const mine = String(m.sender_id) === String(State.currentUserId);
             const senderObj = others.find((o) => String(o.auth_user_id) === String(m.sender_id) || String(o.id) === String(m.sender_id));
-            const senderName = mine ? null : (senderObj?.name || senderObj?.display_name || (State.currentUserRole === 'Faculty' ? 'Administrator' : 'Faculty Member'));
+            const senderName = mine ? null : (senderObj?.name || senderObj?.display_name || 'Colleague');
+            const senderAvatar = senderObj?.avatar_url;
 
             let seenReceiptHtml = "";
             if (mine && m.id === lastMyMsgId) {
                 const msgTime = new Date(m.created_at).getTime();
-                const seenParticipant = participants.find(p => 
-                    String(p.user_id) !== String(State.currentUserId) && 
-                    p.last_read_at && 
+
+                // 1. Seen State: Has the recipient opened the conversation after this message was sent?
+                const seenParticipant = participants.find(p =>
+                    String(p.user_id) !== String(State.currentUserId) &&
+                    p.last_read_at &&
                     new Date(p.last_read_at).getTime() >= msgTime - 2000
                 );
 
                 if (seenParticipant) {
                     const seenTime = formatTime(seenParticipant.last_read_at);
                     const seenUser = others.find(o => String(o.auth_user_id) === String(seenParticipant.user_id) || String(o.id) === String(seenParticipant.user_id));
-                    const seenAvatar = seenUser?.avatar_url 
-                        ? `<img src="${seenUser.avatar_url}" class="msgr-seen-avatar" alt="">` 
+                    const seenAvatar = seenUser?.avatar_url
+                        ? `<img src="${escapeHtml(seenUser.avatar_url)}" class="msgr-seen-avatar" alt="">`
                         : `<i class="fa-solid fa-circle-check"></i>`;
                     seenReceiptHtml = `<div class="msgr-seen-receipt seen" title="Seen at ${new Date(seenParticipant.last_read_at).toLocaleTimeString()}">${seenAvatar} Seen ${seenTime}</div>`;
                 } else {
-                    seenReceiptHtml = `<div class="msgr-seen-receipt"><i class="fa-regular fa-circle-check"></i> Delivered</div>`;
+                    // 2. Delivered vs Sent State: Is recipient currently online in Realtime Presence?
+                    const isRecipientOnline = others.some(o =>
+                        (o.auth_user_id && State.onlineUserIds.has(String(o.auth_user_id))) ||
+                        (o.id && State.onlineUserIds.has(String(o.id)))
+                    );
+
+                    if (isRecipientOnline) {
+                        seenReceiptHtml = `<div class="msgr-seen-receipt delivered" title="Delivered"><i class="fa-solid fa-circle-check"></i> Delivered</div>`;
+                    } else {
+                        seenReceiptHtml = `<div class="msgr-seen-receipt sent" title="Sent"><i class="fa-regular fa-circle-check"></i> Sent</div>`;
+                    }
                 }
             }
 
-            return `
-                <div class="msgr-bubble-row ${mine ? "mine" : "theirs"}">
-                    ${isGroup && !mine ? `<div class="msgr-sender-label">${escapeHtml(senderName)}</div>` : ""}
-                    <div class="msgr-bubble">${escapeHtml(m.content)}</div>
-                    <div class="msgr-bubble-time">${formatTime(m.created_at)}</div>
-                    ${seenReceiptHtml}
-                </div>`;
+            if (mine) {
+                return `
+                    <div class="msgr-bubble-row mine">
+                        <div class="msgr-bubble">${escapeHtml(m.content)}</div>
+                        <div class="msgr-bubble-time">${formatTime(m.created_at)}</div>
+                        ${seenReceiptHtml}
+                    </div>`;
+            } else {
+                const avatarBubbleHtml = isGroup ? renderAvatar(senderAvatar, senderName, false, "msgr-msg-avatar") : '';
+                return `
+                    <div class="msgr-bubble-row theirs">
+                        <div class="msgr-bubble-group-wrapper">
+                            ${avatarBubbleHtml}
+                            <div class="msgr-bubble-content-col">
+                                ${isGroup ? `<div class="msgr-sender-label">${escapeHtml(senderName)}</div>` : ""}
+                                <div class="msgr-bubble">${escapeHtml(m.content)}</div>
+                                <div class="msgr-bubble-time">${formatTime(m.created_at)}</div>
+                            </div>
+                        </div>
+                    </div>`;
+            }
         }).join("");
 
-        el.scrollTop = el.scrollHeight;
+        if (panelEl) {
+            panelEl.innerHTML = messagesHtml;
+            panelEl.scrollTop = panelEl.scrollHeight;
+        }
+        if (expEl) {
+            expEl.innerHTML = messagesHtml;
+            expEl.scrollTop = expEl.scrollHeight;
+        }
     }
 
     /**
-     * Send message in active conversation with instant local persistence
+     * Typing indicators logic via Supabase Realtime Broadcast
      */
-    async function sendMessage() {
-        const input = document.getElementById("msgrInput");
+    function triggerLocalTyping() {
+        if (!State.activeConversationId || !State.messageChannel) return;
+
+        if (!State.isTypingLocally) {
+            State.isTypingLocally = true;
+            broadcastTyping(true);
+        }
+
+        clearTimeout(State.localTypingTimer);
+        State.localTypingTimer = setTimeout(() => {
+            stopLocalTypingImmediately();
+        }, 2200);
+    }
+
+    function stopLocalTypingImmediately() {
+        if (State.isTypingLocally) {
+            State.isTypingLocally = false;
+            broadcastTyping(false);
+        }
+        clearTimeout(State.localTypingTimer);
+    }
+
+    function broadcastTyping(isTyping) {
+        if (!State.messageChannel || !State.activeConversationId || !State.currentUserId) return;
+        try {
+            State.messageChannel.send({
+                type: 'broadcast',
+                event: 'typing',
+                payload: {
+                    userId: State.currentUserId,
+                    userName: State.currentUserName || 'Colleague',
+                    isTyping: !!isTyping
+                }
+            });
+        } catch (_) {}
+    }
+
+    function handleRemoteTyping(payload) {
+        if (!payload || String(payload.userId) === String(State.currentUserId)) return;
+
+        const { userId, userName, isTyping } = payload;
+        const panelEl = document.getElementById("msgrMessages");
+        const expEl = document.getElementById("msgrExpMessages");
+
+        const removeIndicator = () => {
+            document.querySelectorAll(".msgr-typing-indicator").forEach(el => el.remove());
+            State.remoteTypingTimers.delete(userId);
+        };
+
+        if (!isTyping) {
+            removeIndicator();
+            return;
+        }
+
+        if (!document.getElementById(`typing-${userId}`)) {
+            const indicatorHtml = `
+                <div class="msgr-typing-indicator" id="typing-${userId}">
+                    <div class="msgr-typing-bubble">
+                        <span class="msgr-dot"></span>
+                        <span class="msgr-dot"></span>
+                        <span class="msgr-dot"></span>
+                    </div>
+                    <span class="msgr-typing-text">${escapeHtml(userName)} is typing...</span>
+                </div>
+            `;
+            if (panelEl) {
+                panelEl.insertAdjacentHTML('beforeend', indicatorHtml);
+                panelEl.scrollTop = panelEl.scrollHeight;
+            }
+            if (expEl) {
+                expEl.insertAdjacentHTML('beforeend', indicatorHtml);
+                expEl.scrollTop = expEl.scrollHeight;
+            }
+        }
+
+        if (State.remoteTypingTimers.has(userId)) {
+            clearTimeout(State.remoteTypingTimers.get(userId));
+        }
+        State.remoteTypingTimers.set(userId, setTimeout(removeIndicator, 3500));
+    }
+
+    /**
+     * Unified message sender
+     */
+    async function submitChatMessage(isExpanded = false) {
+        const inputId = isExpanded ? "msgrExpInput" : "msgrInput";
+        const btnId = isExpanded ? "msgrExpSendBtn" : "msgrSendBtn";
+
+        const input = document.getElementById(inputId);
+        const sendBtn = document.getElementById(btnId);
         const content = input?.value.trim();
+
         if (!content || !State.activeConversationId || !State.currentUserId) return;
 
         const sb = getClient();
+        if (!sb) return;
+
+        stopLocalTypingImmediately();
+
         input.value = "";
         input.style.height = "auto";
-        const sendBtn = document.getElementById("msgrSendBtn");
         if (sendBtn) sendBtn.disabled = true;
 
         const activeId = State.activeConversationId;
         const nowIso = new Date().toISOString();
 
-        // 1. Instant local message object creation
-        const localMsgObj = {
-            id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-            conversation_id: activeId,
-            sender_id: State.currentUserId,
-            content: content,
-            created_at: nowIso
-        };
-
-        const existingMsgs = loadLocalMessages(activeId);
-        existingMsgs.push(localMsgObj);
-        saveLocalMessages(activeId, existingMsgs);
-
-        // Immediate UI render
-        renderMessages(existingMsgs);
-
-        // Update local conversation state lastMessage & save
-        const activeConv = State.conversations.find(c => String(c.id) === String(activeId));
-        if (activeConv) {
-            activeConv.lastMessage = localMsgObj;
-            activeConv.sortTime = nowIso;
-        }
-        saveLocalConvos();
-
-        renderConversationList("");
-        renderExpandedConvoList();
-
         try {
-            if (sb) {
-                const { data: sentMsg, error } = await sb.from("messages").insert({
-                    conversation_id: activeId,
-                    sender_id: State.currentUserId,
-                    content: content
-                }).select().maybeSingle();
-
-                if (error) {
-                    console.warn("CiteFlowMessenger: Database message delivery notice:", error);
-                } else if (sentMsg) {
-                    try {
-                        await sb.from("conversations").update({ last_message_at: nowIso }).eq("id", activeId);
-                    } catch (_) {}
-
-                    const refreshedMsgs = loadLocalMessages(activeId);
-                    const idx = refreshedMsgs.findIndex(m => m.id === localMsgObj.id);
-                    if (idx !== -1) {
-                        refreshedMsgs[idx] = sentMsg;
-                        saveLocalMessages(activeId, refreshedMsgs);
-                    }
-                    if (activeConv) {
-                        activeConv.lastMessage = sentMsg;
-                        saveLocalConvos();
+            const meta = State.activeConversationMeta;
+            if (meta && !meta.is_group && Array.isArray(meta.others)) {
+                for (const other of meta.others) {
+                    const recipientUid = other.auth_user_id || other.id;
+                    if (recipientUid && String(recipientUid) !== String(State.currentUserId) && String(recipientUid).includes('-')) {
+                        const { error: upsertErr } = await sb.from("conversation_participants").upsert({
+                            conversation_id: activeId,
+                            user_id: recipientUid
+                        }, { onConflict: "conversation_id,user_id" });
+                        if (upsertErr) console.warn("CiteFlowMessenger: Upsert recipient participant error:", upsertErr);
                     }
                 }
             }
+
+            const { error: selfUpsertErr } = await sb.from("conversation_participants").upsert({
+                conversation_id: activeId,
+                user_id: State.currentUserId
+            }, { onConflict: "conversation_id,user_id" });
+            if (selfUpsertErr) console.warn("CiteFlowMessenger: Upsert self participant error:", selfUpsertErr);
+
+            const { data: sentMsg, error } = await sb.from("messages").insert({
+                conversation_id: activeId,
+                sender_id: State.currentUserId,
+                content: content
+            }).select().maybeSingle();
+
+            if (error) {
+                console.warn("CiteFlowMessenger: Error sending message:", error);
+                if (typeof CiteFlowModal !== 'undefined' && CiteFlowModal.toast) {
+                    CiteFlowModal.toast("Failed to send message. Please try again.");
+                } else {
+                    showCustomToast("Failed to send message. Please try again.");
+                }
+                if (sendBtn) sendBtn.disabled = false;
+                return;
+            }
+
+            if (sentMsg) {
+                try {
+                    await sb.from("conversations").update({ last_message_at: nowIso }).eq("id", activeId);
+                } catch (_) {}
+
+                const activeConv = State.conversations.find(c => String(c.id) === String(activeId));
+                if (activeConv) {
+                    activeConv.lastMessage = sentMsg;
+                    activeConv.sortTime = nowIso;
+                }
+
+                State._lastRenderedMsgSig = null;
+                State._lastExpRenderedMsgSig = null;
+
+                await loadAndRenderActiveMessages(activeId);
+                renderConversationList("");
+                renderExpandedConvoList();
+            }
         } catch (err) {
-            console.warn("CiteFlowMessenger: Error during background message sync:", err);
+            console.warn("CiteFlowMessenger: Error during submitChatMessage:", err);
         }
 
-        renderConversationList("");
-        renderExpandedConvoList();
+        if (sendBtn) sendBtn.disabled = false;
     }
 
     /**
@@ -1780,102 +2015,110 @@ window.CiteFlowMessenger = (function () {
      */
     async function markConversationRead(conversationId) {
         const sb = getClient();
-        if (!sb || !State.currentUserId) return;
+        if (!sb || !State.currentUserId || !conversationId) return;
 
         State.manuallyUnreadConvoIds.delete(conversationId);
         saveUnreadState();
 
-        await sb
-            .from("conversation_participants")
-            .update({ last_read_at: new Date().toISOString() })
-            .eq("conversation_id", conversationId)
-            .eq("user_id", State.currentUserId);
+        try {
+            await sb
+                .from("conversation_participants")
+                .update({ last_read_at: new Date().toISOString() })
+                .eq("conversation_id", conversationId)
+                .eq("user_id", State.currentUserId);
+        } catch (_) {}
 
-        const conv = State.conversations.find((c) => c.id === conversationId);
+        State._participantsChanged = true;
+
+        const conv = State.conversations.find((c) => String(c.id) === String(conversationId));
         if (conv) conv.unread = false;
         updateUnreadBadge();
     }
 
     /**
-     * Real-time message receiver handler - immediately updates conversation preview, timestamp, read status, and sorting
+     * Real-time message receiver handler with strict privacy filtering
      */
-    function handleRealtimeMessageReceived(msg) {
+    async function handleRealtimeMessageReceived(msg) {
         if (!msg || !msg.conversation_id) return;
         const cid = String(msg.conversation_id);
 
-        // If a new message arrives in a previously soft-deleted conversation, restore it to main list
+        let conv = State.conversations.find(c => String(c.id) === cid);
+
+        if (!conv) {
+            // STRICT PRIVACY: Verify current user is actually a participant before reacting
+            const sb = getClient();
+            if (!sb || !State.currentUserId) return;
+            const { data: isParticipant } = await sb
+                .from("conversation_participants")
+                .select("conversation_id")
+                .eq("conversation_id", msg.conversation_id)
+                .eq("user_id", State.currentUserId)
+                .maybeSingle();
+
+            if (!isParticipant) {
+                // Ignore message completely - current user is not a participant!
+                return;
+            }
+
+            await loadConversations(false);
+            return;
+        }
+
         if (State.deletedConvoIds.has(cid)) {
             State.deletedConvoIds.delete(cid);
             saveDeletedState();
-            // Also un-archive it since a new message was received
             State.archivedConvoIds.delete(cid);
             saveArchivedState();
-            const restoredConv = State.conversations.find(c => String(c.id) === cid);
-            if (restoredConv) {
-                restoredConv.isArchived = false;
-                restoredConv.isSoftDeleted = false;
-            }
+            conv.isArchived = false;
+            conv.isSoftDeleted = false;
         }
 
-        const conv = State.conversations.find(c => String(c.id) === cid);
         const isFromMe = String(msg.sender_id) === String(State.currentUserId);
         const isActiveChat = String(State.activeConversationId) === cid;
 
-        if (conv) {
-            conv.lastMessage = msg;
-            conv.sortTime = msg.created_at || new Date().toISOString();
+        conv.lastMessage = msg;
+        conv.sortTime = msg.created_at || new Date().toISOString();
 
-            if (isActiveChat) {
-                conv.unread = false;
-                markConversationRead(cid);
-            } else if (!isFromMe) {
-                conv.unread = true;
-            }
-
-            // Re-sort: pinned first, then sortTime descending
-            State.conversations.sort((a, b) => {
-                if (a.isPinned && !b.isPinned) return -1;
-                if (!a.isPinned && b.isPinned) return 1;
-                return new Date(b.sortTime || 0) - new Date(a.sortTime || 0);
-            });
-
-            saveLocalConvos();
-            renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
-            renderExpandedConvoList();
-            updateUnreadBadge();
-        } else {
-            // New conversation created by someone else or restored
-            loadConversations();
+        if (isActiveChat) {
+            conv.unread = false;
+            markConversationRead(cid);
+        } else if (!isFromMe) {
+            conv.unread = true;
         }
+
+        State.conversations.sort((a, b) => {
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
+            return new Date(b.sortTime || 0) - new Date(a.sortTime || 0);
+        });
+
+        renderConversationList(getConvoSearchFilter());
+        renderExpandedConvoList();
+        updateUnreadBadge();
     }
 
     /**
-     * Real-time listeners
+     * Real-time Active Conversation Channel (Messages + Seen Receipts + Typing Broadcast)
      */
     function subscribeToActiveConversation(conversationId) {
         const sb = getClient();
-        if (!sb) return;
+        if (!sb || !conversationId) return;
 
         if (State.messageChannel) {
-            sb.removeChannel(State.messageChannel);
+            try {
+                sb.removeChannel(State.messageChannel);
+            } catch (_) {}
             State.messageChannel = null;
         }
 
-        if (State.activeChatPollingTimer) {
-            clearInterval(State.activeChatPollingTimer);
-            State.activeChatPollingTimer = null;
-        }
+        const channel = sb.channel(`msgr-convo-${conversationId}`);
 
-        State.messageChannel = sb
-            .channel(`msgr-convo-${conversationId}`)
+        channel
             .on(
                 "postgres_changes",
                 { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
                 async (payload) => {
-                    await loadMessages(conversationId);
-                    if (State.isExpanded) {
-                        await loadExpandedMessages(conversationId);
-                    }
+                    await loadAndRenderActiveMessages(conversationId);
                     if (payload.new) {
                         handleRealtimeMessageReceived(payload.new);
                     }
@@ -1885,88 +2128,91 @@ window.CiteFlowMessenger = (function () {
                 "postgres_changes",
                 { event: "UPDATE", schema: "public", table: "conversation_participants", filter: `conversation_id=eq.${conversationId}` },
                 async () => {
-                    await loadMessages(conversationId);
-                    if (State.isExpanded) {
-                        await loadExpandedMessages(conversationId);
-                    }
+                    State._participantsChanged = true;
+                    await loadAndRenderActiveMessages(conversationId);
                 }
             )
-            .subscribe();
+            .on("broadcast", { event: "typing" }, ({ payload }) => {
+                handleRemoteTyping(payload);
+            });
 
-        // 2-second in-chat polling heartbeat to guarantee instant message delivery across private windows
-        State.activeChatPollingTimer = setInterval(async () => {
-            if (String(State.activeConversationId) === String(conversationId)) {
-                await loadMessages(conversationId);
-            } else {
-                clearInterval(State.activeChatPollingTimer);
-                State.activeChatPollingTimer = null;
+        channel.subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+                console.log(`CiteFlowMessenger: Active chat listener connected for ${conversationId}.`);
             }
-        }, 2000);
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                console.warn(`CiteFlowMessenger: Active chat listener error (${status}). Reconnecting...`);
+                setTimeout(() => {
+                    if (String(State.activeConversationId) === String(conversationId)) {
+                        subscribeToActiveConversation(conversationId);
+                    }
+                }, 3000);
+            }
+        });
+
+        State.messageChannel = channel;
     }
 
+    /**
+     * Real-time Global Inbox Channel with graceful reconnect
+     */
     function subscribeToInbox() {
         const sb = getClient();
-        if (!sb) return;
+        if (!sb || !State.currentUserId) return;
 
-        // Remove existing inbox listener first
         if (State.inboxChannel) {
             try {
                 sb.removeChannel(State.inboxChannel);
-            } catch (e) {
-                console.warn("CiteFlowMessenger: Could not remove old inbox channel:", e);
-            }
+            } catch (_) {}
             State.inboxChannel = null;
         }
 
-        const channel = sb.channel("msgr-inbox-listener-" + (State.currentUserId || 'anon'));
+        const channel = sb.channel(`msgr-inbox-${State.currentUserId}`);
 
-        channel.on(
-            "postgres_changes",
-            {
-                event: "*",
-                schema: "public",
-                table: "messages"
-            },
-            (payload) => {
-                if (payload?.new) {
-                    if (State.deletedConvoIds.has(String(payload.new.conversation_id))) {
-                        State.deletedConvoIds.delete(String(payload.new.conversation_id));
-                        saveDeletedState();
-                        State.archivedConvoIds.delete(String(payload.new.conversation_id));
-                        saveArchivedState();
+        channel
+            .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "messages" },
+                (payload) => {
+                    if (payload?.new) {
+                        handleRealtimeMessageReceived(payload.new);
                     }
-                    handleRealtimeMessageReceived(payload.new);
                 }
-            }
-        ).on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "admin_profiles" },
-            () => {
-                loadConversations();
-            }
-        ).on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "faculty" },
-            () => {
-                loadConversations();
-            }
-        );
-
-        State.inboxChannel = channel;
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "conversations" },
+                () => {
+                    loadConversations(false);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "conversation_participants" },
+                () => {
+                    loadConversations(false);
+                }
+            );
 
         channel.subscribe((status) => {
             if (status === "SUBSCRIBED") {
                 console.log("CiteFlowMessenger: Inbox realtime listener connected.");
             }
-            if (status === "CHANNEL_ERROR") {
-                console.error("CiteFlowMessenger: Inbox realtime listener failed.");
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+                console.warn(`CiteFlowMessenger: Inbox listener status: ${status}. Scheduling recovery...`);
+                clearTimeout(State.reconnectTimer);
+                State.reconnectTimer = setTimeout(() => {
+                    subscribeToInbox();
+                }, 4000);
             }
         });
 
-        // 4-second Polling Heartbeat: guarantees message delivery even if WebSockets are blocked/throttled
+        State.inboxChannel = channel;
+
+        // Background poller safety net (runs only every 12s as a backup)
         if (!State.inboxPollingTimer) {
             State.inboxPollingTimer = setInterval(async () => {
-                if (State.currentUserId) {
+                if (State.currentUserId && document.visibilityState === 'visible') {
                     const lastKnownMsg = State.conversations[0]?.lastMessage;
                     if (lastKnownMsg?.created_at) {
                         try {
@@ -1985,14 +2231,17 @@ window.CiteFlowMessenger = (function () {
                         } catch (_) {}
                     }
                 }
-            }, 4000);
+            }, 12000);
         }
     }
 
+    /**
+     * Unread count badge on the floating message icon showing distinct unread conversations
+     */
     function updateUnreadBadge() {
-        const count = State.conversations.filter((c) => c.unread && !c.isArchived).length;
+        const count = State.conversations.filter((c) => c.unread && !c.isArchived && !c.isSoftDeleted).length;
         const allBtns = document.querySelectorAll("#citeflowMessageFab, .message-btn, .msgr-fab-trigger, .msgr-launcher-btn, [data-msgr-trigger]");
-        
+
         allBtns.forEach(btn => {
             let badge = btn.querySelector(".msgr-fab-badge");
             if (count === 0) {
@@ -2009,7 +2258,7 @@ window.CiteFlowMessenger = (function () {
     }
 
     /**
-     * Directory loading for Compose modal
+     * Directory loading for Compose modal - always fetches fresh data
      */
     async function openNewModal() {
         State.selectedNewUsers = [];
@@ -2026,7 +2275,8 @@ window.CiteFlowMessenger = (function () {
             resultsEl.innerHTML = `<div class="msgr-empty"><i class="fa-solid fa-spinner fa-spin"></i> Loading directory...</div>`;
         }
 
-        State.directoryCache = await fetchDirectory();
+        // Always fetch fresh directory records on modal open
+        State.directoryCache = await fetchDirectory(true);
         renderUserResults("");
     }
 
@@ -2035,120 +2285,93 @@ window.CiteFlowMessenger = (function () {
     }
 
     /**
-     * Comprehensive directory search covering Faculty, Admins, and in-memory caches
+     * Comprehensive directory search covering Faculty, Admins, and Profiles
      */
-    async function fetchDirectory() {
+    async function fetchDirectory(forceRefresh = false) {
         const sb = getClient();
         const results = [];
         const seenEmails = new Set();
+        const seenUids = new Set();
+
         if (State.currentUserEmail) {
             seenEmails.add(State.currentUserEmail.toLowerCase());
         }
+        if (State.currentUserId) {
+            seenUids.add(String(State.currentUserId));
+        }
 
         if (sb) {
-            // 1. Fetch from public.admin_profiles table first (most up-to-date administrator identities)
             try {
-                const { data: adminRows, error: admErr } = await sb
-                    .from("admin_profiles")
-                    .select("*");
+                // 1. Fetch all profiles
+                const { data: profileRows } = await sb.from("profiles").select("*");
+                if (Array.isArray(profileRows)) {
+                    for (const p of profileRows) {
+                        const emailClean = (p.email || '').trim().toLowerCase();
+                        if (p.id && seenUids.has(String(p.id))) continue;
+                        if (emailClean && seenEmails.has(emailClean)) continue;
 
-                if (!admErr && Array.isArray(adminRows)) {
+                        if (p.id) seenUids.add(String(p.id));
+                        if (emailClean) seenEmails.add(emailClean);
+
+                        results.push(resolveUserIdentity({
+                            ...p,
+                            auth_user_id: p.id,
+                            avatar_url: p.avatar_url || p.profile_photo_url
+                        }));
+                    }
+                }
+            } catch (_) {}
+
+            try {
+                // 2. Fetch all admin profiles
+                const { data: adminRows } = await sb.from("admin_profiles").select("*");
+                if (Array.isArray(adminRows)) {
                     for (const a of adminRows) {
                         const emailClean = (a.email || '').trim().toLowerCase();
+                        if (a.id && seenUids.has(String(a.id))) continue;
                         if (emailClean && seenEmails.has(emailClean)) continue;
-                        // Skip if this admin IS the current user (by id or email)
-                        if (a.id && String(a.id) === String(State.currentUserId)) continue;
-                        if (emailClean && emailClean === State.currentUserEmail?.toLowerCase()) continue;
 
+                        if (a.id) seenUids.add(String(a.id));
                         if (emailClean) seenEmails.add(emailClean);
-                        const adminName = a.full_name || `${a.first_name || ''} ${a.last_name || ''}`.trim() || a.email || "Administrator";
-                        results.push({
-                            id: a.id,
-                            auth_user_id: a.id,
-                            name: adminName,
-                            display_name: adminName,
-                            email: a.email,
-                            avatar_url: a.avatar_url || a.profile_photo_url || null,
-                            department: a.department || "CITE Administration",
-                            role: a.role || "Administrator",
-                            position: "Administrator"
-                        });
+
+                        results.push(resolveUserIdentity({
+                            ...a,
+                            role: 'Administrator',
+                            avatar_url: a.avatar_url || a.profile_photo_url
+                        }));
                     }
                 }
             } catch (e) {
                 console.warn("CiteFlowMessenger: Notice fetching admin profiles:", e);
             }
 
-            // 2. Fetch from public.faculty table
             try {
-                const { data: facultyRows, error: facErr } = await sb
-                    .from("faculty")
-                    .select("*");
-
-                if (!facErr && Array.isArray(facultyRows)) {
+                // 3. Fetch all faculty members (including newly registered/created ones)
+                const { data: facultyRows } = await sb.from("faculty").select("*");
+                if (Array.isArray(facultyRows)) {
                     for (const f of facultyRows) {
                         const emailClean = (f.email || '').trim().toLowerCase();
-                        if (emailClean && seenEmails.has(emailClean)) continue;
-                        if (f.auth_user_id && String(f.auth_user_id) === String(State.currentUserId)) continue;
-                        // Also skip by email in case auth_user_id isn't linked yet
-                        if (emailClean && emailClean === State.currentUserEmail?.toLowerCase()) continue;
+                        const fUid = f.auth_user_id || f.id;
 
+                        if (fUid && seenUids.has(String(fUid))) continue;
+                        if (emailClean && seenEmails.has(emailClean)) continue;
+
+                        if (fUid) seenUids.add(String(fUid));
                         if (emailClean) seenEmails.add(emailClean);
-                        const displayName = f.full_name || f.name || f.email || "Faculty Member";
-                        results.push({
-                            id: f.id,
-                            auth_user_id: f.auth_user_id || f.id,
-                            name: displayName,
-                            display_name: displayName,
-                            email: f.email,
-                            avatar_url: f.profile_photo_url || f.avatar_url || null,
-                            department: f.department || "CITE Faculty",
-                            role: f.role || "Faculty",
-                            position: f.position || "Faculty"
-                        });
+
+                        results.push(resolveUserIdentity({
+                            ...f,
+                            auth_user_id: f.auth_user_id || (String(f.id).includes('-') ? f.id : null),
+                            avatar_url: f.profile_photo_url || f.avatar_url
+                        }));
                     }
                 }
             } catch (e) {
                 console.warn("CiteFlowMessenger: Notice fetching faculty directory:", e);
             }
-
-            // 3. Default Administrator fallback for faculty view
-            if (State.currentUserRole !== 'Admin' && !results.some(r => r.role === 'Administrator' || r.role === 'Admin')) {
-                results.push({
-                    id: 'admin-system',
-                    auth_user_id: 'admin-system',
-                    name: 'Administrator',
-                    display_name: 'Administrator',
-                    email: 'admin@citeflow.edu.ph',
-                    avatar_url: null,
-                    department: 'CITE Administration',
-                    role: 'Admin',
-                    position: 'Administrator'
-                });
-            }
         }
 
         return results;
-    }
-
-    async function getDirectoryUsersByIds(ids) {
-        if (!ids || ids.length === 0) return [];
-        if (!State.directoryCache || State.directoryCache.length === 0) {
-            State.directoryCache = await fetchDirectory();
-        }
-
-        const matched = [];
-        const idSet = new Set(ids.map(String));
-
-        for (const u of State.directoryCache) {
-            const authIdStr = u.auth_user_id ? String(u.auth_user_id) : null;
-            const idStr = u.id ? String(u.id) : null;
-            if ((authIdStr && idSet.has(authIdStr)) || (idStr && idSet.has(idStr))) {
-                matched.push(u);
-            }
-        }
-
-        return matched;
     }
 
     function renderUserResults(filter = "") {
@@ -2157,12 +2380,13 @@ window.CiteFlowMessenger = (function () {
 
         const filterClean = filter.trim().toLowerCase();
 
-        const items = State.directoryCache.filter((u) => {
+        const items = (State.directoryCache || []).filter((u) => {
             const name = (u.name || u.display_name || "").toLowerCase();
             const email = (u.email || "").toLowerCase();
             const dept = (u.department || "").toLowerCase();
             const role = (u.role || "").toLowerCase();
-            return !filterClean || name.includes(filterClean) || email.includes(filterClean) || dept.includes(filterClean) || role.includes(filterClean);
+            const pos = (u.position || "").toLowerCase();
+            return !filterClean || name.includes(filterClean) || email.includes(filterClean) || dept.includes(filterClean) || role.includes(filterClean) || pos.includes(filterClean);
         });
 
         if (items.length === 0) {
@@ -2173,7 +2397,7 @@ window.CiteFlowMessenger = (function () {
         el.innerHTML = items.map((u, idx) => {
             const userKey = String(u.auth_user_id || u.id || u.email || idx);
             const userEmail = (u.email || '').toLowerCase();
-            const checked = State.selectedNewUsers.some((s) => 
+            const checked = State.selectedNewUsers.some((s) =>
                 (s.auth_user_id && String(s.auth_user_id) === userKey) ||
                 (s.id && String(s.id) === userKey) ||
                 (s.email && s.email.toLowerCase() === userEmail)
@@ -2184,7 +2408,7 @@ window.CiteFlowMessenger = (function () {
                     ${renderAvatar(u.avatar_url, u.name || u.display_name, false)}
                     <div class="msgr-user-row-info">
                         <div class="name">${escapeHtml(u.name || u.display_name || u.email)}</div>
-                        <div class="role">${escapeHtml(u.department || u.role || "Faculty")} • ${escapeHtml(u.role || "Member")}</div>
+                        <div class="role">${escapeHtml(u.department || u.role || "Faculty")} • ${escapeHtml(u.position || u.role || "Member")}</div>
                     </div>
                 </label>`;
         }).join("");
@@ -2238,7 +2462,6 @@ window.CiteFlowMessenger = (function () {
     async function createConversation() {
         let validRecipients = (State.selectedNewUsers || []).filter((u) => u && (u.auth_user_id || u.id || u.email));
 
-        // DOM Failsafe: if selectedNewUsers didn't catch, pull directly from checked inputs
         if (validRecipients.length === 0) {
             const checkedInputs = Array.from(document.querySelectorAll('#msgrUserResults input[type="checkbox"]:checked'));
             for (const cb of checkedInputs) {
@@ -2256,13 +2479,13 @@ window.CiteFlowMessenger = (function () {
         }
 
         if (validRecipients.length === 0) {
-            alert("Please select at least one colleague to message.");
+            await CiteFlowModal.alert("Please select at least one colleague to message.", "New Message");
             return;
         }
 
         const sb = getClient();
         if (!sb) {
-            alert("Database connection unavailable. Please refresh the page.");
+            await CiteFlowModal.alert("Database connection unavailable. Please refresh the page.", "Connection Error");
             return;
         }
 
@@ -2271,14 +2494,13 @@ window.CiteFlowMessenger = (function () {
         }
 
         if (!State.currentUserId) {
-            alert("Could not resolve your active user session. Please sign in again.");
+            await CiteFlowModal.alert("Could not resolve your active user session. Please sign in again.", "Authentication");
             return;
         }
 
         const isGroup = validRecipients.length > 1;
         const groupName = document.getElementById("msgrGroupNameInput")?.value.trim();
 
-        // If 1:1 conversation already exists, open it directly
         if (!isGroup) {
             const targetUser = validRecipients[0];
             const targetKey = String(targetUser.auth_user_id || targetUser.id || '');
@@ -2295,44 +2517,9 @@ window.CiteFlowMessenger = (function () {
                 );
             });
 
-            // Also search DB for existing direct conversation with this counterpart
-            if (!existing) {
-                try {
-                    const { data: dbDirectConvos } = await sb
-                        .from("conversations")
-                        .select("id, name, is_group, created_by, created_at")
-                        .or("is_group.eq.false,is_group.is.null")
-                        .order("created_at", { ascending: true })
-                        .limit(10);
-
-                    if (Array.isArray(dbDirectConvos) && dbDirectConvos.length > 0) {
-                        existing = {
-                            id: dbDirectConvos[0].id,
-                            is_group: false,
-                            name: null,
-                            others: validRecipients,
-                            displayName: validRecipients[0]?.name || validRecipients[0]?.display_name || "Colleague",
-                            unread: false,
-                            lastMessage: null,
-                            isPinned: false,
-                            isArchived: false,
-                            sortTime: new Date().toISOString()
-                        };
-                        // Register current user and target in participants
-                        sb.from("conversation_participants").upsert([
-                            { conversation_id: existing.id, user_id: State.currentUserId }
-                        ], { onConflict: "conversation_id, user_id" }).then();
-                    }
-                } catch (_) {}
-            }
-
             if (existing) {
                 closeNewModal();
-                if (State.isExpanded) {
-                    openExpandedConversation(existing);
-                } else {
-                    openConversation(existing);
-                }
+                activateConversation(existing, State.isExpanded);
                 return;
             }
         }
@@ -2355,41 +2542,46 @@ window.CiteFlowMessenger = (function () {
                 .single();
 
             if (convError || !conv) {
-                console.error("CiteFlowMessenger: Error creating conversation:", convError);
                 throw convError || new Error("Failed to initialize conversation record");
             }
 
-            // Ensure valid UUIDs for all participants
             const participantRows = [
                 { conversation_id: conv.id, user_id: State.currentUserId }
             ];
 
             for (const u of validRecipients) {
                 let targetUid = u.auth_user_id;
-                // If auth_user_id is missing or not a UUID, query admin_profiles and faculty table
                 if (!targetUid || !String(targetUid).includes('-')) {
-                    try {
-                        if (u.role === 'Admin' || u.role === 'Administrator' || u.id === 'admin-system') {
-                            const { data: admData } = await sb
-                                .from('admin_profiles')
-                                .select('id')
-                                .limit(1)
-                                .maybeSingle();
-                            if (admData?.id) targetUid = admData.id;
-                        }
-                    } catch (_) {}
-
-                    if (!targetUid || !String(targetUid).includes('-')) {
+                    // Try resolving auth UUID from profiles by email
+                    if (u.email) {
                         try {
-                            const { data: facData } = await sb
-                                .from('faculty')
-                                .select('auth_user_id')
-                                .or(`email.ilike.${u.email || ''},id.eq.${u.id || 0}`)
-                                .maybeSingle();
-                            if (facData?.auth_user_id) {
-                                targetUid = facData.auth_user_id;
-                            }
+                            const { data: prof } = await sb.from('profiles').select('id').eq('email', u.email.toLowerCase()).maybeSingle();
+                            if (prof?.id) targetUid = prof.id;
                         } catch (_) {}
+                    }
+                    // Fallback: try resolving from resolveUserIdentity cache
+                    if (!targetUid || !String(targetUid).includes('-')) {
+                        const resolved = resolveUserIdentity(u);
+                        targetUid = resolved.auth_user_id || resolved.id;
+                    }
+                    // Last resort: check faculty table for auth_user_id by name/email
+                    if (!targetUid || !String(targetUid).includes('-')) {
+                        if (u.email || u.name) {
+                            try {
+                                let q = sb.from('faculty').select('auth_user_id, id');
+                                if (u.email) {
+                                    q = q.eq('email', u.email.toLowerCase());
+                                } else if (u.name) {
+                                    q = q.eq('name', u.name);
+                                }
+                                const { data: fRow } = await q.maybeSingle();
+                                if (fRow?.auth_user_id && String(fRow.auth_user_id).includes('-')) {
+                                    targetUid = fRow.auth_user_id;
+                                } else if (fRow?.id && String(fRow.id).includes('-')) {
+                                    targetUid = fRow.id;
+                                }
+                            } catch (_) {}
+                        }
                     }
                 }
 
@@ -2398,20 +2590,23 @@ window.CiteFlowMessenger = (function () {
                         conversation_id: conv.id,
                         user_id: targetUid
                     });
+                } else {
+                    console.warn("CiteFlowMessenger: Could not resolve auth UUID for recipient:", u.name || u.email, "targetUid=", targetUid);
                 }
             }
 
-            const { error: partError } = await sb
-                .from("conversation_participants")
-                .insert(participantRows);
-
-            if (partError) {
-                console.warn("CiteFlowMessenger: Notice inserting participants:", partError);
+            if (participantRows.length < 2) {
+                console.warn("CiteFlowMessenger: Only", participantRows.length, "participant(s) resolved. Recipients may not have auth UUIDs.");
             }
 
-            const targetDisplayName = isGroup 
-                ? (groupName || conv.name || "Group Chat") 
-                : (validRecipients[0]?.name || validRecipients[0]?.display_name || validRecipients[0]?.email || "Faculty Member");
+            const { error: partErr } = await sb.from("conversation_participants").insert(participantRows);
+            if (partErr) {
+                console.error("CiteFlowMessenger: Error inserting participants:", partErr);
+            }
+
+            const targetDisplayName = isGroup
+                ? (groupName || conv.name || "Group Chat")
+                : (validRecipients[0]?.name || validRecipients[0]?.display_name || "Colleague");
 
             const createdObj = {
                 id: conv.id,
@@ -2431,21 +2626,15 @@ window.CiteFlowMessenger = (function () {
                 displayName: targetDisplayName
             });
 
-            // Prepend created conversation object to State.conversations & persist
             State.conversations = [createdObj, ...State.conversations.filter(c => c.id !== conv.id)];
-            saveLocalConvos();
             renderConversationList("");
             renderExpandedConvoList();
             closeNewModal();
 
-            if (State.isExpanded) {
-                openExpandedConversation(createdObj);
-            } else {
-                openConversation(createdObj);
-            }
+            activateConversation(createdObj, State.isExpanded);
         } catch (e) {
             console.error("CiteFlowMessenger: Conversation creation exception:", e);
-            alert("Could not start conversation: " + (e.message || "Database error"));
+            await CiteFlowModal.alert("Could not start conversation: " + (e.message || "Database error"), "Error");
         } finally {
             if (createBtn) {
                 createBtn.disabled = false;
@@ -2504,7 +2693,6 @@ window.CiteFlowMessenger = (function () {
         };
         State.openDropdownId = convoId;
 
-        // Highlight selected chat row so user knows which chat it is from
         const rowEl = anchorBtn.closest(".msgr-convo");
         if (rowEl) rowEl.classList.add("msgr-convo-target");
 
@@ -2556,7 +2744,6 @@ window.CiteFlowMessenger = (function () {
         dropdown.style.display = "block";
         dropdown.style.zIndex = "10060";
 
-        // Smart Flip Positioning + Popover Arrow Pointer
         const rect = anchorBtn.getBoundingClientRect();
         const dropdownHeight = 280;
         const spaceBelow = window.innerHeight - rect.bottom;
@@ -2573,7 +2760,6 @@ window.CiteFlowMessenger = (function () {
         dropdown.style.right = Math.max(10, rightEdge) + "px";
         dropdown.style.left = "auto";
 
-        // Wire action buttons
         dropdown.querySelectorAll(".msgr-dropdown-item").forEach(item => {
             item.addEventListener("click", (e) => {
                 e.stopPropagation();
@@ -2581,22 +2767,6 @@ window.CiteFlowMessenger = (function () {
                 closeConvoDropdown();
             });
         });
-
-        // Window-wide click & scroll auto-close
-        setTimeout(() => {
-            function autoCloseWindow(evt) {
-                if (!evt.target.closest("#msgrDropdown") && 
-                    !evt.target.closest(".msgr-convo-options") && 
-                    !evt.target.closest("#msgrHeaderOptionsBtn") && 
-                    !evt.target.closest("#msgrExpHeaderOptionsBtn")) {
-                    closeConvoDropdown();
-                    window.removeEventListener("click", autoCloseWindow);
-                    window.removeEventListener("scroll", autoCloseWindow, true);
-                }
-            }
-            window.addEventListener("click", autoCloseWindow);
-            window.addEventListener("scroll", autoCloseWindow, true);
-        }, 50);
     }
 
     function showHeaderOptionsDropdown(anchorBtn) {
@@ -2645,26 +2815,12 @@ window.CiteFlowMessenger = (function () {
                 if (action === 'archived') {
                     openArchivedModal();
                 } else if (action === 'mute-all') {
-                    alert('Notifications muted.');
+                    CiteFlowModal.toast('All notifications muted.');
                 } else if (action === 'status') {
-                    alert('Active status is set to Online.');
+                    CiteFlowModal.toast('Active status is set to Online.');
                 }
             });
         });
-
-        setTimeout(() => {
-            function autoCloseHeaderWindow(evt) {
-                if (!evt.target.closest("#msgrDropdown") && 
-                    !evt.target.closest("#msgrHeaderOptionsBtn") && 
-                    !evt.target.closest("#msgrExpHeaderOptionsBtn")) {
-                    closeConvoDropdown();
-                    window.removeEventListener("click", autoCloseHeaderWindow);
-                    window.removeEventListener("scroll", autoCloseHeaderWindow, true);
-                }
-            }
-            window.addEventListener("click", autoCloseHeaderWindow);
-            window.addEventListener("scroll", autoCloseHeaderWindow, true);
-        }, 50);
     }
 
     function openArchivedModal() {
@@ -2672,27 +2828,6 @@ window.CiteFlowMessenger = (function () {
         if (!modal) {
             mountDOM();
             modal = document.getElementById("msgrArchivedModal");
-        }
-
-        if (!modal) {
-            modal = document.createElement("div");
-            modal.className = "msgr-new-modal";
-            modal.id = "msgrArchivedModal";
-            modal.innerHTML = `
-                <div class="msgr-new-card">
-                    <div class="msgr-new-header">
-                        <h3><i class="fa-solid fa-box-archive"></i> Archived Chats</h3>
-                        <button type="button" class="msgr-icon-btn" id="msgrArchivedCloseBtn" style="color:#64748b; background:#f1f5f9;">
-                            <i class="fa-solid fa-xmark"></i>
-                        </button>
-                    </div>
-                    <div class="msgr-new-body" id="msgrArchivedBody">
-                        <div class="msgr-empty"><i class="fa-regular fa-folder-open"></i> No archived chats</div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            document.getElementById("msgrArchivedCloseBtn")?.addEventListener("click", closeArchivedModal);
         }
 
         const body = document.getElementById("msgrArchivedBody");
@@ -2730,11 +2865,7 @@ window.CiteFlowMessenger = (function () {
                     const conv = State.conversations.find(c => String(c.id) === String(cid));
                     if (conv) {
                         closeArchivedModal();
-                        if (State.isExpanded) {
-                            openExpandedConversation(conv);
-                        } else {
-                            openConversation(conv);
-                        }
+                        activateConversation(conv, State.isExpanded);
                     }
                 });
             });
@@ -2743,7 +2874,6 @@ window.CiteFlowMessenger = (function () {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const cid = btn.dataset.id;
-                    // Remove from both archived and soft-deleted sets
                     State.archivedConvoIds.delete(cid);
                     saveArchivedState();
                     State.deletedConvoIds.delete(String(cid));
@@ -2753,16 +2883,13 @@ window.CiteFlowMessenger = (function () {
                         conv.isArchived = false;
                         conv.isSoftDeleted = false;
                     }
-                    saveLocalConvos();
                     openArchivedModal();
                     renderConversationList("");
                     renderExpandedConvoList();
+                    CiteFlowModal.toast('Chat restored from Archive');
                 });
             });
         }
-
-        modal.style.display = "flex";
-        modal.classList.add("show");
     }
 
     function closeArchivedModal() {
@@ -2788,13 +2915,12 @@ window.CiteFlowMessenger = (function () {
                     conv.isPinned = true;
                 }
                 savePinnedState();
-                saveLocalConvos();
                 State.conversations.sort((a, b) => {
                     if (a.isPinned && !b.isPinned) return -1;
                     if (!a.isPinned && b.isPinned) return 1;
                     return new Date(b.sortTime) - new Date(a.sortTime);
                 });
-                renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
+                renderConversationList(getConvoSearchFilter());
                 renderExpandedConvoList();
                 break;
             case 'toggle-unread':
@@ -2804,7 +2930,6 @@ window.CiteFlowMessenger = (function () {
                     State.manuallyUnreadConvoIds.add(convoId);
                     saveUnreadState();
                     conv.unread = true;
-                    saveLocalConvos();
                     if (sb && State.currentUserId) {
                         try {
                             await sb.from("conversation_participants")
@@ -2813,17 +2938,13 @@ window.CiteFlowMessenger = (function () {
                                 .eq("user_id", State.currentUserId);
                         } catch (_) {}
                     }
-                    renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
+                    renderConversationList(getConvoSearchFilter());
                     renderExpandedConvoList();
                     updateUnreadBadge();
                 }
                 break;
             case 'open':
-                if (State.isExpanded) {
-                    openExpandedConversation(conv);
-                } else {
-                    openConversation(conv);
-                }
+                activateConversation(conv, State.isExpanded);
                 break;
             case 'mute':
                 if (State.mutedConvoIds.has(convoId)) {
@@ -2843,14 +2964,15 @@ window.CiteFlowMessenger = (function () {
                 if (newName && newName.trim() && newName.trim() !== currentName) {
                     const cleanName = newName.trim();
                     conv.displayName = cleanName;
-                    saveConvoMeta(convoId, { displayName: cleanName });
-                    saveLocalConvos();
+                    conv.isCustomNickname = true;
+                    conv.customNickname = cleanName;
+                    saveConvoMeta(convoId, { displayName: cleanName, customNickname: cleanName });
                     if (sb && conv.is_group) {
                         try {
                             await sb.from('conversations').update({ name: cleanName }).eq('id', convoId);
                         } catch (_) {}
                     }
-                    renderConversationList(document.getElementById("msgrConvoSearch")?.value.trim().toLowerCase() || "");
+                    renderConversationList(getConvoSearchFilter());
                     renderExpandedConvoList();
                     if (State.activeConversationId === convoId) {
                         const nameEl = document.getElementById("msgrChatName");
@@ -2865,7 +2987,6 @@ window.CiteFlowMessenger = (function () {
                 State.archivedConvoIds.add(String(convoId));
                 saveArchivedState();
                 if (conv) conv.isArchived = true;
-                saveLocalConvos();
                 if (State.activeConversationId === convoId) closeActiveChat();
                 renderConversationList("");
                 renderExpandedConvoList();
@@ -2881,7 +3002,6 @@ window.CiteFlowMessenger = (function () {
                     conv.isArchived = false;
                     conv.isSoftDeleted = false;
                 }
-                saveLocalConvos();
                 renderConversationList("");
                 renderExpandedConvoList();
                 updateUnreadBadge();
@@ -2889,7 +3009,7 @@ window.CiteFlowMessenger = (function () {
                 break;
             case 'delete':
                 const confirmed = await CiteFlowModal.confirm(
-                    'Delete this chat for you? The conversation will be moved to Archive and can be restored anytime. The other person will not be affected.',
+                    'Delete this chat for you? The conversation will be moved to Archive and can be restored anytime. Other participants will not be affected.',
                     'Delete Chat',
                     { isDanger: true, confirmText: 'Delete' }
                 );
@@ -2902,8 +3022,6 @@ window.CiteFlowMessenger = (function () {
                         conv.isArchived = true;
                         conv.isSoftDeleted = true;
                     }
-
-                    saveLocalConvos();
                     if (State.activeConversationId === convoId) closeActiveChat();
                     renderConversationList("");
                     renderExpandedConvoList();
@@ -2912,7 +3030,7 @@ window.CiteFlowMessenger = (function () {
                 }
                 break;
             case 'report':
-                await CiteFlowModal.alert('This conversation has been reported. Thank you for helping keep our platform safe.', 'Report Chat');
+                await CiteFlowModal.alert('This conversation has been reported to administration. Thank you.', 'Report Chat');
                 break;
             case 'leave':
                 const leaveConfirmed = await CiteFlowModal.confirm(
@@ -2928,7 +3046,6 @@ window.CiteFlowMessenger = (function () {
                                 .eq('user_id', State.currentUserId);
                         }
                         State.conversations = State.conversations.filter(c => c.id !== convoId);
-                        saveLocalConvos();
                         if (State.activeConversationId === convoId) closeActiveChat();
                         renderConversationList("");
                         renderExpandedConvoList();
@@ -2951,7 +3068,6 @@ window.CiteFlowMessenger = (function () {
         const filterTabs = document.getElementById("msgrFilterTabs");
 
         if (!query) {
-            // Hide search results, show normal list
             if (searchResults) searchResults.style.display = "none";
             if (list) list.style.display = "";
             if (filterTabs) filterTabs.style.display = "";
@@ -2959,35 +3075,32 @@ window.CiteFlowMessenger = (function () {
             return;
         }
 
-        // Hide normal list, show search results
         if (list) list.style.display = "none";
         if (filterTabs) filterTabs.style.display = "none";
         if (searchResults) searchResults.style.display = "block";
 
         const q = query.toLowerCase();
 
-        // Section 1: Matching conversations
         const matchingConvos = State.conversations.filter(c =>
             c.displayName.toLowerCase().includes(q)
         );
 
-        // Section 2: People from directory
         if (!State.directoryCache || State.directoryCache.length === 0) {
-            State.directoryCache = await fetchDirectory();
+            State.directoryCache = await fetchDirectory(true);
         }
 
-        const matchingPeople = State.directoryCache.filter(u => {
+        const matchingPeople = (State.directoryCache || []).filter(u => {
             if (!u) return false;
             const name = (u.name || u.display_name || '').toLowerCase();
             const email = (u.email || '').toLowerCase();
             const dept = (u.department || '').toLowerCase();
             const role = (u.role || '').toLowerCase();
-            return name.includes(q) || email.includes(q) || dept.includes(q) || role.includes(q);
+            const pos = (u.position || '').toLowerCase();
+            return name.includes(q) || email.includes(q) || dept.includes(q) || role.includes(q) || pos.includes(q);
         });
 
         let html = '';
 
-        // Section 1
         if (matchingConvos.length > 0) {
             html += `<div class="msgr-search-section-label">Conversations</div>`;
             html += matchingConvos.map(c => {
@@ -3007,7 +3120,6 @@ window.CiteFlowMessenger = (function () {
             }).join('');
         }
 
-        // Section 2
         if (matchingPeople.length > 0) {
             html += `<div class="msgr-search-section-label">People</div>`;
             html += matchingPeople.map(u => {
@@ -3017,7 +3129,7 @@ window.CiteFlowMessenger = (function () {
                         ${avatarHtml}
                         <div class="msgr-convo-info">
                             <div class="msgr-convo-name">${escapeHtml(u.name || u.display_name || u.email)}</div>
-                            <div class="msgr-convo-preview">${escapeHtml(u.department || u.role || 'Faculty')}</div>
+                            <div class="msgr-convo-preview">${escapeHtml(u.department || u.role || 'Faculty')} • ${escapeHtml(u.position || u.role || 'Member')}</div>
                         </div>
                     </div>`;
             }).join('');
@@ -3029,7 +3141,6 @@ window.CiteFlowMessenger = (function () {
 
         searchResults.innerHTML = html;
 
-        // Wire clicks
         searchResults.querySelectorAll(".msgr-search-item").forEach(el => {
             el.addEventListener("click", async () => {
                 const targetId = el.dataset.id;
@@ -3040,11 +3151,7 @@ window.CiteFlowMessenger = (function () {
                         const searchInput = document.getElementById("msgrConvoSearch") || document.getElementById("msgrExpSearch");
                         if (searchInput) searchInput.value = '';
                         handleEnhancedSearch('');
-                        if (State.isExpanded) {
-                            openExpandedConversation(conv);
-                        } else {
-                            openConversation(conv);
-                        }
+                        activateConversation(conv, State.isExpanded);
                     }
                 } else if (el.dataset.type === 'person') {
                     const user = State.directoryCache.find(u =>
@@ -3057,7 +3164,6 @@ window.CiteFlowMessenger = (function () {
                         if (searchInput) searchInput.value = '';
                         handleEnhancedSearch('');
 
-                        // If a conversation with this person already exists, open it directly
                         const targetKey = String(user.auth_user_id || user.id || '');
                         const targetEmail = (user.email || '').toLowerCase();
                         const existing = State.conversations.find(c => !c.is_group && (c.others || []).some(o =>
@@ -3071,11 +3177,7 @@ window.CiteFlowMessenger = (function () {
                                 State.deletedConvoIds.delete(String(existing.id));
                                 saveDeletedState();
                             }
-                            if (State.isExpanded) {
-                                openExpandedConversation(existing);
-                            } else {
-                                openConversation(existing);
-                            }
+                            activateConversation(existing, State.isExpanded);
                         } else {
                             State.selectedNewUsers = [user];
                             await createConversation();
@@ -3111,6 +3213,7 @@ window.CiteFlowMessenger = (function () {
         document.body.style.overflow = "";
         State.activeConversationId = null;
         State.activeConversationMeta = null;
+        State._currentActiveMessages = [];
     }
 
     function renderExpandedConvoList() {
@@ -3132,11 +3235,9 @@ window.CiteFlowMessenger = (function () {
         }
 
         listEl.innerHTML = items.map(c => {
-            // Filter self out of others to prevent showing own avatar as "other person"
             const safeOthers = (c.others || []).filter(o =>
                 String(o.auth_user_id) !== String(State.currentUserId) &&
-                String(o.id) !== String(State.currentUserId) &&
-                (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
+                String(o.id) !== String(State.currentUserId)
             );
             const avatarHtml = renderAvatar(c.is_group ? null : safeOthers[0]?.avatar_url, c.displayName, c.is_group);
             const preview = c.lastMessage
@@ -3165,258 +3266,9 @@ window.CiteFlowMessenger = (function () {
             el.addEventListener('click', (e) => {
                 if (e.target.closest('.msgr-convo-options')) return;
                 const conv = State.conversations.find(c => String(c.id) === String(el.dataset.id));
-                if (conv) openExpandedConversation(conv);
+                if (conv) activateConversation(conv, true);
             });
         });
-    }
-
-    async function openExpandedConversation(conv) {
-        State.activeConversationId = conv.id;
-        State.activeConversationMeta = conv;
-
-        // Show active chat panel, hide placeholder
-        const placeholder = document.getElementById("msgrExpChatPlaceholder");
-        const active = document.getElementById("msgrExpChatActive");
-        if (placeholder) placeholder.style.display = "none";
-        if (active) active.style.display = "flex";
-
-        // Set chat header
-        const nameEl = document.getElementById("msgrExpChatName");
-        const subEl = document.getElementById("msgrExpChatSub");
-        const avatarEl = document.getElementById("msgrExpChatAvatar");
-
-        // Always filter self out of others to prevent self-identity confusion
-        const safeOthers = (conv.others || []).filter(o =>
-            String(o.auth_user_id) !== String(State.currentUserId) &&
-            String(o.id) !== String(State.currentUserId) &&
-            (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
-        );
-
-        let expDisplayName = conv.displayName;
-        if (!conv.is_group && safeOthers.length > 0) {
-            expDisplayName = safeOthers[0].name || safeOthers[0].display_name || conv.displayName;
-        } else if (!conv.is_group && safeOthers.length === 0) {
-            if (conv.displayName && conv.displayName !== "Administrator" && conv.displayName !== "Faculty Member") {
-                expDisplayName = conv.displayName;
-            } else {
-                expDisplayName = State.currentUserRole === 'Admin' ? "Faculty Member" : "Administrator";
-            }
-        }
-
-        let expOtherAvatarUrl = (safeOthers.length > 0 && !conv.is_group) ? safeOthers[0].avatar_url : null;
-        if (!expOtherAvatarUrl && !conv.is_group) {
-            expOtherAvatarUrl = conv.avatar_url || conv.profile_photo_url || conv.others?.[0]?.avatar_url || null;
-        }
-
-        if (nameEl) nameEl.textContent = expDisplayName;
-        if (subEl) subEl.textContent = conv.is_group ? `${safeOthers.length + 1} members` : (safeOthers[0]?.department || safeOthers[0]?.role || 'Member');
-        if (avatarEl) {
-            avatarEl.outerHTML = renderAvatar(conv.is_group ? null : expOtherAvatarUrl, expDisplayName, conv.is_group)
-                .replace('class="msgr-avatar', 'id="msgrExpChatAvatar" class="msgr-avatar');
-        }
-
-        // Render right info panel
-        renderExpandedInfoPanel(conv);
-
-        // Update sidebar active state
-        renderExpandedConvoList();
-
-        // Load messages
-        await loadExpandedMessages(conv.id);
-        await markConversationRead(conv.id);
-        subscribeToActiveConversation(conv.id);
-    }
-
-    async function loadExpandedMessages(conversationId) {
-        if (!conversationId) return;
-
-        // 1. Instant render from local cache
-        const localMsgs = loadLocalMessages(conversationId);
-        if (localMsgs.length > 0) {
-            renderExpandedMessages(localMsgs);
-        }
-
-        const sb = getClient();
-        if (!sb) return;
-
-        try {
-            const { data, error } = await sb.from("messages").select("*")
-                .eq("conversation_id", conversationId)
-                .order("created_at", { ascending: true }).limit(150);
-
-            if (error) {
-                console.warn("CiteFlowMessenger: Notice loading expanded messages:", error);
-                return;
-            }
-
-            // Fetch participants for seen receipts
-            try {
-                const { data: partData } = await sb
-                    .from("conversation_participants")
-                    .select("user_id, last_read_at")
-                    .eq("conversation_id", conversationId);
-                if (Array.isArray(partData)) {
-                    State.activeConversationParticipants = partData;
-                }
-            } catch (_) {}
-
-            if (Array.isArray(data)) {
-                const unconfirmedTemp = localMsgs.filter(lm => {
-                    if (!String(lm.id).startsWith('temp_')) return false;
-                    const matchedInDb = data.some(dm => 
-                        String(dm.sender_id) === String(lm.sender_id) && 
-                        dm.content === lm.content &&
-                        Math.abs(new Date(dm.created_at) - new Date(lm.created_at)) < 30000
-                    );
-                    return !matchedInDb;
-                });
-
-                const combined = (data.length === 0 && localMsgs.length > 0) ? localMsgs : [...data, ...unconfirmedTemp];
-                combined.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-                saveLocalMessages(conversationId, combined);
-                renderExpandedMessages(combined);
-
-                if (combined.length > 0) {
-                    const newest = combined[combined.length - 1];
-                    const targetConv = State.conversations.find(c => String(c.id) === String(conversationId));
-                    if (targetConv) {
-                        targetConv.lastMessage = newest;
-                        targetConv.sortTime = newest.created_at || new Date().toISOString();
-                        saveLocalConvos();
-                    }
-                }
-            }
-        } catch (err) {
-            console.warn("CiteFlowMessenger: Error fetching expanded messages:", err);
-        }
-    }
-
-    function renderExpandedMessages(messages) {
-        const el = document.getElementById("msgrExpMessages");
-        if (!el) return;
-        const isGroup = State.activeConversationMeta?.is_group;
-        const others = State.activeConversationMeta?.others || [];
-        const participants = State.activeConversationParticipants || [];
-
-        let lastMyMsgId = null;
-        for (let i = (messages || []).length - 1; i >= 0; i--) {
-            if (String(messages[i].sender_id) === String(State.currentUserId)) {
-                lastMyMsgId = messages[i].id;
-                break;
-            }
-        }
-
-        el.innerHTML = (messages || []).map(m => {
-            const mine = String(m.sender_id) === String(State.currentUserId);
-            const senderObj = others.find(o => String(o.auth_user_id) === String(m.sender_id) || String(o.id) === String(m.sender_id));
-            const senderName = mine ? null : (senderObj?.name || senderObj?.display_name || (State.currentUserRole === 'Faculty' ? 'Administrator' : 'Faculty Member'));
-
-            let seenReceiptHtml = "";
-            if (mine && m.id === lastMyMsgId) {
-                const msgTime = new Date(m.created_at).getTime();
-                const seenParticipant = participants.find(p => 
-                    String(p.user_id) !== String(State.currentUserId) && 
-                    p.last_read_at && 
-                    new Date(p.last_read_at).getTime() >= msgTime - 2000
-                );
-
-                if (seenParticipant) {
-                    const seenTime = formatTime(seenParticipant.last_read_at);
-                    const seenUser = others.find(o => String(o.auth_user_id) === String(seenParticipant.user_id) || String(o.id) === String(seenParticipant.user_id));
-                    const seenAvatar = seenUser?.avatar_url 
-                        ? `<img src="${seenUser.avatar_url}" class="msgr-seen-avatar" alt="">` 
-                        : `<i class="fa-solid fa-circle-check"></i>`;
-                    seenReceiptHtml = `<div class="msgr-seen-receipt seen" title="Seen at ${new Date(seenParticipant.last_read_at).toLocaleTimeString()}">${seenAvatar} Seen ${seenTime}</div>`;
-                } else {
-                    seenReceiptHtml = `<div class="msgr-seen-receipt"><i class="fa-regular fa-circle-check"></i> Delivered</div>`;
-                }
-            }
-
-            return `
-                <div class="msgr-bubble-row ${mine ? 'mine' : 'theirs'}">
-                    ${isGroup && !mine ? `<div class="msgr-sender-label">${escapeHtml(senderName)}</div>` : ''}
-                    <div class="msgr-bubble">${escapeHtml(m.content)}</div>
-                    <div class="msgr-bubble-time">${formatTime(m.created_at)}</div>
-                    ${seenReceiptHtml}
-                </div>`;
-        }).join('');
-        el.scrollTop = el.scrollHeight;
-    }
-
-    async function sendMessageExpanded() {
-        const input = document.getElementById("msgrExpInput");
-        const content = input?.value.trim();
-        if (!content || !State.activeConversationId || !State.currentUserId) return;
-
-        const sb = getClient();
-        input.value = '';
-        input.style.height = 'auto';
-        const sendBtn = document.getElementById('msgrExpSendBtn');
-        if (sendBtn) sendBtn.disabled = true;
-
-        const activeId = State.activeConversationId;
-        const nowIso = new Date().toISOString();
-
-        // 1. Instant local message object creation
-        const localMsgObj = {
-            id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-            conversation_id: activeId,
-            sender_id: State.currentUserId,
-            content: content,
-            created_at: nowIso
-        };
-
-        const existingMsgs = loadLocalMessages(activeId);
-        existingMsgs.push(localMsgObj);
-        saveLocalMessages(activeId, existingMsgs);
-
-        renderExpandedMessages(existingMsgs);
-
-        // Update local conversation state lastMessage & save
-        const activeConv = State.conversations.find(c => String(c.id) === String(activeId));
-        if (activeConv) {
-            activeConv.lastMessage = localMsgObj;
-            activeConv.sortTime = nowIso;
-        }
-        saveLocalConvos();
-
-        renderConversationList("");
-        renderExpandedConvoList();
-
-        try {
-            if (sb) {
-                const { data: sentMsg, error } = await sb.from('messages').insert({
-                    conversation_id: activeId,
-                    sender_id: State.currentUserId,
-                    content: content
-                }).select().maybeSingle();
-
-                if (error) {
-                    console.warn("CiteFlowMessenger: Notice inserting expanded message in DB:", error);
-                } else if (sentMsg) {
-                    try {
-                        await sb.from('conversations').update({ last_message_at: nowIso }).eq('id', activeId);
-                    } catch (_) {}
-
-                    const refreshedMsgs = loadLocalMessages(activeId);
-                    const idx = refreshedMsgs.findIndex(m => m.id === localMsgObj.id);
-                    if (idx !== -1) {
-                        refreshedMsgs[idx] = sentMsg;
-                        saveLocalMessages(activeId, refreshedMsgs);
-                    }
-                    if (activeConv) {
-                        activeConv.lastMessage = sentMsg;
-                        saveLocalConvos();
-                    }
-                }
-            }
-        } catch (err) {
-            console.warn("CiteFlowMessenger: Error during background expanded message sync:", err);
-        }
-
-        renderConversationList("");
-        renderExpandedConvoList();
     }
 
     function renderExpandedInfoPanel(conv) {
@@ -3426,18 +3278,18 @@ window.CiteFlowMessenger = (function () {
         const isGroup = conv.is_group;
         const safeOthers = (conv.others || []).filter(o =>
             String(o.auth_user_id) !== String(State.currentUserId) &&
-            String(o.id) !== String(State.currentUserId) &&
-            (!o.email || o.email.toLowerCase() !== String(State.currentUserEmail || '').toLowerCase())
+            String(o.id) !== String(State.currentUserId)
         );
 
-        let displayName = conv.displayName;
-        if (!isGroup && safeOthers.length > 0) {
+        const meta = getConvoMeta(conv.id);
+        let displayName = meta?.customNickname || conv.displayName;
+        if (!isGroup && safeOthers.length > 0 && !meta?.customNickname) {
             displayName = safeOthers[0].name || safeOthers[0].display_name || conv.displayName;
         }
 
         const otherAvatarUrl = (safeOthers.length > 0 && !isGroup) ? safeOthers[0].avatar_url : null;
         const allMembers = [
-            { name: 'You', department: State.currentUserRole, isSelf: true, avatar_url: null },
+            { name: 'You', department: State.currentUserRole, isSelf: true, avatar_url: State.currentUserAvatar },
             ...safeOthers
         ];
         const isMuted = State.mutedConvoIds.has(conv.id);
@@ -3513,11 +3365,14 @@ window.CiteFlowMessenger = (function () {
     return {
         init,
         openMessages: openPanel,
+        openPanel,
         closeMessages: closePanel,
+        closePanel,
         loadConversations,
-        sendMessage,
+        sendMessage: () => submitChatMessage(false),
         openExpandedView,
-        closeExpandedView
+        closeExpandedView,
+        activateConversation
     };
 })();
 
@@ -3525,4 +3380,3 @@ window.CiteFlowMessenger = (function () {
 window.openMessages = function () {
     window.CiteFlowMessenger?.openMessages();
 };
-
