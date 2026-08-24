@@ -253,6 +253,18 @@ window.CiteFlowAuth = (function () {
         const nowIso = new Date().toISOString();
         let photoUrl = null;
 
+        // --- MIDDLE INITIAL CONVERSION LOGIC ---
+        let cleanMiddle = (middleName || '').trim();
+        if (cleanMiddle.length > 0) {
+            cleanMiddle = cleanMiddle.charAt(0).toUpperCase() + '.';
+        }
+
+        const fn = (firstName || '').trim();
+        const ln = (lastName || '').trim();
+        const sx = (suffix || '').trim();
+
+        const formattedFullName = `${fn} ${cleanMiddle ? cleanMiddle + ' ' : ''}${ln}${sx ? ' ' + sx : ''}`.trim();
+
         // 1. Upload photo if provided
         if (photoFile && photoFile.size > 0) {
             const fileExt = photoFile.name.split('.').pop() || 'jpg';
@@ -272,6 +284,7 @@ window.CiteFlowAuth = (function () {
                 photoUrl = publicUrlData?.publicUrl || null;
             } else {
                 console.warn("Photo upload notice:", uploadError.message);
+                throw new Error("Photo upload failed: " + uploadError.message);
             }
         }
 
@@ -279,11 +292,11 @@ window.CiteFlowAuth = (function () {
         const updateAuthPayload = {
             data: {
                 role: 'Faculty',
-                first_name: firstName,
-                middle_name: middleName,
-                last_name: lastName,
-                suffix: suffix,
-                full_name: fullName,
+                first_name: fn,
+                middle_name: cleanMiddle,
+                last_name: ln,
+                suffix: sx,
+                full_name: formattedFullName,
                 employee_id: employeeId,
                 department: department,
                 phone: phone,
@@ -304,12 +317,12 @@ window.CiteFlowAuth = (function () {
         // 3. Upsert / Update public.faculty profile
         const profilePayload = {
             auth_user_id: user.id,
-            name: fullName,
-            full_name: fullName,
-            first_name: firstName || null,
-            middle_name: middleName || null,
-            last_name: lastName || null,
-            suffix: suffix || null,
+            name: formattedFullName,
+            full_name: formattedFullName,
+            first_name: fn || null,
+            middle_name: cleanMiddle || null,
+            last_name: ln || null,
+            suffix: sx || null,
             employee_id: employeeId,
             department: department,
             phone: phone || null,
@@ -334,6 +347,7 @@ window.CiteFlowAuth = (function () {
 
         if (profileError) {
             console.warn("CiteFlowAuth: Public faculty record update error:", profileError.message);
+            throw new Error("Profile record save failed: " + profileError.message);
         }
 
         // Cache updated info

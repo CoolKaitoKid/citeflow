@@ -104,7 +104,6 @@ function updateFacultyActiveMenu(fileName) {
 
 function attachFacultyNavEvents() {
     document.addEventListener("click", (e) => {
-        // Toggle mobile drawer inig pislit sa hamburger push button
         const mobileToggleBtn = e.target.closest("#mobileSidebarToggle, .drawer-push-btn, .mobile-toggle-btn");
         if (mobileToggleBtn) {
             e.preventDefault();
@@ -143,24 +142,53 @@ function updateFacultyNavProfile(profileData) {
                     full_name: cached.name || cached.full_name,
                     role: cached.role || 'Faculty Member',
                     position: cached.role || 'Faculty Member',
-                    department: cached.department || 'CITE Faculty'
+                    department: cached.department || 'CITE Faculty',
+                    profile_photo_url: cached.profile_photo_url || cached.profilePhotoUrl || cached.avatar_url,
+                    first_name: cached.first_name,
+                    middle_name: cached.middle_name,
+                    last_name: cached.last_name
                 };
             }
         } catch (_) {}
     }
 
     if (!profileData && window.supabaseClient && window.supabaseClient.auth) {
-        window.supabaseClient.auth.getUser().then(({ data }) => {
+        window.supabaseClient.auth.getUser().then(async ({ data }) => {
             const user = data?.user;
             if (user) {
                 const meta = user.user_metadata || {};
-                const name = meta.full_name || meta.name || user.email?.split('@')[0] || 'Faculty Member';
+                let photoUrl = meta.profile_photo_url || meta.avatar_url;
+                let firstName = meta.first_name;
+                let middleName = meta.middle_name;
+                let lastName = meta.last_name;
+                let position = meta.position || meta.role;
+                let department = meta.department;
+
+                try {
+                    const { data: facultyRecord } = await window.supabaseClient
+                        .from('faculty')
+                        .select('profile_photo_url, full_name, first_name, middle_name, last_name, position, department, name')
+                        .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`)
+                        .maybeSingle();
+                    if (facultyRecord) {
+                        if (facultyRecord.profile_photo_url) photoUrl = facultyRecord.profile_photo_url;
+                        if (facultyRecord.first_name) firstName = facultyRecord.first_name;
+                        if (facultyRecord.middle_name) middleName = facultyRecord.middle_name;
+                        if (facultyRecord.last_name) lastName = facultyRecord.last_name;
+                        if (facultyRecord.position) position = facultyRecord.position;
+                        if (facultyRecord.department) department = facultyRecord.department;
+                    }
+                } catch (_) {}
+
                 updateFacultyNavProfile({
-                    name: name,
-                    full_name: name,
-                    role: meta.role || 'Faculty Member',
-                    position: meta.role || 'Faculty Member',
-                    department: meta.department || 'CITE Faculty'
+                    first_name: firstName,
+                    middle_name: middleName,
+                    last_name: lastName,
+                    role: position || 'Faculty Member',
+                    position: position || 'Faculty Member',
+                    department: department || 'CITE Faculty',
+                    profile_photo_url: photoUrl,
+                    email: user.email
                 });
             }
         }).catch(() => {});
@@ -169,9 +197,35 @@ function updateFacultyNavProfile(profileData) {
 
     if (!profileData) return;
 
-    const name = profileData.full_name || profileData.name || profileData.email || 'Faculty Member';
+    // --- STRICT FORMATTING: FIRST NAME + MIDDLE INITIAL + LAST NAME (WALAY SUFFIX) ---
+    let fn = profileData.first_name || '';
+    let mn = profileData.middle_name || '';
+    let ln = profileData.last_name || '';
+
+    if (!fn && !ln && (profileData.full_name || profileData.name)) {
+        const parts = (profileData.full_name || profileData.name).trim().split(/\s+/);
+        if (parts.length === 1) {
+            fn = parts[0];
+        } else if (parts.length === 2) {
+            fn = parts[0];
+            ln = parts[1];
+        } else if (parts.length >= 3) {
+            fn = parts[0];
+            mn = parts[1];
+            ln = parts[2];
+        }
+    }
+
+    if (mn && mn.length > 1 && !mn.endsWith('.')) {
+        mn = mn.charAt(0).toUpperCase() + '.';
+    }
+
+    // Walay lakip nga suffix diri
+    const formattedName = `${fn} ${mn ? mn + ' ' : ''}${ln}`.trim() || profileData.email?.split('@')[0] || 'Faculty Member';
+
     const role = profileData.position || profileData.role || 'Faculty Member';
     const dept = profileData.department || 'CITE Faculty';
+    const photoUrl = profileData.profile_photo_url || profileData.profilePhotoUrl || profileData.avatar_url;
 
     const setEl = (idOrSel, val) => {
         if (!val) return;
@@ -181,10 +235,10 @@ function updateFacultyNavProfile(profileData) {
         if (el) el.textContent = val;
     };
 
-    setEl('facultyNavProfileName', name);
-    setEl('profileName', name);
-    setEl('#facultyProfileModal #facultyNavProfileName', name);
-    setEl('#facultyProfileModal #profileName', name);
+    setEl('facultyNavProfileName', formattedName);
+    setEl('profileName', formattedName);
+    setEl('#facultyProfileModal #facultyNavProfileName', formattedName);
+    setEl('#facultyProfileModal #profileName', formattedName);
 
     setEl('facultyNavProfileRole', role);
     setEl('profileRole', role);
@@ -200,6 +254,30 @@ function updateFacultyNavProfile(profileData) {
     setEl('profileRoleDetail', role);
     setEl('#facultyProfileModal #facultyNavRoleDetail', role);
     setEl('#facultyProfileModal #profileRoleDetail', role);
+
+    // --- DISPLAY PROFILE PHOTO SA MODAL ---
+    if (photoUrl) {
+        const modalImg = document.getElementById('modalProfileImg');
+        const modalIcon = document.getElementById('modalProfileIcon');
+        
+        if (modalImg) {
+            modalImg.src = photoUrl;
+            modalImg.style.display = 'block';
+        }
+        if (modalIcon) {
+            modalIcon.style.display = 'none';
+        }
+
+        document.querySelectorAll('img.nav-profile-img, .profile-avatar-img').forEach(img => {
+            img.src = photoUrl;
+            img.style.display = 'block';
+        });
+        document.querySelectorAll('.profile-icon, .profile-avatar-icon').forEach(icon => {
+            if (icon.id !== 'modalProfileIcon') {
+                icon.style.display = 'none';
+            }
+        });
+    }
 }
 
 window.updateFacultyNavProfile = updateFacultyNavProfile;
