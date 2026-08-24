@@ -89,8 +89,8 @@
       alert('Please enter your email first.');
       return;
     }
-    if (!/^\d{6}$/.test(token)) {
-      alert('Please enter the 6-digit code from your email.');
+    if (!/^\d{8}$/.test(token)) {
+      alert('Please enter the 8-digit code from your email.');
       return;
     }
 
