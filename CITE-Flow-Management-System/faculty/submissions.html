@@ -8,6 +8,11 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth.js"></script>
+    <script src="../shared/workflow.js"></script>
+    <script src="../shared/auth-guard.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
 
     <link
         rel="stylesheet"
@@ -139,35 +144,6 @@
             background: #fffaf7;
         }
 
-        .notif-bell {
-            position: relative;
-            cursor: pointer;
-            padding: 10px;
-            border-radius: 14px;
-            transition: background .2s;
-        }
-
-        .notif-bell:hover {
-            background: #f3f4f6;
-        }
-
-        .notif-badge {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            min-width: 18px;
-            height: 18px;
-            background: #dc2626;
-            color: #fff;
-            font-size: 10px;
-            font-weight: 700;
-            border-radius: 99px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 5px;
-        }
-
         .dropdown-menu {
             position: absolute;
             right: 0;
@@ -279,12 +255,10 @@ const SUPABASE_ANON =
         ? window.__SUPABASE_ANON__
         : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
 
-const { createClient } = supabase;
-
-const db = createClient(
-    SUPABASE_URL,
-    SUPABASE_ANON
-);
+const db = window.supabaseClient || (typeof supabase !== 'undefined'
+    ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
+    : null);
+window.supabaseClient = db;
 
 
 /* =========================================================
@@ -338,11 +312,11 @@ let selectedTaskId = null;
 let currentView = 'list';
 let currentFilter = 'all';
 
-let unreadNotifications = 0;
-
 let isFetchingData = false;
+let pendingDataRefresh = false;
 
 let authChecked = false;
+let submitInProgress = false;
 
 
 /* =========================================================
@@ -771,36 +745,17 @@ function getReportingPeriodText(task) {
 
 
 function normalizeFacultyForSubmissions(row) {
-
+    if (window.CiteFlowWorkflow) {
+        return CiteFlowWorkflow.normalizeFaculty(row);
+    }
     return {
         ...row,
-
         id: row.id,
-
-        auth_user_id:
-            row.auth_user_id
-            || null,
-
-        full_name:
-            row.full_name
-            || row.name
-            || row.email
-            || 'Faculty Member',
-
-        department_code:
-            row.department
-            || row.department_code
-            || 'N/A',
-
-        is_active:
-            row.access_enabled !== false
-            &&
-            String(
-                row.status
-                || 'Active'
-            ).toLowerCase() === 'active'
+        auth_user_id: row.auth_user_id || null,
+        full_name: row.full_name || row.name || row.email || 'Faculty Member',
+        department_code: row.department || row.department_code || 'N/A',
+        is_active: row.access_enabled !== false && String(row.status || 'Active').toLowerCase() === 'active'
     };
-
 }
 
 
@@ -891,24 +846,37 @@ async function requireFacultyAuth() {
     const user =
         data.session.user;
 
-    const role =
-        String(
-            user.user_metadata?.role
-            || ''
-        ).toLowerCase();
+    if (window.CiteFlowWorkflow?.canAccessFacultyPortalSession) {
+        const access = await CiteFlowWorkflow.canAccessFacultyPortalSession(user);
+        if (!access.allowed) {
+            await db.auth.signOut();
+            window.location.href = '../login.html';
+            return false;
+        }
+    } else {
+        const profileProbe = await db
+            .from('faculty')
+            .select('role, position')
+            .eq('auth_user_id', user.id)
+            .maybeSingle();
 
-    if (
-        role
-        &&
-        role !== 'faculty'
-    ) {
+        const metaRole = String(user.user_metadata?.role || '').toLowerCase();
+        const profileRole = String(profileProbe.data?.role || profileProbe.data?.position || '').toLowerCase();
+        const portalRole = profileRole || metaRole;
+        const allowedPortal =
+            portalRole === 'faculty'
+            || portalRole.includes('chair')
+            || portalRole === 'dean'
+            || portalRole.includes('secretary')
+            || portalRole === 'admin'
+            || portalRole === 'administrator'
+            || !!profileProbe.data;
 
-        await db.auth.signOut();
-
-        window.location.href =
-            '../login.html';
-
-        return false;
+        if (portalRole && !allowedPortal) {
+            await db.auth.signOut();
+            window.location.href = '../login.html';
+            return false;
+        }
     }
 
     currentUser = user;
@@ -928,6 +896,10 @@ async function loadCurrentFacultyProfile() {
 
     if (!currentUser) {
         return null;
+    }
+
+    if (window.CiteFlowWorkflow) {
+        return CiteFlowWorkflow.getCurrentFaculty(currentUser);
     }
 
     const email =
@@ -979,9 +951,7 @@ async function loadCurrentFacultyProfile() {
             response.data
         );
 
-    return normalized.is_active
-        ? normalized
-        : null;
+    return normalized;
 
 }
 
@@ -991,6 +961,10 @@ async function loadCurrentFacultyProfile() {
 ========================================================= */
 
 function effectiveStatus(task, submission) {
+
+    if (window.CiteFlowWorkflow) {
+        return CiteFlowWorkflow.formatWorkflowStatus(submission, task);
+    }
 
     if (!submission) {
 
@@ -1040,26 +1014,36 @@ function effectiveStatus(task, submission) {
 }
 
 
-function isActionable(status) {
-
+function isActionable(status, submission, task) {
+    if (window.CiteFlowWorkflow) {
+        const stage = CiteFlowWorkflow.getWorkflowStage(submission, task);
+        return ['assigned', 'late_pending', 'revision_required', 'rejected'].includes(stage);
+    }
     return [
         'Not Submitted',
         'Returned for Revision',
+        'Revision Required',
         'Late',
-        'Rejected'
+        'Rejected',
+        'Overdue — Not Submitted'
     ].includes(status);
-
 }
 
 
-function isSubmittedStatus(status) {
-
+function isSubmittedStatus(status, submission, task) {
+    if (window.CiteFlowWorkflow) {
+        const stage = CiteFlowWorkflow.getWorkflowStage(submission, task);
+        return ['submitted', 'chairperson_review', 'final_approval', 'completed'].includes(stage);
+    }
     return [
         'Submitted',
         'Under Review',
-        'Approved'
-    ].includes(status);
-
+        'Approved',
+        'Submitted — Pending Chairperson Review',
+        'Pending Chairperson Review',
+        'Pending Final Approval',
+        'Completed'
+    ].includes(status) || String(status || '').includes('Submitted') || String(status || '').includes('Review') || status === 'Completed';
 }
 
 
@@ -1306,7 +1290,9 @@ function getVisibleModels() {
                     currentFilter === 'pending'
                     &&
                     isActionable(
-                        model.status
+                        model.status,
+                        model.sub,
+                        model.task
                     )
                 )
 
@@ -1316,7 +1302,9 @@ function getVisibleModels() {
                     currentFilter === 'submitted'
                     &&
                     isSubmittedStatus(
-                        model.status
+                        model.status,
+                        model.sub,
+                        model.task
                     )
                 )
 
@@ -1492,86 +1480,6 @@ function renderTopBar(
 
             </div>
 
-
-            <div class="flex items-center gap-3">
-
-                <div class="relative">
-
-                    <div
-                        class="
-                            notif-bell
-                            bg-white
-                            border
-                            border-gray-200
-                        "
-                        onclick="toggleNotifications()"
-                    >
-
-                        ${icons.bell}
-
-                        <span
-                            id="notifBadge"
-                            class="notif-badge"
-                            style="display:none;"
-                        >
-                            0
-                        </span>
-
-                    </div>
-
-
-                    <div
-                        id="notifDropdown"
-                        class="dropdown-menu"
-                    >
-
-                        <div
-                            class="
-                                px-3
-                                py-3
-                                border-b
-                                border-gray-100
-                                flex
-                                justify-between
-                                items-center
-                            "
-                        >
-
-                            <span
-                                class="
-                                    font-semibold
-                                    text-sm
-                                    text-gray-950
-                                "
-                            >
-                                Notifications
-                            </span>
-
-                            <button
-                                onclick="markFacultyNotificationsRead()"
-                                class="
-                                    text-xs
-                                    font-semibold
-                                    text-[#621708]
-                                    hover:underline
-                                "
-                            >
-                                Mark all read
-                            </button>
-
-                        </div>
-
-                        <div
-                            id="notifList"
-                            class="py-1"
-                        ></div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
         </header>
     `;
 
@@ -1588,7 +1496,9 @@ function renderSummary(models) {
         models.filter(
             model =>
                 isActionable(
-                    model.status
+                    model.status,
+                    model.sub,
+                    model.task
                 )
         ).length;
 
@@ -1596,6 +1506,8 @@ function renderSummary(models) {
         models.filter(
             model =>
                 model.status === 'Approved'
+                || model.status === 'Completed'
+                || (window.CiteFlowWorkflow && CiteFlowWorkflow.getWorkflowStage(model.sub, model.task) === 'completed')
         ).length;
 
     const recurring =
@@ -1615,6 +1527,8 @@ function renderSummary(models) {
                 )
                 &&
                 model.status !== 'Approved'
+                && model.status !== 'Completed'
+                && !(window.CiteFlowWorkflow && CiteFlowWorkflow.getWorkflowStage(model.sub, model.task) === 'completed')
         ).length;
 
 
@@ -2305,10 +2219,6 @@ function renderListPage() {
             window.__lastSearch
             || '';
     }
-
-    renderNotifications();
-
-    updateNotifBadge();
 
 }
 
@@ -3898,10 +3808,6 @@ function renderDetailPage() {
 
     wireSubmissionUrlInput();
 
-    renderNotifications();
-
-    updateNotifBadge();
-
 }
 
 
@@ -4117,6 +4023,10 @@ async function uploadFilesToStorage({
 
 async function submitTask(taskId) {
 
+    if (submitInProgress) {
+        return;
+    }
+
     const faculty =
         resolveCurrentFaculty();
 
@@ -4182,6 +4092,8 @@ async function submitTask(taskId) {
 
     }
 
+
+    submitInProgress = true;
 
     try {
 
@@ -4580,74 +4492,43 @@ async function submitTask(taskId) {
 
         /*
         ------------------------------------------------------
-        Notification
+        Activity log + notification + approval history
         ------------------------------------------------------
         */
 
-        const notificationResult =
-            await db
-                .from('wf_notifications')
-                .insert({
-
-                    type:
-                        'submission',
-
-                    faculty_id:
-                        faculty.id,
-
-                    task_id:
-                        taskId,
-
-                    message:
-                        `New submission from ${faculty.full_name}: ${task.title}`,
-
-                    is_read:
-                        false
-
-                });
-
-
-        if (notificationResult.error) {
-            console.warn(
-                'Notification could not be created:',
-                notificationResult.error
-            );
-        }
-
-
-        /*
-        ------------------------------------------------------
-        Activity log
-        ------------------------------------------------------
-        */
-
-        const activityResult =
-            await db
-                .from('wf_activity_log')
-                .insert({
-
-                    action:
-                        existingSubmission
-                            ? 'Resubmitted task'
-                            : 'Submitted task',
-
-                    actor_name:
-                        faculty.full_name,
-
-                    target:
-                        task.title,
-
-                    log_type:
-                        'submission'
-
-                });
-
-
-        if (activityResult.error) {
-            console.warn(
-                'Activity log could not be created:',
-                activityResult.error
-            );
+        if (window.CiteFlowWorkflow) {
+            await CiteFlowWorkflow.recordSubmissionEvent(db, {
+                faculty,
+                task,
+                taskId,
+                submissionId,
+                isResubmit: Boolean(
+                    existingSubmission &&
+                    ['revision', 'rejected'].includes(String(existingSubmission.status || '').toLowerCase())
+                )
+            });
+        } else {
+            const notificationResult = await db.from('wf_notifications').insert({
+                type: 'submission',
+                faculty_id: faculty.id,
+                task_id: taskId,
+                message: `New submission from ${faculty.full_name}: ${task.title}`,
+                is_read: false
+            });
+            if (notificationResult.error) {
+                console.warn('Notification could not be created:', notificationResult.error);
+            }
+            const activityResult = await db.from('wf_activity_log').insert({
+                action: existingSubmission ? 'Resubmitted task' : 'Submitted task',
+                actor_name: faculty.full_name,
+                target: task.title,
+                log_type: 'submission',
+                task_id: taskId,
+                submission_id: submissionId
+            });
+            if (activityResult.error) {
+                console.warn('Activity log could not be created:', activityResult.error);
+            }
         }
 
 
@@ -4662,18 +4543,27 @@ async function submitTask(taskId) {
 
         await fetchAllData();
 
+        const statusLabel = window.CiteFlowWorkflow
+            ? CiteFlowWorkflow.formatWorkflowStatus(
+                { status: late ? 'late' : 'submitted', approval_stage: 'chairperson', submitted_at: now },
+                task
+            )
+            : 'Submitted — Pending Chairperson Review';
 
-        alert(
-            late
-
-                ?
-
-                'Submission sent successfully. It was recorded as a late submission.'
-
-                :
-
-                'Submission sent successfully for review.'
-        );
+        if (window.CiteFlowWorkflow) {
+            CiteFlowWorkflow.showToast(
+                late
+                    ? `Submission sent (late). ${statusLabel}`
+                    : `Submission sent successfully. ${statusLabel}`,
+                'success'
+            );
+        } else {
+            alert(
+                late
+                    ? 'Submission sent successfully. It was recorded as a late submission.'
+                    : 'Submission sent successfully for review.'
+            );
+        }
 
 
     } catch (error) {
@@ -4683,271 +4573,40 @@ async function submitTask(taskId) {
             error
         );
 
-        alert(
-            error?.message
-            || 'Submission failed.'
-        );
-
-    }
-
-}
-
-
-/* =========================================================
-   NOTIFICATIONS
-========================================================= */
-
-function getFacultyNotifications() {
-
-    const faculty =
-        resolveCurrentFaculty();
-
-    if (!faculty) {
-        return [];
-    }
-
-    return (
-        state.notifications
-        || []
-    ).filter(
-        notification => {
-
-            if (
-                String(
-                    notification.faculty_id
-                    || ''
-                )
-                ===
-                String(faculty.id)
-            ) {
-                return true;
-            }
-
-            return (
-                notification.message
-                &&
-                notification.message.includes(
-                    faculty.full_name
-                )
+        if (window.CiteFlowWorkflow) {
+            CiteFlowWorkflow.showToast(
+                error?.message || 'Submission failed.',
+                'error'
             );
-
+        } else {
+            alert(
+                error?.message
+                || 'Submission failed.'
+            );
         }
-    );
 
-}
-
-
-function renderNotifications() {
-
-    const list =
-        document.getElementById(
-            'notifList'
-        );
-
-    if (!list) {
-        return;
-    }
-
-
-    const items =
-        getFacultyNotifications();
-
-
-    if (!items.length) {
-
-        list.innerHTML = `
-            <p
-                class="
-                    text-sm
-                    text-gray-400
-                    text-center
-                    py-4
-                "
-            >
-                No notifications yet
-            </p>
-        `;
-
-        return;
-
-    }
-
-
-    list.innerHTML =
-        items
-            .map(
-                notification => `
-
-                    <div
-                        class="
-                            dropdown-item
-                            ${
-                                notification.is_read
-                                    ? ''
-                                    : 'bg-blue-50'
-                            }
-                        "
-                    >
-
-                        <div class="flex-1">
-
-                            <div
-                                class="
-                                    text-sm
-                                    text-gray-800
-                                "
-                            >
-                                ${escapeHtml(notification.message)}
-                            </div>
-
-
-                            <div
-                                class="
-                                    text-xs
-                                    text-gray-400
-                                    mt-0.5
-                                "
-                            >
-                                ${formatDate(notification.created_at)}
-                            </div>
-
-                        </div>
-
-
-                        ${
-                            notification.is_read
-
-                                ?
-
-                                ''
-
-                                :
-
-                                `
-                                <div
-                                    class="
-                                        w-2
-                                        h-2
-                                        bg-blue-500
-                                        rounded-full
-                                    "
-                                ></div>
-                                `
-                        }
-
-                    </div>
-
-                `
-            )
-            .join('');
-
-}
-
-
-function updateNotifBadge() {
-
-    unreadNotifications =
-        getFacultyNotifications()
-            .filter(
-                notification =>
-                    !notification.is_read
-            )
-            .length;
-
-
-    const badge =
-        document.getElementById(
-            'notifBadge'
-        );
-
-
-    if (!badge) {
-        return;
-    }
-
-
-    if (
-        unreadNotifications > 0
-    ) {
-
-        badge.style.display =
-            'flex';
-
-        badge.textContent =
-            unreadNotifications > 99
-                ? '99+'
-                : String(
-                    unreadNotifications
-                );
-
-    } else {
-
-        badge.style.display =
-            'none';
-
+    } finally {
+        submitInProgress = false;
     }
 
 }
 
 
-function toggleNotifications() {
-
-    document
-        .getElementById(
-            'notifDropdown'
-        )
-        ?.classList
-        .toggle('open');
-
-}
-
-
-async function markFacultyNotificationsRead() {
-
-    const ids =
-        getFacultyNotifications()
-            .filter(
-                notification =>
-                    !notification.is_read
-            )
-            .map(
-                notification =>
-                    notification.id
-            );
-
-
-    if (!ids.length) {
+function refreshNavNotifications() {
+    if (typeof window.refreshFacultyNavNotifications !== 'function') {
         return;
     }
 
+    const faculty = resolveCurrentFaculty();
+    const filtered = (state.notifications || []).filter((notification) => {
+        if (!faculty) return true;
+        if (notification.faculty_id != null) {
+            return String(notification.faculty_id) === String(faculty.id);
+        }
+        return true;
+    });
 
-    const {
-        error
-    } =
-        await db
-            .from('wf_notifications')
-            .update({
-                is_read: true
-            })
-            .in(
-                'id',
-                ids
-            );
-
-
-    if (error) {
-
-        alert(
-            error.message
-        );
-
-        return;
-
-    }
-
-
-    await fetchAllData();
-
+    window.refreshFacultyNavNotifications(filtered);
 }
 
 
@@ -4958,12 +4617,14 @@ async function markFacultyNotificationsRead() {
 async function fetchAllData() {
 
     if (isFetchingData) {
+        pendingDataRefresh = true;
         return;
     }
 
 
     isFetchingData =
         true;
+    pendingDataRefresh = false;
 
 
     const root =
@@ -5012,8 +4673,8 @@ async function fetchAllData() {
                         text-amber-800
                     "
                 >
-                    Your account is signed in, but no matching active faculty profile was found.
-                    Please ask the administrator to check your faculty profile.
+                    Your account is signed in, but no matching faculty profile was found.
+                    Please ask the administrator to link your login to a faculty profile.
                 </div>
 
             `;
@@ -5022,92 +4683,75 @@ async function fetchAllData() {
 
         }
 
+        if (currentFaculty.is_active === false) {
+            console.warn('Faculty profile is inactive, but assigned tasks will still be shown.');
+        }
+
+
+        const facultyId = currentFaculty.id;
+
+        let assignmentRows = [];
+        let taskRows = [];
+
+        if (window.CiteFlowWorkflow) {
+            const bundle = await CiteFlowWorkflow.loadFacultyAssignedTasks(facultyId);
+            if (bundle.error) {
+                root.innerHTML = `
+                    ${renderTopBar('Submission Tasks', 'There was a problem loading your tasks.')}
+                    <div class="rounded-3xl p-6 bg-white border border-red-100 text-red-600">
+                        ${escapeHtml(bundle.error.message || 'Failed to load assigned tasks.')}
+                    </div>
+                `;
+                return;
+            }
+            assignmentRows = bundle.assignments;
+            taskRows = bundle.tasks;
+        } else {
+            const [tasks, assignments] = await Promise.all([
+                db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
+                db.from('wf_task_assignments').select('*').eq('faculty_id', facultyId)
+            ]);
+
+            if (tasks.error || assignments.error) {
+                const message =
+                    tasks.error?.message
+                    || assignments.error?.message
+                    || 'Failed to load submission data.';
+
+                root.innerHTML = `
+                    ${renderTopBar('Submission Tasks', 'There was a problem loading your tasks.')}
+                    <div class="rounded-3xl p-6 bg-white border border-red-100 text-red-600">
+                        ${escapeHtml(message)}
+                    </div>
+                `;
+                return;
+            }
+
+            assignmentRows = assignments.data || [];
+            const assignmentTaskIds = new Set(assignmentRows.map(a => String(a.task_id)));
+            taskRows = (tasks.data || []).filter(task => assignmentTaskIds.has(String(task.id)));
+        }
 
         const [
-            faculty,
-            tasks,
-            assignments,
             submissions,
             files,
             notifications
-        ] =
-            await Promise.all([
+        ] = await Promise.all([
+            db.from('wf_submissions').select('*').eq('faculty_id', facultyId),
+            db.from('wf_submission_files').select('*'),
+            db
+                .from('wf_notifications')
+                .select('*')
+                .or(`faculty_id.eq.${facultyId},faculty_id.is.null`)
+                .order('created_at', { ascending: false })
+                .limit(100)
+        ]);
 
-                db
-                    .from('faculty')
-                    .select('*')
-                    .order(
-                        'full_name',
-                        {
-                            ascending: true
-                        }
-                    ),
-
-                db
-                    .from('wf_tasks')
-                    .select('*')
-                    .order(
-                        'created_at',
-                        {
-                            ascending: false
-                        }
-                    ),
-
-                db
-                    .from('wf_task_assignments')
-                    .select('*'),
-
-                db
-                    .from('wf_submissions')
-                    .select('*'),
-
-                db
-                    .from('wf_submission_files')
-                    .select('*'),
-
-                db
-                    .from('wf_notifications')
-                    .select('*')
-                    .order(
-                        'created_at',
-                        {
-                            ascending: false
-                        }
-                    )
-                    .limit(100)
-
-            ]);
-
-
-        if (
-            faculty.error
-            ||
-            tasks.error
-            ||
-            assignments.error
-            ||
-            submissions.error
-        ) {
+        if (submissions.error) {
 
             const message =
-
-                faculty.error?.message
-
-                ||
-
-                tasks.error?.message
-
-                ||
-
-                assignments.error?.message
-
-                ||
-
                 submissions.error?.message
-
-                ||
-
-                'Failed to load submission data.';
+                || 'Failed to load submission data.';
 
 
             root.innerHTML = `
@@ -5154,41 +4798,26 @@ async function fetchAllData() {
         }
 
 
-        state.faculty =
-            (
-                faculty.data
-                || []
-            )
-                .map(
-                    normalizeFacultyForSubmissions
-                )
-                .filter(
-                    facultyMember =>
-                        facultyMember.is_active
-                );
+        state.faculty = [currentFaculty];
+
+        state.tasks = taskRows;
 
 
-        state.tasks =
-            tasks.data
-            || [];
-
-
-        state.assignments =
-            assignments.data
-            || [];
+        state.assignments = assignmentRows;
 
 
         state.submissions =
             submissions.data
             || [];
 
+        const submissionIds = new Set(state.submissions.map(s => String(s.id)));
+
 
         state.submissionFiles =
             files.error
                 ? []
                 : (
-                    files.data
-                    || []
+                    (files.data || []).filter(f => submissionIds.has(String(f.submission_id)))
                 );
 
 
@@ -5214,6 +4843,8 @@ async function fetchAllData() {
             renderListPage();
 
         }
+
+        refreshNavNotifications();
 
 
     } catch (error) {
@@ -5254,6 +4885,11 @@ async function fetchAllData() {
         isFetchingData =
             false;
 
+        if (pendingDataRefresh) {
+            pendingDataRefresh = false;
+            fetchAllData();
+        }
+
     }
 
 }
@@ -5265,9 +4901,34 @@ async function fetchAllData() {
 
 window.onload = async () => {
 
-    await loadSidebar();
+    try {
+        if (typeof loadSidebar === 'function') {
+            await loadSidebar();
+        } else if (typeof loadFacultyNavigation === 'function') {
+            await loadFacultyNavigation();
+        }
+    } catch (navError) {
+        console.error('Faculty navigation failed to load:', navError);
+    }
+
+    const root = document.getElementById('appRoot');
+    if (root && !root.innerHTML.trim()) {
+        root.innerHTML = `
+            ${renderTopBar('Submission Tasks', 'Loading your assigned tasks...')}
+            <div class="rounded-3xl p-6 bg-white border border-gray-200 text-gray-500">Loading tasks...</div>
+        `;
+    }
 
     await fetchAllData();
+
+    if (window.CiteFlowWorkflow) {
+        CiteFlowWorkflow.subscribeWorkflow(() => {
+            fetchAllData();
+            if (typeof window.loadFacultyNavNotifications === 'function') {
+                window.loadFacultyNavNotifications();
+            }
+        }, ['wf_tasks', 'wf_submissions', 'wf_task_assignments', 'wf_notifications', 'wf_approval_history']);
+    }
 
 
     /*
@@ -5287,39 +4948,6 @@ window.onload = async () => {
 
                 window.__lastSearch =
                     event.target.value;
-
-            }
-
-        }
-    );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Close notifications when clicking outside
-    |--------------------------------------------------------------------------
-    */
-
-    document.addEventListener(
-        'click',
-        event => {
-
-            if (
-                !event.target.closest(
-                    '.notif-bell'
-                )
-                &&
-                !event.target.closest(
-                    '#notifDropdown'
-                )
-            ) {
-
-                document
-                    .getElementById(
-                        'notifDropdown'
-                    )
-                    ?.classList
-                    .remove('open');
 
             }
 

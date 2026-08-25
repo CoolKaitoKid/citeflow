@@ -8,6 +8,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/workflow.js"></script>
+    <script src="../shared/auth-guard.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="../nav.css">
@@ -1249,9 +1252,13 @@ const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined'
 const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined'
     ? window.__SUPABASE_ANON__
     : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-const ADMIN_NAME = 'Administrator';
-const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+let ADMIN_NAME = 'Administrator';
+const db = window.supabaseClient || (typeof supabase !== 'undefined'
+    ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
+    : null);
+window.supabaseClient = db;
+let currentActorFaculty = null;
+let currentActorUser = null;
 
 var workflowState = window.workflowState || {
     faculty: [],
@@ -2088,8 +2095,14 @@ function createNewTask() {
     if (group === 'all_bsie') assigned = assigned.filter(f => f.department_code === 'BSIE');
     if (group === 'all_bit') assigned = assigned.filter(f => f.department_code === 'BIT');
 
-    if (type === 'regular') assigned = assigned.filter(f => normalizeText(f.employment_status).includes('regular') || normalizeText(f.employment_status).includes('organic'));
-    if (type === 'part_time') assigned = assigned.filter(f => normalizeText(f.employment_status).includes('part') || normalizeText(f.employment_status).includes('part-time'));
+    if (type === 'regular') assigned = assigned.filter(f => {
+        const emp = normalizeText(f.employment_status);
+        return emp.includes('regular') || emp.includes('organic') || emp.includes('permanent');
+    });
+    if (type === 'part_time') assigned = assigned.filter(f => {
+        const emp = normalizeText(f.employment_status);
+        return emp.includes('part') || emp.includes('part-time') || emp.includes('part time');
+    });
     if (type === 'chairperson') assigned = assigned.filter(f => normalizeText(f.role).includes('chair') || normalizeText(f.position).includes('chair'));
     if (type === 'specific') {
         assigned = ws.faculty.filter(f => selected.includes(String(f.id)));
@@ -2168,11 +2181,19 @@ async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files,
         showToast(assignError.message || 'Task created, but assigning failed.', 'warn');
         return;
     }
-    await createNotification({
+
+    const notifRows = assigned.map(f => ({
         type: 'task',
-        message: `New task "${title}" assigned to ${assigned.length} faculty`,
-        is_read: false
-    }, { task_id: task.id });
+        message: `New task "${title}" assigned to you`,
+        is_read: false,
+        task_id: task.id,
+        faculty_id: f.id
+    }));
+    if (notifRows.length) {
+        const { error: notifError } = await db.from('wf_notifications').insert(notifRows);
+        if (notifError) console.warn('Per-faculty notification insert failed:', notifError.message || notifError);
+    }
+
     await db.from('wf_activity_log').insert({
         action: 'Task created',
         actor_name: ADMIN_NAME,
@@ -2186,6 +2207,7 @@ async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files,
     document.getElementById('taskDesc').value = '';
     document.getElementById('dueDate').value = '';
     if (document.getElementById('taskAttachments')) document.getElementById('taskAttachments').value = '';
+    await fetchAllData();
 }
 
 
@@ -2829,7 +2851,7 @@ function normalizeWorkflowFaculty(row) {
         department_code: row.department_code || row.department || 'N/A',
         email: row.email || row.existing_email || '',
         status: row.status || 'Active',
-        employment_status: row.employment_status || row.employment_type || row.faculty_status || row.status || '',
+        employment_status: row.employment_status || row.employment_type || row.faculty_status || '',
         role: row.role || row.user_role || '',
         position: row.position || row.academic_rank || ''
     };
@@ -4104,6 +4126,182 @@ function filterSubmissions() {
         `;
     }).join('');
 }
+
+/* ================================================================
+   CITE-Flow unified workflow integration (role-aware review)
+   ================================================================ */
+
+async function loadWorkflowActor() {
+    if (!window.CiteFlowWorkflow) return;
+    currentActorUser = await CiteFlowWorkflow.getCurrentUser();
+    currentActorFaculty = await CiteFlowWorkflow.getCurrentFaculty(currentActorUser);
+    if (currentActorFaculty) {
+        ADMIN_NAME = CiteFlowWorkflow.getActorDisplayName(currentActorFaculty, currentActorUser);
+    }
+}
+
+function submissionVisibleToActor(sub) {
+    if (!currentActorFaculty || !sub) return true;
+    const role = CiteFlowWorkflow.normalizeRole(currentActorFaculty).role;
+    if (role === 'admin' || role === 'dean' || role === 'college_secretary') return true;
+    if (currentActorFaculty.admin_access) return true;
+    if (CiteFlowWorkflow.isChairperson(currentActorFaculty)) {
+        const target = getFacultyById(sub.faculty_id);
+        if (!target) return false;
+        const stage = CiteFlowWorkflow.getApprovalStage(
+            workflowState.submissions.find(s => String(s.id) === String(sub.submission_id)) || { approval_stage: sub.approval_stage }
+        );
+        return CiteFlowWorkflow.sameDepartment(currentActorFaculty, target) &&
+            (stage === CiteFlowWorkflow.APPROVAL_STAGES.CHAIRPERSON || ['submitted', 'late', 'underreview'].includes(String(sub.status)));
+    }
+    return true;
+}
+
+const _wfOriginalRecompute = typeof recomputeSubmissionMatrix === 'function' ? recomputeSubmissionMatrix : null;
+if (_wfOriginalRecompute) {
+    recomputeSubmissionMatrix = function patchedRecomputeSubmissionMatrix() {
+        _wfOriginalRecompute();
+        if (currentActorFaculty && CiteFlowWorkflow.isChairperson(currentActorFaculty) && !currentActorFaculty.admin_access) {
+            allSubmissions = allSubmissions.filter(submissionVisibleToActor);
+        }
+    };
+}
+
+applyReviewRealtime = async function unifiedApplyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
+    await loadWorkflowActor();
+    if (!window.CiteFlowWorkflow) {
+        showToast('Workflow module failed to load.', 'error');
+        return;
+    }
+
+    const rawSubmission = workflowState.submissions.find(s => String(s.id) === String(submissionId)) || sub;
+    const targetFaculty = getFacultyById(sub?.faculty_id);
+    const task = getTaskById(sub?.task_id);
+    const config = task?.report_config_id
+        ? (workflowState.reportConfigs || []).find(c => String(c.id) === String(task.report_config_id))
+        : null;
+
+    const result = await CiteFlowWorkflow.applySubmissionReview(db, {
+        submissionId,
+        submission: rawSubmission,
+        action: newStatus,
+        comment,
+        actorFaculty: currentActorFaculty,
+        actorUser: currentActorUser,
+        targetFaculty,
+        task,
+        config
+    });
+
+    if (!result.ok) {
+        CiteFlowWorkflow.showToast(result.error, 'error');
+        return;
+    }
+
+    const { transition } = result;
+    const toast =
+        newStatus === 'approved' && transition.nextStage === CiteFlowWorkflow.APPROVAL_STAGES.FINAL
+            ? 'Chairperson approval recorded. Submission is now awaiting final approval.'
+            : newStatus === 'approved' && transition.nextStage === CiteFlowWorkflow.APPROVAL_STAGES.APPROVED
+                ? 'Submission fully approved.'
+                : newStatus === 'revision'
+                    ? 'Revision requested. Faculty must revise and resubmit.'
+                    : 'Submission marked rejected.';
+
+    CiteFlowWorkflow.showToast(toast, newStatus === 'approved' ? 'success' : newStatus === 'revision' ? 'warn' : 'error');
+    closeReviewModal();
+    await fetchAllData();
+    if (activeTaskDetailId) renderTaskDetailPage(activeTaskDetailId, { focusFacultyId: sub.faculty_id });
+};
+
+openReviewModal = async function unifiedOpenReviewModal(taskId, facultyRef) {
+    await loadWorkflowActor();
+    const rows = getTaskSubmissionRows(taskId);
+    const sub = rows.find(r => String(r.faculty_id) === String(facultyRef));
+    if (!sub || !sub.submission_id) {
+        showToast('No submission found for this faculty member.', 'warn');
+        return;
+    }
+
+    activeReviewId = `${taskId}|${facultyRef}`;
+    const task = getTaskById(taskId);
+    const raw = workflowState.submissions.find(s => String(s.id) === String(sub.submission_id));
+    const stage = CiteFlowWorkflow.getApprovalStage(raw || sub);
+    const targetFaculty = getFacultyById(sub.faculty_id);
+
+    document.getElementById('modalTaskTitle').textContent = task?.title || 'Submission Review';
+    document.getElementById('modalSubmitter').textContent =
+        `${sub.faculty_name} | ${sub.department_code} | Submitted ${formatDateTime(sub.submitted_at)}`;
+
+    if (task) {
+        document.getElementById('deadlineBlock').classList.remove('hidden');
+        document.getElementById('modalDeadline').textContent = formatDateTime(task.deadline_at || task.due_at);
+        document.getElementById('modalCountdown').innerHTML = deadlineCountdown(task.deadline_at || task.due_at);
+    }
+
+    const statusLabel = CiteFlowWorkflow.formatWorkflowStatus(raw || sub, task);
+    const recEl = document.getElementById('reviewRecord');
+    recEl.classList.remove('hidden');
+    recEl.innerHTML = `
+        <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-100">
+            <div class="flex items-center justify-between gap-3">
+                <span class="text-xs font-semibold text-indigo-700">Workflow Status</span>
+                <span class="approval-stage-pill">${escapeHtml(statusLabel)}</span>
+            </div>
+            ${raw?.review_remarks ? `<div class="text-xs text-indigo-700 mt-2">${escapeHtml(raw.review_remarks)}</div>` : ''}
+        </div>`;
+
+    document.getElementById('modalFiles').innerHTML = renderFileList(sub.files, 'No submitted files saved.');
+    document.getElementById('adminComment').value = '';
+
+    const approveBtn = document.querySelector('#reviewModal button[onclick="approveSubmission()"]');
+    const revisionBtn = document.querySelector('#reviewModal button[onclick="requestRevision()"]');
+    const declineBtn = document.querySelector('#reviewModal button[onclick="declineSubmission()"]');
+
+    const canChair = CiteFlowWorkflow.canReviewAsChairperson(raw || sub, currentActorFaculty, targetFaculty);
+    const canFinal = CiteFlowWorkflow.canReviewAsFinalApprover(raw || sub, currentActorFaculty);
+    const isComplete = stage === CiteFlowWorkflow.APPROVAL_STAGES.APPROVED || raw?.status === 'approved';
+
+    [approveBtn, revisionBtn, declineBtn].forEach(b => {
+        if (!b) return;
+        b.disabled = true;
+        b.title = '';
+    });
+
+    if (isComplete) {
+        if (approveBtn) approveBtn.title = 'Already fully approved';
+    } else if (canChair) {
+        [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.disabled = false; });
+        if (approveBtn) approveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Approve (Chairperson)';
+    } else if (canFinal) {
+        [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.disabled = false; });
+        if (approveBtn) approveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Final Approve';
+    } else {
+        const waiting = stage === CiteFlowWorkflow.APPROVAL_STAGES.CHAIRPERSON
+            ? 'Waiting for Chairperson review'
+            : 'Waiting for final approval';
+        [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.title = waiting; });
+        showToast(`This submission is in ${statusLabel}. You cannot perform this action.`, 'warn');
+    }
+
+    document.getElementById('reviewModal').classList.add('open');
+};
+
+initRealtime = function unifiedInitRealtime() {
+    if (window.CiteFlowWorkflow) {
+        CiteFlowWorkflow.subscribeWorkflow(() => fetchAllData(), [
+            'wf_submissions', 'wf_approval_history', 'wf_notifications', 'wf_task_assignments',
+            'wf_tasks', 'wf_submission_files', 'wf_activity_log', 'wf_comments',
+            'wf_delegated_access', 'wf_report_configs', 'wf_report_targets', 'faculty'
+        ]);
+    }
+};
+
+const _wfOriginalInit = init;
+init = async function unifiedInit() {
+    await loadWorkflowActor();
+    return _wfOriginalInit();
+};
 
 </script>
 <script src="../shared/system-ui.js"></script>

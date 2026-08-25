@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="shared/supabase-config.js"></script>
     <script src="shared/auth.js"></script>
+    <script src="shared/auth-guard.js"></script>
 
     <style>
         :root {
@@ -699,6 +700,12 @@
                     .select('*')
                     .or(`auth_user_id.eq.${currentSessionUser.id},email.ilike.${currentSessionUser.email}`)
                     .maybeSingle();
+
+                // Already finished onboarding — send to dashboard (do not show wizard again)
+                if (CiteFlowAuth.isOnboardingComplete(profile, currentSessionUser)) {
+                    window.location.href = 'faculty/dashboard.html';
+                    return;
+                }
 
                 if (profile) {
                     if (profile.first_name) firstName.value = profile.first_name;

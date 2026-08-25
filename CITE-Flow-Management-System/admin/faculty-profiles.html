@@ -1294,25 +1294,29 @@
         viewAllDepartments: [
             'administrator',
             'admin',
-            'dean'
+            'dean',
+            'secretary'
         ],
 
         manageUsers: [
             'administrator',
             'admin',
-            'dean'
+            'dean',
+            'secretary'
         ],
 
         addFaculty: [
             'administrator',
             'admin',
-            'dean'
+            'dean',
+            'secretary'
         ],
 
         editFaculty: [
             'administrator',
             'admin',
-            'dean'
+            'dean',
+            'secretary'
         ],
 
         deleteFaculty: [
@@ -1364,6 +1368,14 @@
             value === 'dean & secretary'
         ) {
             return 'admin';
+        }
+
+        if (value.includes('secretary')) {
+            return 'secretary';
+        }
+
+        if (value.includes('chair')) {
+            return 'chairperson';
         }
 
 
@@ -1753,6 +1765,17 @@
     ============================================================= */
 
     async function loadFacultyProfiles() {
+
+        const grid =
+            document.getElementById('faculty-grid');
+
+        if (grid) {
+            grid.innerHTML = `
+                <div class="col-span-3 bg-white rounded-3xl p-10 text-center text-gray-500">
+                    Loading faculty profiles...
+                </div>
+            `;
+        }
 
         const {
             data,
@@ -4356,6 +4379,52 @@ async function createFacultyAccount() {
 
     }
 }
+
+
+    /* =============================================================
+       PAGE INIT
+    ============================================================= */
+
+    async function initFacultyProfilesPage() {
+
+        try {
+
+            if (typeof loadSidebar === 'function') {
+                await loadSidebar();
+            }
+
+            await resolveCurrentUser();
+            applyAccessUI();
+            await loadFacultyProfiles();
+
+        } catch (error) {
+
+            console.error(
+                'Failed to initialize faculty profiles page:',
+                error
+            );
+
+            const grid =
+                document.getElementById('faculty-grid');
+
+            if (grid) {
+                grid.innerHTML = `
+                    <div class="col-span-3 bg-white rounded-3xl p-10 text-center text-red-600">
+                        Unable to load faculty profiles. Please refresh the page or sign in again.
+                    </div>
+                `;
+            }
+
+        }
+
+    }
+
+
+    window.addEventListener(
+        'load',
+        initFacultyProfilesPage
+    );
+
 </script>
 
 

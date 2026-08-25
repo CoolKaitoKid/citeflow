@@ -64,6 +64,73 @@ window.CiteFlowAuth = (function () {
     }
 
     /**
+     * Whether this faculty user must complete first-time onboarding (once only).
+     * Faculty table is the primary source of truth; auth metadata is fallback.
+     */
+    function needsOnboarding(facultyProfile, user) {
+        const meta = user?.user_metadata || {};
+
+        // Onboarding is a one-time flow — once marked complete, never show again.
+        if (facultyProfile?.first_login_completed_at) {
+            return false;
+        }
+        if (facultyProfile?.profile_completed === true) {
+            return false;
+        }
+        if (meta.onboarding_completed_at || meta.first_login_completed_at) {
+            return false;
+        }
+        if (meta.profile_completed === true) {
+            return false;
+        }
+
+        if (facultyProfile) {
+            if (facultyProfile.must_change_password === true) {
+                return true;
+            }
+            if (facultyProfile.profile_completed === false) {
+                return true;
+            }
+            if (facultyProfile.auth_user_id && facultyProfile.profile_completed == null) {
+                return true;
+            }
+        }
+
+        if (meta.must_change_password === true) {
+            return true;
+        }
+        if (meta.profile_completed === false) {
+            return true;
+        }
+
+        return false;
+    }
+
+    function isOnboardingComplete(facultyProfile, user) {
+        return !needsOnboarding(facultyProfile, user);
+    }
+
+    function isFacultyPortalRole(role, facultyProfile) {
+        const r = String(role || facultyProfile?.role || facultyProfile?.position || '').toLowerCase();
+        return !r || r === 'faculty' || r.includes('chair');
+    }
+
+    function isAdminPortalRole(role, facultyProfile) {
+        const r = String(role || '').toLowerCase();
+        const profileRole = String(facultyProfile?.role || facultyProfile?.position || '').toLowerCase();
+        if (r === 'admin' || r === 'administrator' || profileRole === 'admin' || profileRole === 'administrator') {
+            return true;
+        }
+        if (profileRole === 'dean' || profileRole.includes('secretary')) {
+            return true;
+        }
+        if (profileRole.includes('chair') && facultyProfile?.admin_access === true) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Authenticate user with Email & Password and resolve the correct destination
      * @param {string} email 
      * @param {string} password 
@@ -105,10 +172,11 @@ window.CiteFlowAuth = (function () {
         // Determine effective role & destination
         let destination = `${prefix}admin/dashboard.html`;
 
-        if (role === 'admin' || role === 'administrator') {
-            cacheUserInfo(user, 'Admin', null);
+        const portalRole = role || String(facultyProfile?.role || 'Faculty');
+
+        if (isAdminPortalRole(role, facultyProfile) && isOnboardingComplete(facultyProfile, user)) {
+            cacheUserInfo(user, 'Admin', facultyProfile);
             destination = `${prefix}admin/dashboard.html`;
-            // Ensure admin_profiles record exists on login
             try {
                 const meta = user.user_metadata || {};
                 let firstName = meta.first_name || '';
@@ -128,16 +196,11 @@ window.CiteFlowAuth = (function () {
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'id' });
             } catch (_) {}
-        } else if (facultyProfile || role === 'faculty' || !role) {
-            // User is faculty
-            const isFirstTime = facultyProfile?.must_change_password || 
-                                user.user_metadata?.must_change_password || 
-                                facultyProfile?.profile_completed === false || 
-                                user.user_metadata?.profile_completed === false;
+        } else if (facultyProfile || isFacultyPortalRole(role, facultyProfile)) {
+            const facultyRole = facultyProfile?.role || portalRole || 'Faculty';
+            cacheUserInfo(user, facultyRole, facultyProfile);
 
-            cacheUserInfo(user, 'Faculty', facultyProfile);
-
-            if (isFirstTime) {
+            if (needsOnboarding(facultyProfile, user)) {
                 destination = `${prefix}onboarding.html`;
             } else {
                 destination = `${prefix}faculty/dashboard.html`;
@@ -353,6 +416,9 @@ window.CiteFlowAuth = (function () {
         const { error: updateAuthError } = await sb.auth.updateUser(updateAuthPayload);
         if (updateAuthError) throw updateAuthError;
 
+        // Refresh session so updated metadata is available on the next page load
+        await sb.auth.refreshSession();
+
         // 3. Upsert / Update public.faculty profile
         const profilePayload = {
             auth_user_id: user.id,
@@ -373,6 +439,7 @@ window.CiteFlowAuth = (function () {
             role: 'Faculty',
             profile_completed: true,
             must_change_password: false,
+            first_login_completed_at: nowIso,
             updated_at: nowIso
         };
 
@@ -420,7 +487,7 @@ window.CiteFlowAuth = (function () {
             // Non-critical — profiles is a secondary source
         }
 
-        // Cache updated info
+        // Cache updated info so login routing uses completed state immediately
         cacheUserInfo(user, 'Faculty', profilePayload);
 
         return { success: true };
@@ -466,6 +533,10 @@ window.CiteFlowAuth = (function () {
         getSession,
         cacheUserInfo,
         clearUserCache,
-        getClient
+        getClient,
+        needsOnboarding,
+        isOnboardingComplete,
+        isFacultyPortalRole,
+        isAdminPortalRole
     };
 })();

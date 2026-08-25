@@ -6,6 +6,10 @@
     <title>Status Tracking - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth.js"></script>
+    <script src="../shared/workflow.js"></script>
+    <script src="../shared/auth-guard.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
     <style>
@@ -28,12 +32,6 @@
         .status-dot { width: 10px; height: 10px; border-radius: 999px; flex: 0 0 auto; }
         .indicator-bar { width: 4px; border-radius: 999px; align-self: stretch; flex: 0 0 auto; }
         .icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-        .notif-bell { position: relative; cursor: pointer; padding: 10px; border-radius: 14px; transition: background .2s; border: 1px solid #e5e7eb; background: #fff; }
-        .notif-bell:hover { background: #f9fafb; }
-        .notif-badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; background: #dc2626; color: #fff; font-size: 10px; font-weight: 700; border-radius: 99px; display: flex; align-items: center; justify-content: center; padding: 0 5px; border: 2px solid #fff; }
-        .dropdown-menu { position: absolute; right: 0; top: calc(100% + 8px); background: #fff; border: 1px solid #e5e7eb; border-radius: 18px; box-shadow: 0 18px 45px rgba(0,0,0,.14); min-width: 360px; z-index: 2000; display: none; padding: 8px; max-height: 390px; overflow-y: auto; }
-        .dropdown-menu.open { display: block; }
-        .dropdown-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px; font-size: 13px; color: #374151; border-radius: 12px; }
         .filter-btn.active { background:var(--cite-theme); color: #fff; border-color: #621708; }
         .timeline-step::before { content: ''; position: absolute; left: 10px; top: 28px; bottom: -18px; width: 2px; background: #e5e7eb; }
         .timeline-step:last-child::before { display: none; }
@@ -54,21 +52,6 @@
                     </button>
                     <h1 class="text-4xl font-bold tracking-tight text-gray-950">Submission Status</h1>
                     <p class="text-gray-500 mt-2 max-w-2xl">Review assigned tasks in a clean list, open each task for complete status details, and preview submitted documents when a file URL is available.</p>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div class="relative">
-                        <div class="notif-bell" onclick="toggleNotifications()" title="Notifications">
-                            <svg class="icon text-gray-600" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                            <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
-                        </div>
-                        <div id="notifDropdown" class="dropdown-menu">
-                            <div class="px-3 py-3 border-b border-gray-100 flex justify-between items-center">
-                                <span class="font-semibold text-sm">Notifications</span>
-                                <button onclick="markFacultyNotificationsRead()" class="text-xs font-semibold text-[#621708] hover:underline">Mark all read</button>
-                            </div>
-                            <div id="notifList" class="py-1"></div>
-                        </div>
-                    </div>
                 </div>
             </header>
 
@@ -146,10 +129,10 @@
 <script>
 const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined' ? window.__SUPABASE_URL__ : 'https://uforealazougjckepggc.supabase.co';
 const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined' ? window.__SUPABASE_ANON__ : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+const db = window.supabaseClient || (typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON) : null);
+window.supabaseClient = db;
 
-const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [], taskFiles: [] };
+const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [], taskFiles: [], approvalHistory: [] };
 let currentFaculty = null;
 let currentUser = null;
 let activeFilter = 'all';
@@ -157,6 +140,7 @@ let activeRowKey = null;
 let searchTerm = '';
 let realtimeChannel = null;
 let isFetchingData = false;
+let pendingDataRefresh = false;
 let authChecked = false;
 
 function escapeHtml(value) {
@@ -199,11 +183,33 @@ async function requireFacultyAuth() {
     }
 
     const user = data.session.user;
-    const role = String(user.user_metadata?.role || '').toLowerCase();
-    if (role && role !== 'faculty') {
-        await db.auth.signOut();
-        window.location.href = '../login.html';
-        return false;
+
+    if (window.CiteFlowWorkflow?.canAccessFacultyPortalSession) {
+        const access = await CiteFlowWorkflow.canAccessFacultyPortalSession(user);
+        if (!access.allowed) {
+            await db.auth.signOut();
+            window.location.href = '../login.html';
+            return false;
+        }
+    } else {
+        const profileProbe = await db.from('faculty').select('role, position').eq('auth_user_id', user.id).maybeSingle();
+        const metaRole = String(user.user_metadata?.role || '').toLowerCase();
+        const profileRole = String(profileProbe.data?.role || profileProbe.data?.position || '').toLowerCase();
+        const portalRole = profileRole || metaRole;
+        const allowedPortal =
+            portalRole === 'faculty'
+            || portalRole.includes('chair')
+            || portalRole === 'dean'
+            || portalRole.includes('secretary')
+            || portalRole === 'admin'
+            || portalRole === 'administrator'
+            || !!profileProbe.data;
+
+        if (portalRole && !allowedPortal) {
+            await db.auth.signOut();
+            window.location.href = '../login.html';
+            return false;
+        }
     }
 
     currentUser = user;
@@ -212,6 +218,7 @@ async function requireFacultyAuth() {
 }
 
 function normalizeFacultyForStatus(row) {
+    if (window.CiteFlowWorkflow) return CiteFlowWorkflow.normalizeFaculty(row);
     if (!row) return null;
     return {
         ...row,
@@ -221,9 +228,23 @@ function normalizeFacultyForStatus(row) {
         is_active: row.access_enabled !== false && String(row.status || 'Active').toLowerCase() === 'active'
     };
 }
+function getDisplayStatus(submission, task) {
+    if (window.CiteFlowWorkflow) {
+        return {
+            label: CiteFlowWorkflow.formatWorkflowStatus(submission, task),
+            chip: CiteFlowWorkflow.getStatusClass(submission, task),
+            stage: CiteFlowWorkflow.getWorkflowStage(submission, task)
+        };
+    }
+    const status = normalizeStatus(submission?.status, task);
+    return { label: getStatusLabel(status), chip: getStatusChip(status), stage: status };
+}
 
 async function loadCurrentFacultyProfile() {
     if (!currentUser) return null;
+    if (window.CiteFlowWorkflow) {
+        return CiteFlowWorkflow.getCurrentFaculty(currentUser);
+    }
     const email = String(currentUser.email || '').toLowerCase();
 
     let response = await db
@@ -248,12 +269,7 @@ async function loadCurrentFacultyProfile() {
     }
 
     const normalized = normalizeFacultyForStatus(response.data);
-    return normalized?.is_active ? normalized : null;
-}
-function getFacultyNotifications() {
-    const faculty = resolveCurrentFaculty();
-    if (!faculty) return [];
-    return state.notifications.filter(n => (n.message || '').includes(faculty.full_name) || n.type === 'task');
+    return normalized;
 }
 function normalizeStatus(raw, task) {
     const status = raw || 'notsubmitted';
@@ -301,8 +317,8 @@ function computeRows() {
         const task = state.tasks.find(t => String(t.id) === String(a.task_id));
         const submission = state.submissions.find(s => String(s.task_id) === String(a.task_id) && String(s.faculty_id) === String(faculty.id));
         const files = submission ? state.files.filter(f => String(f.submission_id) === String(submission.id)) : [];
-        const status = normalizeStatus(submission?.status, task);
-        return { key: `${a.task_id}-${faculty.id}`, task, assignment: a, submission, files, status };
+        const display = getDisplayStatus(submission, task);
+        return { key: `${a.task_id}-${faculty.id}`, task, assignment: a, submission, files, status: normalizeStatus(submission?.status, task), display };
     }).filter(r => r.task);
 }
 function filteredRows() {
@@ -317,25 +333,21 @@ function filteredRows() {
         return statusGroup && matchesSearch;
     });
 }
-function renderNotifications() {
-    const items = getFacultyNotifications();
-    const list = document.getElementById('notifList');
-    if (!items.length) {
-        list.innerHTML = '<p class="text-sm text-gray-400 text-center py-5">No notifications yet</p>';
-    } else {
-        list.innerHTML = items.map(n => `<div class="dropdown-item ${n.is_read ? '' : 'bg-blue-50'}"><div class="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0"><svg class="icon w-4 h-4 text-gray-500" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="flex-1"><div class="text-sm text-gray-800">${escapeHtml(n.message)}</div><div class="text-xs text-gray-400 mt-0.5">${formatDate(n.created_at)}</div></div>${n.is_read ? '' : '<div class="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>'}</div>`).join('');
+function refreshNavNotifications() {
+    if (typeof window.refreshFacultyNavNotifications !== 'function') {
+        return;
     }
-    const unread = items.filter(i => !i.is_read).length;
-    const badge = document.getElementById('notifBadge');
-    const label = unread > 99 ? '99+' : String(unread);
-    badge.style.display = unread ? 'flex' : 'none';
-    badge.textContent = label;
-}
-async function markFacultyNotificationsRead() {
-    const ids = getFacultyNotifications().filter(n => !n.is_read).map(n => n.id);
-    if (!ids.length) return;
-    const { error } = await db.from('wf_notifications').update({ is_read: true }).in('id', ids);
-    if (!error) await fetchAllData();
+
+    const faculty = resolveCurrentFaculty();
+    const filtered = (state.notifications || []).filter((notification) => {
+        if (!faculty) return true;
+        if (notification.faculty_id != null) {
+            return String(notification.faculty_id) === String(faculty.id);
+        }
+        return true;
+    });
+
+    window.refreshFacultyNavNotifications(filtered);
 }
 function renderStats(rows) {
     const counts = { pending: 0, underreview: 0, approved: 0, rejected: 0 };
@@ -391,6 +403,24 @@ function renderPreview(file) {
 }
 
 function renderTimeline(row) {
+    if (window.CiteFlowWorkflow) {
+        const steps = CiteFlowWorkflow.buildTimelineSteps(row.submission, row.task, row.assignment, state.approvalHistory);
+        return steps.map(step => {
+            const dotClass = step.active
+                ? 'bg-[#621708] border-[#f5e8c7] ring-4 ring-[#621708]/20'
+                : step.done
+                    ? 'bg-[#621708] border-[#f5e8c7]'
+                    : 'bg-white border-gray-200';
+            return `<div class="timeline-step relative flex gap-4 pb-8">
+                <div class="relative z-10 w-5 h-5 rounded-full border-4 ${dotClass}"></div>
+                <div class="-mt-1 flex-1">
+                    <div class="text-sm font-semibold text-gray-900">${escapeHtml(step.label)}</div>
+                    <div class="text-xs text-gray-500 mt-1">${formatDateTime(step.date)}</div>
+                    <div class="text-sm text-gray-600 mt-2">${escapeHtml(step.note)}</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
     const status = row.status;
     const steps = [
         { title: 'Assigned', date: row.assignment?.assigned_at, done: true, note: 'Task assigned to faculty member.' },
@@ -433,7 +463,7 @@ function renderDetail(row) {
         <div class="bg-white rounded-[1.5rem] border border-gray-200 p-6">
             <div class="flex items-start justify-between gap-4 mb-5">
                 <div>
-                    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold ${getStatusChip(row.status)}"><span class="status-dot ${getIndicator(row.status)}"></span>${getStatusLabel(row.status)}</div>
+                    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold ${row.display?.chip || getStatusChip(row.status)}"><span class="status-dot ${getIndicator(row.status)}"></span>${escapeHtml(row.display?.label || getStatusLabel(row.status))}</div>
                     <h3 class="text-2xl font-bold text-gray-950 mt-4">${escapeHtml(row.task.title)}</h3>
                     <p class="text-sm text-gray-500 mt-2 leading-6">${escapeHtml(row.task.instructions || 'No instructions provided.')}</p>
                 </div>
@@ -503,7 +533,7 @@ function renderRows() {
                     <span class="inline-flex items-center gap-1.5 ${due.text}"><span class="w-2 h-2 rounded-full ${due.color}"></span>${due.label}</span>
                 </span>
                 <span class="col-span-6 md:col-span-2">
-                    <span class="inline-flex px-3 py-1 rounded-full border text-[11px] font-bold ${getStatusChip(r.status)}">${getStatusLabel(r.status)}</span>
+                    <span class="inline-flex px-3 py-1 rounded-full border text-[11px] font-bold ${r.display?.chip || getStatusChip(r.status)}">${escapeHtml(r.display?.label || getStatusLabel(r.status))}</span>
                 </span>
                 <span class="col-span-6 md:col-span-1 flex items-center justify-end gap-2 text-xs text-gray-500">
                     <span class="inline-flex items-center gap-1.5"><svg class="icon w-4 h-4" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>${r.files.length}</span>
@@ -521,10 +551,13 @@ function filterStatus(status) {
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === status));
     renderRows();
 }
-function toggleNotifications() { document.getElementById('notifDropdown').classList.toggle('open'); }
 async function fetchAllData() {
-    if (isFetchingData) return;
+    if (isFetchingData) {
+        pendingDataRefresh = true;
+        return;
+    }
     isFetchingData = true;
+    pendingDataRefresh = false;
 
     try {
         const ok = await requireFacultyAuth();
@@ -534,53 +567,103 @@ async function fetchAllData() {
         setSidebarFaculty(currentFaculty, currentUser);
 
         if (!currentFaculty) {
-            document.getElementById('statusList').innerHTML = `<div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl p-4">Your account is signed in, but no matching active faculty profile was found in the faculty table. Please ask the administrator to check your faculty profile.</div>`;
+            document.getElementById('statusList').innerHTML = `<div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl p-4">Your account is signed in, but no matching faculty profile was found. Please ask the administrator to link your login to a faculty profile.</div>`;
             renderDetail(null);
             return;
         }
 
-        const [faculty, tasks, assignments, submissions, files, notifications, taskFiles] = await Promise.all([
-            db.from('faculty').select('*').order('full_name', { ascending: true }),
-            db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
-            db.from('wf_task_assignments').select('*'),
-            db.from('wf_submissions').select('*'),
+        if (currentFaculty.is_active === false) {
+            console.warn('Faculty profile is inactive, but assigned tasks will still be shown.');
+        }
+
+        const facultyId = currentFaculty.id;
+        let assignmentRows = [];
+        let taskRows = [];
+
+        if (window.CiteFlowWorkflow) {
+            const bundle = await CiteFlowWorkflow.loadFacultyAssignedTasks(facultyId);
+            if (bundle.error) {
+                document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(bundle.error.message || 'Failed to load assigned tasks.')}</div>`;
+                return;
+            }
+            assignmentRows = bundle.assignments;
+            taskRows = bundle.tasks;
+        } else {
+            const [tasks, assignments] = await Promise.all([
+                db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
+                db.from('wf_task_assignments').select('*').eq('faculty_id', facultyId)
+            ]);
+            if (tasks.error || assignments.error) {
+                document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(tasks.error?.message || assignments.error?.message || 'Failed to load status data.')}</div>`;
+                return;
+            }
+            assignmentRows = assignments.data || [];
+            const assignmentTaskIds = new Set(assignmentRows.map(a => String(a.task_id)));
+            taskRows = (tasks.data || []).filter(t => assignmentTaskIds.has(String(t.id)));
+        }
+
+        const [submissions, files, notifications, taskFiles, approvalHistory] = await Promise.all([
+            db.from('wf_submissions').select('*').eq('faculty_id', facultyId),
             db.from('wf_submission_files').select('*'),
-            db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(100),
-            db.from('wf_task_files').select('*')
+            db.from('wf_notifications').select('*').or(`faculty_id.eq.${facultyId},faculty_id.is.null`).order('created_at', { ascending: false }).limit(100),
+            db.from('wf_task_files').select('*'),
+            db.from('wf_approval_history').select('*').eq('faculty_id', facultyId).order('created_at', { ascending: false })
         ]);
 
-        const requiredError = faculty.error || tasks.error || assignments.error || submissions.error;
-        if (requiredError) {
-            document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(requiredError.message || 'Failed to load status data.')}</div>`;
+        if (submissions.error) {
+            document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(submissions.error.message || 'Failed to load status data.')}</div>`;
             return;
         }
 
-        if (files.error || notifications.error || taskFiles.error) {
-            console.warn('Optional status data could not be loaded:', { files, notifications, taskFiles });
+        if (files.error || notifications.error || taskFiles.error || approvalHistory.error) {
+            console.warn('Optional status data could not be loaded:', { files, notifications, taskFiles, approvalHistory });
         }
 
-        state.faculty = (faculty.data || []).map(normalizeFacultyForStatus).filter(f => f.is_active);
-        state.tasks = tasks.data || [];
-        state.assignments = assignments.data || [];
+        state.faculty = [currentFaculty];
+        state.tasks = taskRows;
+        state.assignments = assignmentRows;
         state.submissions = submissions.data || [];
-        state.files = files.error ? [] : (files.data || []);
+        const submissionIds = new Set(state.submissions.map(s => String(s.id)));
+        state.files = files.error ? [] : (files.data || []).filter(f => submissionIds.has(String(f.submission_id)));
         state.notifications = notifications.error ? [] : (notifications.data || []);
         state.taskFiles = taskFiles.error ? [] : (taskFiles.data || []);
+        state.approvalHistory = approvalHistory.error ? [] : (approvalHistory.data || []);
         renderRows();
-        renderNotifications();
+        refreshNavNotifications();
     } finally {
         isFetchingData = false;
+        if (pendingDataRefresh) {
+            pendingDataRefresh = false;
+            fetchAllData();
+        }
     }
 }
 function initRealtime() {
-    // Realtime is intentionally disabled on this page to avoid Supabase Auth lock conflicts.
+    if (window.CiteFlowWorkflow) {
+        CiteFlowWorkflow.subscribeWorkflow(() => {
+            fetchAllData();
+            if (typeof window.loadFacultyNavNotifications === 'function') {
+                window.loadFacultyNavNotifications();
+            }
+        }, [
+            'wf_submissions', 'wf_approval_history', 'wf_notifications', 'wf_task_assignments',
+            'wf_tasks', 'wf_activity_log', 'wf_comments', 'wf_report_configs'
+        ]);
+    }
 }
-document.addEventListener('click', (event) => {
-    if (!event.target.closest('.notif-bell') && !event.target.closest('#notifDropdown')) document.getElementById('notifDropdown').classList.remove('open');
-});
 window.onload = async () => {
-    await loadSidebar();
+    try {
+        if (typeof loadSidebar === 'function') {
+            await loadSidebar();
+        } else if (typeof loadFacultyNavigation === 'function') {
+            await loadFacultyNavigation();
+        }
+    } catch (navError) {
+        console.error('Faculty navigation failed to load:', navError);
+    }
+
     await fetchAllData();
+    initRealtime();
 };
 </script>
 <script src="../shared/system-ui.js"></script>

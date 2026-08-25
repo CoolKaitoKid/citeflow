@@ -310,6 +310,7 @@ async function loadFacultyNavigation() {
         attachFacultyNavEvents();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         updateFacultyNavProfile();
+        loadFacultyNavNotifications();
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
@@ -354,6 +355,138 @@ window.loadFacultyNavigation = loadFacultyNavigation;
 window.toggleFacultyProfileModal = toggleFacultyProfileModal;
 window.facultyLogout = facultyLogout;
 
+let facultyNavNotifications = [];
+
+function escapeFacultyNavHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[c]));
+}
+
+function formatFacultyNavDate(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function filterFacultyNavNotifications(items, facultyId) {
+    return (items || []).filter((notification) => {
+        if (facultyId != null && notification.faculty_id != null) {
+            return String(notification.faculty_id) === String(facultyId);
+        }
+        return notification.faculty_id == null;
+    });
+}
+
+function renderFacultyNavNotifications(items) {
+    facultyNavNotifications = Array.isArray(items) ? items : [];
+    const list = document.getElementById('facultyNavNotifList');
+    const badge = document.getElementById('facultyNavNotifBadge');
+    if (!list || !badge) return;
+
+    if (!facultyNavNotifications.length) {
+        list.innerHTML = '<p class="nav-notif-empty">No notifications yet</p>';
+        badge.style.display = 'none';
+        badge.textContent = '0';
+        return;
+    }
+
+    list.innerHTML = facultyNavNotifications.map((notification) => `
+        <div class="nav-notif-item ${notification.is_read ? '' : 'unread'}">
+            <div class="flex-1">
+                <div>${escapeFacultyNavHtml(notification.message)}</div>
+                <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${formatFacultyNavDate(notification.created_at)}</div>
+            </div>
+        </div>
+    `).join('');
+
+    const unread = facultyNavNotifications.filter((notification) => !notification.is_read).length;
+    if (unread > 0) {
+        badge.style.display = 'flex';
+        badge.textContent = unread > 99 ? '99+' : String(unread);
+    } else {
+        badge.style.display = 'none';
+        badge.textContent = '0';
+    }
+}
+
+async function loadFacultyNavNotifications() {
+    const sb = window.supabaseClient;
+    if (!sb?.auth) return;
+
+    const { data: sessionData } = await sb.auth.getSession();
+    const user = sessionData?.session?.user;
+    if (!user) return;
+
+    let facultyId = null;
+    if (window.CiteFlowWorkflow?.getCurrentFaculty) {
+        const faculty = await window.CiteFlowWorkflow.getCurrentFaculty(user);
+        facultyId = faculty?.id ?? null;
+    }
+
+    let query = sb
+        .from('wf_notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+    if (facultyId != null) {
+        query = query.or(`faculty_id.eq.${facultyId},faculty_id.is.null`);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.warn('Faculty nav notifications could not be loaded:', error);
+        return;
+    }
+
+    renderFacultyNavNotifications(filterFacultyNavNotifications(data || [], facultyId));
+}
+
+function refreshFacultyNavNotifications(items) {
+    if (Array.isArray(items)) {
+        renderFacultyNavNotifications(items);
+        return;
+    }
+    loadFacultyNavNotifications();
+}
+
+function toggleFacultyNotifications() {
+    const dropdown = document.getElementById('facultyNavNotifDropdown');
+    if (!dropdown) return;
+    dropdown.classList.toggle('open');
+    if (dropdown.classList.contains('open') && !facultyNavNotifications.length) {
+        loadFacultyNavNotifications();
+    }
+}
+
+async function markFacultyNavNotificationsRead() {
+    const sb = window.supabaseClient;
+    const ids = facultyNavNotifications.filter((notification) => !notification.is_read).map((notification) => notification.id);
+    if (!sb || !ids.length) return;
+
+    const { error } = await sb.from('wf_notifications').update({ is_read: true }).in('id', ids);
+    if (error) {
+        console.warn('Could not mark faculty notifications read:', error);
+        return;
+    }
+
+    facultyNavNotifications = facultyNavNotifications.map((notification) => ({ ...notification, is_read: true }));
+    renderFacultyNavNotifications(facultyNavNotifications);
+}
+
+window.toggleFacultyNotifications = toggleFacultyNotifications;
+window.markFacultyNavNotificationsRead = markFacultyNavNotificationsRead;
+window.refreshFacultyNavNotifications = refreshFacultyNavNotifications;
+window.loadFacultyNavNotifications = loadFacultyNavNotifications;
+
+document.addEventListener('click', (event) => {
+    const dropdown = document.getElementById('facultyNavNotifDropdown');
+    const button = document.getElementById('facultyNavNotifBtn');
+    if (!dropdown || !dropdown.classList.contains('open')) return;
+    if (button?.contains(event.target) || dropdown.contains(event.target)) return;
+    dropdown.classList.remove('open');
+});
+
 window.addEventListener("load", async () => {
     if (!document.querySelector("aside.sidebar")) {
         await loadFacultyNavigation();
@@ -361,6 +494,7 @@ window.addEventListener("load", async () => {
         attachFacultyNavEvents();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         updateFacultyNavProfile();
+        loadFacultyNavNotifications();
         window.CiteFlowMessenger?.init();
     }
 });
