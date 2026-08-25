@@ -213,6 +213,29 @@
     </div>
 </div>
 
+<!-- Profile detail overlay -->
+<div id="profile-view" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6">
+    <div class="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl">
+        <button onclick="closeProfile()"
+                class="mb-6 flex items-center gap-2 text-gray-600 hover:bg-[#22c55e] hover:text-white px-4 py-2 rounded-2xl font-medium text-sm transition-all">
+            ← Back
+        </button>
+        <div class="flex items-center gap-4 mb-6">
+            <div class="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center text-4xl">👤</div>
+            <div>
+                <h2 id="profile-name" class="text-2xl font-semibold text-gray-900">Faculty</h2>
+                <p id="profile-position" class="text-gray-500">Position</p>
+            </div>
+        </div>
+        <div class="space-y-3 text-sm">
+            <div class="flex justify-between"><span class="text-gray-500">Email</span><span id="profile-email" class="text-[#621708]"></span></div>
+            <div class="flex justify-between"><span class="text-gray-500">Phone</span><span id="profile-phone"></span></div>
+            <div class="flex justify-between"><span class="text-gray-500">Department</span><span id="profile-department" class="px-3 py-0.5 bg-[#621708] text-white text-xs rounded-2xl"></span></div>
+            <div class="flex justify-between items-center"><span class="text-gray-500">Status</span><span id="profile-status" class="px-4 py-1 text-xs font-medium rounded-3xl bg-emerald-100 text-emerald-700"></span></div>
+        </div>
+    </div>
+</div>
+
 <!-- ==================== UPDATED ADD FACULTY MODAL ==================== -->
 <div id="add-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 modal">
     <div class="bg-white rounded-3xl w-full max-w-3xl mx-4 shadow-2xl max-h-[94vh] flex flex-col overflow-hidden">
@@ -346,29 +369,128 @@
 </div>
 
 <script>
-    let facultyData = [ /* ... your existing faculty data ... */ 
+    let facultyData = [
         {
             id: 1, name: "Maria Santos", position: "Associate Professor", status: "Active",
             department: "BSIT", email: "maria.santos@cite.edu", phone: "+63 912 345 6789",
             rank: "Associate Professor", employment: "Regular", dateHired: "07/27/2013",
             employeeId: "123456", yearsService: 8
         },
-        // ... (rest of your data)
         {
-            id: 5, name: "Elena Torres", position: "Associate Professor", status: "On Leave",
+            id: 2, name: "Juan Cruz", position: "Full Professor", status: "Active",
+            department: "BSIE", email: "juan.cruz@cite.edu", phone: "+63 923 456 7890",
+            rank: "Full Professor", employment: "Regular"
+        },
+        {
+            id: 3, name: "Ana Reyes", position: "Assistant Professor", status: "Active",
+            department: "BIT", email: "ana.reyes@cite.edu", phone: "+63 934 567 8901",
+            rank: "Assistant Professor", employment: "Regular"
+        },
+        {
+            id: 4, name: "Carlos Garcia", position: "Instructor", status: "Active",
+            department: "BSIT", email: "carlos.garcia@cite.edu", phone: "+63 945 678 9012",
+            rank: "Instructor", employment: "Part-Time"
+        },
+        {
+            id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", name: "Elena Torres", position: "Associate Professor", status: "On Leave",
             department: "BSIE", email: "elena.torres@cite.edu", phone: "+63 956 789 0123",
             rank: "Associate Professor", employment: "Regular"
         }
     ];
 
-    // Render, Stats, Filter, View, Edit, Delete functions remain the same
-    function renderFacultyCards(data) { /* ... your existing code ... */ }
-    function updateStats() { /* ... */ }
-    function filterFaculty() { /* ... */ }
-    function viewFaculty(id) { /* ... */ }
-    function goBackToList() { location.reload(); }
+    let facultyProfilesInitialized = false;
+
+    function jsArg(value) {
+        return JSON.stringify(String(value ?? ''));
+    }
+
+    function findFacultyById(id) {
+        const needle = String(id ?? '');
+        return facultyData.find(f => String(f.id) === needle);
+    }
+
+    function updateStats() {
+        const totalEl = document.getElementById('total-faculty');
+        const activeEl = document.getElementById('active-faculty');
+        const leaveEl = document.getElementById('onleave-faculty');
+        if (totalEl) totalEl.textContent = facultyData.length;
+        if (activeEl) activeEl.textContent = facultyData.filter(f => f.status === 'Active').length;
+        if (leaveEl) leaveEl.textContent = facultyData.filter(f => f.status === 'On Leave').length;
+    }
+
+    function renderFacultyCards(data) {
+        const grid = document.getElementById('faculty-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        (data || []).forEach(f => {
+            const statusClass = f.status === 'Active'
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-amber-100 text-amber-700';
+            grid.insertAdjacentHTML('beforeend', `
+            <div onclick='openProfile(${jsArg(f.id)})' class="bg-white rounded-3xl p-6 card-shadow hover:shadow-xl transition-all cursor-pointer">
+                <div class="flex justify-between items-start">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-3xl">👤</div>
+                        <div>
+                            <div class="font-semibold">${f.name}</div>
+                            <div class="text-sm text-gray-500">${f.position}</div>
+                        </div>
+                    </div>
+                    <span class="px-4 py-1 text-xs font-medium rounded-3xl ${statusClass}">${f.status}</span>
+                </div>
+                <div class="mt-6 space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-gray-500">Email</span><span class="text-[#621708]">${f.email}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Phone</span><span>${f.phone || '-'}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Department</span><span class="px-3 py-0.5 bg-[#621708] text-white text-xs rounded-2xl">${f.department}</span></div>
+                </div>
+            </div>`);
+        });
+        updateStats();
+    }
+
+    function filterFaculty() {
+        const search = (document.getElementById('search-input')?.value || '').toLowerCase();
+        const dept = document.getElementById('dept-filter')?.value || '';
+        const status = document.getElementById('status-filter')?.value || '';
+        const employment = document.getElementById('employment-filter')?.value || '';
+        const filtered = facultyData.filter(f =>
+            (!search || f.name.toLowerCase().includes(search) || (f.email || '').toLowerCase().includes(search)) &&
+            (!dept || f.department === dept) &&
+            (!status || f.status === status) &&
+            (!employment || f.employment === employment)
+        );
+        renderFacultyCards(filtered);
+    }
+
+    function openProfile(id) {
+        const faculty = findFacultyById(id);
+        if (!faculty) return;
+        document.getElementById('profile-name').textContent = faculty.name;
+        document.getElementById('profile-position').textContent = faculty.position;
+        document.getElementById('profile-email').textContent = faculty.email;
+        document.getElementById('profile-phone').textContent = faculty.phone || '-';
+        document.getElementById('profile-department').textContent = faculty.department;
+        const statusEl = document.getElementById('profile-status');
+        statusEl.textContent = faculty.status;
+        statusEl.className = faculty.status === 'Active'
+            ? 'px-4 py-1 text-xs font-medium rounded-3xl bg-emerald-100 text-emerald-700'
+            : 'px-4 py-1 text-xs font-medium rounded-3xl bg-amber-100 text-amber-700';
+        document.getElementById('profile-view').classList.remove('hidden');
+    }
+
+    function closeProfile() {
+        document.getElementById('profile-view').classList.add('hidden');
+    }
+
+    function viewFaculty(id) { openProfile(id); }
+    function goBackToList() { closeProfile(); }
     function editFaculty(id) { alert(`Edit functionality for faculty ID ${id}...`); }
-    function deleteFaculty(id) { /* ... */ }
+    function deleteFaculty(id) {
+        if (!confirm('Delete this faculty member?')) return;
+        facultyData = facultyData.filter(f => String(f.id) !== String(id));
+        closeProfile();
+        renderFacultyCards(facultyData);
+    }
 
     function showAddModal() {
         document.getElementById('add-modal').classList.remove('hidden');
@@ -416,12 +538,21 @@
         renderFacultyCards(facultyData);
         hideAddModal();
 
-        alert(`✅ Faculty account created successfully!\n\nName: ${newFaculty.name}\nEmail: ${email}\nTemporary Password: ${tempPass}`);
+        alert(`Faculty account created successfully!\n\nName: ${newFaculty.name}\nEmail: ${email}\nTemporary Password: ${tempPass}`);
     }
 
-    window.onload = () => {
+    function initFacultyProfiles() {
+        if (facultyProfilesInitialized) return;
+        facultyProfilesInitialized = true;
         renderFacultyCards(facultyData);
-    };
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initFacultyProfiles);
+    } else {
+        initFacultyProfiles();
+    }
+    window.addEventListener('load', initFacultyProfiles);
 </script>
 </body>
 </html>

@@ -576,18 +576,29 @@
         {id:2, name:"Juan Cruz", position:"Full Professor", status:"Active", department:"BSIE", email:"juan.cruz@cite.edu", phone:"+63 923 456 7890"},
         {id:3, name:"Ana Reyes", position:"Assistant Professor", status:"Active", department:"BIT", email:"ana.reyes@cite.edu", phone:"+63 934 567 8901"},
         {id:4, name:"Carlos Garcia", position:"Instructor", status:"Active", department:"BSIT", email:"carlos.garcia@cite.edu", phone:"+63 945 678 9012"},
-        {id:5, name:"Elena Torres", position:"Associate Professor", status:"On Leave", department:"BSIE", email:"elena.torres@cite.edu", phone:"+63 956 789 0123"}
+        {id:"a1b2c3d4-e5f6-7890-abcd-ef1234567890", name:"Elena Torres", position:"Associate Professor", status:"On Leave", department:"BSIE", email:"elena.torres@cite.edu", phone:"+63 956 789 0123"}
     ];
 
     let currentEditSection = '';
     let currentStatus = 'Active';
+    let facultyProfilesInitialized = false;
+
+    function jsArg(value) {
+        return JSON.stringify(String(value ?? ''));
+    }
+
+    function findFacultyById(id) {
+        const needle = String(id ?? '');
+        return facultyData.find(f => String(f.id) === needle);
+    }
 
     function renderFacultyCards(data) {
         const grid = document.getElementById('faculty-grid');
+        if (!grid) return;
         grid.innerHTML = '';
         data.forEach(f => {
             const html = `
-            <div onclick="openProfile(${f.id})" class="bg-white rounded-3xl p-6 card-shadow hover:shadow-xl transition-all cursor-pointer">
+            <div onclick='openProfile(${jsArg(f.id)})' class="bg-white rounded-3xl p-6 card-shadow hover:shadow-xl transition-all cursor-pointer">
                 <div class="flex justify-between items-start">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-3xl">👤</div>
@@ -611,7 +622,7 @@
     }
 
     function openProfile(id) {
-        const faculty = facultyData.find(f => f.id === id);
+        const faculty = findFacultyById(id);
         if (!faculty) return;
 
         document.getElementById('list-view').classList.add('hidden');
@@ -846,9 +857,18 @@
         closeAddFacultyModal();
     }
 
-    window.onload = () => {
+    function initFacultyProfiles() {
+        if (facultyProfilesInitialized) return;
+        facultyProfilesInitialized = true;
         renderFacultyCards(facultyData);
-    };
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initFacultyProfiles);
+    } else {
+        initFacultyProfiles();
+    }
+    window.addEventListener('load', initFacultyProfiles);
 </script>
 </body>
 </html>
