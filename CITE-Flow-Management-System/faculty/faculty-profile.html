@@ -298,27 +298,27 @@
 
             <!-- RESEARCH TAB -->
             <section id="research-tab" class="hidden">
-    <div class="card p-6">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-            <div>
-                <h2 class="text-lg font-semibold text-slate-950">Research Projects</h2>
-                <p class="text-sm text-slate-500">Upload and manage ongoing or completed faculty research records.</p>
-            </div>
+                <div class="card p-6">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-950">Research Projects</h2>
+                            <p class="text-sm text-slate-500">Upload and manage ongoing or completed faculty research records.</p>
+                        </div>
 
-            <button onclick="openResearchUploadModal()" class="primary-btn flex items-center gap-2" data-theme-primary="true">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3">
-                    <path d="M12 5v14"/>
-                    <path d="M5 12h14"/>
-                </svg>
-                Add Research
-            </button>
-        </div>
+                        <button onclick="openResearchUploadModal()" class="primary-btn flex items-center gap-2" data-theme-primary="true">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3">
+                                <path d="M12 5v14"/>
+                                <path d="M5 12h14"/>
+                            </svg>
+                            Add Research
+                        </button>
+                    </div>
 
-        <div id="researchList" class="space-y-4">
-            <div class="text-sm text-slate-500">No research projects loaded yet.</div>
-        </div>
-    </div>
-</section>
+                    <div id="researchList" class="space-y-4">
+                        <div class="text-sm text-slate-500">No research projects loaded yet.</div>
+                    </div>
+                </div>
+            </section>
 
             <!-- EXTENSION TAB -->
             <section id="extension-tab" class="hidden">
@@ -347,15 +347,15 @@
                     <div id="othersList" class="space-y-3"><div class="text-sm text-slate-500">No other documents loaded yet.</div></div>
                 </div>
             </section>
+
             <!-- WORKLOAD TAB -->
             <section id="workload-tab" class="hidden">
-
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-7">
                     <div class="card p-5">
                         <p class="text-sm text-slate-500">Teaching Load</p>
                         <p id="teachingTotal" class="text-3xl font-semibold text-slate-950 mt-2">0</p>
                     </div>
-<div class="card p-5">
+                    <div class="card p-5">
                         <p class="text-sm text-slate-500">Total Load</p>
                         <div class="flex items-center gap-3 mt-2">
                             <p id="overallLoadTotal" class="text-3xl font-semibold text-[#621708]">0</p>
@@ -910,6 +910,7 @@ function autoUpdateFullName() {
         fullNameEl.value = buildFullName(fn, mn, ln, '');
     }
 }
+
 function setImageOrInitials(imgId, fallbackId, photoUrl, name) {
     const img = document.getElementById(imgId);
     const fallback = document.getElementById(fallbackId);
@@ -938,7 +939,6 @@ function switchTab(tab) {
 async function loadFacultyProfile() {
     let authUser = null;
 
-    // 1. Try getSession
     try {
         const { data: sessionData } = await supabaseClient.auth.getSession();
         if (sessionData?.session?.user) {
@@ -946,7 +946,6 @@ async function loadFacultyProfile() {
         }
     } catch (_) {}
 
-    // 2. Try getUser
     if (!authUser) {
         try {
             const { data: authData } = await supabaseClient.auth.getUser();
@@ -954,7 +953,6 @@ async function loadFacultyProfile() {
         } catch (_) {}
     }
 
-    // 3. Fallback to localStorage
     if (!authUser) {
         try {
             const cached = JSON.parse(localStorage.getItem('citeflow_user') || 'null');
@@ -978,10 +976,8 @@ async function loadFacultyProfile() {
     }
 
     currentAuthUser = authUser;
-
     let facultyRecord = null;
 
-    // 1. Query by auth_user_id
     try {
         const { data: byAuth } = await supabaseClient
             .from('faculty')
@@ -993,7 +989,6 @@ async function loadFacultyProfile() {
         console.warn('Error querying faculty by auth_user_id:', e);
     }
 
-    // 2. Query by email if not found
     if (!facultyRecord && currentAuthUser.email) {
         try {
             const { data: byEmail } = await supabaseClient
@@ -1003,7 +998,6 @@ async function loadFacultyProfile() {
                 .maybeSingle();
             if (byEmail) {
                 facultyRecord = byEmail;
-                // Permanently link auth_user_id in database
                 supabaseClient.from('faculty').update({ auth_user_id: currentAuthUser.id }).eq('id', byEmail.id).then();
             }
         } catch (e) {
@@ -1011,19 +1005,18 @@ async function loadFacultyProfile() {
         }
     }
 
-    // 3. Synthesize fallback faculty profile if not yet in database
     if (!facultyRecord) {
         const meta = currentAuthUser.user_metadata || {};
         const cachedUser = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
-        const rawName = meta.full_name || cachedUser.name || 'Krishnan Paolo Rabasto';
+        const rawName = meta.full_name || cachedUser.name || 'Faculty User';
         const nameParts = rawName.split(' ');
         facultyRecord = {
             id: currentAuthUser.id,
             auth_user_id: currentAuthUser.id,
             email: currentAuthUser.email,
-            first_name: meta.first_name || nameParts[0] || 'Krishnan',
-            middle_name: meta.middle_name || (nameParts.length > 2 ? nameParts[1] : 'Paolo'),
-            last_name: meta.last_name || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : 'Rabasto'),
+            first_name: meta.first_name || nameParts[0] || 'Faculty',
+            middle_name: meta.middle_name || '',
+            last_name: meta.last_name || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : 'Member'),
             full_name: rawName,
             department: meta.department || cachedUser.department || 'BSIT',
             academic_rank: meta.academic_rank || cachedUser.rank || 'Instructor I',
@@ -1055,17 +1048,6 @@ function renderProfile() {
     document.getElementById('profilePhone').textContent = currentFaculty.phone || 'No contact number';
     document.getElementById('profileEmail').textContent = currentFaculty.email || currentAuthUser?.email || 'No email';
     document.getElementById('profileJoined').textContent = `Joined ${formatDate(currentFaculty.start_date || currentFaculty.created_at)}`;
-
-    // Reflect this faculty member in the shared nav's profile modal, if mounted.
-    // (Scoped to #profileModal since the page also has its own #profileName element.)
-    const navProfileName = document.querySelector('#profileModal #profileName');
-    const navProfileRole = document.querySelector('#profileModal #profileRole');
-    const navProfileDepartment = document.getElementById('profileDepartment');
-    const navProfileRoleDetail = document.getElementById('profileRoleDetail');
-    if (navProfileName) navProfileName.textContent = name;
-    if (navProfileRole) navProfileRole.textContent = role;
-    if (navProfileDepartment) navProfileDepartment.textContent = department;
-    if (navProfileRoleDetail) navProfileRoleDetail.textContent = role;
 
     document.getElementById('overviewEmployeeId').textContent = currentFaculty.employee_id || '—';
     document.getElementById('overviewLastName').textContent = currentFaculty.last_name || '—';
@@ -1108,9 +1090,6 @@ async function loadWorkloadEntries() {
         .order('created_at', { ascending: false });
 
     teachingLoads = teachingResponse.data || [];
-
-    if (teachingResponse.error) console.error('Teaching loads error:', teachingResponse.error);
-
     renderWorkload();
 }
 
@@ -1174,10 +1153,6 @@ function closeTeachingModal() {
     document.getElementById('teachingModal').classList.remove('flex');
 }
 
-
-
-
-
 async function saveTeachingLoad() {
     if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
 
@@ -1225,20 +1200,10 @@ async function saveTeachingLoad() {
 
 function clearTeachingForm() {
     [
-        'teachingSubjectCode',
-        'teachingSubjectTitle',
-        'teachingSection',
-
-        'teachingRoom',
-        'teachingUnits',
-        'teachingHoursPerWeek',
-        'teachingTotalStudents',
-        'teachingRegularStudents',
-        'teachingIrregularStudents',
-        'teachingDroppedStudents',
-        'teachingWithdrawnStudents',
-        'teachingAcademicYear',
-        'teachingRemarks'
+        'teachingSubjectCode', 'teachingSubjectTitle', 'teachingSection', 'teachingRoom',
+        'teachingUnits', 'teachingHoursPerWeek', 'teachingTotalStudents', 'teachingRegularStudents',
+        'teachingIrregularStudents', 'teachingDroppedStudents', 'teachingWithdrawnStudents',
+        'teachingAcademicYear', 'teachingRemarks'
     ].forEach(id => {
         const element = document.getElementById(id);
         if (element) element.value = '';
@@ -1246,31 +1211,15 @@ function clearTeachingForm() {
     resetTeachingSchedules();
 }
 
-
-
-
-
 async function archiveWorkload(type, id) {
     if (!confirm('Remove this workload entry?')) return;
 
-    const tableMap = {
-        teaching: 'faculty_teaching_loads'
-    };
-
-    const table = tableMap[type];
-
-    if (!table) return;
-
     const { error } = await supabaseClient
-        .from(table)
-        .update({
-            status: 'Archived',
-            updated_at: new Date().toISOString()
-        })
+        .from('faculty_teaching_loads')
+        .update({ status: 'Archived', updated_at: new Date().toISOString() })
         .eq('id', id);
 
     if (error) {
-        console.error(error);
         return alert('Unable to remove workload entry: ' + error.message);
     }
 
@@ -1309,16 +1258,11 @@ async function loadResearch() {
                         </span>
                     </div>
 
-                    ${
-                        completed && project.file_url
-                            ? `<a href="${esc(project.file_url)}" target="_blank" class="inline-flex mt-4 text-sm font-semibold text-[#621708]">Download completed research file</a>`
-                            : ''
-                    }
+                    ${completed && project.file_url ? `<a href="${esc(project.file_url)}" target="_blank" class="inline-flex mt-4 text-sm font-semibold text-[#621708]">Download completed research file</a>` : ''}
                 </div>
             `;
         }).join('');
     } catch (error) {
-        console.warn('Research table not available:', error.message);
         container.innerHTML = '<div class="text-sm text-slate-500">No research projects loaded yet.</div>';
     }
 }
@@ -1348,7 +1292,6 @@ async function loadCategorizedDocuments(documentType, containerId, emptyMessage)
             </div>
         `).join('');
     } catch (error) {
-        console.warn(`${documentType} table load skipped:`, error.message);
         container.innerHTML = `<div class="text-sm text-slate-500">${esc(emptyMessage)}</div>`;
     }
 }
@@ -1437,12 +1380,8 @@ function openEditProfileModal() {
     document.getElementById('editDepartment').value = currentFaculty.department || 'N/A';
     document.getElementById('editShift').value = currentFaculty.shift || 'Morning';
     document.getElementById('editAcademicRank').value = currentFaculty.academic_rank || currentFaculty.position || 'Part-time';
-    const currentPhotoUrl =
-        currentFaculty.profile_photo_url ||
-        currentFaculty.avatar_url ||
-        currentFaculty.photo_url ||
-        currentFaculty.image_url ||
-        '';
+    
+    const currentPhotoUrl = currentFaculty.profile_photo_url || currentFaculty.avatar_url || currentFaculty.photo_url || '';
     document.getElementById('editPhotoUrl').value = currentPhotoUrl;
     setEditProfilePhotoPreview(currentPhotoUrl, currentFaculty.full_name || currentFaculty.name || currentFaculty.email || 'Faculty');
     document.getElementById('editMastersDegree').value = currentFaculty.masters_degree || '';
@@ -1451,7 +1390,6 @@ function openEditProfileModal() {
     document.getElementById('editEligibility').value = currentFaculty.eligibility || '';
     document.getElementById('editYearsExperience').value = currentFaculty.years_experience || '';
 
-    // Auto-compute full name from name parts
     autoUpdateFullName();
 
     document.getElementById('editProfileModal').classList.remove('hidden');
@@ -1467,10 +1405,15 @@ async function saveProfileChanges() {
     if (!currentFaculty?.id) return;
 
     const firstName = document.getElementById('editFirstName').value.trim();
-    const middleName = document.getElementById('editMiddleName').value.trim();
+    const rawMiddle = document.getElementById('editMiddleName').value.trim();
     const lastName = document.getElementById('editLastName').value.trim();
-    const typedFullName = document.getElementById('editFullName').value.trim();
-    const fullName = buildFullName(firstName, middleName, lastName, typedFullName);
+    
+    // Siguraduha nga middle initial lang ang masave ug ma-display (Pananglitan "Cruz" -> "C.")
+    const middleInitial = rawMiddle ? rawMiddle.charAt(0).toUpperCase() + '.' : '';
+    
+    // Formatted full name nga walay suffix ug naka-middle initial
+    const fullName = `${firstName} ${middleInitial ? middleInitial + ' ' : ''}${lastName}`.trim();
+    
     let profilePhotoUrl = '';
 
     try {
@@ -1482,7 +1425,7 @@ async function saveProfileChanges() {
 
     const payload = {
         first_name: firstName,
-        middle_name: middleName,
+        middle_name: middleInitial,
         last_name: lastName,
         full_name: fullName,
         name: fullName,
@@ -1492,7 +1435,7 @@ async function saveProfileChanges() {
         department: document.getElementById('editDepartment').value,
         shift: document.getElementById('editShift').value,
         academic_rank: document.getElementById('editAcademicRank').value,
-        profile_photo_url: profilePhotoUrl,
+        profile_photo_url: profilePhotoUrl || currentFaculty.profile_photo_url || '',
         masters_degree: document.getElementById('editMastersDegree').value.trim(),
         doctorate_degree: document.getElementById('editDoctorateDegree').value.trim(),
         educational_qualification: document.getElementById('editEducationalQualification').value.trim(),
@@ -1511,29 +1454,31 @@ async function saveProfileChanges() {
         return alert('Unable to update profile: ' + error.message);
     }
 
+    // --- IDUGANG KINI ARON MA-SYNC ANG NAV MODAL REALTIME ---
+    try {
+        const cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
+        cached.name = fullName;
+        cached.full_name = fullName;
+        cached.department = payload.department;
+        cached.profile_photo_url = payload.profile_photo_url;
+        localStorage.setItem('citeflow_user', JSON.stringify(cached));
+    } catch (_) {}
+
+    if (typeof window.updateFacultyNavProfile === 'function') {
+        window.updateFacultyNavProfile({
+            name: fullName,
+            full_name: fullName,
+            department: payload.department,
+            role: payload.academic_rank,
+            profile_photo_url: payload.profile_photo_url
+        });
+    }
+
     closeEditProfileModal();
     await loadFacultyProfile();
+    alert('Profile updated successfully!');
 }
 
-function subscribeRealtime() {
-    if (!currentFaculty?.id) return;
-
-    supabaseClient
-        .channel('faculty-profile-workload-realtime')
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'faculty_teaching_loads',
-            filter: `faculty_id=eq.${currentFaculty.id}`
-        }, loadWorkloadEntries)
-        .on('postgres_changes', {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'faculty',
-            filter: `id=eq.${currentFaculty.id}`
-        }, loadFacultyProfile)
-        .subscribe();
-}
 function openDocumentUploadModal() {
     document.getElementById('documentUploadModal').classList.remove('hidden');
     document.getElementById('documentUploadModal').classList.add('flex');
@@ -1555,9 +1500,7 @@ function closeResearchUploadModal() {
 }
 
 function safeFileName(fileName) {
-    return String(fileName || 'file')
-        .replace(/[^a-zA-Z0-9._-]/g, '_')
-        .replace(/_+/g, '_');
+    return String(fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');
 }
 
 async function uploadToStorage(bucketName, file, folderName) {
@@ -1568,19 +1511,11 @@ async function uploadToStorage(bucketName, file, folderName) {
     const { error: uploadError } = await supabaseClient
         .storage
         .from(bucketName)
-        .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-        });
+        .upload(filePath, file, { cacheControl: '3600', upsert: false });
 
-    if (uploadError) {
-        throw uploadError;
-    }
+    if (uploadError) throw uploadError;
 
-    const { data } = supabaseClient
-        .storage
-        .from(bucketName)
-        .getPublicUrl(filePath);
+    const { data } = supabaseClient.storage.from(bucketName).getPublicUrl(filePath);
 
     return {
         publicUrl: data?.publicUrl || '',
@@ -1589,10 +1524,7 @@ async function uploadToStorage(bucketName, file, folderName) {
 }
 
 async function saveDocumentUpload() {
-    if (!currentFaculty?.id) {
-        alert('Faculty profile is not loaded.');
-        return;
-    }
+    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
 
     const saveBtn = document.getElementById('saveDocumentBtn');
     const title = document.getElementById('documentTitle').value.trim();
@@ -1600,15 +1532,7 @@ async function saveDocumentUpload() {
     const description = document.getElementById('documentDescription').value.trim();
     const file = document.getElementById('documentFile').files[0];
 
-    if (!title) {
-        alert('Please enter a document title.');
-        return;
-    }
-
-    if (!file) {
-        alert('Please select a document file.');
-        return;
-    }
+    if (!title || !file) return alert('Please enter a document title and select a file.');
 
     saveBtn.disabled = true;
     saveBtn.textContent = 'Uploading...';
@@ -1630,20 +1554,15 @@ async function saveDocumentUpload() {
             updated_at: new Date().toISOString()
         };
 
-        const { error } = await supabaseClient
-            .from('faculty_documents')
-            .insert(payload);
-
+        const { error } = await supabaseClient.from('faculty_documents').insert(payload);
         if (error) throw error;
 
         closeDocumentUploadModal();
         clearDocumentUploadForm();
         await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
         await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.');
-
         alert('Document uploaded successfully.');
     } catch (error) {
-        console.error(error);
         alert('Unable to upload document: ' + error.message);
     } finally {
         saveBtn.disabled = false;
@@ -1659,10 +1578,7 @@ function clearDocumentUploadForm() {
 }
 
 async function saveResearchUpload() {
-    if (!currentFaculty?.id) {
-        alert('Faculty profile is not loaded.');
-        return;
-    }
+    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
 
     const saveBtn = document.getElementById('saveResearchBtn');
     const title = document.getElementById('researchTitle').value.trim();
@@ -1672,26 +1588,22 @@ async function saveResearchUpload() {
     const endDate = document.getElementById('researchEndDate').value || null;
     const file = document.getElementById('researchFile').files[0];
 
-    if (!title) {
-        alert('Please enter a research title.');
-        return;
-    }
+    if (!title) return alert('Please enter a research title.');
 
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
 
     try {
         let uploaded = { publicUrl: '', path: '' };
-
         if (file) {
             uploaded = await uploadToStorage('faculty-research', file, `faculty-${currentFaculty.id}`);
         }
 
         const payload = {
             faculty_id: currentFaculty.id,
-            title: title,
-            description: description,
-            status: status,
+            title,
+            description,
+            status,
             start_date: startDate,
             end_date: endDate,
             file_name: file ? file.name : null,
@@ -1701,19 +1613,14 @@ async function saveResearchUpload() {
             updated_at: new Date().toISOString()
         };
 
-        const { error } = await supabaseClient
-            .from('faculty_research_projects')
-            .insert(payload);
-
+        const { error } = await supabaseClient.from('faculty_research_projects').insert(payload);
         if (error) throw error;
 
         closeResearchUploadModal();
         clearResearchUploadForm();
         await loadResearch();
-
         alert('Research record saved successfully.');
     } catch (error) {
-        console.error(error);
         alert('Unable to save research record: ' + error.message);
     } finally {
         saveBtn.disabled = false;
@@ -1729,91 +1636,19 @@ function clearResearchUploadForm() {
     document.getElementById('researchEndDate').value = '';
     document.getElementById('researchFile').value = '';
 }
-// =========================================================
-// EMAILJS - SEND FACULTY LOGIN CREDENTIALS
-// =========================================================
-
-async function sendCredentialsEmail({
-    privateEmail,
-    fullName,
-    loginEmail,
-    password,
-    role,
-    department
-}) {
-    try {
-        if (!window.emailjs) {
-            console.error('EmailJS SDK is not loaded.');
-            return false;
-        }
-
-        const templateParams = {
-            name: fullName,
-            email: loginEmail,
-            temporary_password: password,
-            role: role,
-            department: department
-        };
-
-        console.log('Sending faculty credentials email...');
-        console.log('Recipient:', privateEmail);
-        console.log('Template parameters:', {
-            name: fullName,
-            email: loginEmail,
-            role,
-            department
-        });
-
-        const response = await emailjs.send(
-            'service_kmzgyii',
-            'template_lzzwr4e',
-            templateParams
-        );
-
-        console.log(
-            'Faculty credentials email sent successfully:',
-            response.status,
-            response.text
-        );
-
-        return true;
-
-    } catch (error) {
-        console.error('Failed to send faculty credentials email:', error);
-        return false;
-    }
-    const emailSent = await sendCredentialsEmail({
-    privateEmail,
-    fullName,
-    loginEmail: email,
-    password: tempPassword,
-    role,
-    department
-});
-}
 
 window.addEventListener('load', async () => {
-    await loadSidebar();
+    if (typeof loadSidebar === 'function') {
+        await loadSidebar();
+    }
     document.getElementById('editPhotoFile')?.addEventListener('change', previewEditProfilePhoto);
     resetTeachingSchedules();
     await loadFacultyProfile();
-    subscribeRealtime();
     switchTab('overview');
 });
 </script>
 
 <script src="../shared/system-ui.js"></script>
 <script src="faculty-nav.js"></script>
-<!-- EmailJS -->
-<script
-    type="text/javascript"
-    src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js">
-</script>
-
-<script>
-    emailjs.init({
-        publicKey: 'VDfsAHXPAWgLCmHnk'
-    });
-</script>
 </body>
 </html>
