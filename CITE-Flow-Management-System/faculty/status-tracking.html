@@ -6,6 +6,9 @@
     <title>Status Tracking - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js"></script>
+    <script src="../shared/workflow-core.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
     <style>
@@ -35,8 +38,19 @@
         .dropdown-menu.open { display: block; }
         .dropdown-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px; font-size: 13px; color: #374151; border-radius: 12px; }
         .filter-btn.active { background:var(--cite-theme); color: #fff; border-color: #621708; }
-        .timeline-step::before { content: ''; position: absolute; left: 10px; top: 28px; bottom: -18px; width: 2px; background: #e5e7eb; }
+        .timeline-step::before { content: ''; position: absolute; left: 15px; top: 32px; bottom: -22px; width: 2px; background: #e5e7eb; }
         .timeline-step:last-child::before { display: none; }
+        .timeline-step.done::before { background: #621708; }
+        .wf-stepper { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 8px; margin-bottom: 22px; }
+        .wf-step { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 12px 10px; text-align: center; }
+        .wf-step.done { border-color: #bbf7d0; background: #f0fdf4; }
+        .wf-step.current { border-color: #621708; background: #fff7f4; box-shadow: 0 10px 24px rgba(98,23,8,.12); }
+        .wf-step-title { font-size: 12px; font-weight: 700; color: #111827; }
+        .wf-empty-state { text-align: center; padding: 42px 18px; }
+        .wf-empty-icon { width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 18px; background: #fff7f4; color: #8c2a10; display: flex; align-items: center; justify-content: center; }
+        .wf-skel { height: 14px; border-radius: 8px; background: linear-gradient(90deg,#f3f4f6 25%,#eceff3 37%,#f3f4f6 63%); background-size: 400% 100%; animation: wfskel 1.2s ease infinite; }
+        @keyframes wfskel { 0%{background-position:100% 0} 100%{background-position:0 0} }
+        @media (max-width: 900px) { .wf-stepper { grid-template-columns: 1fr 1fr; } }
     </style>
 <body class="bg-gray-50">
 
@@ -52,8 +66,8 @@
                         <svg class="icon w-4 h-4" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                         Back
                     </button>
-                    <h1 class="text-4xl font-bold tracking-tight text-gray-950">Submission Status</h1>
-                    <p class="text-gray-500 mt-2 max-w-2xl">Review assigned tasks in a clean list, open each task for complete status details, and preview submitted documents when a file URL is available.</p>
+                    <h1 class="text-4xl font-bold tracking-tight text-gray-950">Where is my submission?</h1>
+                    <p class="text-gray-500 mt-2 max-w-2xl">Track every assigned report from assignment through chairperson review and final approval. Dates, actors, and remarks come from live workflow records.</p>
                 </div>
                 <div class="flex items-center gap-3">
                     <div class="relative">
@@ -114,17 +128,29 @@
                         <p class="text-sm text-gray-500">Click any row to open the full task details, status timeline, remarks, and submitted document preview.</p>
                     </div>
                     <div class="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
-                        <div class="relative flex-1 xl:w-80">
+                        <div class="relative flex-1 xl:w-72">
                             <svg class="icon w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
                             <input id="searchInput" oninput="handleSearch(this.value)" type="text" placeholder="Search title, instruction, or remark" class="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-11 pr-4 py-3 text-sm outline-none focus:ring-4 focus:ring-[#621708]/10 focus:border-[#621708]/30">
                         </div>
-                        <div class="flex flex-wrap gap-2">
+                        <select id="deptFilter" onchange="handleExtraFilters()" class="bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm">
+                            <option value="">All Departments</option>
+                            <option value="BSIT">BSIT</option>
+                            <option value="BSIE">BSIE</option>
+                            <option value="BIT">BIT</option>
+                        </select>
+                        <select id="periodFilter" onchange="handleExtraFilters()" class="bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm">
+                            <option value="">All Periods</option>
+                        </select>
+                        <input id="dateFrom" type="date" onchange="handleExtraFilters()" class="bg-white border border-gray-200 rounded-2xl px-3 py-2.5 text-sm">
+                        <input id="dateTo" type="date" onchange="handleExtraFilters()" class="bg-white border border-gray-200 rounded-2xl px-3 py-2.5 text-sm">
+                    </div>
+                    <div class="flex flex-wrap gap-2 mt-3">
                             <button onclick="filterStatus('all')" data-filter="all" class="filter-btn active border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">All</button>
                             <button onclick="filterStatus('notsubmitted')" data-filter="notsubmitted" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Pending</button>
-                            <button onclick="filterStatus('underreview')" data-filter="underreview" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Review</button>
+                            <button onclick="filterStatus('underreview')" data-filter="underreview" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">In Review</button>
+                            <button onclick="filterStatus('revision')" data-filter="revision" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Returned</button>
                             <button onclick="filterStatus('approved')" data-filter="approved" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Approved</button>
-                            <button onclick="filterStatus('rejected')" data-filter="rejected" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Rejected</button>
-                        </div>
+                            <button onclick="filterStatus('completed')" data-filter="completed" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Completed</button>
                     </div>
                 </div>
 
@@ -147,14 +173,17 @@
 const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined' ? window.__SUPABASE_URL__ : 'https://uforealazougjckepggc.supabase.co';
 const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined' ? window.__SUPABASE_ANON__ : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
 const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+const db = window.supabaseClient || createClient(SUPABASE_URL, SUPABASE_ANON);
+window.db = db;
+window.supabaseClient = db;
 
-const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [], taskFiles: [] };
+const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [], taskFiles: [], approvalHistory: [] };
 let currentFaculty = null;
 let currentUser = null;
 let activeFilter = 'all';
 let activeRowKey = null;
 let searchTerm = '';
+let extraFilters = { department: '', period: '', dateFrom: '', dateTo: '' };
 let realtimeChannel = null;
 let isFetchingData = false;
 let authChecked = false;
@@ -200,7 +229,7 @@ async function requireFacultyAuth() {
 
     const user = data.session.user;
     const role = String(user.user_metadata?.role || '').toLowerCase();
-    if (role && role !== 'faculty') {
+    if (role === 'student') {
         await db.auth.signOut();
         window.location.href = '../login.html';
         return false;
@@ -260,8 +289,9 @@ function normalizeStatus(raw, task) {
     if (status === 'notsubmitted' && task?.due_at && new Date(task.due_at).getTime() < Date.now()) return 'late';
     return status;
 }
-function getStatusLabel(status) {
-    const map = { notsubmitted: 'Not Submitted', submitted: 'Submitted', late: 'Late', underreview: 'Under Review', approved: 'Approved', rejected: 'Rejected', revision: 'Returned for Revision', pending: 'Under Review' };
+function getStatusLabel(status, extra) {
+    if (window.CiteFlowWorkflow?.formatWorkflowStatus) return CiteFlowWorkflow.formatWorkflowStatus(status, extra);
+    const map = { notsubmitted: 'Not Submitted', submitted: 'Submitted', late: 'Late', underreview: 'Under Review', approved: 'Approved', rejected: 'Rejected', revision: 'Returned for Revision', pending: 'Pending Final Approval', completed: 'Completed' };
     return map[status] || 'Not Submitted';
 }
 function getStatusChip(status) {
@@ -302,20 +332,53 @@ function computeRows() {
         const submission = state.submissions.find(s => String(s.task_id) === String(a.task_id) && String(s.faculty_id) === String(faculty.id));
         const files = submission ? state.files.filter(f => String(f.submission_id) === String(submission.id)) : [];
         const status = normalizeStatus(submission?.status, task);
-        return { key: `${a.task_id}-${faculty.id}`, task, assignment: a, submission, files, status };
+        return {
+            key: `${a.task_id}-${faculty.id}`,
+            task,
+            assignment: a,
+            submission,
+            files,
+            status,
+            faculty,
+            history: (state.approvalHistory || []).filter(h => submission && String(h.submission_id) === String(submission.id))
+        };
     }).filter(r => r.task);
 }
 function filteredRows() {
     const allRows = computeRows();
     return allRows.filter(r => {
         const statusGroup = (activeFilter === 'all') ||
-            (activeFilter === 'notsubmitted' && ['notsubmitted','late','revision'].includes(r.status)) ||
+            (activeFilter === 'notsubmitted' && ['notsubmitted','late'].includes(r.status)) ||
             (activeFilter === 'underreview' && ['underreview','submitted','pending'].includes(r.status)) ||
+            (activeFilter === 'revision' && ['revision','rejected'].includes(r.status)) ||
+            (activeFilter === 'completed' && r.status === 'approved') ||
             r.status === activeFilter;
-        const haystack = `${r.task?.title || ''} ${r.task?.instructions || ''} ${r.submission?.review_remarks || ''} ${getStatusLabel(r.status)}`.toLowerCase();
+        const haystack = `${r.task?.title || ''} ${r.task?.instructions || ''} ${r.submission?.review_remarks || ''} ${getStatusLabel(r.status, r.submission)}`.toLowerCase();
         const matchesSearch = !searchTerm || haystack.includes(searchTerm.toLowerCase());
-        return statusGroup && matchesSearch;
+        const dept = extraFilters.department;
+        const matchesDept = !dept || String(r.faculty?.department_code || r.faculty?.department || '') === dept;
+        const period = extraFilters.period;
+        const matchesPeriod = !period || String(r.task?.reporting_period_label || r.task?.generated_for_period || '') === period;
+        const submittedAt = r.submission?.submitted_at ? new Date(r.submission.submitted_at).getTime() : null;
+        const matchesFrom = !extraFilters.dateFrom || (submittedAt && submittedAt >= new Date(extraFilters.dateFrom).getTime());
+        const matchesTo = !extraFilters.dateTo || (submittedAt && submittedAt <= new Date(extraFilters.dateTo).getTime() + 86400000);
+        return statusGroup && matchesSearch && matchesDept && matchesPeriod && matchesFrom && matchesTo;
     });
+}
+function handleExtraFilters() {
+    extraFilters.department = document.getElementById('deptFilter')?.value || '';
+    extraFilters.period = document.getElementById('periodFilter')?.value || '';
+    extraFilters.dateFrom = document.getElementById('dateFrom')?.value || '';
+    extraFilters.dateTo = document.getElementById('dateTo')?.value || '';
+    renderRows();
+}
+function populatePeriodFilter() {
+    const select = document.getElementById('periodFilter');
+    if (!select) return;
+    const current = extraFilters.period;
+    const periods = [...new Set((state.tasks || []).map(t => t.reporting_period_label || t.generated_for_period).filter(Boolean))];
+    select.innerHTML = '<option value="">All Periods</option>' + periods.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    select.value = current;
 }
 function renderNotifications() {
     const items = getFacultyNotifications();
@@ -391,20 +454,35 @@ function renderPreview(file) {
 }
 
 function renderTimeline(row) {
-    const status = row.status;
-    const steps = [
-        { title: 'Assigned', date: row.assignment?.assigned_at, done: true, note: 'Task assigned to faculty member.' },
-        { title: 'Submitted', date: row.submission?.submitted_at, done: !!row.submission?.submitted_at, note: row.submission?.submitted_at ? 'Documents were submitted for review.' : 'Waiting for submission.' },
-        { title: 'Reviewed', date: row.submission?.reviewed_at, done: !!row.submission?.reviewed_at || ['approved','rejected','revision'].includes(status), note: row.submission?.review_remarks || 'No review remarks yet.' }
-    ];
-    return steps.map(step => `<div class="timeline-step relative flex gap-4 pb-8">
-        <div class="relative z-10 w-5 h-5 rounded-full border-4 ${step.done ? 'bg-[#621708] border-[#f5e8c7]' : 'bg-white border-gray-200'}"></div>
-        <div class="-mt-1">
-            <div class="text-sm font-semibold text-gray-900">${step.title}</div>
-            <div class="text-xs text-gray-500 mt-1">${formatDateTime(step.date)}</div>
-            <div class="text-sm text-gray-600 mt-2">${escapeHtml(step.note)}</div>
+    const history = row.history || [];
+    const steps = window.CiteFlowWorkflow?.buildTimeline
+        ? CiteFlowWorkflow.buildTimeline({
+            assignment: row.assignment,
+            submission: row.submission,
+            faculty_name: currentFaculty?.full_name,
+            task: row.task
+        }, history)
+        : [
+            { title: 'Assigned', done: true, current: false, at: row.assignment?.assigned_at, actor: row.assignment?.assigned_by_name || 'System', remarks: 'Task assigned to faculty member.' },
+            { title: 'Submitted', done: !!row.submission?.submitted_at, current: !!row.submission?.submitted_at && !row.submission?.reviewed_at, at: row.submission?.submitted_at, actor: row.submission?.submitted_at ? (currentFaculty?.full_name || '') : '', remarks: row.submission?.submitted_at ? 'Documents were submitted for review.' : 'Waiting for submission.' },
+            { title: 'Chairperson Review', done: ['approved','pending'].includes(row.status) || row.submission?.approval_stage === 'final_approver', current: row.submission?.approval_stage === 'chairperson', at: null, actor: '', remarks: 'Currently waiting' },
+            { title: 'Final Approval', done: row.status === 'approved', current: row.submission?.approval_stage === 'final_approver', at: row.submission?.final_approved_at || null, actor: row.submission?.final_approved_by_name || '', remarks: 'Waiting' },
+            { title: 'Completed', done: row.status === 'approved', current: false, at: row.status === 'approved' ? (row.submission?.final_approved_at || row.submission?.reviewed_at) : null, actor: '', remarks: row.status === 'approved' ? 'Workflow completed.' : 'Waiting' }
+        ];
+    const stepper = `<div class="wf-stepper">${steps.map(step => `
+        <div class="wf-step ${step.done ? 'done' : ''} ${step.current ? 'current' : ''}">
+            <div class="wf-step-title">${step.done ? '✓' : (step.current ? '●' : '○')} ${escapeHtml(step.title)}</div>
+        </div>`).join('')}</div>`;
+    const detail = steps.map(step => `<div class="timeline-step relative flex gap-4 pb-8 ${step.done ? 'done' : ''}">
+        <div class="relative z-10 w-7 h-7 rounded-full border-4 ${step.done ? 'bg-[#621708] border-[#f5e8c7] text-white' : (step.current ? 'bg-white border-[#621708]' : 'bg-white border-gray-200')} flex items-center justify-center text-[10px] font-bold">${step.done ? '✓' : (step.current ? '●' : '')}</div>
+        <div class="-mt-0.5">
+            <div class="text-sm font-semibold text-gray-900">${escapeHtml(step.title)}</div>
+            <div class="text-xs text-gray-500 mt-1">${step.at ? formatDateTime(step.at) : (step.current ? 'Currently waiting' : 'Waiting')}</div>
+            <div class="text-xs text-gray-500">${step.actor ? escapeHtml(step.actor) : ''}</div>
+            <div class="text-sm text-gray-600 mt-2">${escapeHtml(step.remarks || '')}</div>
         </div>
     </div>`).join('');
+    return stepper + detail;
 }
 function renderDetail(row) {
     const panel = document.getElementById('detailPanel');
@@ -480,7 +558,7 @@ function renderRows() {
     const container = document.getElementById('statusList');
     if (!rows.length) {
         activeRowKey = null;
-        container.innerHTML = '<div class="text-center text-sm text-gray-500 py-12 bg-gray-50 rounded-3xl border border-dashed border-gray-300">No submissions match the selected view.</div>';
+        container.innerHTML = '<div class="wf-empty-state"><div class="wf-empty-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><h3 class="font-bold text-gray-900">No submission history yet.</h3><p class="text-sm text-gray-500 mt-1">Your submission activity will appear here.</p></div>';
         renderDetail(null);
         return;
     }
@@ -539,24 +617,31 @@ async function fetchAllData() {
             return;
         }
 
-        const [faculty, tasks, assignments, submissions, files, notifications, taskFiles] = await Promise.all([
+        const [faculty, tasks, assignments, submissions, files, notifications, taskFiles, approvalHistory] = await Promise.all([
             db.from('faculty').select('*').order('full_name', { ascending: true }),
             db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
             db.from('wf_task_assignments').select('*'),
             db.from('wf_submissions').select('*'),
             db.from('wf_submission_files').select('*'),
             db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(100),
-            db.from('wf_task_files').select('*')
+            db.from('wf_task_files').select('*'),
+            db.from('wf_approval_history').select('*').order('created_at', { ascending: true })
         ]);
 
         const requiredError = faculty.error || tasks.error || assignments.error || submissions.error;
         if (requiredError) {
-            document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(requiredError.message || 'Failed to load status data.')}</div>`;
+            console.error('Status tracking load error:', {
+                table: faculty.error ? 'faculty' : tasks.error ? 'wf_tasks' : assignments.error ? 'wf_task_assignments' : 'wf_submissions',
+                operation: 'select',
+                role: currentFaculty?.role || currentUser?.user_metadata?.role,
+                error: requiredError
+            });
+            document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">Unable to load submissions. Please try again.</div>`;
             return;
         }
 
-        if (files.error || notifications.error || taskFiles.error) {
-            console.warn('Optional status data could not be loaded:', { files, notifications, taskFiles });
+        if (files.error || notifications.error || taskFiles.error || approvalHistory.error) {
+            console.warn('Optional status data could not be loaded:', { files, notifications, taskFiles, approvalHistory });
         }
 
         state.faculty = (faculty.data || []).map(normalizeFacultyForStatus).filter(f => f.is_active);
@@ -566,6 +651,8 @@ async function fetchAllData() {
         state.files = files.error ? [] : (files.data || []);
         state.notifications = notifications.error ? [] : (notifications.data || []);
         state.taskFiles = taskFiles.error ? [] : (taskFiles.data || []);
+        state.approvalHistory = approvalHistory.error ? [] : (approvalHistory.data || []);
+        populatePeriodFilter();
         renderRows();
         renderNotifications();
     } finally {
@@ -573,7 +660,18 @@ async function fetchAllData() {
     }
 }
 function initRealtime() {
-    // Realtime is intentionally disabled on this page to avoid Supabase Auth lock conflicts.
+    if (realtimeChannel && window.CiteFlowWorkflow?.unsubscribeChannel) {
+        CiteFlowWorkflow.unsubscribeChannel(db, realtimeChannel);
+        realtimeChannel = null;
+    }
+    if (window.CiteFlowWorkflow?.createManagedChannel) {
+        realtimeChannel = CiteFlowWorkflow.createManagedChannel(
+            db,
+            'wf-faculty-status',
+            ['wf_tasks', 'wf_task_assignments', 'wf_submissions', 'wf_submission_files', 'wf_approval_history', 'wf_notifications'],
+            fetchAllData
+        );
+    }
 }
 document.addEventListener('click', (event) => {
     if (!event.target.closest('.notif-bell') && !event.target.closest('#notifDropdown')) document.getElementById('notifDropdown').classList.remove('open');
@@ -581,6 +679,7 @@ document.addEventListener('click', (event) => {
 window.onload = async () => {
     await loadSidebar();
     await fetchAllData();
+    initRealtime();
 };
 </script>
 <script src="../shared/system-ui.js"></script>
