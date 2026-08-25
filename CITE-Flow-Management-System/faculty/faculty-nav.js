@@ -66,6 +66,11 @@ function navigateToFacultyPage(pageFile) {
     if (typeof toggleFacultyMobileSidebar === "function") {
         toggleFacultyMobileSidebar(true);
     }
+    const raw = String(pageFile || '');
+    if (raw.includes('workflow-approval')) {
+        window.location.href = '../admin/workflow-approval.html';
+        return;
+    }
     const mapped = facultyPageMap(pageFile);
     window.location.href = mapped;
 }
@@ -167,9 +172,10 @@ function updateFacultyNavProfile(profileData) {
                 try {
                     const { data: facultyRecord } = await window.supabaseClient
                         .from('faculty')
-                        .select('profile_photo_url, full_name, first_name, middle_name, last_name, position, department, name')
+                        .select('profile_photo_url, full_name, first_name, middle_name, last_name, position, department, name, role, admin_access')
                         .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`)
                         .maybeSingle();
+                    revealFacultyWorkflowReviewNav(facultyRecord);
                     if (facultyRecord) {
                         if (facultyRecord.profile_photo_url) photoUrl = facultyRecord.profile_photo_url;
                         if (facultyRecord.first_name) firstName = facultyRecord.first_name;
@@ -280,7 +286,16 @@ function updateFacultyNavProfile(profileData) {
     }
 }
 
+function revealFacultyWorkflowReviewNav(facultyRecord) {
+    const nav = document.getElementById('facultyWorkflowReviewNav');
+    if (!nav) return;
+    const role = String(facultyRecord?.role || facultyRecord?.position || '').toLowerCase();
+    const isChair = role === 'chairperson' || role.includes('chair');
+    nav.style.display = isChair ? '' : 'none';
+}
+
 window.updateFacultyNavProfile = updateFacultyNavProfile;
+window.revealFacultyWorkflowReviewNav = revealFacultyWorkflowReviewNav;
 
 async function loadFacultyNavigation() {
     try {
@@ -310,6 +325,24 @@ async function loadFacultyNavigation() {
         attachFacultyNavEvents();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         updateFacultyNavProfile();
+
+        try {
+            const sb = window.supabaseClient || window.db;
+            if (sb?.auth) {
+                const { data } = await sb.auth.getUser();
+                const user = data?.user;
+                if (user) {
+                    const { data: facultyRecord } = await sb
+                        .from('faculty')
+                        .select('role, position, admin_access')
+                        .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`)
+                        .maybeSingle();
+                    revealFacultyWorkflowReviewNav(facultyRecord);
+                }
+            }
+        } catch (err) {
+            console.warn('Unable to resolve chairperson workflow nav:', err);
+        }
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();

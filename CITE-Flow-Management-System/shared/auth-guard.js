@@ -44,23 +44,56 @@
 
         const user = session.user;
         const role = String(user.user_metadata?.role || '').toLowerCase();
+        const currentFile = currentPath.split('/').pop() || '';
+        const isWorkflowApprovalPage = currentFile === 'workflow-approval.html' || currentFile === 'workflow-approval';
 
-        if (isAdminArea) {
-            // Check if user is an admin
-            if (role === 'faculty') {
-                console.error("Auth Guard: Faculty accounts cannot access admin portal.");
-                window.location.href = isInsideSubfolder ? '../faculty/dashboard.html' : 'faculty/dashboard.html';
-                return;
-            }
-        } else if (isFacultyArea) {
-            // Check if user is faculty or admin
-            const { data: facultyRecord } = await sb
+        let facultyRecord = null;
+        try {
+            const facultyResult = await sb
                 .from('faculty')
-                .select('id, profile_completed, must_change_password')
+                .select('id, role, admin_access, profile_completed, must_change_password, auth_user_id, email')
                 .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`)
                 .maybeSingle();
+            if (facultyResult.error) {
+                console.error('Auth Guard: faculty lookup failed:', facultyResult.error);
+            } else {
+                facultyRecord = facultyResult.data || null;
+            }
+        } catch (lookupError) {
+            console.error('Auth Guard: faculty lookup exception:', lookupError);
+        }
 
-            if (!facultyRecord && role !== 'admin' && role !== 'administrator') {
+        const facultyRole = String(facultyRecord?.role || '').toLowerCase();
+        const isChairperson = facultyRole === 'chairperson' || facultyRole.includes('chair');
+        const hasFacultyAdminAccess = facultyRecord?.admin_access === true || facultyRecord?.admin_access === 'true' || facultyRecord?.admin_access === 1;
+        const isAdminUser = role === 'admin' || role === 'administrator' || facultyRole === 'admin';
+
+        if (isAdminArea) {
+            // Regular faculty cannot enter the admin portal.
+            // Chairpersons may open workflow-approval.html.
+            // Chairperson + faculty.admin_access may use permitted admin pages.
+            if (!isAdminUser) {
+                if (isWorkflowApprovalPage && isChairperson) {
+                    // Chairperson review dashboard is allowed.
+                } else if (hasFacultyAdminAccess && isChairperson) {
+                    // Chairperson with admin_access may use admin pages.
+                } else if (role === 'faculty' || isChairperson || facultyRecord) {
+                    console.error("Auth Guard: Faculty accounts cannot access this admin page.", {
+                        page: currentFile,
+                        metadataRole: role,
+                        facultyRole,
+                        admin_access: facultyRecord?.admin_access || false
+                    });
+                    if (isChairperson) {
+                        window.location.href = isInsideSubfolder ? 'workflow-approval.html' : 'admin/workflow-approval.html';
+                    } else {
+                        window.location.href = isInsideSubfolder ? '../faculty/dashboard.html' : 'faculty/dashboard.html';
+                    }
+                    return;
+                }
+            }
+        } else if (isFacultyArea) {
+            if (!facultyRecord && !isAdminUser) {
                 console.error("Auth Guard: No faculty profile associated with your account.");
                 window.location.href = `${prefix}login.html`;
                 return;

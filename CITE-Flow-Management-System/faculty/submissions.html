@@ -8,6 +8,9 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js"></script>
+    <script src="../shared/workflow-core.js"></script>
 
     <link
         rel="stylesheet"
@@ -252,7 +255,16 @@
             <div
                 id="appRoot"
                 class="max-w-[1320px] mx-auto"
-            ></div>
+            >
+                <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-7">
+                    <div class="surface rounded-[1.75rem] p-5 h-28"><div class="wf-skel" style="height:12px;width:40%;background:#eee;border-radius:8px;"></div><div class="mt-4" style="height:28px;width:30%;background:#f3f4f6;border-radius:8px;"></div></div>
+                    <div class="surface rounded-[1.75rem] p-5 h-28"><div style="height:12px;width:50%;background:#eee;border-radius:8px;"></div></div>
+                    <div class="surface rounded-[1.75rem] p-5 h-28"><div style="height:12px;width:45%;background:#eee;border-radius:8px;"></div></div>
+                    <div class="surface rounded-[1.75rem] p-5 h-28"><div style="height:12px;width:40%;background:#eee;border-radius:8px;"></div></div>
+                    <div class="surface rounded-[1.75rem] p-5 h-28"><div style="height:12px;width:35%;background:#eee;border-radius:8px;"></div></div>
+                    <div class="surface rounded-[1.75rem] p-5 h-28"><div style="height:12px;width:42%;background:#eee;border-radius:8px;"></div></div>
+                </div>
+            </div>
 
         </div>
 
@@ -281,10 +293,14 @@ const SUPABASE_ANON =
 
 const { createClient } = supabase;
 
-const db = createClient(
+const db = window.supabaseClient || createClient(
     SUPABASE_URL,
     SUPABASE_ANON
 );
+window.db = db;
+window.supabaseClient = db;
+
+let isSubmitting = false;
 
 
 /* =========================================================
@@ -792,6 +808,9 @@ function normalizeFacultyForSubmissions(row) {
             || row.department_code
             || 'N/A',
 
+        admin_access:
+            row.admin_access === true,
+
         is_active:
             row.access_enabled !== false
             &&
@@ -897,17 +916,10 @@ async function requireFacultyAuth() {
             || ''
         ).toLowerCase();
 
-    if (
-        role
-        &&
-        role !== 'faculty'
-    ) {
-
+    const blockedRoles = ['student'];
+    if (blockedRoles.includes(role)) {
         await db.auth.signOut();
-
-        window.location.href =
-            '../login.html';
-
+        window.location.href = '../login.html';
         return false;
     }
 
@@ -1592,185 +1604,51 @@ function renderSummary(models) {
                 )
         ).length;
 
+    const submitted =
+        models.filter(
+            model =>
+                ['Submitted', 'Under Review'].includes(model.status)
+        ).length;
+
+    const returned =
+        models.filter(
+            model =>
+                model.status === 'Returned for Revision' || model.status === 'Rejected'
+        ).length;
+
     const approved =
         models.filter(
             model =>
                 model.status === 'Approved'
         ).length;
 
-    const recurring =
+    const overdue =
         models.filter(
             model =>
-                model.task.is_recurring
+                model.indicator?.overdue || model.indicator?.color === 'bg-red-500'
         ).length;
 
-    const urgent =
-        models.filter(
-            model =>
-                [
-                    'bg-red-500',
-                    'bg-amber-400'
-                ].includes(
-                    model.indicator.color
-                )
-                &&
-                model.status !== 'Approved'
-        ).length;
-
-
-    return `
-        <section
-            class="
-                grid
-                grid-cols-1
-                md:grid-cols-5
-                gap-4
-                mb-7
-            "
-        >
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Assigned tasks
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${models.length}
-                </div>
+    const card = (id, label, value, icon, hint, filter) => `
+        <button type="button" onclick="setTaskFilter('${filter}')" class="surface rounded-[1.75rem] p-5 text-left hover:shadow-md transition">
+            <div class="flex items-center justify-between">
+                <span class="icon-box">${icon}</span>
+                <span class="text-[11px] uppercase tracking-wide font-semibold text-gray-400">${hint}</span>
             </div>
-
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Needs action
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${pending}
-                </div>
-            </div>
-
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Recurring reports
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${recurring}
-                </div>
-            </div>
-
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Due soon
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${urgent}
-                </div>
-            </div>
-
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Approved
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${approved}
-                </div>
-            </div>
-
-        </section>
+            <div id="${id}" class="text-3xl font-bold mt-4">${value}</div>
+            <div class="text-sm text-gray-600 mt-1">${label}</div>
+        </button>
     `;
 
+    return `
+        <section class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-7">
+            ${card('sum-total', 'Total Required', models.length, '📋', 'Assigned', 'all')}
+            ${card('sum-pending', 'Pending', pending, '⏳', 'Needs action', 'pending')}
+            ${card('sum-submitted', 'Submitted', submitted, '📤', 'In review', 'submitted')}
+            ${card('sum-returned', 'Returned', returned, '↩️', 'Revise', 'pending')}
+            ${card('sum-approved', 'Approved', approved, '✅', 'Completed', 'submitted')}
+            ${card('sum-overdue', 'Overdue', overdue, '⚠️', 'Deadline', 'pending')}
+        </section>
+    `;
 }
 
 
@@ -2020,7 +1898,19 @@ function renderTaskRow(model) {
                             font-semibold
                         "
                     >
-                        View details
+                        ${
+                            window.CiteFlowWorkflow?.actionLabelForStatus
+                                ? CiteFlowWorkflow.actionLabelForStatus(status)
+                                : (
+                                    status === 'Returned for Revision' || status === 'Rejected'
+                                        ? 'Revise & Resubmit'
+                                        : (
+                                            status === 'Approved'
+                                                ? 'View Details'
+                                                : (isActionable(status) ? 'Submit Now' : 'View Submission')
+                                        )
+                                )
+                        }
                         ${icons.arrow}
                     </span>
 
@@ -2283,7 +2173,9 @@ function renderListPage() {
                             :
 
                             renderEmptyList(
-                                'No tasks match your current filters.'
+                                currentFilter === 'all'
+                                    ? 'No reports are currently assigned.'
+                                    : 'No tasks match your current filters.'
                             )
                     }
 
@@ -2360,7 +2252,7 @@ function renderEmptyList(message) {
                     mt-1
                 "
             >
-                Tasks and recurring reports will appear here once assigned.
+                Tasks and recurring reports will appear here once assigned. New assignments will appear here when available.
             </p>
 
         </div>
@@ -4117,12 +4009,16 @@ async function uploadFilesToStorage({
 
 async function submitTask(taskId) {
 
+    if (isSubmitting) {
+        return;
+    }
+
     const faculty =
         resolveCurrentFaculty();
 
     if (!faculty) {
 
-        alert(
+        (window.CiteFlowWorkflow?.showToast || alert)(
             'No matching active faculty profile found.'
         );
 
@@ -4159,12 +4055,25 @@ async function submitTask(taskId) {
         !files.length
     ) {
 
-        alert(
-            'Please upload at least one file before submitting.'
+        (window.CiteFlowWorkflow?.showToast || alert)(
+            'Please upload at least one file before submitting.',
+            'error'
         );
 
         return;
 
+    }
+
+    if (submissionMethod === 'upload') {
+        for (const file of files) {
+            const problem = window.CiteFlowWorkflow?.validateWorkflowFile
+                ? CiteFlowWorkflow.validateWorkflowFile(file)
+                : null;
+            if (problem) {
+                (window.CiteFlowWorkflow?.showToast || alert)(problem, 'error');
+                return;
+            }
+        }
     }
 
 
@@ -4174,13 +4083,18 @@ async function submitTask(taskId) {
         !submissionUrl
     ) {
 
-        alert(
-            'Please provide a submission URL.'
+        (window.CiteFlowWorkflow?.showToast || alert)(
+            'Please provide a submission URL.',
+            'error'
         );
 
         return;
 
     }
+
+    const submitButtons = Array.from(document.querySelectorAll(`button[onclick="submitTask('${taskId}')"], button[onclick="submitTask(\\"${taskId}\\")"]`));
+    submitButtons.forEach((btn) => { btn.disabled = true; btn.dataset.originalText = btn.innerHTML; btn.innerHTML = 'Submitting...'; });
+    isSubmitting = true;
 
 
     try {
@@ -4650,6 +4564,24 @@ async function submitTask(taskId) {
             );
         }
 
+        const historyResult =
+            await db
+                .from('wf_approval_history')
+                .insert({
+                    submission_id: submissionId,
+                    task_id: taskId,
+                    faculty_id: faculty.id,
+                    actor_name: faculty.full_name,
+                    actor_role: 'FACULTY',
+                    action: existingSubmission ? 'resubmitted' : 'submitted',
+                    status: payload.status,
+                    comment: null
+                });
+
+        if (historyResult.error) {
+            console.warn('Approval history could not be created:', historyResult.error);
+        }
+
 
         delete draftUploads[taskId];
 
@@ -4663,16 +4595,11 @@ async function submitTask(taskId) {
         await fetchAllData();
 
 
-        alert(
+        (window.CiteFlowWorkflow?.showToast || alert)(
             late
-
-                ?
-
-                'Submission sent successfully. It was recorded as a late submission.'
-
-                :
-
-                'Submission sent successfully for review.'
+                ? 'Submission sent successfully. It was recorded as a late submission.'
+                : 'Submission sent successfully for review.',
+            'success'
         );
 
 
@@ -4683,11 +4610,22 @@ async function submitTask(taskId) {
             error
         );
 
-        alert(
-            error?.message
-            || 'Submission failed.'
+        (window.CiteFlowWorkflow?.showToast || alert)(
+            (window.CiteFlowWorkflow?.friendlyError && CiteFlowWorkflow.friendlyError(error, 'Unable to submit. Please try again.'))
+            || 'Unable to submit. Please try again.',
+            'error'
         );
 
+    } finally {
+        isSubmitting = false;
+        const restored = Array.from(document.querySelectorAll('button[disabled]'));
+        restored.forEach((btn) => {
+            if (btn.dataset.originalText) {
+                btn.disabled = false;
+                btn.innerHTML = btn.dataset.originalText;
+                delete btn.dataset.originalText;
+            }
+        });
     }
 
 }
@@ -5089,25 +5027,17 @@ async function fetchAllData() {
             submissions.error
         ) {
 
-            const message =
+            const failed = faculty.error ? 'faculty' : tasks.error ? 'wf_tasks' : assignments.error ? 'wf_task_assignments' : 'wf_submissions';
+            const rawError = faculty.error || tasks.error || assignments.error || submissions.error;
+            console.error('Unable to load submissions:', {
+                table: failed,
+                operation: 'select',
+                role: currentFaculty?.role || currentUser?.user_metadata?.role,
+                error: rawError
+            });
 
-                faculty.error?.message
-
-                ||
-
-                tasks.error?.message
-
-                ||
-
-                assignments.error?.message
-
-                ||
-
-                submissions.error?.message
-
-                ||
-
-                'Failed to load submission data.';
+            const message = (window.CiteFlowWorkflow?.friendlyError && CiteFlowWorkflow.friendlyError(rawError, 'Unable to load submissions. Please try again.'))
+                || 'Unable to load submissions. Please try again.';
 
 
             root.innerHTML = `
@@ -5242,8 +5172,8 @@ async function fetchAllData() {
                 "
             >
                 ${escapeHtml(
-                    error?.message
-                    || 'Unexpected error.'
+                    (window.CiteFlowWorkflow?.friendlyError && CiteFlowWorkflow.friendlyError(error, 'Unable to load submissions. Please try again.'))
+                    || 'Unable to load submissions. Please try again.'
                 )}
             </div>
 

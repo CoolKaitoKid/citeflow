@@ -8,6 +8,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js"></script>
+    <script src="../shared/workflow-core.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="../nav.css">
@@ -113,8 +116,35 @@
 
         /* ─── Main Surface ──────────────────────────────────────────── */
         .main-surface { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04); }
-        .stat-card { background: #fff; border-radius: 14px; border: 1px solid #f0f0f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.2s; }
-        .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .stat-card { background: #fff; border-radius: 14px; border: 1px solid #f0f0f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.2s, transform .16s ease, border-color .16s ease; }
+        .stat-card:hover { box-shadow: 0 8px 24px rgba(15,23,42,0.08); transform: translateY(-1px); }
+        .stat-card.filter-active { border-color: #d7b4a6; box-shadow: 0 10px 28px rgba(98,23,8,.12); }
+        .wf-stat-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 24px; }
+        .wf-stat-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+        .wf-review-table th { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #9ca3af; }
+        .wf-avatar { width: 36px; height: 36px; border-radius: 999px; background: #fff4ee; color: #621708; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .wf-empty-state { text-align: center; padding: 48px 24px; color: #6b7280; }
+        .wf-empty-state h3 { margin: 12px 0 6px; color: #111827; font-size: 16px; }
+        .wf-empty-icon { width: 56px; height: 56px; margin: 0 auto; border-radius: 18px; background: #fff7f4; color: #8c2a10; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+        .wf-skel { background: linear-gradient(90deg,#f3f4f6 25%,#eceff3 37%,#f3f4f6 63%); background-size: 400% 100%; animation: wf-skel 1.2s ease infinite; border-radius: 10px; height: 14px; }
+        @keyframes wf-skel { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+        .wf-status-pending, .badge-notsubmitted { background: #fff7ed; color: #c2410c; }
+        .wf-status-submitted, .badge-submitted { background: #eff6ff; color: #1d4ed8; }
+        .wf-status-review, .badge-underreview { background: #eef2ff; color: #3730a3; }
+        .wf-status-final, .badge-pending { background: #e0e7ff; color: #3730a3; }
+        .wf-status-returned, .badge-revision { background: #faf5ff; color: #7e22ce; }
+        .wf-status-rejected, .badge-rejected { background: #fef2f2; color: #b91c1c; }
+        .wf-status-approved, .badge-approved { background: #ecfdf5; color: #047857; }
+        .wf-status-late { background: #fef2f2; color: #b91c1c; }
+        .wf-priority-high { color: #b91c1c; font-weight: 700; }
+        .wf-priority-normal { color: #6b7280; }
+        .wf-history-item { position: relative; padding-left: 22px; margin-bottom: 14px; }
+        .wf-history-item::before { content: ''; position: absolute; left: 5px; top: 18px; bottom: -14px; width: 2px; background: #e5e7eb; }
+        .wf-history-item:last-child::before { display: none; }
+        .wf-history-dot { position: absolute; left: 0; top: 4px; width: 12px; height: 12px; border-radius: 99px; background: #621708; border: 2px solid #f5e8c7; }
+        .chair-only-hidden, .admin-only-hidden { display: none !important; }
+        @media (max-width: 1280px) { .wf-stat-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+        @media (max-width: 768px) { .wf-stat-grid { grid-template-columns: 1fr 1fr; } }
 
         /* ─── Table ─────────────────────────────────────────────────── */
         .data-table thead th { background: #fafafa; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af; text-transform: uppercase; padding: 14px 20px; border-bottom: 1px solid #f3f4f6; }
@@ -469,17 +499,17 @@
                             <span class="text-xs font-medium text-emerald-700">Live</span>
                         </div>
                     </div>
-                    <p class="text-sm text-gray-500">Review and manage faculty document submissions in real time</p>
+                    <p class="text-sm text-gray-500" id="workflowPageSubtitle">Review assigned reports, track each approval stage, and take action on items that require your review.</p>
                 </div>
                 <div class="flex items-center gap-2.5">
-<button onclick="openAccessModal()" class="btn btn-ghost">
+<button onclick="openAccessModal()" class="btn btn-ghost wf-admin-only">
                         <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
                         Manage Access
                     </button>
-                    <button onclick="openAssignModal()" class="btn btn-primary">
+                    <button onclick="openAssignModal()" class="btn btn-primary wf-admin-only">
                         <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         Assign New Task
                     </button>
@@ -490,7 +520,7 @@
             <!-- =========================================================
                  RECURRING REPORT CONFIGURATION
                  ========================================================= -->
-            <div class="main-surface p-6 mb-6">
+            <div class="main-surface p-6 mb-6 wf-admin-only" id="reportConfigSection">
                 <div class="flex items-start justify-between gap-4 mb-5">
                     <div>
                         <div class="flex items-center gap-2">
@@ -515,46 +545,82 @@
             </div>
 
             <!-- Stats row -->
-            <div class="grid grid-cols-4 gap-4 mb-6">
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Pending Review</div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-pending" class="text-3xl font-semibold text-gray-900">—</span>
+            <div class="wf-stat-grid">
+                <button type="button" class="stat-card p-5 text-left" onclick="filterReviewQueue('mine')">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="wf-stat-icon bg-amber-50 text-amber-700"><i class="fa-solid fa-inbox"></i></div>
+                        <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Action needed</span>
                     </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-amber-400"></div>
-                        <span class="text-xs text-gray-500">Awaiting decision</span>
+                    <div id="stat-my-review" class="text-3xl font-semibold text-gray-900">—</div>
+                    <div class="text-sm text-gray-600 mt-1">Pending My Review</div>
+                </button>
+                <button type="button" class="stat-card p-5 text-left" onclick="filterReviewQueue('awaiting')">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="wf-stat-icon bg-slate-50 text-slate-600"><i class="fa-regular fa-clock"></i></div>
+                        <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Faculty</span>
+                    </div>
+                    <div id="stat-awaiting-faculty" class="text-3xl font-semibold text-gray-900">—</div>
+                    <div class="text-sm text-gray-600 mt-1">Awaiting Faculty Action</div>
+                </button>
+                <button type="button" class="stat-card p-5 text-left" onclick="filterReviewQueue('returned')">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="wf-stat-icon bg-purple-50 text-purple-700"><i class="fa-solid fa-rotate-left"></i></div>
+                        <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Revision</span>
+                    </div>
+                    <div id="stat-returned" class="text-3xl font-semibold text-gray-900">—</div>
+                    <div class="text-sm text-gray-600 mt-1">Returned</div>
+                </button>
+                <button type="button" class="stat-card p-5 text-left" onclick="filterReviewQueue('approved')">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="wf-stat-icon bg-emerald-50 text-emerald-700"><i class="fa-solid fa-circle-check"></i></div>
+                        <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Done</span>
+                    </div>
+                    <div id="stat-approved" class="text-3xl font-semibold text-gray-900">—</div>
+                    <div class="text-sm text-gray-600 mt-1">Approved</div>
+                </button>
+                <button type="button" class="stat-card p-5 text-left" onclick="filterReviewQueue('overdue')">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="wf-stat-icon bg-rose-50 text-rose-700"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                        <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Deadline</span>
+                    </div>
+                    <div id="stat-overdue" class="text-3xl font-semibold text-gray-900">—</div>
+                    <div class="text-sm text-gray-600 mt-1">Overdue</div>
+                </button>
+            </div>
+            <span id="stat-pending" class="hidden">0</span>
+            <span id="stat-revision" class="hidden">0</span>
+            <span id="stat-declined" class="hidden">0</span>
+
+            <div class="main-surface overflow-visible mb-6">
+                <div class="px-6 py-5 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-900">Review Queue</h2>
+                        <p class="text-xs text-gray-500 mt-1">Submissions are shown according to your role. Faculty names and statuses come from live workflow data.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2" id="reviewQueueFilters">
+                        <button type="button" class="btn btn-ghost btn-sm review-filter-btn active" data-filter="mine" onclick="filterReviewQueue('mine')">Needs my review</button>
+                        <button type="button" class="btn btn-ghost btn-sm review-filter-btn" data-filter="all" onclick="filterReviewQueue('all')">All</button>
                     </div>
                 </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Approved</div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-approved" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
-                        <span class="text-xs text-gray-500">Completed</span>
-                    </div>
-                </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Needs Revision</div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-revision" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-red-400"></div>
-                        <span class="text-xs text-gray-500">Returned to faculty</span>
-                    </div>
-                </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Declined</div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-declined" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-gray-400"></div>
-                        <span class="text-xs text-gray-500">Not accepted</span>
-                    </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table wf-review-table w-full">
+                        <thead>
+                            <tr>
+                                <th class="text-left">Faculty</th>
+                                <th class="text-left">Department</th>
+                                <th class="text-left">Report</th>
+                                <th class="text-left">Submitted</th>
+                                <th class="text-left">Due</th>
+                                <th class="text-left">Stage</th>
+                                <th class="text-left">Status</th>
+                                <th class="text-left">Priority</th>
+                                <th class="text-left">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reviewQueueBody">
+                            <tr><td colspan="9" class="py-8 px-6"><div class="wf-skel w-full"></div></td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -626,7 +692,7 @@
                 </div>
                 <div class="flex items-center gap-2.5">
                     <button onclick="openActivityLogModal()" class="btn btn-ghost btn-sm">Activity Log</button>
-                    <button onclick="openAssignModal()" class="btn btn-primary btn-sm">Assign New Task</button>
+                    <button onclick="openAssignModal()" class="btn btn-primary btn-sm wf-admin-only">Assign New Task</button>
                 </div>
             </div>
 
@@ -964,10 +1030,11 @@
      MODAL: Review Submission
 ═══════════════════════════════════════════════════════ -->
 <div id="reviewModal" class="modal-backdrop">
-    <div class="modal-panel" style="max-width:600px; margin:0 16px;">
+    <div class="modal-panel" style="max-width:760px; margin:0 16px;">
         <div class="modal-header">
             <div class="flex items-start justify-between gap-4">
                 <div class="flex-1">
+                    <p class="text-[11px] uppercase tracking-wide font-semibold text-[#8c2a10] mb-1">Submission review</p>
                     <h2 id="modalTaskTitle" class="text-base font-semibold text-gray-900 mb-0.5"></h2>
                     <p id="modalSubmitter" class="text-xs text-gray-500"></p>
                 </div>
@@ -978,51 +1045,65 @@
         </div>
 
         <div class="modal-body space-y-5">
-            <!-- Deadline status -->
-            <div id="deadlineBlock" class="hidden">
-                <div class="flex items-center gap-2 text-xs text-gray-500">
-                    <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    <span>Task deadline: <strong id="modalDeadline"></strong></span>
-                    <span id="modalCountdown" class="font-medium"></span>
+            <div class="grid sm:grid-cols-2 gap-4">
+                <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                    <div class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-3">Faculty information</div>
+                    <div class="flex items-center gap-3 mb-3">
+                        <div id="modalFacultyAvatar" class="wf-avatar">CF</div>
+                        <div>
+                            <div id="modalFacultyName" class="text-sm font-semibold text-gray-900"></div>
+                            <div id="modalFacultyDept" class="text-xs text-gray-500"></div>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-600 space-y-1">
+                        <div>Faculty ID: <strong id="modalFacultyCode">—</strong></div>
+                        <div>Email: <strong id="modalFacultyEmail">—</strong></div>
+                    </div>
+                </div>
+                <div class="rounded-2xl border border-gray-100 bg-white p-4">
+                    <div class="text-[11px] uppercase tracking-wide font-semibold text-gray-400 mb-3">Submission information</div>
+                    <div class="text-xs text-gray-600 space-y-1.5">
+                        <div>Report: <strong id="modalReportName">—</strong></div>
+                        <div>Period: <strong id="modalReportPeriod">—</strong></div>
+                        <div>Submitted: <strong id="modalSubmittedAt">—</strong></div>
+                        <div>Due: <strong id="modalDeadline">—</strong> <span id="modalCountdown"></span></div>
+                        <div>Status: <strong id="modalCurrentStatus">—</strong></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Prior review record -->
+            <div id="deadlineBlock" class="hidden"></div>
             <div id="reviewRecord" class="hidden"></div>
 
-            <!-- Files -->
             <div>
-                <p class="field-label mb-3">Submitted Files</p>
+                <p class="field-label mb-3">Document preview / download</p>
                 <div id="modalFiles" class="space-y-2"></div>
+            </div>
+
+            <div>
+                <p class="field-label mb-3">Approval history</p>
+                <div id="modalApprovalHistory" class="text-sm text-gray-500">No history loaded yet.</div>
             </div>
 
             <hr class="section-divider">
 
-            <!-- Remarks -->
             <div>
-                <label class="field-label" for="adminComment">Remarks / Comments</label>
+                <label class="field-label" for="adminComment">Comments / remarks</label>
                 <textarea id="adminComment" class="field-input" placeholder="Provide feedback or notes for the faculty member..."></textarea>
-                <p class="text-xs text-gray-400 mt-1.5">Remarks are required when requesting revision or declining.</p>
+                <p class="text-xs text-gray-400 mt-1.5">A reason is required when returning or rejecting a submission.</p>
             </div>
         </div>
 
-        <div class="modal-footer flex-wrap gap-2">
-            <button onclick="closeReviewModal()" class="btn btn-ghost" style="margin-right:auto;">
-                Close
+        <div class="modal-footer flex-wrap gap-2" id="reviewModalActions">
+            <button onclick="closeReviewModal()" class="btn btn-ghost" style="margin-right:auto;">Close</button>
+            <button onclick="declineSubmission()" class="btn btn-danger btn-sm wf-review-action">
+                <i class="fa-solid fa-xmark"></i> Reject
             </button>
-            <button onclick="declineSubmission()" class="btn btn-danger btn-sm">
-                <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                Decline
+            <button onclick="requestRevision()" class="btn btn-warn btn-sm wf-review-action">
+                <i class="fa-solid fa-rotate-left"></i> Return for Revision
             </button>
-            <button onclick="requestRevision()" class="btn btn-warn btn-sm">
-                <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-                Request Revision
-            </button>
-            <button onclick="approveSubmission()" class="btn btn-success btn-sm">
-                <svg style="width:13px;height:13px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                Approve
+            <button onclick="approveSubmission()" class="btn btn-success btn-sm wf-review-action">
+                <i class="fa-solid fa-check"></i> Approve
             </button>
         </div>
     </div>
@@ -1249,9 +1330,24 @@ const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined'
 const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined'
     ? window.__SUPABASE_ANON__
     : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-const ADMIN_NAME = 'Administrator';
 const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+const db = window.supabaseClient || createClient(SUPABASE_URL, SUPABASE_ANON);
+window.db = db;
+window.supabaseClient = db;
+let ADMIN_NAME = 'Administrator';
+let currentWorkflowActor = {
+    displayName: 'Administrator',
+    isChairperson: false,
+    hasAdminAccess: false,
+    isAdmin: true,
+    canChairReview: false,
+    canFinalReview: true,
+    canManageWorkflow: true,
+    department: null,
+    facultyId: null
+};
+let reviewQueueFilter = 'mine';
+let reviewActionBusy = false;
 
 var workflowState = window.workflowState || {
     faculty: [],
@@ -1419,6 +1515,8 @@ function renderAll() {
     filterSubmissions();
     renderDelegates();
     renderReportConfigs();
+    renderReviewQueue();
+    applyWorkflowRoleUi();
     if (activeTaskDetailId && !document.getElementById('taskDetailPage').classList.contains('hidden')) {
         renderTaskDetailPage(activeTaskDetailId);
     }
@@ -2384,14 +2482,20 @@ function closeReviewModal() {
 function applyReview(newStatus) {
     const comment = document.getElementById('adminComment').value.trim();
     if ((newStatus === 'revision' || newStatus === 'rejected') && !comment) {
-        showToast('Please provide remarks before submitting.', 'error');
+        showToast('Please provide a reason before returning or rejecting.', 'error');
         return;
     }
     const sub = allSubmissions.find(s => `${s.task_id}|${s.faculty_id}` === activeReviewId);
     if (!sub || !sub.submission_id) return;
     const labels = { approved: 'Approved', revision: 'Revision requested', rejected: 'Rejected' };
     const types  = { approved: 'success', revision: 'warn', rejected: 'error' };
-    applyReviewRealtime(sub.submission_id, newStatus, comment, labels, types, sub);
+    const run = () => applyReviewRealtime(sub.submission_id, newStatus, comment, labels, types, sub);
+    if (newStatus === 'approved' && window.CiteFlowWorkflow?.confirmAction) {
+        CiteFlowWorkflow.confirmAction('Confirm approval', `Approve ${sub.faculty_name}'s submission? This will advance the workflow.`).then((ok) => { if (ok) run(); });
+        return;
+    }
+    if (newStatus === 'approved' && !window.confirm(`Approve ${sub.faculty_name}'s submission?`)) return;
+    run();
 }
 async function applyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
     const { error } = await db
@@ -2823,15 +2927,24 @@ function renderSpecificUsers() {
 }
 
 function normalizeWorkflowFaculty(row) {
+    const normalized = (window.CiteFlowWorkflow && CiteFlowWorkflow.normalizeFaculty)
+        ? CiteFlowWorkflow.normalizeFaculty(row)
+        : {
+            id: row.id,
+            full_name: row.full_name || row.name || row.email || 'Unnamed Faculty',
+            department_code: row.department_code || row.department || 'N/A',
+            email: row.email || row.existing_email || '',
+            status: row.status || 'Active',
+            employment_status: row.employment_status || row.employment_type || row.faculty_status || row.status || '',
+            role: row.role || row.user_role || '',
+            position: row.position || row.academic_rank || '',
+            admin_access: row.admin_access === true
+        };
     return {
+        ...normalized,
         id: row.id,
-        full_name: row.full_name || row.name || row.email || 'Unnamed Faculty',
-        department_code: row.department_code || row.department || 'N/A',
-        email: row.email || row.existing_email || '',
-        status: row.status || 'Active',
-        employment_status: row.employment_status || row.employment_type || row.faculty_status || row.status || '',
-        role: row.role || row.user_role || '',
-        position: row.position || row.academic_rank || ''
+        faculty_code: normalized.faculty_code || row.faculty_id || row.employee_id || row.id_number || '',
+        admin_access: normalized.admin_access === true
     };
 }
 
@@ -3181,7 +3294,7 @@ async function saveReportConfig() {
             ? document.getElementById('reportRecipientDepartment').value
             : null;
         const selectedFacultyIds = recipientType === 'faculty'
-            ? Array.from(document.getElementById('reportSelectedFaculty').selectedOptions).map(o => Number(o.value))
+            ? Array.from(document.getElementById('reportSelectedFaculty').selectedOptions).map(o => o.value)
             : [];
 
         if (!name) throw new Error('Please enter a report name.');
@@ -3487,16 +3600,202 @@ function recomputeSubmissionMatrix() {
     });
 }
 
+function reviewerCanAct(row) {
+    const raw = workflowState.submissions.find(s => String(s.id) === String(row.submission_id));
+    const task = getTaskById(row.task_id);
+    const config = task?.report_config_id
+        ? (workflowState.reportConfigs || []).find(c => String(c.id) === String(task.report_config_id))
+        : null;
+    const faculty = getFacultyById(row.faculty_id);
+    const stage = raw?.approval_stage || row.approval_stage || 'chairperson';
+    if (window.CiteFlowWorkflow?.canReviewSubmission) {
+        return CiteFlowWorkflow.canReviewSubmission(currentWorkflowActor, { ...raw, ...row, approval_stage: stage }, faculty, config);
+    }
+    if (!row.submission_id) return false;
+    if (currentWorkflowActor.canChairReview && stage === 'chairperson') {
+        return !currentWorkflowActor.department || String(faculty?.department_code || '') === String(currentWorkflowActor.department);
+    }
+    if (currentWorkflowActor.canFinalReview && stage === 'final_approver') return true;
+    return false;
+}
+
+function getReviewPriority(row) {
+    const task = getTaskById(row.task_id);
+    const due = task?.deadline_at || task?.due_at;
+    const meta = window.CiteFlowWorkflow?.formatDeadline ? CiteFlowWorkflow.formatDeadline(due) : { overdue: false, days: 99 };
+    if (meta.overdue) return { label: 'Overdue', className: 'wf-priority-high' };
+    if (meta.days != null && meta.days <= 1) return { label: 'Urgent', className: 'wf-priority-high' };
+    if (meta.days != null && meta.days <= 3) return { label: 'Soon', className: 'wf-priority-high' };
+    return { label: 'Normal', className: 'wf-priority-normal' };
+}
+
+function classifyReviewRow(row) {
+    const status = String(row.status || '').toLowerCase();
+    const stage = row.approval_stage || 'chairperson';
+    const task = getTaskById(row.task_id);
+    const due = task?.deadline_at || task?.due_at;
+    const overdue = due && new Date(due).getTime() < Date.now() && !['approved', 'rejected'].includes(status);
+    if (reviewerCanAct(row)) return 'mine';
+    if (!row.submission_id || status === 'notsubmitted' || status === 'revision' || status === 'rejected') return 'awaiting';
+    if (status === 'revision') return 'returned';
+    if (status === 'approved') return 'approved';
+    if (overdue) return 'overdue';
+    if (stage === 'final_approver' || status === 'pending') return 'final';
+    return 'review';
+}
+
+function applyWorkflowRoleUi() {
+    const canManage = !!currentWorkflowActor.canManageWorkflow;
+    document.querySelectorAll('.wf-admin-only').forEach((el) => {
+        el.classList.toggle('admin-only-hidden', !canManage);
+    });
+    const subtitle = document.getElementById('workflowPageSubtitle');
+    if (subtitle) {
+        if (currentWorkflowActor.isChairperson && !currentWorkflowActor.hasAdminAccess) {
+            subtitle.textContent = 'Chairperson review dashboard. You will see submissions from your department that are waiting for chairperson action.';
+        } else if (currentWorkflowActor.isChairperson && currentWorkflowActor.hasAdminAccess) {
+            subtitle.textContent = 'Chairperson review with administrative access. You can review chairperson-stage items and complete final approvals.';
+        } else {
+            subtitle.textContent = 'Final review dashboard. Submissions appear here after chairperson review, unless that step is disabled for the report.';
+        }
+    }
+    if (!canManage) {
+        document.querySelectorAll('.sidebar .nav-item').forEach((item) => {
+            const page = String(item.getAttribute('data-page') || '');
+            if (!page.includes('workflow-approval') && !page.includes('dashboard') && !page.includes('system-settings') && !page.includes('admin-profile')) {
+                item.style.display = 'none';
+            }
+        });
+        document.getElementById('taskTableSurface')?.classList.add('admin-only-hidden');
+        document.getElementById('taskCardContainer')?.classList.add('admin-only-hidden');
+        document.querySelector('#workflowMainView .flex.gap-3.mb-4')?.classList.add('admin-only-hidden');
+    } else {
+        document.getElementById('taskTableSurface')?.classList.remove('admin-only-hidden');
+        document.getElementById('taskCardContainer')?.classList.remove('admin-only-hidden');
+        document.querySelector('#workflowMainView .flex.gap-3.mb-4')?.classList.remove('admin-only-hidden');
+    }
+}
+
+function filterReviewQueue(filter) {
+    reviewQueueFilter = filter || 'mine';
+    document.querySelectorAll('.review-filter-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.filter === reviewQueueFilter);
+    });
+    renderReviewQueue();
+}
+
+function renderReviewQueue() {
+    const body = document.getElementById('reviewQueueBody');
+    if (!body) return;
+    const rows = allSubmissions.filter((row) => {
+        if (currentWorkflowActor.isChairperson && currentWorkflowActor.department) {
+            const faculty = getFacultyById(row.faculty_id);
+            if (faculty && String(faculty.department_code) !== String(currentWorkflowActor.department) && !currentWorkflowActor.hasAdminAccess) {
+                return false;
+            }
+        }
+        const bucket = classifyReviewRow(row);
+        if (reviewQueueFilter === 'all') return true;
+        if (reviewQueueFilter === 'mine') return bucket === 'mine';
+        if (reviewQueueFilter === 'awaiting') return bucket === 'awaiting';
+        if (reviewQueueFilter === 'returned') return String(row.status).toLowerCase() === 'revision';
+        if (reviewQueueFilter === 'approved') return String(row.status).toLowerCase() === 'approved';
+        if (reviewQueueFilter === 'overdue') {
+            const task = getTaskById(row.task_id);
+            const due = task?.deadline_at || task?.due_at;
+            return due && new Date(due).getTime() < Date.now() && String(row.status).toLowerCase() !== 'approved';
+        }
+        return true;
+    });
+
+    if (!rows.length) {
+        const empty = window.CiteFlowWorkflow?.emptyState
+            ? CiteFlowWorkflow.emptyState('No submissions require your review', 'You are all caught up. New items will appear here when faculty submit reports.')
+            : '<div class="py-10 text-center text-sm text-gray-500">No submissions require your review</div>';
+        body.innerHTML = `<tr><td colspan="9">${empty}</td></tr>`;
+        return;
+    }
+
+    const formatStatus = window.CiteFlowWorkflow?.formatWorkflowStatus || ((s) => s);
+    const formatDate = window.CiteFlowWorkflow?.formatDate || ((d) => d || '—');
+    const initials = window.CiteFlowWorkflow?.initials || ((n) => (n || 'CF').slice(0, 2));
+
+    body.innerHTML = rows.map((row) => {
+        const task = getTaskById(row.task_id) || {};
+        const faculty = getFacultyById(row.faculty_id) || {};
+        const canAct = reviewerCanAct(row);
+        const priority = getReviewPriority(row);
+        const due = task.deadline_at || task.due_at;
+        const stageLabel = approvalStageLabel(row.approval_stage);
+        const statusLabel = formatStatus(row.status, row);
+        const actions = [];
+        actions.push(`<button class="btn btn-ghost btn-sm" onclick="openTaskDetailsPage('${task.id}')">View</button>`);
+        if (row.submission_id) {
+            actions.push(`<button class="btn btn-ghost btn-sm" onclick="openReviewModal('${task.id}','${row.faculty_id}')">Review</button>`);
+        }
+        if (canAct) {
+            actions.push(`<button class="btn btn-success btn-sm" onclick="openReviewModal('${task.id}','${row.faculty_id}')">Approve</button>`);
+            actions.push(`<button class="btn btn-warn btn-sm" onclick="openReviewModal('${task.id}','${row.faculty_id}')">Return</button>`);
+            actions.push(`<button class="btn btn-danger btn-sm" onclick="openReviewModal('${task.id}','${row.faculty_id}')">Reject</button>`);
+        }
+        return `<tr>
+            <td>
+                <div class="flex items-center gap-3">
+                    <div class="wf-avatar">${escapeHtml(initials(row.faculty_name))}</div>
+                    <div>
+                        <div class="font-semibold text-gray-900">${escapeHtml(row.faculty_name)}</div>
+                        <div class="text-xs text-gray-400">${escapeHtml(faculty.faculty_code || faculty.email || '')}</div>
+                    </div>
+                </div>
+            </td>
+            <td><span class="badge bg-gray-100 text-gray-700">${escapeHtml(row.department_code || '—')}</span></td>
+            <td>
+                <div class="font-medium text-gray-900">${escapeHtml(task.title || 'Untitled report')}</div>
+                <div class="text-xs text-gray-400">${escapeHtml(task.reporting_period_label || task.generated_for_period || '')}</div>
+            </td>
+            <td>${formatDate(row.submitted_at)}</td>
+            <td>${formatDate(due)}</td>
+            <td><span class="approval-stage-pill">${escapeHtml(stageLabel)}</span></td>
+            <td><span class="badge ${statusBadgeClass(row.status)}"><span class="badge-dot"></span>${escapeHtml(statusLabel)}</span></td>
+            <td class="${priority.className}">${escapeHtml(priority.label)}</td>
+            <td><div class="flex flex-wrap gap-1">${actions.join('')}</div></td>
+        </tr>`;
+    }).join('');
+}
+
+function statusBadgeClass(status) {
+    const key = String(status || '').toLowerCase();
+    if (key === 'approved') return 'badge-approved';
+    if (key === 'revision') return 'badge-revision';
+    if (key === 'rejected') return 'badge-rejected';
+    if (key === 'late') return 'badge-late';
+    if (key === 'pending') return 'badge-pending';
+    if (key === 'submitted' || key === 'underreview') return 'badge-underreview';
+    return 'badge-notsubmitted';
+}
+
 function updateStats() {
     const counts = { pending:0, submitted:0, underreview:0, approved:0, revision:0, rejected:0, late:0 };
     allSubmissions.forEach(s => counts[s.status] = (counts[s.status] || 0) + 1);
     const pending = allSubmissions.filter(s => !s.submission_id).length;
     const submitted = allSubmissions.filter(s => s.submission_id && s.timing === 'on_time').length;
     const late = allSubmissions.filter(s => s.timing === 'late').length;
-    document.getElementById('stat-pending').textContent = pending + late;
-    document.getElementById('stat-approved').textContent = counts.approved || 0;
-    document.getElementById('stat-revision').textContent = counts.revision || 0;
-    document.getElementById('stat-declined').textContent = counts.rejected || 0;
+    const myReview = allSubmissions.filter(reviewerCanAct).length;
+    const awaiting = allSubmissions.filter(s => !s.submission_id || ['revision', 'rejected', 'notsubmitted'].includes(String(s.status).toLowerCase())).length;
+    const overdue = allSubmissions.filter(s => {
+        const task = getTaskById(s.task_id);
+        const due = task?.deadline_at || task?.due_at;
+        return due && new Date(due).getTime() < Date.now() && String(s.status).toLowerCase() !== 'approved';
+    }).length;
+    const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    setText('stat-pending', pending + late);
+    setText('stat-approved', counts.approved || 0);
+    setText('stat-revision', counts.revision || 0);
+    setText('stat-declined', counts.rejected || 0);
+    setText('stat-my-review', myReview);
+    setText('stat-awaiting-faculty', awaiting);
+    setText('stat-returned', counts.revision || 0);
+    setText('stat-overdue', overdue);
     const pendingLabel = document.querySelector('#stat-pending')?.parentElement?.parentElement?.querySelector('.text-gray-500');
     if (pendingLabel) pendingLabel.textContent = `${submitted} on time · ${late} late`;
 }
@@ -3718,7 +4017,7 @@ async function recordApprovalHistory(submission, action, comment, actorRole, sta
     const payload = {
         submission_id: submission.submission_id,
         task_id: submission.task_id,
-        faculty_id: String(submission.faculty_id),
+        faculty_id: submission.faculty_id,
         actor_name: ADMIN_NAME,
         actor_role: actorRole,
         action,
@@ -3726,22 +4025,39 @@ async function recordApprovalHistory(submission, action, comment, actorRole, sta
         comment: comment || null
     };
     const { error } = await db.from('wf_approval_history').insert(payload);
-    if (error) console.warn('Approval history insert failed:', error.message);
+    if (error) {
+        console.error('Approval history insert failed:', {
+            table: 'wf_approval_history',
+            operation: 'insert',
+            role: currentWorkflowActor,
+            error,
+            query: payload
+        });
+    }
 }
 
 async function applyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
+    if (reviewActionBusy) return;
+    reviewActionBusy = true;
+    try {
     const rawSubmission = workflowState.submissions.find(s => String(s.id) === String(submissionId));
     const stage = getActiveApprovalStage(rawSubmission || sub);
-
-    // Admin page is the final approver side. A submission must first pass
-    // Chairperson review unless that step was disabled in its report config.
     const task = getTaskById(sub.task_id);
     const config = task?.report_config_id
         ? (workflowState.reportConfigs || []).find(c => String(c.id) === String(task.report_config_id))
         : null;
+    const actorName = currentWorkflowActor.displayName || ADMIN_NAME;
 
-    if (stage === 'chairperson' && config?.requires_chairperson_review !== false) {
+    if (stage === 'chairperson' && config?.requires_chairperson_review !== false && !currentWorkflowActor.canChairReview) {
         showToast('This submission is still awaiting Chairperson review.', 'warn');
+        return;
+    }
+    if (stage === 'final_approver' && !currentWorkflowActor.canFinalReview) {
+        showToast('This submission is awaiting final administrator review.', 'warn');
+        return;
+    }
+    if (!reviewerCanAct(sub) && !(currentWorkflowActor.canFinalReview && stage === 'final_approver') && !(currentWorkflowActor.canChairReview && stage === 'chairperson')) {
+        showToast('You do not have review permission for this submission.', 'error');
         return;
     }
 
@@ -3749,7 +4065,7 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
     let nextStage = stage;
 
     if (newStatus === 'approved') {
-        if (stage === 'chairperson') {
+        if (stage === 'chairperson' || (!stage && currentWorkflowActor.canChairReview)) {
             nextStage = config?.requires_final_approval === false ? 'approved' : 'final_approver';
             nextStatus = nextStage === 'approved' ? 'approved' : 'pending';
         } else if (stage === 'final_approver') {
@@ -3767,14 +4083,15 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
     const update = {
         status: nextStatus,
         approval_stage: nextStage,
-        reviewed_by_name: ADMIN_NAME,
+        reviewed_by_name: actorName,
         reviewed_at: new Date().toISOString(),
-        review_remarks: comment
+        review_remarks: comment,
+        last_reviewed_by_role: (currentWorkflowActor.canChairReview && (stage === 'chairperson' || !stage)) ? 'CHAIRPERSON' : 'ADMIN'
     };
 
     if (nextStage === 'approved') {
         update.final_approved_at = new Date().toISOString();
-        update.final_approved_by_name = ADMIN_NAME;
+        update.final_approved_by_name = actorName;
         update.final_approval_remarks = comment || null;
     }
 
@@ -3784,7 +4101,8 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
 
     const { error } = await db.from('wf_submissions').update(update).eq('id', submissionId);
     if (error) {
-        showToast(error.message || 'Failed to update approval.', 'error');
+        console.error('Failed to update wf_submissions:', error, { table: 'wf_submissions', operation: 'update', query: update, role: currentWorkflowActor });
+        showToast((window.CiteFlowWorkflow?.friendlyError && CiteFlowWorkflow.friendlyError(error, 'Unable to save the review. Please try again.')) || 'Unable to save the review. Please try again.', 'error');
         return;
     }
 
@@ -3798,13 +4116,13 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
         sub,
         action,
         comment,
-        stage === 'final_approver' ? 'DEAN/SECRETARY' : 'ADMIN',
+        currentWorkflowActor.canChairReview && stage === 'chairperson' ? 'CHAIRPERSON' : (currentWorkflowActor.isAdmin ? 'DEAN/SECRETARY' : 'ADMIN'),
         nextStatus
     );
 
     await db.from('wf_activity_log').insert({
         action: labels[newStatus] || newStatus,
-        actor_name: ADMIN_NAME,
+        actor_name: actorName,
         target: `${sub.faculty_name} - ${task?.title || 'Submission'}`,
         log_type: newStatus,
         task_id: sub.task_id,
@@ -3823,17 +4141,20 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
 
     const toast =
         newStatus === 'approved' && nextStage === 'final_approver'
-            ? 'Chairperson approval recorded. Submission is now awaiting Dean/Secretary approval.'
+            ? 'Chairperson approval recorded. Submission is now awaiting final approval.'
             : newStatus === 'approved' && nextStage === 'approved'
                 ? 'Submission fully approved.'
                 : newStatus === 'revision'
-                    ? 'Revision requested. Faculty must revise and resubmit.'
-                    : 'Submission marked rejected/revision required.';
+                    ? 'Returned for revision. Faculty must revise and resubmit.'
+                    : 'Submission rejected.';
 
     showToast(toast, newStatus === 'approved' ? 'success' : newStatus === 'revision' ? 'warn' : 'error');
     closeReviewModal();
     await fetchAllData();
     if (activeTaskDetailId) renderTaskDetailPage(activeTaskDetailId, { focusFacultyId: sub.faculty_id });
+    } finally {
+        reviewActionBusy = false;
+    }
 }
 
 /* ---------- Override review modal so stage is visible ---------- */
@@ -3847,25 +4168,38 @@ async function openReviewModal(taskId, facultyRef) {
 
     activeReviewId = `${taskId}|${facultyRef}`;
     const task = getTaskById(taskId);
+    const faculty = getFacultyById(facultyRef) || {};
     const raw = workflowState.submissions.find(s => String(s.id) === String(sub.submission_id));
     const stage = raw?.approval_stage || sub.approval_stage || 'chairperson';
+    const formatStatus = window.CiteFlowWorkflow?.formatWorkflowStatus || ((s) => s);
+    const formatDateTime = window.CiteFlowWorkflow?.formatDateTime || window.formatDateTime;
+    const initials = window.CiteFlowWorkflow?.initials || ((n) => (n || 'CF').slice(0, 2));
 
     document.getElementById('modalTaskTitle').textContent = task?.title || 'Submission Review';
     document.getElementById('modalSubmitter').textContent =
         `${sub.faculty_name} | ${sub.department_code} | Submitted ${formatDateTime(sub.submitted_at)}`;
+    const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value || '—'; };
+    setText('modalFacultyName', sub.faculty_name);
+    setText('modalFacultyDept', sub.department_code);
+    setText('modalFacultyCode', faculty.faculty_code || faculty.faculty_id || faculty.id);
+    setText('modalFacultyEmail', faculty.email);
+    setText('modalReportName', task?.title);
+    setText('modalReportPeriod', task?.reporting_period_label || task?.generated_for_period || '—');
+    setText('modalSubmittedAt', formatDateTime(sub.submitted_at));
+    setText('modalDeadline', formatDateTime(task?.deadline_at || task?.due_at));
+    setText('modalCurrentStatus', formatStatus(raw?.status || sub.status, raw || sub));
+    const avatar = document.getElementById('modalFacultyAvatar');
+    if (avatar) avatar.textContent = initials(sub.faculty_name);
 
-    if (task) {
-        document.getElementById('deadlineBlock').classList.remove('hidden');
-        document.getElementById('modalDeadline').textContent = formatDateTime(task.deadline_at || task.due_at);
-        document.getElementById('modalCountdown').innerHTML = deadlineCountdown(task.deadline_at || task.due_at);
-    }
+    const countdownEl = document.getElementById('modalCountdown');
+    if (countdownEl) countdownEl.innerHTML = deadlineCountdown(task?.deadline_at || task?.due_at);
 
     const recEl = document.getElementById('reviewRecord');
     recEl.classList.remove('hidden');
     recEl.innerHTML = `
         <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-100">
             <div class="flex items-center justify-between gap-3">
-                <span class="text-xs font-semibold text-indigo-700">Approval Stage</span>
+                <span class="text-xs font-semibold text-indigo-700">Current stage</span>
                 <span class="approval-stage-pill">${escapeHtml(approvalStageLabel(stage))}</span>
             </div>
             ${raw?.review_remarks ? `<div class="text-xs text-indigo-700 mt-2">${escapeHtml(raw.review_remarks)}</div>` : ''}
@@ -3874,21 +4208,30 @@ async function openReviewModal(taskId, facultyRef) {
     document.getElementById('modalFiles').innerHTML = renderFileList(sub.files, 'No submitted files saved.');
     document.getElementById('adminComment').value = '';
 
-    const approveBtn = document.querySelector('#reviewModal button[onclick="approveSubmission()"]');
-    const revisionBtn = document.querySelector('#reviewModal button[onclick="requestRevision()"]');
-    const declineBtn = document.querySelector('#reviewModal button[onclick="declineSubmission()"]');
-
-    if (stage === 'chairperson') {
-        [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.disabled = true; });
-        if (approveBtn) approveBtn.title = 'Waiting for Chairperson review';
-        if (revisionBtn) revisionBtn.title = 'Waiting for Chairperson review';
-        if (declineBtn) declineBtn.title = 'Waiting for Chairperson review';
-        showToast('This submission must pass Chairperson review first.', 'warn');
-    } else if (stage === 'approved') {
-        [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.disabled = true; });
+    const historyEl = document.getElementById('modalApprovalHistory');
+    const history = (workflowState.approvalHistory || []).filter(h => String(h.submission_id) === String(sub.submission_id));
+    if (!history.length) {
+        historyEl.innerHTML = '<div class="text-sm text-gray-400">No approval history recorded yet.</div>';
     } else {
-        [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.disabled = false; });
-        if (approveBtn) approveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Final Approve';
+        historyEl.innerHTML = history.map(h => `
+            <div class="wf-history-item">
+                <span class="wf-history-dot"></span>
+                <div class="text-sm font-semibold text-gray-900">${escapeHtml(h.action || h.status || 'Update')}</div>
+                <div class="text-xs text-gray-500">${escapeHtml(h.actor_name || 'System')} · ${escapeHtml(h.actor_role || '')} · ${formatDateTime(h.created_at)}</div>
+                ${h.comment ? `<div class="text-sm text-gray-600 mt-1">${escapeHtml(h.comment)}</div>` : ''}
+            </div>`).join('');
+    }
+
+    const canAct = reviewerCanAct(sub);
+    document.querySelectorAll('.wf-review-action').forEach((btn) => {
+        btn.disabled = !canAct || stage === 'approved';
+        btn.style.display = canAct ? '' : 'none';
+    });
+    const approveBtn = document.querySelector('#reviewModal button[onclick="approveSubmission()"]');
+    if (approveBtn && canAct) {
+        approveBtn.innerHTML = stage === 'final_approver'
+            ? '<i class="fa-solid fa-check"></i> Final Approve'
+            : '<i class="fa-solid fa-check"></i> Approve';
     }
 
     document.getElementById('reviewModal').classList.add('open');
@@ -3896,6 +4239,15 @@ async function openReviewModal(taskId, facultyRef) {
 
 /* ---------- Updated fetch ---------- */
 async function fetchAllData() {
+    if (window.CiteFlowWorkflow?.getCurrentRoleContext) {
+        try {
+            currentWorkflowActor = await CiteFlowWorkflow.getCurrentRoleContext(true);
+            ADMIN_NAME = currentWorkflowActor.displayName || ADMIN_NAME;
+        } catch (err) {
+            console.error('Unable to resolve workflow actor from public.faculty:', err);
+        }
+    }
+
     const [
         faculty, tasks, assignments, submissions, files,
         notifications, activity, comments, delegates,
@@ -3918,8 +4270,18 @@ async function fetchAllData() {
     const required = { faculty, tasks, assignments, submissions, files, activity, comments, delegates, reportConfigs, reportTargets, approvalHistory };
     const hardError = Object.entries(required).find(([, r]) => r.error);
     if (hardError) {
-        console.error('Workflow load error:', hardError[0], hardError[1]);
-        showToast(`Unable to load ${hardError[0]}. Check the Supabase schema/RLS.`, 'error');
+        console.error('Workflow load error:', {
+            table: hardError[0],
+            operation: 'select',
+            role: currentWorkflowActor,
+            error: hardError[1].error,
+            query: `${hardError[0]} select *`
+        });
+        const queueBody = document.getElementById('reviewQueueBody');
+        if (queueBody) {
+            queueBody.innerHTML = `<tr><td colspan="9" class="px-6 py-8 text-sm text-red-700">Unable to load the review queue. Please try again.</td></tr>`;
+        }
+        showToast(`Unable to load workflow data. Please try again.`, 'error');
         return;
     }
 
@@ -3940,35 +4302,40 @@ async function fetchAllData() {
     workflowState.approvalHistory = approvalHistory.data || [];
 
     renderAll();
-    await generateNextReportingTasks();
-
-    // Refresh local data once after generation so the newly generated task
-    // appears immediately.
-    if ((workflowState.reportConfigs || []).length) {
-        const { data: freshTasks } = await db.from('wf_tasks').select('*').order('created_at', { ascending: false });
-        if (freshTasks) workflowState.tasks = freshTasks;
+    if (currentWorkflowActor.canManageWorkflow) {
+        await generateNextReportingTasks();
+        if ((workflowState.reportConfigs || []).length) {
+            const { data: freshTasks } = await db.from('wf_tasks').select('*').order('created_at', { ascending: false });
+            if (freshTasks) workflowState.tasks = freshTasks;
+        }
+        renderAll();
     }
-
-    renderAll();
 }
 
 /* ---------- Realtime includes new workflow tables ---------- */
 function initRealtime() {
-    if (realtimeChannel) db.removeChannel(realtimeChannel);
-    realtimeChannel = db
-        .channel('wf-admin-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submission_files' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_comments' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_delegated_access' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_report_configs' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_report_targets' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_approval_history' }, fetchAllData)
-        .subscribe();
+    if (realtimeChannel && window.CiteFlowWorkflow?.unsubscribeChannel) {
+        CiteFlowWorkflow.unsubscribeChannel(db, realtimeChannel);
+        realtimeChannel = null;
+    } else if (realtimeChannel) {
+        db.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+    }
+    const tables = [
+        'faculty', 'wf_tasks', 'wf_task_assignments', 'wf_submissions',
+        'wf_submission_files', 'wf_activity_log', 'wf_comments',
+        'wf_delegated_access', 'wf_report_configs', 'wf_report_targets',
+        'wf_approval_history'
+    ];
+    if (window.CiteFlowWorkflow?.createManagedChannel) {
+        realtimeChannel = CiteFlowWorkflow.createManagedChannel(db, 'wf-admin-live', tables, fetchAllData);
+        return;
+    }
+    realtimeChannel = db.channel('wf-admin-live');
+    tables.forEach((table) => {
+        realtimeChannel = realtimeChannel.on('postgres_changes', { event: '*', schema: 'public', table }, fetchAllData);
+    });
+    realtimeChannel.subscribe();
 }
 
 /* ---------- Page-level notifications are intentionally disabled.
