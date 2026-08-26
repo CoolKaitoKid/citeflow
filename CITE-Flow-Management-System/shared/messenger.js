@@ -57,7 +57,8 @@ window.CiteFlowMessenger = (function () {
         deletedConvoIds: new Set(),
         _lastRenderedMsgSig: null,
         _lastExpRenderedMsgSig: null,
-        _participantsChanged: false
+        _participantsChanged: false,
+        _msgFetchSeq: 0
     };
 
     /** Load per-user state from localStorage after user ID is known */
@@ -1336,6 +1337,13 @@ window.CiteFlowMessenger = (function () {
             const dedupedKeys = new Set();
             let finalConvos = enriched.filter(c => {
                 if (!c || !c.id) return false;
+
+                // Hide empty conversations with 0 messages unless it is actively open in current UI session
+                const isCurrentlyActive = String(State.activeConversationId) === String(c.id);
+                if (!c.lastMessage && !isCurrentlyActive) {
+                    return false;
+                }
+
                 const safeOthers = (c.others || []).filter(o =>
                     String(o.auth_user_id) !== String(State.currentUserId) &&
                     String(o.id) !== String(State.currentUserId)
@@ -1346,9 +1354,14 @@ window.CiteFlowMessenger = (function () {
                     recipientKey = `group_${c.id}`;
                 } else if (safeOthers.length > 0) {
                     const o = safeOthers[0];
-                    recipientKey = `direct_${(o.auth_user_id || o.id || o.email || o.name || '').toLowerCase()}`;
+                    const uid = o.auth_user_id || o.id || o.email;
+                    if (uid && uid !== 'unknown') {
+                        recipientKey = `direct_${String(uid).toLowerCase()}`;
+                    } else {
+                        recipientKey = `convo_${c.id}`;
+                    }
                 } else {
-                    recipientKey = `direct_${(c.displayName || '').toLowerCase().replace(/\s+/g, '')}`;
+                    recipientKey = `convo_${c.id}`;
                 }
 
                 if (dedupedKeys.has(recipientKey)) return false;
@@ -1699,6 +1712,8 @@ window.CiteFlowMessenger = (function () {
         const sb = getClient();
         if (!sb) return;
 
+        const currentSeq = ++State._msgFetchSeq;
+
         try {
             const [{ data, error }, { data: partData }] = await Promise.all([
                 sb.from("messages")
@@ -1711,6 +1726,10 @@ window.CiteFlowMessenger = (function () {
                     .eq("conversation_id", conversationId)
             ]);
 
+            // Stale request guard: if a newer request or send was initiated, do not overwrite UI
+            if (currentSeq !== State._msgFetchSeq) return;
+            if (String(State.activeConversationId) !== String(conversationId)) return;
+
             if (error) {
                 console.warn("CiteFlowMessenger: Error loading messages:", error);
                 return;
@@ -1720,7 +1739,13 @@ window.CiteFlowMessenger = (function () {
                 State.activeConversationParticipants = partData;
             }
 
-            const messages = Array.isArray(data) ? data : [];
+            const fetchedMessages = Array.isArray(data) ? data : [];
+
+            // Preserve any in-flight optimistic messages
+            const pendingOptimistic = (State._currentActiveMessages || []).filter(m =>
+                m.is_optimistic && !fetchedMessages.some(f => f.content === m.content && String(f.sender_id) === String(m.sender_id))
+            );
+            const messages = [...fetchedMessages, ...pendingOptimistic];
             State._currentActiveMessages = messages;
 
             const newSig = messages.map(m => m.id).join(',');
@@ -1947,27 +1972,36 @@ window.CiteFlowMessenger = (function () {
         const activeId = State.activeConversationId;
         const nowIso = new Date().toISOString();
 
+        // 1. Optimistic message creation so the user sees their message immediately
+        const tempId = `optimistic_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const optimisticMsg = {
+            id: tempId,
+            conversation_id: activeId,
+            sender_id: State.currentUserId,
+            content: content,
+            created_at: nowIso,
+            is_optimistic: true
+        };
+
+        if (!Array.isArray(State._currentActiveMessages)) State._currentActiveMessages = [];
+        State._currentActiveMessages.push(optimisticMsg);
+        State._lastRenderedMsgSig = null;
+        State._lastExpRenderedMsgSig = null;
+        renderActiveMessagesUI(State._currentActiveMessages);
+
+        // 2. Immediately update the conversation preview so "No messages yet" disappears
+        const activeConv = State.conversations.find(c => String(c.id) === String(activeId));
+        if (activeConv) {
+            activeConv.lastMessage = optimisticMsg;
+            activeConv.sortTime = nowIso;
+        }
+        renderConversationList(getConvoSearchFilter());
+        renderExpandedConvoList();
+
+        // 3. Invalidate any in-flight background load from opening the conversation
+        ++State._msgFetchSeq;
+
         try {
-            const meta = State.activeConversationMeta;
-            if (meta && !meta.is_group && Array.isArray(meta.others)) {
-                for (const other of meta.others) {
-                    const recipientUid = other.auth_user_id || other.id;
-                    if (recipientUid && String(recipientUid) !== String(State.currentUserId) && String(recipientUid).includes('-')) {
-                        const { error: upsertErr } = await sb.from("conversation_participants").upsert({
-                            conversation_id: activeId,
-                            user_id: recipientUid
-                        }, { onConflict: "conversation_id,user_id" });
-                        if (upsertErr) console.warn("CiteFlowMessenger: Upsert recipient participant error:", upsertErr);
-                    }
-                }
-            }
-
-            const { error: selfUpsertErr } = await sb.from("conversation_participants").upsert({
-                conversation_id: activeId,
-                user_id: State.currentUserId
-            }, { onConflict: "conversation_id,user_id" });
-            if (selfUpsertErr) console.warn("CiteFlowMessenger: Upsert self participant error:", selfUpsertErr);
-
             const { data: sentMsg, error } = await sb.from("messages").insert({
                 conversation_id: activeId,
                 sender_id: State.currentUserId,
@@ -1976,6 +2010,9 @@ window.CiteFlowMessenger = (function () {
 
             if (error) {
                 console.warn("CiteFlowMessenger: Error sending message:", error);
+                // Remove failed optimistic message
+                State._currentActiveMessages = (State._currentActiveMessages || []).filter(m => m.id !== tempId);
+                renderActiveMessagesUI(State._currentActiveMessages);
                 if (typeof CiteFlowModal !== 'undefined' && CiteFlowModal.toast) {
                     CiteFlowModal.toast("Failed to send message. Please try again.");
                 } else {
@@ -1990,7 +2027,14 @@ window.CiteFlowMessenger = (function () {
                     await sb.from("conversations").update({ last_message_at: nowIso }).eq("id", activeId);
                 } catch (_) {}
 
-                const activeConv = State.conversations.find(c => String(c.id) === String(activeId));
+                // Replace optimistic message with actual DB message
+                const idx = State._currentActiveMessages.findIndex(m => m.id === tempId);
+                if (idx !== -1) {
+                    State._currentActiveMessages[idx] = sentMsg;
+                } else if (!State._currentActiveMessages.some(m => m.id === sentMsg.id)) {
+                    State._currentActiveMessages.push(sentMsg);
+                }
+
                 if (activeConv) {
                     activeConv.lastMessage = sentMsg;
                     activeConv.sortTime = nowIso;
@@ -1998,16 +2042,15 @@ window.CiteFlowMessenger = (function () {
 
                 State._lastRenderedMsgSig = null;
                 State._lastExpRenderedMsgSig = null;
-
-                await loadAndRenderActiveMessages(activeId);
-                renderConversationList("");
+                renderActiveMessagesUI(State._currentActiveMessages);
+                renderConversationList(getConvoSearchFilter());
                 renderExpandedConvoList();
             }
         } catch (err) {
             console.warn("CiteFlowMessenger: Error during submitChatMessage:", err);
+        } finally {
+            if (sendBtn) sendBtn.disabled = false;
         }
-
-        if (sendBtn) sendBtn.disabled = false;
     }
 
     /**
@@ -2503,18 +2546,24 @@ window.CiteFlowMessenger = (function () {
 
         if (!isGroup) {
             const targetUser = validRecipients[0];
-            const targetKey = String(targetUser.auth_user_id || targetUser.id || '');
-            const targetEmail = (targetUser.email || '').toLowerCase();
+            const targetUid = targetUser.auth_user_id && targetUser.auth_user_id !== 'unknown' ? String(targetUser.auth_user_id) : null;
+            const targetRawId = targetUser.id && targetUser.id !== 'unknown' ? String(targetUser.id) : null;
+            const targetEmail = (targetUser.email || '').trim().toLowerCase();
 
             let existing = State.conversations.find((c) => {
                 if (c.is_group) return false;
                 const other = c.others?.[0];
                 if (!other) return false;
-                return (
-                    (other.auth_user_id && String(other.auth_user_id) === targetKey) ||
-                    (other.id && String(other.id) === targetKey) ||
-                    (other.email && other.email.toLowerCase() === targetEmail)
-                );
+
+                const oUid = other.auth_user_id && other.auth_user_id !== 'unknown' ? String(other.auth_user_id) : null;
+                const oRawId = other.id && other.id !== 'unknown' ? String(other.id) : null;
+                const oEmail = (other.email || '').trim().toLowerCase();
+
+                if (targetUid && oUid && targetUid === oUid) return true;
+                if (targetRawId && oRawId && targetRawId === oRawId) return true;
+                if (targetEmail && oEmail && targetEmail === oEmail) return true;
+
+                return false;
             });
 
             if (existing) {
