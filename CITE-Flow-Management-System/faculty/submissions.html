@@ -20,6 +20,7 @@
     />
 
     <link rel="stylesheet" href="faculty-nav.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -29,48 +30,35 @@
         }
 
         body {
-            background: #f7f8fb;
+            background: #f3f4f7;
             color: #111827;
         }
 
         .main-bg {
-            background:
-                radial-gradient(
-                    circle at 88% -4%,
-                    rgba(140,42,16,.08),
-                    transparent 28%
-                ),
-                linear-gradient(
-                    180deg,
-                    #fbfbfd 0%,
-                    #f7f8fb 100%
-                );
+            background: #f3f4f7;
         }
 
         .surface {
-            background: rgba(255,255,255,.94);
-            border: 1px solid #e7eaf0;
-            box-shadow:
-                0 18px 55px -42px rgba(15,23,42,.55),
-                0 1px 3px rgba(15,23,42,.04);
+            background: #fff;
+            border: 1px solid #e8eaef;
+            box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05);
         }
 
         .soft-card {
             background: #fff;
-            border: 1px solid #e8edf4;
-            box-shadow:
-                0 12px 38px -32px rgba(15,23,42,.55);
+            border: 1px solid #e8eaef;
+            box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05);
         }
 
         .icon-box {
-            width: 42px;
-            height: 42px;
-            border-radius: 16px;
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: #fff5ef;
-            color: #8c2a10;
+            background: #fff6ef;
+            color: #621708;
             border: 1px solid #f1d7c8;
             flex-shrink: 0;
         }
@@ -85,8 +73,6 @@
 
         .button:hover:not(:disabled) {
             transform: translateY(-1px);
-            box-shadow:
-                0 16px 28px -24px rgba(98,23,8,.7);
         }
 
         .task-row {
@@ -102,26 +88,25 @@
         .task-row:hover {
             transform: translateY(-1px);
             border-color: #e2c5b5;
-            box-shadow:
-                0 20px 45px -38px rgba(98,23,8,.65);
+            box-shadow: 0 12px 28px rgba(15,23,42,.06);
         }
 
         .task-indicator {
-            width: 6px;
+            width: 4px;
             align-self: stretch;
             border-radius: 999px;
-            flex: 0 0 6px;
+            flex: 0 0 4px;
         }
 
         .tab-pill {
             transition: all .18s ease;
+            border-radius: 999px;
         }
 
         .tab-pill.active {
-            background: #8c2a10;
+            background: #621708;
             color: #fff;
-            box-shadow:
-                0 12px 24px -18px rgba(98,23,8,.85);
+            box-shadow: 0 8px 18px -12px rgba(98,23,8,.85);
         }
 
         .status-badge {
@@ -199,6 +184,61 @@
             border: 1px solid #ddd6fe;
         }
 
+        .quick-hub-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            width: 100%;
+            text-align: left;
+            padding: 14px 16px;
+            border-radius: 14px;
+            background: #fff;
+            border: 1px solid #e8eaef;
+            box-shadow: 0 1px 2px rgba(15,23,42,.04);
+            transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+        }
+
+        .quick-hub-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            border-color: #e2c5b5;
+            box-shadow: 0 12px 24px rgba(15,23,42,.06);
+        }
+
+        .quick-hub-btn:disabled {
+            opacity: .65;
+            cursor: wait;
+        }
+
+        .file-manage-btn {
+            flex-shrink: 0;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid #e5e7eb;
+            background: #fff;
+            color: #374151;
+        }
+
+        .file-manage-btn:hover:not(:disabled) {
+            border-color: #c98970;
+            color: #8c2a10;
+        }
+
+        .file-manage-btn.danger:hover:not(:disabled) {
+            border-color: #fecaca;
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+
+        .file-manage-btn:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        .cite-action svg { width: 14px; height: 14px; }
+
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -213,7 +253,7 @@
     </style>
 </head>
 
-<body class="bg-gray-50">
+<body class="bg-gray-50 cite-page">
 
 <div class="flex h-screen w-screen overflow-hidden">
 
@@ -223,7 +263,7 @@
 
         <div id="navbar-container"></div>
 
-        <div class="max-w-[1500px] mx-auto px-8 py-8 mt-16">
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
 
             <div
                 id="appRoot"
@@ -311,12 +351,16 @@ let selectedTaskId = null;
 
 let currentView = 'list';
 let currentFilter = 'all';
+let currentCategoryFilter = '';
 
 let isFetchingData = false;
 let pendingDataRefresh = false;
 
 let authChecked = false;
 let submitInProgress = false;
+let quickSubmitInProgress = false;
+let fileActionInProgress = false;
+let pendingFileReplace = null;
 
 
 /* =========================================================
@@ -576,6 +620,10 @@ function formatDateTime(iso) {
 
 function getTaskDeadline(task) {
 
+    if (window.CiteFlowWorkflow?.getTaskDeadline) {
+        return CiteFlowWorkflow.getTaskDeadline(task);
+    }
+
     return task?.deadline_at
         || task?.due_at
         || null;
@@ -644,14 +692,21 @@ function getSubmission(taskId, facultyId) {
 }
 
 
-function getSubmissionFiles(submissionId) {
+function getSubmissionFileRecords(submissionId) {
 
     return state.submissionFiles
         .filter(
             file =>
                 String(file.submission_id)
                 === String(submissionId)
-        )
+        );
+
+}
+
+
+function getSubmissionFiles(submissionId) {
+
+    return getSubmissionFileRecords(submissionId)
         .map(
             file => file.file_name
         );
@@ -675,6 +730,85 @@ function getDraftFileNames(taskId) {
     return getDraftFiles(taskId)
         .map(file => file?.name)
         .filter(Boolean);
+
+}
+
+
+function getWorkflowStageSafe(submission, task) {
+
+    if (window.CiteFlowWorkflow?.getWorkflowStage) {
+        return CiteFlowWorkflow.getWorkflowStage(submission, task);
+    }
+
+    return null;
+
+}
+
+
+function canManageSubmissionFiles(submission, task) {
+
+    if (window.CiteFlowWorkflow?.canFacultyManageSubmissionFiles) {
+        return CiteFlowWorkflow.canFacultyManageSubmissionFiles(submission, task);
+    }
+
+    const status =
+        String(
+            submission?.status
+            || ''
+        ).toLowerCase();
+
+    return status !== 'approved';
+
+}
+
+
+function isFileManagementLocked(submission, task) {
+
+    return !canManageSubmissionFiles(submission, task);
+
+}
+
+
+function isInReviewStage(submission, task) {
+
+    const stage =
+        getWorkflowStageSafe(
+            submission,
+            task
+        );
+
+    if (stage) {
+        return [
+            'submitted',
+            'chairperson_review',
+            'final_approval'
+        ].includes(stage);
+    }
+
+    const status =
+        String(
+            submission?.status
+            || ''
+        ).toLowerCase();
+
+    return [
+        'submitted',
+        'late',
+        'underreview',
+        'approved'
+    ].includes(status);
+
+}
+
+
+function toastMessage(message, type) {
+
+    if (window.CiteFlowWorkflow?.showToast) {
+        CiteFlowWorkflow.showToast(message, type);
+        return;
+    }
+
+    alert(message);
 
 }
 
@@ -1323,13 +1457,26 @@ function getVisibleModels() {
                     model.status,
                     model.task.reporting_period_label,
                     model.task.generated_for_period,
-                    model.task.assigned_label
+                    model.task.assigned_label,
+                    window.CiteFlowWorkflow?.formatDocumentCategory
+                        ? CiteFlowWorkflow.formatDocumentCategory(model.task)
+                        : ''
                 ]
                     .join(' ')
                     .toLowerCase();
 
+            const matchesCategory =
+                !currentCategoryFilter
+                || (
+                    window.CiteFlowWorkflow?.matchesDocumentCategory
+                        ? CiteFlowWorkflow.matchesDocumentCategory(model.task, currentCategoryFilter)
+                        : true
+                );
+
             return (
                 matchesFilter
+                &&
+                matchesCategory
                 &&
                 (
                     !query
@@ -1377,9 +1524,9 @@ function renderTopBar(
                         onclick="showListPage()"
                         class="
                             button
-                            w-11
-                            h-11
-                            rounded-2xl
+                            w-10
+                            h-10
+                            rounded-xl
                             bg-white
                             border
                             border-gray-200
@@ -1402,9 +1549,9 @@ function renderTopBar(
                         onclick="window.history.back()"
                         class="
                             button
-                            w-11
-                            h-11
-                            rounded-2xl
+                            w-10
+                            h-10
+                            rounded-xl
                             bg-white
                             border
                             border-gray-200
@@ -1424,55 +1571,11 @@ function renderTopBar(
 
                 <div>
 
-                    <div
-                        class="
-                            flex
-                            items-center
-                            gap-2
-                            text-sm
-                            text-gray-500
-                            mb-2
-                        "
-                    >
-
-                        <span>
-                            Document Management
-                        </span>
-
-                        <span>
-                            /
-                        </span>
-
-                        <span
-                            class="
-                                font-semibold
-                                text-[#621708]
-                            "
-                        >
-                            Submissions
-                        </span>
-
-                    </div>
-
-                    <h1
-                        class="
-                            text-3xl
-                            lg:text-4xl
-                            font-bold
-                            tracking-tight
-                            text-gray-950
-                        "
-                    >
+                    <h1 class="cite-title">
                         ${escapeHtml(title)}
                     </h1>
 
-                    <p
-                        class="
-                            text-gray-600
-                            mt-2
-                            max-w-2xl
-                        "
-                    >
+                    <p class="cite-subtitle">
                         ${escapeHtml(subtitle)}
                     </p>
 
@@ -1533,153 +1636,46 @@ function renderSummary(models) {
 
 
     return `
-        <section
-            class="
-                grid
-                grid-cols-1
-                md:grid-cols-5
-                gap-4
-                mb-7
-            "
-        >
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-7">
 
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Assigned tasks
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${models.length}
+            <div class="cite-stat cite-stat-neutral rounded-[16px] p-5">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Assigned</p>
+                    <span class="cite-icon">${icons.note}</span>
                 </div>
+                <div class="text-3xl font-extrabold mt-3 tracking-tight">${models.length}</div>
             </div>
 
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Needs action
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${pending}
+            <div class="cite-stat cite-stat-pending rounded-[16px] p-5">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Needs action</p>
+                    <span class="cite-icon">${icons.upload}</span>
                 </div>
+                <div class="text-3xl font-extrabold mt-3 tracking-tight">${pending}</div>
             </div>
 
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Recurring reports
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${recurring}
+            <div class="cite-stat cite-stat-review rounded-[16px] p-5">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Recurring</p>
+                    <span class="cite-icon">${icons.repeat || icons.clock}</span>
                 </div>
+                <div class="text-3xl font-extrabold mt-3 tracking-tight">${recurring}</div>
             </div>
 
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Due soon
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${urgent}
+            <div class="cite-stat cite-stat-urgent rounded-[16px] p-5">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Due soon</p>
+                    <span class="cite-icon">${icons.clock}</span>
                 </div>
+                <div class="text-3xl font-extrabold mt-3 tracking-tight">${urgent}</div>
             </div>
 
-
-            <div
-                class="
-                    surface
-                    rounded-[1.75rem]
-                    p-5
-                "
-            >
-                <p
-                    class="
-                        text-sm
-                        text-gray-500
-                    "
-                >
-                    Approved
-                </p>
-
-                <div
-                    class="
-                        text-3xl
-                        font-bold
-                        mt-1
-                    "
-                >
-                    ${approved}
+            <div class="cite-stat cite-stat-approved rounded-[16px] p-5">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Approved</p>
+                    <span class="cite-icon">${icons.check}</span>
                 </div>
+                <div class="text-3xl font-extrabold mt-3 tracking-tight">${approved}</div>
             </div>
 
         </section>
@@ -1700,6 +1696,14 @@ function renderTaskRow(model) {
         files,
         indicator
     } = model;
+
+    const statusKey = String(status || '').toLowerCase();
+    const rowTone =
+        statusKey.includes('approved') || statusKey.includes('completed') ? 'row-tone-approved'
+        : statusKey.includes('reject') ? 'row-tone-rejected'
+        : statusKey.includes('revision') || statusKey.includes('returned') ? 'row-tone-revision'
+        : statusKey.includes('review') || statusKey.includes('submitted') ? 'row-tone-pending'
+        : 'row-tone-idle';
 
     const recurringBadge =
         task.is_recurring
@@ -1734,9 +1738,10 @@ function renderTaskRow(model) {
             onclick="openTask('${escapeHtml(task.id)}')"
             class="
                 task-row
+                ${rowTone}
                 w-full
                 soft-card
-                rounded-[1.35rem]
+                rounded-[16px]
                 p-0
                 text-left
                 flex
@@ -1826,6 +1831,8 @@ function renderTaskRow(model) {
 
                         ${recurringBadge}
 
+                        ${renderCategoryBadge(task)}
+
                         <span
                             class="
                                 status-badge
@@ -1883,7 +1890,7 @@ function renderTaskRow(model) {
                         ${icons.calendar}
 
                         <span>
-                            Due ${escapeHtml(formatDate(getTaskDeadline(task)))}
+                            Due ${escapeHtml(formatDateTime(getTaskDeadline(task)))}
                         </span>
                     </span>
 
@@ -1924,17 +1931,8 @@ function renderTaskRow(model) {
                     </span>
 
 
-                    <span
-                        class="
-                            flex
-                            items-center
-                            justify-end
-                            gap-2
-                            text-[#621708]
-                            font-semibold
-                        "
-                    >
-                        View details
+                    <span class="cite-action">
+                        Open
                         ${icons.arrow}
                     </span>
 
@@ -1974,17 +1972,20 @@ function renderListPage() {
 
             ${renderTopBar(
                 'Submission Tasks',
-                'View your assigned tasks, recurring reports, reporting periods, and submission deadlines.'
+                'Open a task to upload files, submit for review, or continue a recurring report.'
             )}
 
 
             ${renderSummary(all)}
 
 
+            ${renderQuickSubmissionHub()}
+
+
             <section
                 class="
                     surface
-                    rounded-[2rem]
+                    rounded-[16px]
                     p-5
                     lg:p-6
                 "
@@ -2004,13 +2005,7 @@ function renderListPage() {
 
                     <div>
 
-                        <h2
-                            class="
-                                text-xl
-                                font-bold
-                                text-gray-950
-                            "
-                        >
+                        <h2 class="text-base font-bold text-gray-950">
                             Assigned task list
                         </h2>
 
@@ -2048,7 +2043,7 @@ function renderListPage() {
                     class="
                         grid
                         grid-cols-1
-                        lg:grid-cols-[1fr_auto]
+                        lg:grid-cols-[1fr_230px_auto]
                         gap-4
                         mb-5
                     "
@@ -2087,6 +2082,35 @@ function renderListPage() {
                         >
 
                     </div>
+
+                    <select
+                        id="categoryFilter"
+                        onchange="setCategoryFilter(this.value)"
+                        class="
+                            w-full
+                            lg:w-[230px]
+                            px-4
+                            py-3
+                            rounded-2xl
+                            bg-white
+                            border
+                            border-gray-200
+                            text-sm
+                            focus:outline-none
+                            focus:ring-4
+                            focus:ring-[#8c2a10]/10
+                            focus:border-[#8c2a10]
+                        "
+                    >
+                        ${
+                            window.CiteFlowWorkflow?.documentCategoryOptionsHtml
+                                ? CiteFlowWorkflow.documentCategoryOptionsHtml(
+                                    currentCategoryFilter,
+                                    { includeAll: true }
+                                )
+                                : '<option value="">All Categories</option><option value="TOS">Table of Specifications (TOS)</option>'
+                        }
+                    </select>
 
 
                     <div
@@ -2220,6 +2244,17 @@ function renderListPage() {
             || '';
     }
 
+    const categorySelect =
+        document.getElementById(
+            'categoryFilter'
+        );
+
+    if (categorySelect) {
+        categorySelect.value =
+            currentCategoryFilter
+            || '';
+    }
+
 }
 
 
@@ -2230,49 +2265,10 @@ function renderListPage() {
 function renderEmptyList(message) {
 
     return `
-        <div
-            class="
-                rounded-[1.5rem]
-                border
-                border-dashed
-                border-gray-200
-                bg-white
-                p-10
-                text-center
-            "
-        >
-
-            <div
-                class="
-                    icon-box
-                    mx-auto
-                    mb-3
-                "
-            >
-                ${icons.file}
-            </div>
-
-
-            <p
-                class="
-                    font-semibold
-                    text-gray-800
-                "
-            >
-                ${escapeHtml(message)}
-            </p>
-
-
-            <p
-                class="
-                    text-sm
-                    text-gray-500
-                    mt-1
-                "
-            >
-                Tasks and recurring reports will appear here once assigned.
-            </p>
-
+        <div class="cite-empty rounded-[16px] border border-dashed border-gray-200 bg-white">
+            <div class="cite-empty-icon">${icons.file}</div>
+            <div class="cite-empty-title">${escapeHtml(message)}</div>
+            <p class="cite-empty-text">Tasks and recurring reports will appear here once assigned.</p>
         </div>
     `;
 
@@ -2306,12 +2302,487 @@ function showListPage() {
 }
 
 
+function renderCategoryBadge(task) {
+    if (!window.CiteFlowWorkflow || typeof CiteFlowWorkflow.formatDocumentCategory !== 'function') {
+        return '';
+    }
+    const value = CiteFlowWorkflow.resolveDocumentCategory(task);
+    if (!value) return '';
+    const label = CiteFlowWorkflow.formatDocumentCategory(value);
+    return `
+        <span
+            class="
+                status-badge
+                px-3
+                py-1
+                rounded-full
+                text-xs
+                font-bold
+                bg-slate-100
+                text-slate-700
+                border
+                border-slate-200
+            "
+        >
+            ${escapeHtml(label)}
+        </span>
+    `;
+}
+
+
 function setTaskFilter(filter) {
 
     currentFilter =
         filter;
 
     renderListPage();
+
+}
+
+
+function setCategoryFilter(value) {
+
+    currentCategoryFilter =
+        value || '';
+
+    renderListPage();
+
+}
+
+
+/* =========================================================
+   QUICK SUBMISSION HUB
+   Faculty-only shortcuts into the existing task submit flow.
+========================================================= */
+
+function getQuickHubCategories() {
+
+    if (window.CiteFlowWorkflow?.getQuickSubmissionCategories) {
+        return CiteFlowWorkflow.getQuickSubmissionCategories();
+    }
+
+    return [
+        { value: 'Syllabus', label: 'Syllabus', shortLabel: 'Syllabus' },
+        { value: 'DTR', label: 'DTR', shortLabel: 'DTR' },
+        { value: 'TOS', label: 'Table of Specifications (TOS)', shortLabel: 'TOS' },
+        { value: 'IPCR', label: 'IPCR', shortLabel: 'IPCR' },
+        { value: 'LDP', label: 'LDP', shortLabel: 'LDP' }
+    ];
+
+}
+
+
+function findQuickSubmitModel(categoryValue) {
+
+    const models =
+        getAssignedModels()
+            .filter(model =>
+                window.CiteFlowWorkflow?.matchesDocumentCategory
+                    ? CiteFlowWorkflow.matchesDocumentCategory(model.task, categoryValue)
+                    : false
+            );
+
+    const rank = (model) => {
+
+        if (
+            isActionable(
+                model.status,
+                model.sub,
+                model.task
+            )
+        ) {
+            return 0;
+        }
+
+        if (
+            isSubmittedStatus(
+                model.status,
+                model.sub,
+                model.task
+            )
+            &&
+            !(
+                window.CiteFlowWorkflow
+                &&
+                CiteFlowWorkflow.getWorkflowStage(model.sub, model.task) === 'completed'
+            )
+        ) {
+            return 1;
+        }
+
+        return 2;
+
+    };
+
+    return models
+        .filter(model => rank(model) < 2)
+        .sort((a, b) => {
+
+            const rankDiff =
+                rank(a) - rank(b);
+
+            if (rankDiff !== 0) {
+                return rankDiff;
+            }
+
+            const aDue =
+                new Date(getTaskDeadline(a.task) || a.task.created_at || 0).getTime();
+
+            const bDue =
+                new Date(getTaskDeadline(b.task) || b.task.created_at || 0).getTime();
+
+            return aDue - bDue;
+
+        })[0] || null;
+
+}
+
+
+async function createFacultyQuickTask(categoryValue) {
+
+    const faculty =
+        resolveCurrentFaculty();
+
+    if (!faculty) {
+        throw new Error('No matching active faculty profile found.');
+    }
+
+    const label =
+        window.CiteFlowWorkflow?.formatDocumentCategory
+            ? CiteFlowWorkflow.formatDocumentCategory(categoryValue)
+            : categoryValue;
+
+    const due =
+        new Date();
+
+    due.setDate(due.getDate() + 7);
+    due.setHours(17, 0, 0, 0);
+
+    const dueAt =
+        due.toISOString();
+
+    const row = {
+        title: label,
+        instructions: `Please submit your ${label}. This uses the standard CITE-Flow review workflow.`,
+        due_at: dueAt,
+        deadline_at: dueAt,
+        created_by_name: faculty.full_name,
+        attachment_names: [],
+        assigned_label: 'Faculty self-submission',
+        assigned_scope: 'specific',
+        submission_method: 'file',
+        is_recurring: false
+    };
+
+    let {
+        data: task,
+        error
+    } =
+        await db
+            .from('wf_tasks')
+            .insert(row)
+            .select('*')
+            .single();
+
+    if (error && /column|schema|cache/i.test(error.message || '')) {
+
+        const fallback = { ...row };
+        delete fallback.deadline_at;
+        delete fallback.submission_method;
+        delete fallback.is_recurring;
+        delete fallback.assigned_scope;
+        delete fallback.assigned_label;
+
+        const retry =
+            await db
+                .from('wf_tasks')
+                .insert(fallback)
+                .select('*')
+                .single();
+
+        task = retry.data;
+        error = retry.error;
+
+    }
+
+    if (error) {
+        throw error;
+    }
+
+    let assignmentError = null;
+
+    const assignment =
+        await db
+            .from('wf_task_assignments')
+            .insert({
+                task_id: task.id,
+                faculty_id: faculty.id,
+                assigned_by_name: faculty.full_name
+            });
+
+    assignmentError = assignment.error;
+
+    if (assignmentError && /column|schema|cache/i.test(assignmentError.message || '')) {
+
+        const retry =
+            await db
+                .from('wf_task_assignments')
+                .insert({
+                    task_id: task.id,
+                    faculty_id: faculty.id
+                });
+
+        assignmentError = retry.error;
+
+    }
+
+    if (assignmentError) {
+
+        await db.from('wf_tasks').delete().eq('id', task.id);
+        throw assignmentError;
+
+    }
+
+    return task;
+
+}
+
+
+function renderQuickSubmissionHub() {
+
+    const categories =
+        getQuickHubCategories();
+
+    const buttons =
+        categories.map(category => {
+
+            const matching =
+                findQuickSubmitModel(category.value);
+
+            const hint =
+                matching
+                    ? 'Continue existing task'
+                    : 'Start a new submission';
+
+            return `
+                <button
+                    type="button"
+                    class="quick-hub-btn"
+                    ${quickSubmitInProgress ? 'disabled' : ''}
+                    onclick="openQuickSubmission('${escapeHtml(category.value)}')"
+                >
+                    <span class="flex items-center justify-between w-full gap-2">
+                        <span class="text-sm font-bold text-gray-950">
+                            ${escapeHtml(category.shortLabel)}
+                        </span>
+                        <span class="cite-action" style="padding:5px 9px;font-size:11px;">
+                            ${matching ? 'Continue' : 'Start'}
+                        </span>
+                    </span>
+                    <span class="text-xs text-gray-500 leading-snug">
+                        ${escapeHtml(
+                            category.shortLabel === category.label
+                                ? hint
+                                : category.label
+                        )}
+                    </span>
+                </button>
+            `;
+
+        }).join('');
+
+    return `
+        <section
+            class="
+                surface
+                rounded-[16px]
+                p-5
+                lg:p-6
+                mb-7
+            "
+        >
+
+            <div class="mb-4">
+                <h2 class="text-base font-bold text-gray-950">
+                    Quick Submission
+                </h2>
+                <p class="text-sm text-gray-500 mt-1">
+                    Start Syllabus, DTR, TOS, IPCR, or LDP from here. Each one uses the same review workflow.
+                </p>
+            </div>
+
+            <div
+                class="
+                    grid
+                    grid-cols-2
+                    sm:grid-cols-3
+                    lg:grid-cols-5
+                    gap-3
+                "
+            >
+                ${buttons}
+            </div>
+
+        </section>
+    `;
+
+}
+
+
+async function openQuickSubmission(categoryValue) {
+
+    if (quickSubmitInProgress || submitInProgress) {
+        return;
+    }
+
+    const faculty =
+        resolveCurrentFaculty();
+
+    if (!faculty) {
+        alert('No matching active faculty profile found.');
+        return;
+    }
+
+    const existing =
+        findQuickSubmitModel(categoryValue);
+
+    if (existing) {
+        openTask(existing.task.id);
+        return;
+    }
+
+    quickSubmitInProgress = true;
+    renderListPage();
+
+    try {
+
+        const task =
+            await createFacultyQuickTask(categoryValue);
+
+        const facultyId =
+            faculty.id;
+
+        state.tasks = [
+            task,
+            ...(state.tasks || []).filter(row => String(row.id) !== String(task.id))
+        ];
+
+        state.assignments = [
+            {
+                task_id: task.id,
+                faculty_id: facultyId,
+                assigned_by_name: faculty.full_name
+            },
+            ...(state.assignments || []).filter(row =>
+                !(
+                    String(row.task_id) === String(task.id)
+                    &&
+                    String(row.faculty_id) === String(facultyId)
+                )
+            )
+        ];
+
+        openTask(task.id);
+
+    } catch (error) {
+
+        console.error(error);
+        alert(
+            error?.message
+            || 'Unable to start this submission. Please try again.'
+        );
+        currentView = 'list';
+        renderListPage();
+
+    } finally {
+
+        quickSubmitInProgress = false;
+
+    }
+
+}
+
+
+function renderFacultyManagedFileRow({
+    name,
+    meta,
+    canManage,
+    locked,
+    replaceAction,
+    deleteAction
+}) {
+
+    const actions =
+        canManage
+            ? `
+                <button
+                    type="button"
+                    class="file-manage-btn"
+                    ${replaceAction}
+                >
+                    Replace
+                </button>
+                <button
+                    type="button"
+                    class="file-manage-btn danger"
+                    ${deleteAction}
+                >
+                    Delete
+                </button>
+            `
+            : (
+                locked
+                    ? `
+                        <span class="text-[11px] font-semibold text-gray-400">
+                            Locked
+                        </span>
+                    `
+                    : ''
+            );
+
+    return `
+        <div
+            class="
+                flex
+                items-center
+                gap-3
+                rounded-2xl
+                border
+                border-gray-100
+                bg-gray-50
+                px-4
+                py-3
+                text-sm
+                text-gray-700
+            "
+        >
+
+            <span class="text-[#8c2a10]">
+                ${icons.file}
+            </span>
+
+            <div class="min-w-0 flex-1">
+
+                <div class="truncate">
+                    ${escapeHtml(name || 'Untitled file')}
+                </div>
+
+                ${
+                    meta
+                        ? `
+                            <div class="text-xs text-gray-400 mt-0.5">
+                                ${escapeHtml(meta)}
+                            </div>
+                        `
+                        : ''
+                }
+
+            </div>
+
+            ${actions}
+
+        </div>
+    `;
 
 }
 
@@ -2377,28 +2848,61 @@ function renderDetailPage() {
         getSubmissionMethod(task);
 
 
+    const workflowStage =
+        getWorkflowStageSafe(
+            sub,
+            task
+        );
+
+
+    const filesLocked =
+        isFileManagementLocked(
+            sub,
+            task
+        );
+
+
+    const canManageFiles =
+        !filesLocked
+        &&
+        submissionMethod === 'upload';
+
+
+    const inReview =
+        isInReviewStage(
+            sub,
+            task
+        );
+
+
     const disableSubmit =
-        [
-            'Approved',
-            'Under Review',
-            'Submitted'
-        ].includes(status);
+        filesLocked
+        ||
+        inReview;
 
 
     const draftNames =
         getDraftFileNames(task.id);
 
 
-    const savedNames =
+    const savedRecords =
         sub
-            ? getSubmissionFiles(sub.id)
+            ? getSubmissionFileRecords(sub.id)
             : [];
 
 
-    const filesToShow =
+    const savedNames =
+        savedRecords
+            .map(
+                file => file.file_name
+            )
+            .filter(Boolean);
+
+
+    const filesToShowCount =
         draftNames.length
-            ? draftNames
-            : savedNames;
+        +
+        savedNames.length;
 
 
     const draftUrl =
@@ -2423,7 +2927,11 @@ function renderDetailPage() {
 
                 :
 
-                draftNames.length > 0
+                (
+                    draftNames.length > 0
+                    ||
+                    savedNames.length > 0
+                )
         );
 
 
@@ -2550,6 +3058,80 @@ function renderDetailPage() {
             '';
 
 
+    const managedFilesHtml = (() => {
+
+        const draftRows =
+            getDraftFiles(task.id)
+                .map(
+                    (file, index) =>
+                        renderFacultyManagedFileRow({
+                            name: file.name,
+                            meta: 'Not submitted yet',
+                            canManage: canManageFiles,
+                            locked: filesLocked,
+                            replaceAction:
+                                `onclick="replaceDraftSubmissionFile('${escapeHtml(String(task.id))}', ${index})"`,
+                            deleteAction:
+                                `onclick="deleteDraftSubmissionFile('${escapeHtml(String(task.id))}', ${index})"`
+                        })
+                );
+
+        const savedRows =
+            savedRecords.map(file => {
+
+                const fileId =
+                    String(
+                        file.id
+                        || ''
+                    );
+
+                const uploaded =
+                    file.created_at
+                    || file.uploaded_at
+                    || file.updated_at;
+
+                return renderFacultyManagedFileRow({
+                    name: file.file_name,
+                    meta: uploaded
+                        ? `Uploaded ${formatDateTime(uploaded)}`
+                        : 'Submitted file',
+                    canManage: canManageFiles,
+                    locked: filesLocked,
+                    replaceAction:
+                        `onclick="replaceSavedSubmissionFile('${escapeHtml(String(task.id))}', '${escapeHtml(fileId)}')"`,
+                    deleteAction:
+                        `onclick="deleteSavedSubmissionFile('${escapeHtml(String(task.id))}', '${escapeHtml(fileId)}')"`
+                });
+
+            });
+
+        const rows =
+            savedRows.concat(draftRows);
+
+        if (!rows.length) {
+            return `
+                <div
+                    class="
+                        rounded-2xl
+                        bg-gray-50
+                        border
+                        border-dashed
+                        border-gray-200
+                        p-4
+                        text-sm
+                        text-gray-500
+                    "
+                >
+                    No files attached yet.
+                </div>
+            `;
+        }
+
+        return rows.join('');
+
+    })();
+
+
     root.innerHTML = `
 
         <div class="fade-in">
@@ -2564,7 +3146,7 @@ function renderDetailPage() {
             <section
                 class="
                     surface
-                    rounded-[2rem]
+                    rounded-[16px]
                     overflow-hidden
                     mb-6
                 "
@@ -2572,13 +3154,11 @@ function renderDetailPage() {
 
                 <div
                     class="
-                        p-6
-                        lg:p-8
+                        p-5
+                        lg:p-6
                         border-b
                         border-gray-100
-                        bg-gradient-to-br
-                        from-white
-                        to-[#fff8f4]
+                        bg-white
                     "
                 >
 
@@ -2646,6 +3226,10 @@ function renderDetailPage() {
 
                                             ''
                                     }
+
+                                    ${renderCategoryBadge(task)}
+
+                                    ${renderCategoryBadge(task)}
 
 
                                     <span
@@ -2939,7 +3523,7 @@ function renderDetailPage() {
                             ${
                                 submissionMethod === 'link'
                                     ? 'Submit using a URL'
-                                    : `${filesToShow.length} attached file${filesToShow.length === 1 ? '' : 's'}`
+                                    : `${filesToShowCount} attached file${filesToShowCount === 1 ? '' : 's'}`
                             }
                         </p>
 
@@ -3024,7 +3608,7 @@ function renderDetailPage() {
                     <div
                         class="
                             soft-card
-                            rounded-[2rem]
+                            rounded-[16px]
                             p-6
                         "
                     >
@@ -3100,7 +3684,7 @@ function renderDetailPage() {
                             <div
                                 class="
                                     soft-card
-                                    rounded-[2rem]
+                                    rounded-[16px]
                                     p-6
                                 "
                             >
@@ -3177,7 +3761,7 @@ function renderDetailPage() {
                             <div
                                 class="
                                     soft-card
-                                    rounded-[2rem]
+                                    rounded-[16px]
                                     p-6
                                 "
                             >
@@ -3256,7 +3840,7 @@ function renderDetailPage() {
                     <div
                         class="
                             soft-card
-                            rounded-[2rem]
+                            rounded-[16px]
                             p-6
                         "
                     >
@@ -3373,7 +3957,7 @@ function renderDetailPage() {
                             <div
                                 class="
                                     soft-card
-                                    rounded-[2rem]
+                                    rounded-[16px]
                                     p-6
                                     border-amber-200
                                     bg-amber-50
@@ -3441,7 +4025,7 @@ function renderDetailPage() {
                 <aside
                     class="
                         soft-card
-                        rounded-[2rem]
+                        rounded-[16px]
                         p-6
                         sticky
                         top-6
@@ -3491,9 +4075,17 @@ function renderDetailPage() {
                                 "
                             >
                                 ${
-                                    submissionMethod === 'link'
-                                        ? 'Provide your submission link.'
-                                        : 'Attach your documents and submit them for review.'
+                                    filesLocked
+                                        ? 'This submission is fully approved. Files can no longer be replaced or deleted.'
+                                        : (
+                                            inReview
+                                                ? 'You can replace or delete files until final approval. Changes are sent to Admin immediately.'
+                                                : (
+                                                    submissionMethod === 'link'
+                                                        ? 'Provide your submission link.'
+                                                        : 'Attach your documents and submit them for review.'
+                                                )
+                                        )
                                 }
                             </p>
 
@@ -3577,7 +4169,7 @@ function renderDetailPage() {
                                     text-center
                                     cursor-pointer
                                     ${
-                                        disableSubmit
+                                        filesLocked
                                             ? 'opacity-60 cursor-not-allowed'
                                             : ''
                                     }
@@ -3623,7 +4215,7 @@ function renderDetailPage() {
                                     data-task="${escapeHtml(task.id)}"
                                     class="task-upload-input hidden"
                                     ${
-                                        disableSubmit
+                                        filesLocked
                                             ? 'disabled'
                                             : ''
                                     }
@@ -3655,62 +4247,20 @@ function renderDetailPage() {
                                 </div>
 
 
-                                ${
-                                    filesToShow.length
+                                ${managedFilesHtml}
 
-                                        ?
 
-                                        filesToShow
-                                            .map(
-                                                name => `
-                                                    <div
-                                                        class="
-                                                            flex
-                                                            items-center
-                                                            gap-3
-                                                            rounded-2xl
-                                                            border
-                                                            border-gray-100
-                                                            bg-gray-50
-                                                            px-4
-                                                            py-3
-                                                            text-sm
-                                                            text-gray-700
-                                                        "
-                                                    >
-
-                                                        <span class="text-[#8c2a10]">
-                                                            ${icons.file}
-                                                        </span>
-
-                                                        <span class="truncate">
-                                                            ${escapeHtml(name)}
-                                                        </span>
-
-                                                    </div>
-                                                `
-                                            )
-                                            .join('')
-
-                                        :
-
-                                        `
-                                        <div
-                                            class="
-                                                rounded-2xl
-                                                bg-gray-50
-                                                border
-                                                border-dashed
-                                                border-gray-200
-                                                p-4
-                                                text-sm
-                                                text-gray-500
-                                            "
-                                        >
-                                            No files attached yet.
-                                        </div>
-                                        `
-                                }
+                                <input
+                                    type="file"
+                                    id="fileReplaceInput"
+                                    class="hidden"
+                                    data-task="${escapeHtml(String(task.id))}"
+                                    ${
+                                        filesLocked
+                                            ? 'disabled'
+                                            : ''
+                                    }
+                                >
 
                             </div>
                             `
@@ -3727,12 +4277,13 @@ function renderDetailPage() {
                             button
                             mt-5
                             w-full
-                            bg-[#8c2a10]
-                            hover:bg-[#621708]
+                            bg-[#621708]
+                            hover:bg-[#8c2a10]
                             text-white
-                            py-4
-                            rounded-2xl
+                            py-3
+                            rounded-xl
                             font-bold
+                            text-sm
                             disabled:opacity-60
                             disabled:cursor-not-allowed
                             flex
@@ -3750,7 +4301,11 @@ function renderDetailPage() {
                         ${icons.send}
 
                         ${
+                            workflowStage === 'revision_required'
+                            ||
                             status === 'Returned for Revision'
+                            ||
+                            status === 'Revision Required'
                                 ? 'Resubmit for Review'
                                 : 'Submit for Review'
                         }
@@ -3759,7 +4314,7 @@ function renderDetailPage() {
 
 
                     ${
-                        disableSubmit
+                        filesLocked
 
                             ?
 
@@ -3772,28 +4327,49 @@ function renderDetailPage() {
                                     text-center
                                 "
                             >
-                                This task has already been submitted and is awaiting review.
+                                Final approval is complete. Files can no longer be replaced or deleted.
                             </p>
                             `
 
                             :
 
-                            `
-                            <p
-                                class="
-                                    text-xs
-                                    text-gray-500
-                                    mt-3
-                                    text-center
-                                "
-                            >
-                                ${
-                                    submissionMethod === 'link'
-                                        ? 'The submit button activates after entering a valid submission link.'
-                                        : 'The submit button activates after selecting at least one file.'
-                                }
-                            </p>
-                            `
+                            (
+                                inReview
+
+                                    ?
+
+                                    `
+                                    <p
+                                        class="
+                                            text-xs
+                                            text-gray-500
+                                            mt-3
+                                            text-center
+                                        "
+                                    >
+                                        This task is awaiting review. You can still replace or delete files until final approval.
+                                    </p>
+                                    `
+
+                                    :
+
+                                    `
+                                    <p
+                                        class="
+                                            text-xs
+                                            text-gray-500
+                                            mt-3
+                                            text-center
+                                        "
+                                    >
+                                        ${
+                                            submissionMethod === 'link'
+                                                ? 'The submit button activates after entering a valid submission link.'
+                                                : 'The submit button activates after selecting at least one file.'
+                                        }
+                                    </p>
+                                    `
+                            )
                     }
 
                 </aside>
@@ -3825,12 +4401,12 @@ function wireUploadInputs() {
 
             input.addEventListener(
                 'change',
-                event => {
+                async event => {
 
                     const taskId =
                         event.target.dataset.task;
 
-                    draftUploads[taskId] =
+                    const incoming =
                         Array
                             .from(
                                 event.target.files
@@ -3841,12 +4417,127 @@ function wireUploadInputs() {
                     selectedTaskId =
                         String(taskId);
 
+                    if (!incoming.length) {
+                        return;
+                    }
+
+                    const task =
+                        getTaskById(taskId);
+
+                    const faculty =
+                        resolveCurrentFaculty();
+
+                    const submission =
+                        faculty
+                            ? getSubmission(
+                                taskId,
+                                faculty.id
+                            )
+                            : null;
+
+                    if (
+                        submission?.id
+                        &&
+                        canManageSubmissionFiles(
+                            submission,
+                            task
+                        )
+                    ) {
+
+                        event.target.value = '';
+
+                        await addSavedSubmissionFiles(
+                            taskId,
+                            incoming
+                        );
+
+                        return;
+
+                    }
+
+                    draftUploads[taskId] =
+                        getDraftFiles(taskId)
+                            .concat(incoming);
+
+                    event.target.value = '';
+
                     renderDetailPage();
 
                 }
             );
 
         });
+
+
+    const replaceInput =
+        document.getElementById(
+            'fileReplaceInput'
+        );
+
+    if (replaceInput) {
+
+        replaceInput.addEventListener(
+            'change',
+            async event => {
+
+                const incoming =
+                    Array
+                        .from(
+                            event.target.files
+                            || []
+                        )
+                        .filter(Boolean)[0];
+
+                const target =
+                    pendingFileReplace;
+
+                pendingFileReplace = null;
+
+                event.target.value = '';
+
+                if (!incoming || !target) {
+                    return;
+                }
+
+                if (target.kind === 'draft') {
+
+                    const drafts =
+                        getDraftFiles(target.taskId)
+                            .slice();
+
+                    if (
+                        target.index < 0
+                        ||
+                        target.index >= drafts.length
+                    ) {
+                        return;
+                    }
+
+                    drafts[target.index] =
+                        incoming;
+
+                    draftUploads[target.taskId] =
+                        drafts;
+
+                    selectedTaskId =
+                        String(target.taskId);
+
+                    renderDetailPage();
+
+                    return;
+
+                }
+
+                await replaceSavedSubmissionFileWith(
+                    target.taskId,
+                    target.fileId,
+                    incoming
+                );
+
+            }
+        );
+
+    }
 
 }
 
@@ -4017,6 +4708,781 @@ async function uploadFilesToStorage({
 }
 
 
+async function deleteStoragePath(path) {
+
+    if (!path) {
+        return;
+    }
+
+    const {
+        error
+    } =
+        await db
+            .storage
+            .from(submissionBucket)
+            .remove([path]);
+
+    if (error) {
+        console.warn(
+            'Could not remove storage object:',
+            error
+        );
+    }
+
+}
+
+
+async function insertSubmissionFileRows(uploaded, submissionId) {
+
+    const rows =
+        uploaded.map(
+            file => ({
+
+                submission_id:
+                    submissionId,
+
+                file_name:
+                    file.file_name,
+
+                file_url:
+                    file.file_url
+                    || '',
+
+                storage_path:
+                    file.storage_path
+                    || ''
+
+            })
+        );
+
+    if (!rows.length) {
+        return [];
+    }
+
+    let {
+        data,
+        error
+    } =
+        await db
+            .from('wf_submission_files')
+            .insert(rows)
+            .select('*');
+
+    if (
+        error
+        &&
+        /column|schema|cache/i.test(
+            error.message
+            || ''
+        )
+    ) {
+
+        const fallbackRows =
+            uploaded.map(
+                file => ({
+
+                    submission_id:
+                        submissionId,
+
+                    file_name:
+                        file.file_name
+
+                })
+            );
+
+        const retry =
+            await db
+                .from('wf_submission_files')
+                .insert(fallbackRows)
+                .select('*');
+
+        data =
+            retry.data;
+
+        error =
+            retry.error;
+
+    }
+
+    if (error) {
+        throw error;
+    }
+
+    return data || [];
+
+}
+
+
+async function refreshLocalSubmissionFiles(submissionId) {
+
+    const {
+        data,
+        error
+    } =
+        await db
+            .from('wf_submission_files')
+            .select('*')
+            .eq(
+                'submission_id',
+                submissionId
+            );
+
+    if (error) {
+        throw error;
+    }
+
+    const rows =
+        data
+        || [];
+
+    state.submissionFiles =
+        state.submissionFiles
+            .filter(
+                file =>
+                    String(file.submission_id)
+                    !== String(submissionId)
+            )
+            .concat(rows);
+
+    return rows;
+
+}
+
+
+async function uploadDraftsForSubmission({
+    facultyId,
+    taskId,
+    submissionId,
+    files
+}) {
+
+    let uploaded = [];
+
+    try {
+
+        uploaded =
+            await uploadFilesToStorage({
+                facultyId,
+                taskId,
+                submissionId,
+                files
+            });
+
+    } catch (error) {
+
+        if (
+            String(
+                error?.message
+                || ''
+            ).toLowerCase()
+                .includes(
+                    'storage bucket'
+                )
+        ) {
+
+            uploaded =
+                files.map(
+                    file => ({
+
+                        file_name:
+                            file.name,
+
+                        file_url:
+                            '',
+
+                        storage_path:
+                            ''
+
+                    })
+                );
+
+        } else {
+
+            throw error;
+
+        }
+
+    }
+
+    return insertSubmissionFileRows(
+        uploaded,
+        submissionId
+    );
+
+}
+
+
+async function applyFacultyFileChangeStatus(task, submission, remainingCount) {
+
+    if (!submission?.id) {
+        return submission;
+    }
+
+    const update =
+        window.CiteFlowWorkflow?.buildFacultyFileChangeUpdate
+            ? CiteFlowWorkflow.buildFacultyFileChangeUpdate(
+                submission,
+                task,
+                remainingCount
+            )
+            : (
+                remainingCount
+                    ? {
+                        status: isPastDue(task) ? 'late' : 'submitted',
+                        submitted_at: new Date().toISOString(),
+                        is_late: isPastDue(task),
+                        submitted_status: isPastDue(task) ? 'late' : 'on_time',
+                        approval_stage: 'chairperson'
+                    }
+                    : {
+                        status: 'notsubmitted',
+                        submitted_at: null,
+                        is_late: false,
+                        submitted_status: null,
+                        approval_stage: 'chairperson'
+                    }
+            );
+
+    const {
+        error
+    } =
+        await db
+            .from('wf_submissions')
+            .update(update)
+            .eq(
+                'id',
+                submission.id
+            );
+
+    if (error) {
+        throw error;
+    }
+
+    const idx =
+        state.submissions.findIndex(
+            row =>
+                String(row.id)
+                === String(submission.id)
+        );
+
+    if (idx >= 0) {
+        state.submissions[idx] = {
+            ...state.submissions[idx],
+            ...update
+        };
+    }
+
+    return {
+        ...submission,
+        ...update
+    };
+
+}
+
+
+function assertCanManageFiles(task, submission) {
+
+    if (
+        !canManageSubmissionFiles(
+            submission,
+            task
+        )
+    ) {
+
+        toastMessage(
+            'This submission is fully approved. Files can no longer be replaced or deleted.',
+            'error'
+        );
+
+        return false;
+
+    }
+
+    return true;
+
+}
+
+
+async function notifyFacultyFileChange(task, submission, changeType) {
+
+    const faculty =
+        resolveCurrentFaculty();
+
+    if (
+        !faculty
+        ||
+        !window.CiteFlowWorkflow?.recordFacultyFileChange
+    ) {
+        return;
+    }
+
+    await CiteFlowWorkflow.recordFacultyFileChange(db, {
+        faculty,
+        task,
+        taskId: task?.id,
+        submissionId: submission?.id,
+        changeType
+    });
+
+}
+
+
+window.deleteDraftSubmissionFile = function deleteDraftSubmissionFile(taskId, index) {
+
+    const drafts =
+        getDraftFiles(taskId)
+            .slice();
+
+    if (
+        index < 0
+        ||
+        index >= drafts.length
+    ) {
+        return;
+    }
+
+    drafts.splice(index, 1);
+
+    if (drafts.length) {
+        draftUploads[taskId] = drafts;
+    } else {
+        delete draftUploads[taskId];
+    }
+
+    selectedTaskId =
+        String(taskId);
+
+    renderDetailPage();
+
+};
+
+
+window.replaceDraftSubmissionFile = function replaceDraftSubmissionFile(taskId, index) {
+
+    pendingFileReplace = {
+        kind: 'draft',
+        taskId: String(taskId),
+        index: Number(index)
+    };
+
+    const input =
+        document.getElementById(
+            'fileReplaceInput'
+        );
+
+    if (!input) {
+        return;
+    }
+
+    input.value = '';
+    input.click();
+
+};
+
+
+window.deleteSavedSubmissionFile = async function deleteSavedSubmissionFile(taskId, fileId) {
+
+    if (fileActionInProgress) {
+        return;
+    }
+
+    const faculty =
+        resolveCurrentFaculty();
+
+    const task =
+        getTaskById(taskId);
+
+    const submission =
+        faculty
+            ? getSubmission(
+                taskId,
+                faculty.id
+            )
+            : null;
+
+    if (
+        !task
+        ||
+        !submission
+        ||
+        !assertCanManageFiles(task, submission)
+    ) {
+        return;
+    }
+
+    const confirmed =
+        window.CiteFlowWorkflow?.confirmAction
+            ? await CiteFlowWorkflow.confirmAction(
+                'Delete this file from the submission? Admin will see the updated files.',
+                'Delete file'
+            )
+            : confirm(
+                'Delete this file from the submission?'
+            );
+
+    if (!confirmed) {
+        return;
+    }
+
+    fileActionInProgress = true;
+
+    try {
+
+        const file =
+            getSubmissionFileRecords(submission.id)
+                .find(
+                    row =>
+                        String(row.id)
+                        === String(fileId)
+                );
+
+        if (!file) {
+            throw new Error(
+                'That file is no longer attached to this submission.'
+            );
+        }
+
+        await deleteStoragePath(
+            file.storage_path
+        );
+
+        const {
+            error
+        } =
+            await db
+                .from('wf_submission_files')
+                .delete()
+                .eq(
+                    'id',
+                    fileId
+                );
+
+        if (error) {
+            throw error;
+        }
+
+        const remaining =
+            (
+                await refreshLocalSubmissionFiles(
+                    submission.id
+                )
+            ).length;
+
+        const updatedSubmission =
+            await applyFacultyFileChangeStatus(
+                task,
+                submission,
+                remaining
+            );
+
+        await notifyFacultyFileChange(
+            task,
+            updatedSubmission,
+            'deleted'
+        );
+
+        selectedTaskId =
+            String(taskId);
+
+        toastMessage(
+            remaining
+                ? 'File deleted. The submission was sent back for review.'
+                : 'File deleted. This task is now marked as not submitted.',
+            remaining ? 'success' : 'warn'
+        );
+
+        await fetchAllData();
+
+    } catch (error) {
+
+        console.error(
+            'Failed to delete submission file:',
+            error
+        );
+
+        toastMessage(
+            error?.message
+            || 'Failed to delete the file.',
+            'error'
+        );
+
+    } finally {
+
+        fileActionInProgress = false;
+
+    }
+
+};
+
+
+window.replaceSavedSubmissionFile = function replaceSavedSubmissionFile(taskId, fileId) {
+
+    const faculty =
+        resolveCurrentFaculty();
+
+    const task =
+        getTaskById(taskId);
+
+    const submission =
+        faculty
+            ? getSubmission(
+                taskId,
+                faculty.id
+            )
+            : null;
+
+    if (
+        !assertCanManageFiles(task, submission)
+    ) {
+        return;
+    }
+
+    pendingFileReplace = {
+        kind: 'saved',
+        taskId: String(taskId),
+        fileId: String(fileId)
+    };
+
+    const input =
+        document.getElementById(
+            'fileReplaceInput'
+        );
+
+    if (!input) {
+        return;
+    }
+
+    input.value = '';
+    input.click();
+
+};
+
+
+async function replaceSavedSubmissionFileWith(taskId, fileId, nextFile) {
+
+    if (fileActionInProgress) {
+        return;
+    }
+
+    const faculty =
+        resolveCurrentFaculty();
+
+    const task =
+        getTaskById(taskId);
+
+    const submission =
+        faculty
+            ? getSubmission(
+                taskId,
+                faculty.id
+            )
+            : null;
+
+    if (
+        !faculty
+        ||
+        !task
+        ||
+        !submission
+        ||
+        !assertCanManageFiles(task, submission)
+    ) {
+        return;
+    }
+
+    fileActionInProgress = true;
+
+    try {
+
+        const file =
+            getSubmissionFileRecords(submission.id)
+                .find(
+                    row =>
+                        String(row.id)
+                        === String(fileId)
+                );
+
+        if (!file) {
+            throw new Error(
+                'That file is no longer attached to this submission.'
+            );
+        }
+
+        const inserted =
+            await uploadDraftsForSubmission({
+                facultyId: faculty.id,
+                taskId,
+                submissionId: submission.id,
+                files: [nextFile]
+            });
+
+        await deleteStoragePath(
+            file.storage_path
+        );
+
+        const {
+            error
+        } =
+            await db
+                .from('wf_submission_files')
+                .delete()
+                .eq(
+                    'id',
+                    fileId
+                );
+
+        if (error) {
+            throw error;
+        }
+
+        const remaining =
+            (
+                await refreshLocalSubmissionFiles(
+                    submission.id
+                )
+            ).length;
+
+        const updatedSubmission =
+            await applyFacultyFileChangeStatus(
+                task,
+                submission,
+                remaining
+            );
+
+        await notifyFacultyFileChange(
+            task,
+            updatedSubmission,
+            'replaced'
+        );
+
+        selectedTaskId =
+            String(taskId);
+
+        toastMessage(
+            'File replaced. Admin can now review the new file.',
+            'success'
+        );
+
+        await fetchAllData();
+
+    } catch (error) {
+
+        console.error(
+            'Failed to replace submission file:',
+            error
+        );
+
+        toastMessage(
+            error?.message
+            || 'Failed to replace the file.',
+            'error'
+        );
+
+    } finally {
+
+        fileActionInProgress = false;
+
+    }
+
+}
+
+
+async function addSavedSubmissionFiles(taskId, files) {
+
+    if (fileActionInProgress) {
+        return;
+    }
+
+    const faculty =
+        resolveCurrentFaculty();
+
+    const task =
+        getTaskById(taskId);
+
+    const submission =
+        faculty
+            ? getSubmission(
+                taskId,
+                faculty.id
+            )
+            : null;
+
+    if (
+        !faculty
+        ||
+        !task
+        ||
+        !submission
+        ||
+        !assertCanManageFiles(task, submission)
+    ) {
+        return;
+    }
+
+    fileActionInProgress = true;
+
+    try {
+
+        const inserted =
+            await uploadDraftsForSubmission({
+                facultyId: faculty.id,
+                taskId,
+                submissionId: submission.id,
+                files
+            });
+
+        const remaining =
+            (
+                await refreshLocalSubmissionFiles(
+                    submission.id
+                )
+            ).length;
+
+        const updatedSubmission =
+            await applyFacultyFileChangeStatus(
+                task,
+                submission,
+                remaining
+            );
+
+        await notifyFacultyFileChange(
+            task,
+            updatedSubmission,
+            'added'
+        );
+
+        selectedTaskId =
+            String(taskId);
+
+        toastMessage(
+            'File added. Admin can now review the updated submission.',
+            'success'
+        );
+
+        await fetchAllData();
+
+    } catch (error) {
+
+        console.error(
+            'Failed to add submission file:',
+            error
+        );
+
+        toastMessage(
+            error?.message
+            || 'Failed to add the file.',
+            'error'
+        );
+
+    } finally {
+
+        fileActionInProgress = false;
+
+    }
+
+}
+
+
 /* =========================================================
    SUBMIT TASK
 ========================================================= */
@@ -4056,6 +5522,30 @@ async function submitTask(taskId) {
         getDraftFiles(taskId);
 
 
+    const existingBeforeSubmit =
+        getSubmission(
+            taskId,
+            faculty.id
+        );
+
+
+    if (
+        isFileManagementLocked(
+            existingBeforeSubmit,
+            task
+        )
+    ) {
+
+        toastMessage(
+            'This submission is fully approved. Files can no longer be replaced or deleted.',
+            'error'
+        );
+
+        return;
+
+    }
+
+
     const submissionUrl =
         (
             draftSubmissionUrls[taskId]
@@ -4069,11 +5559,22 @@ async function submitTask(taskId) {
         !files.length
     ) {
 
-        alert(
-            'Please upload at least one file before submitting.'
-        );
+        const savedCount =
+            existingBeforeSubmit
+                ? getSubmissionFileRecords(
+                    existingBeforeSubmit.id
+                ).length
+                : 0;
 
-        return;
+        if (!savedCount) {
+
+            alert(
+                'Please upload at least one file before submitting.'
+            );
+
+            return;
+
+        }
 
     }
 
@@ -4236,179 +5737,16 @@ async function submitTask(taskId) {
 
         if (
             submissionMethod === 'upload'
+            &&
+            files.length
         ) {
 
-            const {
-                error: deleteFilesError
-            } =
-                await db
-                    .from('wf_submission_files')
-                    .delete()
-                    .eq(
-                        'submission_id',
-                        submissionId
-                    );
-
-
-            if (deleteFilesError) {
-                console.warn(
-                    'Unable to remove old submission files:',
-                    deleteFilesError
-                );
-            }
-
-
-            let uploaded = [];
-
-            let savedWithoutStorage =
-                false;
-
-
-            try {
-
-                uploaded =
-                    await uploadFilesToStorage({
-
-                        facultyId:
-                            faculty.id,
-
-                        taskId,
-
-                        submissionId,
-
-                        files
-
-                    });
-
-            } catch (error) {
-
-                if (
-                    String(
-                        error?.message
-                        || ''
-                    ).toLowerCase()
-                        .includes(
-                            'storage bucket'
-                        )
-                ) {
-
-                    uploaded =
-                        files.map(
-                            file => ({
-
-                                file_name:
-                                    file.name,
-
-                                file_url:
-                                    '',
-
-                                storage_path:
-                                    ''
-
-                            })
-                        );
-
-                    savedWithoutStorage =
-                        true;
-
-                } else {
-
-                    throw error;
-
-                }
-
-            }
-
-
-            const rows =
-                uploaded.map(
-                    file => ({
-
-                        submission_id:
-                            submissionId,
-
-                        file_name:
-                            file.file_name,
-
-                        file_url:
-                            file.file_url
-                            || '',
-
-                        storage_path:
-                            file.storage_path
-                            || ''
-
-                    })
-                );
-
-
-            if (rows.length) {
-
-                let {
-                    error: filesError
-                } =
-                    await db
-                        .from('wf_submission_files')
-                        .insert(rows);
-
-
-                /*
-                ------------------------------------------------
-                Fallback if file_url/storage_path columns
-                do not exist yet.
-                ------------------------------------------------
-                */
-
-                if (
-                    filesError
-                    &&
-                    /column|schema|cache/i.test(
-                        filesError.message
-                        || ''
-                    )
-                ) {
-
-                    const fallbackRows =
-                        uploaded.map(
-                            file => ({
-
-                                submission_id:
-                                    submissionId,
-
-                                file_name:
-                                    file.file_name
-
-                            })
-                        );
-
-
-                    const retry =
-                        await db
-                            .from('wf_submission_files')
-                            .insert(
-                                fallbackRows
-                            );
-
-                    filesError =
-                        retry.error;
-
-                }
-
-
-                if (filesError) {
-                    throw filesError;
-                }
-
-            }
-
-
-            if (savedWithoutStorage) {
-
-                console.warn(
-                    'Submission saved without storage file previews.'
-                );
-
-            }
+            await uploadDraftsForSubmission({
+                facultyId: faculty.id,
+                taskId,
+                submissionId,
+                files
+            });
 
         }
 
@@ -4915,7 +6253,7 @@ window.onload = async () => {
     if (root && !root.innerHTML.trim()) {
         root.innerHTML = `
             ${renderTopBar('Submission Tasks', 'Loading your assigned tasks...')}
-            <div class="rounded-3xl p-6 bg-white border border-gray-200 text-gray-500">Loading tasks...</div>
+            <div class="rounded-[16px] p-6 bg-white border border-gray-200 text-gray-500">Loading tasks...</div>
         `;
     }
 
@@ -4927,7 +6265,7 @@ window.onload = async () => {
             if (typeof window.loadFacultyNavNotifications === 'function') {
                 window.loadFacultyNavNotifications();
             }
-        }, ['wf_tasks', 'wf_submissions', 'wf_task_assignments', 'wf_notifications', 'wf_approval_history']);
+        }, ['wf_tasks', 'wf_submissions', 'wf_task_assignments', 'wf_notifications', 'wf_approval_history', 'wf_submission_files']);
     }
 
 

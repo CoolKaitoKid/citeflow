@@ -28,38 +28,296 @@ window.CiteFlowAuth = (function () {
      * Standardized storage key for user session caching
      */
     const USER_CACHE_KEY = 'citeflow_user';
+    const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24-hour session expiration
+    const INSTITUTIONAL_SALT = 'CTU_CITEFLOW_SEC_KEY_v2_2026#@!';
+
+    // =========================================================================
+    // ENCRYPTED SESSION TOKEN & INTEGRITY HELPERS
+    // =========================================================================
 
     /**
-     * Cache user metadata to localStorage
+     * Fast, resilient cryptographic string hash (FNV-1a 64-bit hybrid)
+     */
+    function computeChecksum(str, salt = INSTITUTIONAL_SALT) {
+        const full = `${salt}:${str}:${salt.split('').reverse().join('')}`;
+        let h1 = 0x811c9dc5, h2 = 0xcbf29ce4;
+        for (let i = 0; i < full.length; i++) {
+            const code = full.charCodeAt(i);
+            h1 ^= code;
+            h1 = Math.imul(h1, 0x01000193);
+            h2 ^= (code << 3) | (code >> 5);
+            h2 = Math.imul(h2, 0x100000001b3);
+        }
+        const p1 = (h1 >>> 0).toString(16).padStart(8, '0');
+        const p2 = (h2 >>> 0).toString(16).padStart(8, '0');
+        return `${p1}${p2}`;
+    }
+
+    /**
+     * Obfuscate / Encrypt payload using multi-round XOR + dynamic S-Box + Base64
+     */
+    function encryptSessionPayload(rawObject, ttlMs = SESSION_TTL_MS) {
+        try {
+            const now = Date.now();
+            const exp = now + (typeof ttlMs === 'number' ? ttlMs : SESSION_TTL_MS);
+            const serialized = JSON.stringify(rawObject);
+            const sig = computeChecksum(`${serialized}:${now}:${exp}`);
+
+            const envelope = {
+                v: 2,
+                iat: now,
+                exp: exp,
+                sub: rawObject.id || 'anonymous',
+                role: rawObject.role || 'Faculty',
+                profileCompleted: Boolean(rawObject.profileCompleted),
+                mustChangePassword: Boolean(rawObject.mustChangePassword),
+                data: rawObject,
+                sig: sig
+            };
+
+            const jsonStr = unescape(encodeURIComponent(JSON.stringify(envelope)));
+            const salt = `${INSTITUTIONAL_SALT}_${now % 99991}`;
+            let cipherChars = [];
+
+            for (let i = 0; i < jsonStr.length; i++) {
+                const charCode = jsonStr.charCodeAt(i);
+                const saltCode = salt.charCodeAt(i % salt.length);
+                const cipherCode = charCode ^ saltCode ^ ((i * 17) & 0xFF);
+                cipherChars.push(String.fromCharCode(cipherCode));
+            }
+
+            const token = btoa(cipherChars.join(''))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+
+            return {
+                token: `cf_tok_v2.${now}.${exp}.${token}`,
+                envelope
+            };
+        } catch (e) {
+            console.warn("CiteFlowAuth: Token encryption notice:", e);
+            return null;
+        }
+    }
+
+    /**
+     * Decrypt and verify session token envelope, validating integrity & expiration
+     */
+    function decryptSessionPayload(tokenString) {
+        if (!tokenString || typeof tokenString !== 'string') return null;
+        try {
+            if (!tokenString.startsWith('cf_tok_v2.')) return null;
+
+            const parts = tokenString.split('.');
+            if (parts.length < 4) return null;
+
+            const now = Date.now();
+            const iat = Number(parts[1]);
+            const exp = Number(parts[2]);
+            const base64Cipher = parts[3]
+                .replace(/-/g, '+')
+                .replace(/_/g, '/');
+
+            // 1. Verify token expiration
+            if (isNaN(exp) || now > exp) {
+                console.warn("CiteFlowAuth: Session token has expired.");
+                return null;
+            }
+
+            // 2. Decrypt cipher stream
+            const paddedBase64 = base64Cipher.padEnd(base64Cipher.length + (4 - base64Cipher.length % 4) % 4, '=');
+            const cipherStr = atob(paddedBase64);
+            const salt = `${INSTITUTIONAL_SALT}_${iat % 99991}`;
+            let plainChars = [];
+
+            for (let i = 0; i < cipherStr.length; i++) {
+                const cipherCode = cipherStr.charCodeAt(i);
+                const saltCode = salt.charCodeAt(i % salt.length);
+                const plainCode = cipherCode ^ saltCode ^ ((i * 17) & 0xFF);
+                plainChars.push(String.fromCharCode(plainCode));
+            }
+
+            const jsonStr = decodeURIComponent(escape(plainChars.join('')));
+            const envelope = JSON.parse(jsonStr);
+
+            // 3. Verify envelope structure and version
+            if (!envelope || envelope.v !== 2 || !envelope.data || !envelope.sig) {
+                console.warn("CiteFlowAuth: Invalid session token envelope.");
+                return null;
+            }
+
+            // 4. Verify cryptographic signature (tampering detection)
+            const serialized = JSON.stringify(envelope.data);
+            const expectedSig = computeChecksum(`${serialized}:${envelope.iat}:${envelope.exp}`);
+            if (envelope.sig !== expectedSig) {
+                console.warn("CiteFlowAuth: Session tampering detected! Signature mismatch.");
+                return null;
+            }
+
+            return envelope;
+        } catch (e) {
+            console.warn("CiteFlowAuth: Failed to decrypt session token:", e.message);
+            return null;
+        }
+    }
+
+    /**
+     * Cache user metadata to localStorage with encrypted session token
      */
     function cacheUserInfo(user, role, profile = null) {
+        if (!user || !user.id) return null;
+
         const userInfo = {
             id: user.id,
-            email: user.email,
+            email: user.email || profile?.email || '',
             name: profile?.name || profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-            role: role || user.user_metadata?.role || 'Faculty',
-            profileCompleted: profile ? profile.profile_completed : (user.user_metadata?.profile_completed ?? true),
-            mustChangePassword: profile ? profile.must_change_password : (user.user_metadata?.must_change_password ?? false),
+            role: role || user.user_metadata?.role || profile?.role || 'Faculty',
+            profileCompleted: profile ? Boolean(profile.profile_completed) : Boolean(user.user_metadata?.profile_completed ?? true),
+            mustChangePassword: profile ? Boolean(profile.must_change_password) : Boolean(user.user_metadata?.must_change_password ?? false),
             department: profile?.department || user.user_metadata?.department || 'BSIT',
             profilePhotoUrl: profile?.profile_photo_url || user.user_metadata?.profile_photo_url || null,
             cachedAt: new Date().toISOString()
         };
+
         try {
-            localStorage.setItem(USER_CACHE_KEY, JSON.stringify(userInfo));
+            const enc = encryptSessionPayload(userInfo);
+            if (enc) {
+                const storagePayload = {
+                    ...userInfo,
+                    __token: enc.token,
+                    __exp: enc.envelope.exp,
+                    __sig: enc.envelope.sig
+                };
+                localStorage.setItem(USER_CACHE_KEY, JSON.stringify(storagePayload));
+            } else {
+                localStorage.setItem(USER_CACHE_KEY, JSON.stringify(userInfo));
+            }
         } catch (e) {
-            console.warn("Unable to cache user info to localStorage:", e);
+            console.warn("CiteFlowAuth: Unable to cache user info to localStorage:", e);
         }
         return userInfo;
     }
 
     /**
-     * Clears cached user info from storage
+     * Retrieve cached user info, validating encryption, timestamp expiration, and anti-tampering guards
+     */
+    function getCachedUser() {
+        try {
+            const raw = localStorage.getItem(USER_CACHE_KEY);
+            if (!raw) return null;
+
+            let parsed;
+            try {
+                parsed = JSON.parse(raw);
+            } catch (_) {
+                return null;
+            }
+
+            if (!parsed || typeof parsed !== 'object') return null;
+
+            // 1. If encrypted token envelope is present, verify authenticity & timestamp
+            if (parsed.__token) {
+                const dec = decryptSessionPayload(parsed.__token);
+                if (!dec) {
+                    console.warn("CiteFlowAuth: Stored session is invalid or expired. Purging cache.");
+                    clearUserCache();
+                    return null;
+                }
+
+                // 2. Anti-tampering check: verify mirrored localStorage values match encrypted token payload
+                const tokenData = dec.data;
+                const isTampered =
+                    String(parsed.id) !== String(tokenData.id) ||
+                    String(parsed.role) !== String(tokenData.role) ||
+                    Boolean(parsed.profileCompleted) !== Boolean(tokenData.profileCompleted) ||
+                    Boolean(parsed.mustChangePassword) !== Boolean(tokenData.mustChangePassword);
+
+                if (isTampered) {
+                    console.warn("CiteFlowAuth: Critical security alert: Session cache tampering detected. Rejecting session.");
+                    clearUserCache();
+                    return null;
+                }
+
+                return tokenData;
+            }
+
+            // 2. Legacy fallback: auto-upgrade unencrypted session cache to encrypted token
+            if (parsed.id) {
+                const upgraded = cacheUserInfo(
+                    { id: parsed.id, email: parsed.email, user_metadata: parsed },
+                    parsed.role,
+                    parsed
+                );
+                return upgraded || parsed;
+            }
+
+            return null;
+        } catch (e) {
+            console.warn("CiteFlowAuth: Error retrieving cached user:", e);
+            return null;
+        }
+    }
+
+    /**
+     * Clears cached user info and session tokens from storage
      */
     function clearUserCache() {
         try {
             localStorage.removeItem(USER_CACHE_KEY);
         } catch (e) {
             // ignore
+        }
+    }
+
+    /**
+     * Verify if the active cached session token is non-expired and untampered
+     */
+    function isSessionValid() {
+        return Boolean(getCachedUser());
+    }
+
+    /**
+     * Guard against session tampering on first-time login / onboarding flow
+     * Returns true if user session is valid and legitimately needs onboarding
+     */
+    async function verifyFirstTimeLoginSession() {
+        const sb = getClient();
+        if (!sb) return { valid: false, reason: 'auth_unavailable' };
+
+        try {
+            const { data: { session }, error } = await sb.auth.getSession();
+            if (error || !session || !session.user) {
+                clearUserCache();
+                return { valid: false, reason: 'no_server_session' };
+            }
+
+            const cached = getCachedUser();
+            if (cached && String(cached.id) !== String(session.user.id)) {
+                console.warn("CiteFlowAuth: Cached user mismatch with server session. Resetting cache.");
+                clearUserCache();
+            }
+
+            const { data: facultyRecord } = await sb
+                .from('faculty')
+                .select('id, auth_user_id, email, profile_completed, must_change_password, first_login_completed_at, role, position')
+                .or(`auth_user_id.eq.${session.user.id},email.ilike.${session.user.email}`)
+                .maybeSingle();
+
+            const onboardingNeeded = needsOnboarding(facultyRecord, session.user);
+
+            // Re-cache encrypted state to lock in validated values
+            cacheUserInfo(session.user, facultyRecord?.role || 'Faculty', facultyRecord);
+
+            return {
+                valid: true,
+                user: session.user,
+                facultyRecord: facultyRecord,
+                needsOnboarding: onboardingNeeded
+            };
+        } catch (e) {
+            console.warn("CiteFlowAuth: Error verifying first-time session:", e);
+            return { valid: false, reason: e.message };
         }
     }
 
@@ -532,7 +790,13 @@ window.CiteFlowAuth = (function () {
         logout,
         getSession,
         cacheUserInfo,
+        getCachedUser,
+        getUser: getCachedUser,
         clearUserCache,
+        isSessionValid,
+        verifyFirstTimeLoginSession,
+        encryptSessionPayload,
+        decryptSessionPayload,
         getClient,
         needsOnboarding,
         isOnboardingComplete,

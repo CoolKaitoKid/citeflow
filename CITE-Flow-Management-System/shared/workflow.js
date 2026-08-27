@@ -41,6 +41,116 @@
         return String(value ?? '').trim().toLowerCase();
     }
 
+    /**
+     * Standard document categories. Internal values follow the live
+     * wf_report_configs.report_name / wf_tasks.title convention (DTR, LDP, Syllabus).
+     * TOS is stored as "TOS" and displayed as "Table of Specifications (TOS)".
+     */
+    const DOCUMENT_CATEGORIES = [
+        { value: 'DTR', label: 'DTR' },
+        { value: 'LDP', label: 'LDP' },
+        { value: 'Syllabus', label: 'Syllabus' },
+        { value: 'IPCR', label: 'IPCR' },
+        { value: 'TOS', label: 'Table of Specifications (TOS)' }
+    ];
+
+    const QUICK_SUBMISSION_CATEGORY_VALUES = ['Syllabus', 'DTR', 'TOS', 'IPCR', 'LDP'];
+
+    const DOCUMENT_CATEGORY_VALUES = DOCUMENT_CATEGORIES.map((item) => item.value);
+
+    function getDocumentCategories() {
+        return DOCUMENT_CATEGORIES.slice();
+    }
+
+    function getQuickSubmissionCategories() {
+        return QUICK_SUBMISSION_CATEGORY_VALUES.map((value) => {
+            const found = DOCUMENT_CATEGORIES.find((item) => item.value === value);
+            return {
+                value,
+                label: found ? found.label : value,
+                shortLabel: value === 'TOS' ? 'TOS' : value
+            };
+        });
+    }
+
+    function tokenizeCategorySource(value) {
+        return normalizeText(value).split(/[^a-z0-9]+/).filter(Boolean);
+    }
+
+    function resolveDocumentCategory(source) {
+        if (source && typeof source === 'object') {
+            const explicit = source.document_category || source.category || source.report_name;
+            const fromExplicit = resolveDocumentCategory(explicit);
+            if (fromExplicit) return fromExplicit;
+            source = source.title || source.name || source.folder_name || '';
+        }
+
+        const raw = String(source ?? '').trim();
+        if (!raw) return '';
+        const lower = normalizeText(raw);
+
+        for (const cat of DOCUMENT_CATEGORIES) {
+            const value = normalizeText(cat.value);
+            const label = normalizeText(cat.label);
+            if (lower === value || lower === label) return cat.value;
+        }
+
+        if (lower.includes('table of specifications')) return 'TOS';
+
+        const tokens = tokenizeCategorySource(raw);
+        for (const cat of DOCUMENT_CATEGORIES) {
+            if (tokens.includes(normalizeText(cat.value))) return cat.value;
+        }
+
+        return '';
+    }
+
+    function formatDocumentCategory(value) {
+        const resolved = resolveDocumentCategory(value);
+        if (resolved) {
+            const found = DOCUMENT_CATEGORIES.find((item) => item.value === resolved);
+            if (found) return found.label;
+        }
+        if (value && typeof value === 'object') {
+            return String(value.report_name || value.title || value.name || '').trim();
+        }
+        return String(value ?? '').trim();
+    }
+
+    function matchesDocumentCategory(source, categoryValue) {
+        if (!categoryValue) return true;
+        return resolveDocumentCategory(source) === categoryValue;
+    }
+
+    function documentCategoryOptionsHtml(selectedValue, options) {
+        const opts = options || {};
+        const selected = String(selectedValue || '');
+        const parts = [];
+        if (opts.includeAll) {
+            parts.push(`<option value=""${selected === '' ? ' selected' : ''}>All Categories</option>`);
+        }
+        if (opts.includeCustom) {
+            const isKnown = DOCUMENT_CATEGORY_VALUES.includes(selected);
+            const isCustom = selected === 'custom' || (selected !== '' && !isKnown);
+            parts.push(`<option value="custom"${isCustom ? ' selected' : ''}>Custom</option>`);
+        }
+        DOCUMENT_CATEGORIES.forEach((cat) => {
+            parts.push(
+                `<option value="${escapeHtml(cat.value)}"${selected === cat.value ? ' selected' : ''}>${escapeHtml(cat.label)}</option>`
+            );
+        });
+        return parts.join('');
+    }
+
+    function ensureTitleReflectsCategory(title, categoryValue) {
+        if (!categoryValue || categoryValue === 'custom') return String(title || '').trim();
+        const label = formatDocumentCategory(categoryValue);
+        const trimmed = String(title || '').trim();
+        if (!trimmed) return label;
+        if (resolveDocumentCategory(trimmed) === categoryValue) return trimmed;
+        return `${label} — ${trimmed}`;
+    }
+
     function normalizeRoleValue(role) {
         const r = normalizeText(role);
         if (!r) return '';
@@ -137,6 +247,212 @@
         return 'submitted';
     }
 
+    function isFinallyApproved(submission, task) {
+        return getWorkflowStage(submission, task) === 'completed';
+    }
+
+    function canFacultyManageSubmissionFiles(submission, task) {
+        if (!submission) return true;
+        if (isFinallyApproved(submission, task)) return false;
+        const status = sanitizeDbStatus(submission.status);
+        const stage = getApprovalStage(submission);
+        if (status === 'approved' && stage === APPROVAL_STAGES.APPROVED) return false;
+        return true;
+    }
+
+    function facultyFilesWereUpdatedAfterReview(submission) {
+        if (!submission?.submitted_at || !submission?.reviewed_at) return false;
+        return new Date(submission.submitted_at).getTime() > new Date(submission.reviewed_at).getTime();
+    }
+
+    function buildFacultyFileChangeUpdate(submission, task, remainingFileCount) {
+        if (!remainingFileCount) {
+            return {
+                status: 'notsubmitted',
+                submitted_at: null,
+                is_late: false,
+                submitted_status: null,
+                approval_stage: APPROVAL_STAGES.CHAIRPERSON
+            };
+        }
+
+        const due = task?.deadline_at || task?.due_at;
+        const late = !!(due && new Date(due) < new Date());
+        const prevStatus = sanitizeDbStatus(submission?.status);
+        const wasReturned = prevStatus === 'revision' || prevStatus === 'rejected';
+        const update = {
+            status: late ? 'late' : 'submitted',
+            submitted_at: new Date().toISOString(),
+            is_late: late,
+            submitted_status: late ? 'late' : 'on_time',
+            approval_stage: APPROVAL_STAGES.CHAIRPERSON
+        };
+
+        if (wasReturned) {
+            update.resubmission_count = Number(submission?.resubmission_count || 0) + 1;
+        }
+
+        return update;
+    }
+
+    function getTaskDeadline(task) {
+        return task?.deadline_at || task?.due_at || null;
+    }
+
+    function getTaskRequirementText(task) {
+        return String(task?.instructions || task?.submission_instructions || '').trim();
+    }
+
+    const DEADLINE_REMINDER_WINDOWS = [
+        { daysBefore: 3, phrase: 'in 3 days' },
+        { daysBefore: 1, phrase: 'tomorrow' },
+        { daysBefore: 0, phrase: 'today' }
+    ];
+
+    let reminderInFlight = null;
+    let lastReminderRunAt = 0;
+
+    function manilaCalendarYmd(value) {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Manila',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(value instanceof Date ? value : new Date(value));
+    }
+
+    function manilaCalendarDaysUntil(deadlineIso) {
+        if (!deadlineIso) return null;
+        const today = Date.parse(`${manilaCalendarYmd(new Date())}T00:00:00+08:00`);
+        const due = Date.parse(`${manilaCalendarYmd(deadlineIso)}T00:00:00+08:00`);
+        if (!Number.isFinite(today) || !Number.isFinite(due)) return null;
+        return Math.round((due - today) / 86400000);
+    }
+
+    function formatManilaDateTime(iso) {
+        if (!iso) return '';
+        return new Date(iso).toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+    }
+
+    function shouldReceiveDeadlineReminder(submission, task) {
+        if (isFinallyApproved(submission, task)) return false;
+        if (!submission) return true;
+        const status = sanitizeDbStatus(submission.status);
+        if (!submission.submitted_at || status === 'notsubmitted') return true;
+        return status === 'revision' || status === 'rejected';
+    }
+
+    function buildDeadlineReminderMessage(task, windowSpec) {
+        const deadline = getTaskDeadline(task);
+        const when = formatManilaDateTime(deadline);
+        const title = task?.title || 'Assigned report';
+        return `Reminder: "${title}" is due ${windowSpec.phrase} (${when} Asia/Manila).`;
+    }
+
+    function reminderDedupeKey(row) {
+        return `${row.faculty_id}|${row.task_id}|${row.message}`;
+    }
+
+    async function runDeadlineReminderPass(sb, options) {
+        const facultyFilter = options.facultyId;
+        let assignQuery = sb.from('wf_task_assignments').select('task_id,faculty_id');
+        if (facultyFilter != null) assignQuery = assignQuery.eq('faculty_id', facultyFilter);
+        const { data: assignments, error: assignError } = await assignQuery;
+        if (assignError) throw assignError;
+        if (!assignments?.length) return { sent: 0 };
+
+        const taskIds = [...new Set(assignments.map((row) => row.task_id).filter(Boolean))];
+        if (!taskIds.length) return { sent: 0 };
+
+        const { data: tasks, error: taskError } = await sb.from('wf_tasks').select('*').in('id', taskIds);
+        if (taskError) throw taskError;
+
+        let subQuery = sb.from('wf_submissions').select('*').in('task_id', taskIds);
+        if (facultyFilter != null) subQuery = subQuery.eq('faculty_id', facultyFilter);
+        const { data: submissions, error: subError } = await subQuery;
+        if (subError) throw subError;
+
+        let notifQuery = sb
+            .from('wf_notifications')
+            .select('faculty_id,task_id,message')
+            .eq('type', 'task')
+            .ilike('message', 'Reminder:%');
+        if (facultyFilter != null) notifQuery = notifQuery.eq('faculty_id', facultyFilter);
+        const { data: existing, error: notifError } = await notifQuery.limit(1000);
+        if (notifError) throw notifError;
+
+        const existingKeys = new Set((existing || []).map(reminderDedupeKey));
+        const taskMap = new Map((tasks || []).map((task) => [String(task.id), task]));
+        const subMap = new Map();
+        (submissions || []).forEach((row) => {
+            subMap.set(`${row.task_id}|${row.faculty_id}`, row);
+        });
+
+        const rows = [];
+        assignments.forEach((assignment) => {
+            const task = taskMap.get(String(assignment.task_id));
+            const deadline = getTaskDeadline(task);
+            if (!task || !deadline) return;
+
+            const submission = subMap.get(`${assignment.task_id}|${assignment.faculty_id}`);
+            if (!shouldReceiveDeadlineReminder(submission, task)) return;
+
+            const days = manilaCalendarDaysUntil(deadline);
+            const windowSpec = DEADLINE_REMINDER_WINDOWS.find((item) => item.daysBefore === days);
+            if (!windowSpec) return;
+
+            const message = buildDeadlineReminderMessage(task, windowSpec);
+            const row = {
+                type: 'task',
+                faculty_id: assignment.faculty_id,
+                task_id: assignment.task_id,
+                message,
+                is_read: false
+            };
+            const key = reminderDedupeKey(row);
+            if (existingKeys.has(key)) return;
+            existingKeys.add(key);
+            rows.push(row);
+        });
+
+        if (!rows.length) return { sent: 0 };
+
+        const { error: insertError } = await sb.from('wf_notifications').insert(rows);
+        if (insertError) throw insertError;
+        return { sent: rows.length };
+    }
+
+    async function processDeadlineReminders(sb, options = {}) {
+        const client = sb || getSupabaseClient();
+        if (!client) return { sent: 0 };
+        if (reminderInFlight) return reminderInFlight;
+        if (!options.force && lastReminderRunAt && Date.now() - lastReminderRunAt < 60000) {
+            return { sent: 0, skipped: true };
+        }
+
+        reminderInFlight = runDeadlineReminderPass(client, options)
+            .then((result) => {
+                lastReminderRunAt = Date.now();
+                return result;
+            })
+            .catch((error) => {
+                console.error('CiteFlowWorkflow.processDeadlineReminders:', error);
+                return { sent: 0, error: error.message || String(error) };
+            })
+            .finally(() => {
+                reminderInFlight = null;
+            });
+
+        return reminderInFlight;
+    }
+
     function formatWorkflowStatus(submission, task) {
         const stage = getWorkflowStage(submission, task);
         const map = {
@@ -197,15 +513,24 @@
         return role === 'faculty' || role === 'chairperson';
     }
 
+    async function getFreshSession(sb) {
+        const { data: { session }, error } = await sb.auth.getSession();
+        if (error || !session?.user) return null;
+        const expiresAt = Number(session.expires_at || 0);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (expiresAt && expiresAt > nowSec + 15) return session;
+        const refreshed = await sb.auth.refreshSession();
+        if (refreshed.error || !refreshed.data?.session?.user) return null;
+        return refreshed.data.session;
+    }
+
     async function getCurrentUser() {
         const sb = getSupabaseClient();
         if (!sb) return null;
-        const { data, error } = await sb.auth.getUser();
-        if (error) {
-            console.error('CiteFlowWorkflow.getCurrentUser:', error);
-            return null;
-        }
-        return data?.user || null;
+        // Use a refreshed local session. Calling auth.getUser() with an expired
+        // access token hits /auth/v1/user and produces a 401 in the console.
+        const session = await getFreshSession(sb);
+        return session?.user || null;
     }
 
     async function getCurrentFaculty(user) {
@@ -573,6 +898,49 @@
         }
     }
 
+    async function recordFacultyFileChange(sb, { faculty, task, taskId, submissionId, changeType }) {
+        const actorName = faculty?.full_name || 'Faculty';
+        const title = task?.title || 'Submission';
+        const actionMap = {
+            deleted: 'Deleted submission file',
+            replaced: 'Replaced submission file',
+            added: 'Added submission file'
+        };
+        const messageMap = {
+            deleted: `${actorName} deleted a file on ${title}`,
+            replaced: `${actorName} replaced a file on ${title}`,
+            added: `${actorName} added a file on ${title}`
+        };
+        await logActivity(sb, {
+            action: actionMap[changeType] || 'Updated submission files',
+            actor_name: actorName,
+            target: title,
+            log_type: 'submission',
+            task_id: taskId,
+            submission_id: submissionId || null
+        });
+        await createWorkflowNotification(sb, {
+            type: 'submission',
+            faculty_id: faculty?.id,
+            task_id: taskId,
+            submission_id: submissionId || null,
+            message: messageMap[changeType] || `${actorName} updated files on ${title}`,
+            is_read: false
+        });
+        if (submissionId) {
+            await recordApprovalHistory(sb, {
+                submission_id: submissionId,
+                task_id: taskId,
+                faculty_id: faculty?.id,
+                actor_name: actorName,
+                actor_role: 'FACULTY',
+                action: changeType === 'replaced' ? 'file_replaced' : (changeType === 'deleted' ? 'file_deleted' : 'file_added'),
+                status: 'submitted',
+                comment: actionMap[changeType] || 'Updated submission files'
+            });
+        }
+    }
+
     function subscribeWorkflow(onChange, tables) {
         const sb = getSupabaseClient();
         if (!sb || typeof onChange !== 'function') return null;
@@ -702,6 +1070,16 @@
     const api = {
         VALID_DB_STATUSES,
         APPROVAL_STAGES,
+        DOCUMENT_CATEGORIES,
+        DOCUMENT_CATEGORY_VALUES,
+        QUICK_SUBMISSION_CATEGORY_VALUES,
+        getDocumentCategories,
+        getQuickSubmissionCategories,
+        resolveDocumentCategory,
+        formatDocumentCategory,
+        matchesDocumentCategory,
+        documentCategoryOptionsHtml,
+        ensureTitleReflectsCategory,
         getSupabaseClient,
         getCurrentUser,
         getCurrentFaculty,
@@ -720,6 +1098,13 @@
         canAccessFacultyPortal,
         getApprovalStage,
         getWorkflowStage,
+        isFinallyApproved,
+        canFacultyManageSubmissionFiles,
+        facultyFilesWereUpdatedAfterReview,
+        buildFacultyFileChangeUpdate,
+        getTaskDeadline,
+        getTaskRequirementText,
+        processDeadlineReminders,
         formatWorkflowStatus,
         getStatusClass,
         sanitizeDbStatus,
@@ -727,6 +1112,7 @@
         buildReviewUpdate,
         applySubmissionReview,
         recordSubmissionEvent,
+        recordFacultyFileChange,
         recordApprovalHistory,
         logActivity,
         createWorkflowNotification,

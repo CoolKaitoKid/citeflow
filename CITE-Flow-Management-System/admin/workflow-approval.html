@@ -11,9 +11,10 @@
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/workflow.js"></script>
     <script src="../shared/auth-guard.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
     
     <style>
 
@@ -115,8 +116,8 @@
         * { font-family: 'Inter', sans-serif; }
 
         /* ─── Main Surface ──────────────────────────────────────────── */
-        .main-surface { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04); }
-        .stat-card { background: #fff; border-radius: 14px; border: 1px solid #f0f0f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.2s; }
+        .main-surface { background: #fff; border-radius: 16px; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05); border: 1px solid #e8eaef; }
+        .stat-card { background: #fff; border-radius: 16px; border: 1px solid #e8eaef; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05); transition: box-shadow 0.2s, transform 0.18s; overflow: hidden; }
         .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 
         /* ─── Table ─────────────────────────────────────────────────── */
@@ -210,8 +211,11 @@
         .modal-panel::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 99px; }
 
         /* ─── File Chip ──────────────────────────────────────────────── */
-        .file-chip { display: flex; align-items: center; justify-content: space-between; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
-        .file-chip-name { display: flex; align-items: center; gap: 9px; color: #374151; }
+        .file-chip { display: flex; align-items: flex-start; justify-content: space-between; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+        .file-chip-name { display: flex; align-items: flex-start; gap: 9px; color: #374151; }
+        .file-chip-meta { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+        .file-updated-banner { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #92400e; font-weight: 600; }
+        .file-updated-banner-meta { font-weight: 500; font-size: 12px; margin-top: 4px; color: #b45309; }
         .file-chip-dl { font-size: 12px; color: #621708; font-weight: 500; cursor: pointer; }
         .file-chip-dl:hover { text-decoration: underline; }
 
@@ -448,7 +452,7 @@
 
 </style>
 </head>
-<body class="bg-[#f5f5f5] text-gray-900">
+<body class="bg-[#f3f4f7] text-gray-900 cite-page">
 
 <div class="flex h-screen w-screen overflow-hidden">
 
@@ -465,14 +469,14 @@
             <!-- Page Header -->
             <div class="flex items-start justify-between mb-8">
                 <div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <h1 class="text-[22px] font-semibold text-gray-900 tracking-tight">Document Submissions</h1>
-                        <div class="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+                    <div class="flex items-center flex-wrap gap-2.5 mb-1">
+                        <h1 class="cite-title">Document Submissions</h1>
+                        <div class="cite-live">
                             <div class="rt-dot w-2 h-2 rounded-full bg-emerald-500"></div>
-                            <span class="text-xs font-medium text-emerald-700">Live</span>
+                            Live
                         </div>
                     </div>
-                    <p class="text-sm text-gray-500">Review and manage faculty document submissions in real time</p>
+                    <p class="cite-subtitle">Review pending work, approve completed files, and return items that need revision.</p>
                 </div>
                 <div class="flex items-center gap-2.5">
 <button onclick="openAccessModal()" class="btn btn-ghost">
@@ -519,8 +523,11 @@
 
             <!-- Stats row -->
             <div class="grid grid-cols-4 gap-4 mb-6">
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Pending Review</div>
+                <div class="stat-card cite-stat-pending p-5">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pending Review</div>
+                        <div class="cite-icon" style="width:34px;height:34px;"><i class="fa-solid fa-hourglass-half text-xs"></i></div>
+                    </div>
                     <div class="flex items-end gap-2">
                         <span id="stat-pending" class="text-3xl font-semibold text-gray-900">—</span>
                     </div>
@@ -529,8 +536,11 @@
                         <span class="text-xs text-gray-500">Awaiting decision</span>
                     </div>
                 </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Approved</div>
+                <div class="stat-card cite-stat-approved p-5">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Approved</div>
+                        <div class="cite-icon" style="width:34px;height:34px;background:#ecfdf5;border-color:#bbf7d0;color:#047857;"><i class="fa-solid fa-check text-xs"></i></div>
+                    </div>
                     <div class="flex items-end gap-2">
                         <span id="stat-approved" class="text-3xl font-semibold text-gray-900">—</span>
                     </div>
@@ -539,8 +549,11 @@
                         <span class="text-xs text-gray-500">Completed</span>
                     </div>
                 </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Needs Revision</div>
+                <div class="stat-card cite-stat-revision p-5">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Needs Revision</div>
+                        <div class="cite-icon" style="width:34px;height:34px;background:#fef2f2;border-color:#fecaca;color:#b91c1c;"><i class="fa-solid fa-rotate-left text-xs"></i></div>
+                    </div>
                     <div class="flex items-end gap-2">
                         <span id="stat-revision" class="text-3xl font-semibold text-gray-900">—</span>
                     </div>
@@ -549,8 +562,11 @@
                         <span class="text-xs text-gray-500">Returned to faculty</span>
                     </div>
                 </div>
-                <div class="stat-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Declined</div>
+                <div class="stat-card cite-stat-declined p-5">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Declined</div>
+                        <div class="cite-icon" style="width:34px;height:34px;background:#f8fafc;border-color:#e2e8f0;color:#64748b;"><i class="fa-solid fa-xmark text-xs"></i></div>
+                    </div>
                     <div class="flex items-end gap-2">
                         <span id="stat-declined" class="text-3xl font-semibold text-gray-900">—</span>
                     </div>
@@ -583,6 +599,14 @@
                     <option value="BSIE">BSIE</option>
                     <option value="BIT">BIT</option>
                 </select>
+                <select id="categoryFilter" onchange="filterSubmissions()" class="field-input" style="width:230px;">
+                    <option value="">All Categories</option>
+                    <option value="DTR">DTR</option>
+                    <option value="LDP">LDP</option>
+                    <option value="Syllabus">Syllabus</option>
+                    <option value="IPCR">IPCR</option>
+                    <option value="TOS">Table of Specifications (TOS)</option>
+                </select>
                 <div class="view-toggle" title="Switch main page task layout">
                     <button id="listViewBtn" class="active" onclick="setTaskViewMode('list')">List</button>
                     <button id="folderViewBtn" onclick="setTaskViewMode('folder')">Folder</button>
@@ -603,7 +627,13 @@
                     </thead>
                     <tbody id="submissionsTableBody">
                         <tr>
-                            <td colspan="5" class="text-center text-gray-400 py-12 text-sm">Loading tasks...</td>
+                            <td colspan="5">
+                                <div class="cite-empty">
+                                    <div class="cite-empty-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                                    <div class="cite-empty-title">Loading tasks</div>
+                                    <p class="cite-empty-text">Fetching the latest submissions.</p>
+                                </div>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -621,11 +651,11 @@
                         <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                         Back to Tasks
                     </button>
-                    <div class="flex items-center gap-3">
-                        <h1 id="detailTaskTitle" class="text-[22px] font-semibold text-gray-900 tracking-tight">Task Details</h1>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <h1 id="detailTaskTitle" class="cite-title">Task Details</h1>
                         <span id="detailTaskStatusBadge"></span>
                     </div>
-                    <p id="detailTaskMeta" class="text-sm text-gray-500 mt-1"></p>
+                    <p id="detailTaskMeta" class="cite-subtitle mt-1"></p>
                 </div>
                 <div class="flex items-center gap-2.5">
                     <button onclick="openActivityLogModal()" class="btn btn-ghost btn-sm">Activity Log</button>
@@ -723,18 +753,29 @@
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
+                    <label class="field-label">Document Category</label>
+                    <select id="reportCategory" class="field-input" onchange="onReportCategoryChange()">
+                        <option value="custom">Custom</option>
+                        <option value="DTR">DTR</option>
+                        <option value="LDP">LDP</option>
+                        <option value="Syllabus">Syllabus</option>
+                        <option value="IPCR">IPCR</option>
+                        <option value="TOS">Table of Specifications (TOS)</option>
+                    </select>
+                </div>
+                <div>
                     <label class="field-label">Report Name <span class="text-red-500">*</span></label>
                     <input id="reportName" class="field-input" placeholder="e.g. DTR">
                 </div>
-                <div>
-                    <label class="field-label">Frequency <span class="text-red-500">*</span></label>
-                    <select id="reportFrequency" class="field-input">
-                        <option value="monthly">Monthly</option>
-                        <option value="quarterly">Quarterly</option>
-                        <option value="semi_annual">Semi-Annual</option>
-                        <option value="annual">Annual</option>
-                    </select>
-                </div>
+            </div>
+            <div>
+                <label class="field-label">Frequency <span class="text-red-500">*</span></label>
+                <select id="reportFrequency" class="field-input" onchange="updateReportDeadlinePreview()">
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="semi_annual">Semi-Annual</option>
+                    <option value="annual">Annual</option>
+                </select>
             </div>
 
             <div>
@@ -746,17 +787,18 @@
             <div class="grid grid-cols-3 gap-4">
                 <div>
                     <label class="field-label">Deadline Day <span class="text-red-500">*</span></label>
-                    <input id="reportDueDay" type="number" min="1" max="31" value="5" class="field-input">
+                    <input id="reportDueDay" type="number" min="1" max="31" value="5" class="field-input" oninput="updateReportDeadlinePreview()">
                 </div>
                 <div>
                     <label class="field-label">Deadline Time <span class="text-red-500">*</span></label>
-                    <input id="reportDueTime" type="time" value="12:00" class="field-input">
+                    <input id="reportDueTime" type="time" value="12:00" class="field-input" oninput="updateReportDeadlinePreview()">
                 </div>
                 <div>
                     <label class="field-label">Timezone</label>
                     <input class="field-input" value="Asia/Manila (Philippine Time)" disabled>
                 </div>
             </div>
+            <div id="reportDeadlinePreview" class="p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm text-amber-950"></div>
 
             <div class="target-box">
                 <div class="flex items-center justify-between mb-3">
@@ -878,8 +920,19 @@
         </div>
         <div class="modal-body space-y-5">
             <div>
+                <label class="field-label">Document Category</label>
+                <select id="taskCategory" class="field-input" onchange="onTaskCategoryChange()">
+                    <option value="custom">Custom</option>
+                    <option value="DTR">DTR</option>
+                    <option value="LDP">LDP</option>
+                    <option value="Syllabus">Syllabus</option>
+                    <option value="IPCR">IPCR</option>
+                    <option value="TOS">Table of Specifications (TOS)</option>
+                </select>
+            </div>
+            <div>
                 <label class="field-label">Task Title <span class="text-red-500">*</span></label>
-                <input id="taskTitle" type="text" class="field-input" placeholder="e.g., Annual Research Report">
+                <input id="taskTitle" type="text" class="field-input" placeholder="e.g., Table of Specifications (TOS)">
             </div>
 
             <div class="grid grid-cols-2 gap-4">
@@ -994,6 +1047,7 @@
 
             <!-- Prior review record -->
             <div id="reviewRecord" class="hidden"></div>
+            <div id="facultyFilesUpdatedNote" class="hidden"></div>
 
             <!-- Files -->
             <div>
@@ -1236,9 +1290,9 @@
                 <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 Post Comment
             </button>
-        </div><!-- /workflowMainView -->
-    </main>
-</div><!-- /flex h-screen -->
+        </div>
+    </div>
+</div>
 
 <!-- ════════════════════════════════════════════════════
      TOAST
@@ -1350,12 +1404,13 @@ function normalizeArray(value) {
 }
 
 function normalizeFileRecord(file) {
-    if (!file) return { id: '', name: 'Submitted file', url: '' };
-    if (typeof file === 'string') return { id: '', name: file, url: '' };
+    if (!file) return { id: '', name: 'Submitted file', url: '', uploadedAt: null };
+    if (typeof file === 'string') return { id: '', name: file, url: '', uploadedAt: null };
     return {
         id: file.id || '',
         name: file.file_name || file.name || file.filename || 'Submitted file',
-        url: file.file_url || file.public_url || file.url || file.signed_url || file.path || ''
+        url: file.file_url || file.public_url || file.url || file.signed_url || file.path || '',
+        uploadedAt: file.created_at || file.uploaded_at || file.updated_at || file.uploadedAt || null
     };
 }
 
@@ -1462,6 +1517,57 @@ function updateProgress() {
     });
 }
 
+function resolveTaskCategory(task) {
+    const wf = window.CiteFlowWorkflow;
+    if (!wf || typeof wf.resolveDocumentCategory !== 'function') return '';
+    const fromTask = wf.resolveDocumentCategory(task);
+    if (fromTask) return fromTask;
+    const config = (workflowState.reportConfigs || []).find(c => String(c.id) === String(task?.report_config_id));
+    return wf.resolveDocumentCategory(config);
+}
+
+function formatTaskCategoryLabel(taskOrValue) {
+    const wf = window.CiteFlowWorkflow;
+    if (!wf || typeof wf.formatDocumentCategory !== 'function') return '';
+    const value = taskOrValue && typeof taskOrValue === 'object'
+        ? resolveTaskCategory(taskOrValue)
+        : wf.resolveDocumentCategory(taskOrValue);
+    return value ? wf.formatDocumentCategory(value) : '';
+}
+
+function renderCategoryChip(taskOrValue) {
+    const label = formatTaskCategoryLabel(taskOrValue);
+    if (!label) return '';
+    return `<span class="config-chip">${escapeHtml(label)}</span>`;
+}
+
+function onTaskCategoryChange() {
+    const wf = window.CiteFlowWorkflow;
+    const category = document.getElementById('taskCategory')?.value;
+    const titleEl = document.getElementById('taskTitle');
+    if (!wf || !titleEl || !category || category === 'custom') return;
+    const current = titleEl.value.trim();
+    const currentCategory = wf.resolveDocumentCategory(current);
+    if (!current || currentCategory) {
+        titleEl.value = wf.formatDocumentCategory(category);
+    }
+}
+
+function onReportCategoryChange() {
+    const category = document.getElementById('reportCategory')?.value;
+    const nameEl = document.getElementById('reportName');
+    if (!nameEl || !category || category === 'custom') return;
+    nameEl.value = category;
+}
+
+function setSelectValue(id, value, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const next = value || fallback || '';
+    if (el.querySelector(`option[value="${next}"]`)) el.value = next;
+    else if (fallback && el.querySelector(`option[value="${fallback}"]`)) el.value = fallback;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    STATUS BADGE - 7 STATUS TYPES
    ═══════════════════════════════════════════════════════════════ */
@@ -1508,6 +1614,25 @@ function taskSummaryStatus(submittedCount, totalAssigned) {
     if (submittedCount === 0) return { label: 'No Submission', className: 'badge-notsubmitted' };
     if (submittedCount >= totalAssigned && totalAssigned > 0) return { label: 'Completed', className: 'badge-approved' };
     return { label: 'In Progress', className: 'badge-underreview' };
+}
+
+function taskRowTone(className) {
+    if (className === 'badge-approved') return 'row-tone-approved';
+    if (className === 'badge-underreview') return 'row-tone-progress';
+    if (className === 'badge-pending') return 'row-tone-pending';
+    return 'row-tone-idle';
+}
+
+function submissionCardTone(status) {
+    if (status === 'approved') return 'card-tone-approved';
+    if (status === 'rejected') return 'card-tone-rejected';
+    if (status === 'revision') return 'card-tone-revision';
+    if (['submitted', 'late', 'underreview', 'pending'].includes(String(status || ''))) return 'card-tone-pending';
+    return 'card-tone-idle';
+}
+
+function emptyTasksRow(message, detail) {
+    return `<tr><td colspan="5"><div class="cite-empty"><div class="cite-empty-icon"><i class="fa-solid fa-folder-open"></i></div><div class="cite-empty-title">${message}</div><p class="cite-empty-text">${detail}</p></div></td></tr>`;
 }
 
 
@@ -1592,7 +1717,7 @@ function renderTaskCardContainer(taskRows) {
     const container = document.getElementById('taskCardContainer');
     if (!container) return;
     if (!taskRows.length) {
-        container.innerHTML = `<div class="main-surface p-10 text-center text-sm text-gray-400" style="grid-column:1/-1;">No tasks found.</div>`;
+        container.innerHTML = `<div class="main-surface p-10 cite-empty" style="grid-column:1/-1;"><div class="cite-empty-icon"><i class="fa-solid fa-folder-open"></i></div><div class="cite-empty-title">No tasks found</div><p class="cite-empty-text">Try a different search or filter.</p></div>`;
         return;
     }
     container.innerHTML = taskRows.map(r => {
@@ -1605,6 +1730,7 @@ function renderTaskCardContainer(taskRows) {
                     <span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span>
                 </div>
                 <div class="font-semibold text-gray-900 leading-snug mb-1">${escapeHtml(task.title)}</div>
+                <div class="text-xs text-gray-500 mb-1">${renderCategoryChip(task)}</div>
                 <div class="text-xs text-gray-500 mb-4">${escapeHtml(r.assignedLabel)} | Due ${formatDate(task.due_at)}</div>
                 <div class="flex justify-between text-xs text-gray-500 mb-2"><span>Progress</span><span>${r.submittedCount}/${r.totalAssigned}</span></div>
                 <div class="mini-bar-track mb-4"><div class="mini-bar-fill" style="width:${pct}%"></div></div>
@@ -1621,6 +1747,7 @@ function filterSubmissions() {
     const search  = (document.getElementById('searchInput').value || '').toLowerCase();
     const status  = document.getElementById('statusFilter').value;
     const dept    = document.getElementById('deptFilter').value;
+    const category = document.getElementById('categoryFilter')?.value || '';
 
     const taskRows = workflowState.tasks.map(task => {
         const assigns = workflowState.assignments.filter(a => a.task_id === task.id);
@@ -1638,9 +1765,10 @@ function filterSubmissions() {
         const task = r.task;
         const matchSearch = !search || normalizeText(task.title).includes(search) || r.assignees.some(a => normalizeText(a.full_name).includes(search));
         const matchDept = !dept || r.assignees.some(a => a.department_code === dept);
+        const matchCategory = !category || resolveTaskCategory(task) === category;
         const statusKey = r.submittedCount === 0 ? 'notsubmitted' : (r.submittedCount >= r.totalAssigned && r.totalAssigned > 0 ? 'approved' : 'underreview');
         const matchStatus = !status || statusKey === status;
-        return matchSearch && matchDept && matchStatus;
+        return matchSearch && matchDept && matchCategory && matchStatus;
     });
 
     const tableSurface = document.getElementById('taskTableSurface');
@@ -1656,7 +1784,7 @@ function filterSubmissions() {
 
     const tbody = document.getElementById('submissionsTableBody');
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-gray-400 py-12 text-sm">No tasks found.</td></tr>`;
+        tbody.innerHTML = emptyTasksRow('No tasks found', 'Try a different search or filter.');
         return;
     }
 
@@ -1665,7 +1793,7 @@ function filterSubmissions() {
         const countdown = deadlineCountdown(task.due_at);
         const deadline  = formatDate(task.due_at);
         return `
-            <tr class="task-row-clickable" onclick="openTaskDetailsPage('${task.id}')">
+            <tr class="task-row-clickable ${taskRowTone(r.summary.className)}" onclick="openTaskDetailsPage('${task.id}')">
                 <td>
                     <div class="task-row-title font-medium text-[#621708] text-sm leading-snug">${escapeHtml(task.title)}</div>
                     <div class="text-xs text-gray-400 mt-1">Click to view task details and submission progress</div>
@@ -1739,14 +1867,18 @@ function renderFileChip(file) {
     const normalized = normalizeFileRecord(file);
     const key = registerFileAction(normalized);
     const hasUrl = !!resolveFileUrl(normalized);
+    const uploadedLabel = normalized.uploadedAt ? `Uploaded ${formatDateTime(normalized.uploadedAt)}` : '';
     return `
         <div class="file-chip">
             <div class="file-chip-name min-w-0">
-                <svg style="width:14px;height:14px;stroke:#6b7280;stroke-width:2;fill:none;flex-shrink:0;" viewBox="0 0 24 24">
+                <svg style="width:14px;height:14px;stroke:#6b7280;stroke-width:2;fill:none;flex-shrink:0;margin-top:2px;" viewBox="0 0 24 24">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
                 </svg>
-                <span class="truncate">${escapeHtml(normalized.name)}</span>
+                <div class="min-w-0">
+                    <span class="truncate block">${escapeHtml(normalized.name)}</span>
+                    ${uploadedLabel ? `<div class="file-chip-meta">${escapeHtml(uploadedLabel)}</div>` : ''}
+                </div>
             </div>
             <div class="file-chip-actions">
                 <button type="button" class="file-action-btn" ${hasUrl ? `onclick="previewFileByKey('${key}')"` : 'disabled title="No file URL saved"'}>Preview</button>
@@ -1754,6 +1886,37 @@ function renderFileChip(file) {
             </div>
         </div>
     `;
+}
+
+function facultyFilesUpdatedNoticeHtml(submission) {
+    const updated = window.CiteFlowWorkflow?.facultyFilesWereUpdatedAfterReview?.(submission);
+    if (!updated) return '';
+    return `<div class="file-updated-banner">Faculty updated the submitted files after the last review. Please review the current files.${submission?.submitted_at ? `<div class="file-updated-banner-meta">Files last updated ${formatDateTime(submission.submitted_at)}</div>` : ''}</div>`;
+}
+
+function renderFacultyFileUpdateNotice(submission) {
+    const el = document.getElementById('facultyFilesUpdatedNote');
+    if (!el) return;
+    const html = facultyFilesUpdatedNoticeHtml(submission);
+    if (!html) {
+        el.classList.add('hidden');
+        el.innerHTML = '';
+        return;
+    }
+    el.classList.remove('hidden');
+    el.innerHTML = html;
+}
+
+function refreshOpenReviewModalFiles() {
+    const modal = document.getElementById('reviewModal');
+    if (!modal?.classList.contains('open') || !activeReviewId) return;
+    const [taskId, facultyId] = String(activeReviewId).split('|');
+    const sub = allSubmissions.find(s => String(s.task_id) === String(taskId) && String(s.faculty_id) === String(facultyId));
+    if (!sub) return;
+    const filesEl = document.getElementById('modalFiles');
+    if (filesEl) filesEl.innerHTML = renderFileList(sub.files, 'No submitted files saved.');
+    const raw = workflowState.submissions.find(s => String(s.id) === String(sub.submission_id)) || sub;
+    renderFacultyFileUpdateNotice(raw);
 }
 
 function previewFileByKey(key) {
@@ -1835,7 +1998,8 @@ function renderTaskDetailPage(taskId, options = {}) {
     const summary = taskSummaryStatus(submitted, total);
 
     document.getElementById('detailTaskTitle').textContent = task.title;
-    document.getElementById('detailTaskMeta').textContent = `Assigned to ${deriveAssignedLabel(taskId)} | Due ${formatDate(task.due_at)} | Created ${formatDateTime(task.created_at)}`;
+    const categoryLabel = formatTaskCategoryLabel(task);
+    document.getElementById('detailTaskMeta').textContent = `${categoryLabel ? categoryLabel + ' | ' : ''}Assigned to ${deriveAssignedLabel(taskId)} | Due ${formatDate(task.due_at)} | Created ${formatDateTime(task.created_at)}`;
     document.getElementById('detailTaskStatusBadge').innerHTML = `<span class="badge ${summary.className}"><span class="badge-dot"></span>${escapeHtml(summary.label)}</span>`;
     document.getElementById('detailAssignedCount').textContent = total;
     document.getElementById('detailAssignedLabel').textContent = deriveAssignedLabel(taskId);
@@ -1880,13 +2044,14 @@ function renderDetailDepartmentProgress(rows) {
 function renderDetailSubmissionList(rows) {
     const list = document.getElementById('detailSubmissionList');
     if (!rows.length) {
-        list.innerHTML = '<p class="text-sm text-gray-400 text-center py-8">No faculty assigned to this task yet.</p>';
+        list.innerHTML = '<div class="cite-empty py-8"><div class="cite-empty-icon"><i class="fa-solid fa-user"></i></div><div class="cite-empty-title">No faculty assigned</div><p class="cite-empty-text">Assign faculty to this task to collect submissions.</p></div>';
         return;
     }
     list.innerHTML = rows.map(s => {
-        const hasSubmission = !!s.submission_id;
+        const hasSubmission = !!s.submission_id && !!s.submitted_at;
         const submittedText = hasSubmission ? `Submitted ${formatDateTime(s.submitted_at)}` : 'No uploaded submission yet';
         const filesHtml = hasSubmission ? renderFileList(s.files, 'No submitted files saved.') : '<p class="text-sm text-gray-400">No files uploaded yet.</p>';
+        const filesUpdatedHtml = hasSubmission ? facultyFilesUpdatedNoticeHtml(s) : '';
         const reviewButtons = hasSubmission ? `
             <button onclick="openReviewModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-primary btn-sm">Review / View Submission</button>
             <button onclick="openTimelineModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-ghost btn-sm">Timeline</button>
@@ -1901,7 +2066,7 @@ function renderDetailSubmissionList(rows) {
             </div>
         ` : '';
         return `
-            <div id="submission-card-${s.faculty_id}" class="submission-card">
+            <div id="submission-card-${s.faculty_id}" class="submission-card ${submissionCardTone(s.status)}">
                 <div class="flex items-start justify-between gap-4 mb-3">
                     <div>
                         <div class="font-semibold text-gray-900">${escapeHtml(s.faculty_name)}</div>
@@ -1910,6 +2075,7 @@ function renderDetailSubmissionList(rows) {
                     ${statusBadge(s.status)}
                 </div>
                 <div class="space-y-2 mb-4">${filesHtml}</div>
+                ${filesUpdatedHtml ? `<div class="mb-4">${filesUpdatedHtml}</div>` : ''}
                 <div class="flex flex-wrap gap-2">${reviewButtons}</div>
                 ${reviewRecord}
             </div>
@@ -1999,6 +2165,7 @@ async function openAssignModal() {
     document.getElementById('dueTime').value = '17:00';
     document.getElementById('targetGroup').value = 'all';
     if (document.getElementById('targetType')) document.getElementById('targetType').value = 'all_types';
+    setSelectValue('taskCategory', 'custom', 'custom');
     const attachments = document.getElementById('taskAttachments');
     if (attachments) attachments.value = '';
 
@@ -2041,6 +2208,7 @@ async function openEditTaskModal(taskId) {
 
     document.getElementById('taskTitle').value = task.title || '';
     document.getElementById('taskDesc').value = task.instructions || '';
+    setSelectValue('taskCategory', resolveTaskCategory(task) || 'custom', 'custom');
 
     const due = task.due_at ? new Date(task.due_at) : null;
     if (due && !Number.isNaN(due.getTime())) {
@@ -2076,7 +2244,11 @@ async function openEditTaskModal(taskId) {
 
 function createNewTask() {
     const ws = ensureWorkflowState();
-    const title   = document.getElementById('taskTitle').value.trim();
+    const category = document.getElementById('taskCategory')?.value || 'custom';
+    const rawTitle = document.getElementById('taskTitle').value.trim();
+    const title = window.CiteFlowWorkflow?.ensureTitleReflectsCategory
+        ? CiteFlowWorkflow.ensureTitleReflectsCategory(rawTitle, category)
+        : rawTitle;
     const dueDate = document.getElementById('dueDate').value;
     const dueTime = document.getElementById('dueTime').value;
     const desc    = document.getElementById('taskDesc').value.trim();
@@ -2369,8 +2541,9 @@ async function openReviewModal(taskId, facultyRef) {
     const task = getTaskById(sub.task_id);
 
     document.getElementById('modalTaskTitle').textContent = task ? task.title : 'Submission Review';
+    const categoryLabel = formatTaskCategoryLabel(task);
     document.getElementById('modalSubmitter').textContent =
-        `${sub.faculty_name} | ${sub.department_code} | Submitted ${formatDateTime(sub.submitted_at)}`;
+        `${sub.faculty_name} | ${sub.department_code}${categoryLabel ? ' | ' + categoryLabel : ''} | Submitted ${formatDateTime(sub.submitted_at)}`;
 
     if (task) {
         document.getElementById('deadlineBlock').classList.remove('hidden');
@@ -2394,6 +2567,7 @@ async function openReviewModal(taskId, facultyRef) {
     }
 
     document.getElementById('modalFiles').innerHTML = renderFileList(sub.files, 'No submitted files saved.');
+    renderFacultyFileUpdateNotice(sub);
     document.getElementById('adminComment').value = '';
     document.getElementById('reviewModal').classList.add('open');
     document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open'));
@@ -2889,6 +3063,7 @@ async function fetchAllData() {
     workflowState.delegatedAccess = delegates.data || [];
 
     renderAll();
+    refreshOpenReviewModalFiles();
     updateNotificationBadge();
 }
 
@@ -3047,6 +3222,193 @@ function getPeriodForNextTask(config, now = manilaNow()) {
     };
 }
 
+function getManilaDateParts(iso) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date(iso));
+    const value = (type) => Number((parts.find(part => part.type === type) || {}).value || 0);
+    return {
+        year: value('year'),
+        month: value('month'),
+        day: value('day')
+    };
+}
+
+function sameDeadline(a, b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    return new Date(a).getTime() === new Date(b).getTime();
+}
+
+function recurringRequirementText(config) {
+    const description = String(config?.description || '').trim();
+    const instructions = String(config?.submission_instructions || '').trim();
+    return description || instructions || '';
+}
+
+function buildRecurringTaskFields(config, period) {
+    const categoryLabel = formatTaskCategoryLabel(config) || config.report_name;
+    return {
+        title: `${categoryLabel} — ${period.label}`,
+        instructions: recurringRequirementText(config),
+        due_at: period.deadlineAt,
+        deadline_at: period.deadlineAt,
+        assigned_label: reportRecipientLabel(config),
+        assigned_scope: config.recipient_type,
+        reporting_period_start: period.periodStart,
+        reporting_period_end: period.periodEnd,
+        reporting_period_label: period.label,
+        is_recurring: true,
+        generated_for_period: period.generatedForPeriod,
+        submission_method: config.submission_method,
+        submission_url: config.submission_url,
+        submission_instructions: config.submission_instructions
+    };
+}
+
+function readReportConfigFormPreview() {
+    return {
+        id: document.getElementById('reportConfigId')?.value || 'preview',
+        report_name: document.getElementById('reportName')?.value || 'Report',
+        frequency: document.getElementById('reportFrequency')?.value || 'monthly',
+        due_day: Number(document.getElementById('reportDueDay')?.value) || 5,
+        due_time: document.getElementById('reportDueTime')?.value || '12:00'
+    };
+}
+
+function updateReportDeadlinePreview() {
+    const el = document.getElementById('reportDeadlinePreview');
+    if (!el) return;
+    try {
+        const period = getPeriodForNextTask(readReportConfigFormPreview());
+        el.innerHTML = `
+            Faculty will see this as <strong>${escapeHtml(period.label)}</strong>,
+            due <strong>${escapeHtml(formatDateTime(period.deadlineAt))}</strong> (Asia/Manila).
+            Saving stores the deadline on this report and copies it to the current Faculty task.
+        `;
+    } catch (error) {
+        el.textContent = 'Enter a valid deadline day and time to preview the Faculty due date.';
+    }
+}
+
+function isRecurringTaskClosed(task) {
+    const assigned = (workflowState.assignments || []).filter(row => String(row.task_id) === String(task.id));
+    if (!assigned.length) return false;
+    return assigned.every(row => {
+        const sub = getSubmission(task.id, row.faculty_id);
+        if (window.CiteFlowWorkflow?.isFinallyApproved) {
+            return CiteFlowWorkflow.isFinallyApproved(sub, task);
+        }
+        return String(sub?.status || '').toLowerCase() === 'approved';
+    });
+}
+
+function rebuildDeadlineFromConfig(task, config) {
+    const source = task?.deadline_at || task?.due_at;
+    if (!source) return getPeriodForNextTask(config).deadlineAt;
+    const parts = getManilaDateParts(source);
+    return makeManilaIso(parts.year, parts.month, config.due_day, config.due_time || '12:00');
+}
+
+function recurringTaskNeedsUpdate(task, fields) {
+    return Object.keys(fields).some(key => {
+        if (key === 'due_at' || key === 'deadline_at') {
+            return !sameDeadline(task[key], fields[key]);
+        }
+        return String(task[key] ?? '') !== String(fields[key] ?? '');
+    });
+}
+
+async function notifyRecurringDeadlineChange(task, fields) {
+    const assigned = (workflowState.assignments || []).filter(row => String(row.task_id) === String(task.id));
+    const title = fields.title || task.title;
+    const deadline = fields.deadline_at || fields.due_at || task.deadline_at || task.due_at;
+    const message = `Deadline updated for "${title}": due ${formatDateTime(deadline)}`;
+    if (assigned.length) {
+        await db.from('wf_notifications').insert(assigned.map(row => ({
+            type: 'task',
+            faculty_id: row.faculty_id,
+            task_id: task.id,
+            message,
+            is_read: false
+        })));
+    } else {
+        await createNotification({
+            type: 'task',
+            message,
+            is_read: false
+        }, { task_id: task.id });
+    }
+    await db.from('wf_activity_log').insert({
+        action: 'Recurring deadline updated',
+        actor_name: ADMIN_NAME,
+        target: title,
+        log_type: 'recurring',
+        report_config_id: task.report_config_id,
+        task_id: task.id
+    });
+}
+
+async function updateRecurringTaskRow(task, fields, { notify = false } = {}) {
+    if (!task?.id || !recurringTaskNeedsUpdate(task, fields)) return false;
+
+    const deadlineChanged = !sameDeadline(task.due_at, fields.due_at) || !sameDeadline(task.deadline_at, fields.deadline_at);
+    const requirementChanged = String(task.instructions ?? '') !== String(fields.instructions ?? '')
+        || String(task.submission_instructions ?? '') !== String(fields.submission_instructions ?? '');
+
+    let { error } = await db.from('wf_tasks').update(fields).eq('id', task.id);
+    if (error && /column|schema|cache/i.test(error.message || '')) {
+        const fallback = { ...fields };
+        delete fallback.deadline_at;
+        delete fallback.submission_instructions;
+        delete fallback.submission_url;
+        delete fallback.submission_method;
+        delete fallback.reporting_period_start;
+        delete fallback.reporting_period_end;
+        delete fallback.reporting_period_label;
+        delete fallback.generated_for_period;
+        delete fallback.assigned_scope;
+        const retry = await db.from('wf_tasks').update(fallback).eq('id', task.id);
+        error = retry.error;
+    }
+    if (error) throw error;
+
+    Object.assign(task, fields);
+    if (notify && (deadlineChanged || requirementChanged)) {
+        await notifyRecurringDeadlineChange(task, fields);
+    }
+    return true;
+}
+
+async function applyConfigToExistingRecurringTask(task, config, period, { notify = false } = {}) {
+    return updateRecurringTaskRow(task, buildRecurringTaskFields(config, period), { notify });
+}
+
+async function syncOlderOpenRecurringTasksFromConfig(config) {
+    const period = getPeriodForNextTask(config);
+    const tasks = (workflowState.tasks || []).filter(task => String(task.report_config_id) === String(config.id));
+    for (const task of tasks) {
+        if (String(task.generated_for_period || '') === String(period.generatedForPeriod)) continue;
+        if (isRecurringTaskClosed(task)) continue;
+        const deadlineAt = rebuildDeadlineFromConfig(task, config);
+        try {
+            await updateRecurringTaskRow(task, {
+                due_at: deadlineAt,
+                deadline_at: deadlineAt,
+                instructions: recurringRequirementText(config) || task.instructions || '',
+                submission_instructions: config.submission_instructions,
+                submission_method: config.submission_method,
+                submission_url: config.submission_url
+            }, { notify: true });
+        } catch (error) {
+            console.error('Unable to update open recurring task', task?.id, error);
+        }
+    }
+}
+
 function getRecipientFaculty(config) {
     const faculty = (workflowState.faculty || []).filter(f =>
         String(f.status || 'Active').toLowerCase() === 'active'
@@ -3127,6 +3489,7 @@ function resetReportConfigForm() {
     document.getElementById('reportConfigModalTitle').textContent = 'Add Mandatory Report';
     document.getElementById('reportConfigId').value = '';
     document.getElementById('reportName').value = '';
+    setSelectValue('reportCategory', 'custom', 'custom');
     document.getElementById('reportDescription').value = '';
     document.getElementById('reportFrequency').value = 'monthly';
     document.getElementById('reportDueDay').value = '5';
@@ -3144,6 +3507,7 @@ function resetReportConfigForm() {
     populateReportFacultySelect([]);
     toggleReportRecipientFields();
     toggleReportSubmissionFields();
+    updateReportDeadlinePreview();
 }
 
 function openReportConfigModal(configId = null) {
@@ -3157,6 +3521,11 @@ function openReportConfigModal(configId = null) {
         document.getElementById('reportConfigModalTitle').textContent = 'Edit Mandatory Report';
         document.getElementById('reportConfigId').value = config.id;
         document.getElementById('reportName').value = config.report_name || '';
+        setSelectValue(
+            'reportCategory',
+            window.CiteFlowWorkflow?.resolveDocumentCategory(config) || 'custom',
+            'custom'
+        );
         document.getElementById('reportDescription').value = config.description || '';
         document.getElementById('reportFrequency').value = config.frequency || 'monthly';
         document.getElementById('reportDueDay').value = config.due_day || 5;
@@ -3174,8 +3543,10 @@ function openReportConfigModal(configId = null) {
         populateReportFacultySelect(config.selected_faculty_ids || []);
         toggleReportRecipientFields();
         toggleReportSubmissionFields();
+        updateReportDeadlinePreview();
     }
 
+    updateReportDeadlinePreview();
     document.getElementById('reportConfigModal').classList.add('open');
 }
 
@@ -3190,7 +3561,9 @@ async function saveReportConfig() {
         if (saveBtn) { saveBtn.disabled = true; saveBtn.classList.add('opacity-70', 'cursor-wait'); }
         if (saveText) saveText.textContent = 'Saving...';
 
-        const name = document.getElementById('reportName').value.trim();
+        const category = document.getElementById('reportCategory')?.value || 'custom';
+        let name = document.getElementById('reportName').value.trim();
+        if (category && category !== 'custom') name = category;
         const frequency = document.getElementById('reportFrequency').value;
         const dueDay = Number(document.getElementById('reportDueDay').value);
         const dueTime = document.getElementById('reportDueTime').value || '12:00';
@@ -3257,7 +3630,9 @@ async function saveReportConfig() {
         }
 
         const config = result.data;
-        showToast(activeReportConfigId ? 'Report configuration updated.' : 'Report configuration created.');
+        showToast(activeReportConfigId
+            ? 'Report saved. Faculty now see this requirement and due date.'
+            : 'Report created. Faculty will see the requirement and due date.');
         closeReportConfigModal();
 
         // Keep the recipient-target table synchronized for future flexibility.
@@ -3279,6 +3654,11 @@ async function saveReportConfig() {
         if (targetRows.length) await db.from('wf_report_targets').insert(targetRows);
 
         await fetchAllData();
+        try {
+            await syncOlderOpenRecurringTasksFromConfig(config);
+        } catch (syncError) {
+            console.error('Unable to sync open recurring tasks:', syncError);
+        }
     } catch (err) {
         console.error(err);
         // Use showToast if available, otherwise alert as a fallback
@@ -3299,7 +3679,7 @@ function renderReportConfigs() {
         container.innerHTML = `
             <div class="report-empty" style="grid-column:1/-1;">
                 <div class="text-gray-500 font-medium mb-1">No mandatory reports configured</div>
-                <div class="text-xs">Click <strong>Add Report</strong> to create DTR, LDP, Syllabus, Chairperson reports, or any recurring submission.</div>
+                <div class="text-xs">Click <strong>Add Report</strong> to create DTR, LDP, Syllabus, Table of Specifications (TOS), Chairperson reports, or any recurring submission.</div>
             </div>`;
         return;
     }
@@ -3312,7 +3692,7 @@ function renderReportConfigs() {
             <div class="report-config-card">
                 <div class="flex items-start justify-between gap-3">
                     <div>
-                        <div class="font-semibold text-gray-900">${escapeHtml(config.report_name)}</div>
+                        <div class="font-semibold text-gray-900">${escapeHtml(formatTaskCategoryLabel(config) || config.report_name)}</div>
                         <div class="text-xs text-gray-500 mt-1">${escapeHtml(config.description || 'No description provided.')}</div>
                     </div>
                     <span class="config-chip ${active ? 'active' : 'inactive'}">${active ? 'Active' : 'Inactive'}</span>
@@ -3362,8 +3742,12 @@ async function toggleReportConfig(id, active) {
     await fetchAllData();
 }
 
-async function generateNextTaskForConfig(configId, manual = false) {
-    const config = (workflowState.reportConfigs || []).find(c => String(c.id) === String(configId));
+async function generateNextTaskForConfig(configOrId, manual = false) {
+    const configId = typeof configOrId === 'object' && configOrId
+        ? configOrId.id
+        : configOrId;
+    const config = (workflowState.reportConfigs || []).find(c => String(c.id) === String(configId))
+        || (typeof configOrId === 'object' && configOrId?.id ? configOrId : null);
     if (!config || config.is_active === false) {
         if (manual) showToast('This report configuration is inactive.', 'warn');
         return null;
@@ -3376,7 +3760,19 @@ async function generateNextTaskForConfig(configId, manual = false) {
     );
 
     if (existing) {
-        if (manual) showToast(`The next ${period.label} task already exists.`, 'warn');
+        try {
+            const changed = await applyConfigToExistingRecurringTask(existing, config, period, { notify: true });
+            if (manual) {
+                showToast(
+                    changed
+                        ? `${existing.title} updated. Faculty now see the current requirement and due date.`
+                        : `The next ${period.label} task already exists.`
+                );
+            }
+        } catch (error) {
+            console.error('Recurring task update failed:', error);
+            if (manual) showToast(error.message || 'Unable to update the current recurring task.', 'error');
+        }
         return existing;
     }
 
@@ -3386,28 +3782,28 @@ async function generateNextTaskForConfig(configId, manual = false) {
         return null;
     }
 
-    const title = `${config.report_name} — ${period.label}`;
-    const assignedLabel = reportRecipientLabel(config);
+    const fields = buildRecurringTaskFields(config, period);
 
-    const { data: task, error: taskError } = await db.from('wf_tasks').insert({
-        title,
-        instructions: config.description || '',
+    let { data: task, error: taskError } = await db.from('wf_tasks').insert({
+        ...fields,
         attachment_names: [],
-        due_at: period.deadlineAt,
-        deadline_at: period.deadlineAt,
         created_by_name: ADMIN_NAME,
-        assigned_label: assignedLabel,
-        assigned_scope: config.recipient_type,
-        report_config_id: config.id,
-        reporting_period_start: period.periodStart,
-        reporting_period_end: period.periodEnd,
-        reporting_period_label: period.label,
-        is_recurring: true,
-        generated_for_period: period.generatedForPeriod,
-        submission_method: config.submission_method,
-        submission_url: config.submission_url,
-        submission_instructions: config.submission_instructions
+        report_config_id: config.id
     }).select().single();
+
+    if (taskError && /column|schema|cache/i.test(taskError.message || '')) {
+        const fallback = {
+            title: fields.title,
+            instructions: fields.instructions,
+            attachment_names: [],
+            due_at: fields.due_at,
+            created_by_name: ADMIN_NAME,
+            assigned_label: fields.assigned_label
+        };
+        const retry = await db.from('wf_tasks').insert(fallback).select().single();
+        task = retry.data;
+        taskError = retry.error;
+    }
 
     if (taskError) {
         console.error('Recurring task creation failed:', taskError);
@@ -3433,7 +3829,7 @@ async function generateNextTaskForConfig(configId, manual = false) {
     await db.from('wf_activity_log').insert({
         action: 'Recurring report task generated',
         actor_name: ADMIN_NAME,
-        target: title,
+        target: fields.title,
         log_type: 'recurring',
         report_config_id: config.id,
         task_id: task.id
@@ -3441,11 +3837,11 @@ async function generateNextTaskForConfig(configId, manual = false) {
 
     await createNotification({
         type: 'task',
-        message: `New recurring report "${title}" assigned to ${assigned.length} faculty`,
+        message: `New recurring report "${fields.title}" assigned to ${assigned.length} faculty`,
         is_read: false
     }, { task_id: task.id });
 
-    if (manual) showToast(`${title} generated for ${assigned.length} faculty.`);
+    if (manual) showToast(`${fields.title} generated for ${assigned.length} faculty.`);
     return task;
 }
 
@@ -3455,11 +3851,19 @@ async function generateNextReportingTasks() {
     try {
         for (const config of (workflowState.reportConfigs || [])) {
             if (config.is_active !== false) {
-                await generateNextTaskForConfig(config, false);
+                try {
+                    await generateNextTaskForConfig(config, false);
+                } catch (error) {
+                    console.error('Recurring generation failed for', config?.report_name, error);
+                }
             }
         }
     } finally {
         reportGenerationRunning = false;
+    }
+
+    if (window.CiteFlowWorkflow?.processDeadlineReminders) {
+        await CiteFlowWorkflow.processDeadlineReminders(db);
     }
 }
 
@@ -3873,8 +4277,9 @@ async function openReviewModal(taskId, facultyRef) {
     const stage = raw?.approval_stage || sub.approval_stage || 'chairperson';
 
     document.getElementById('modalTaskTitle').textContent = task?.title || 'Submission Review';
+    const categoryLabel = formatTaskCategoryLabel(task);
     document.getElementById('modalSubmitter').textContent =
-        `${sub.faculty_name} | ${sub.department_code} | Submitted ${formatDateTime(sub.submitted_at)}`;
+        `${sub.faculty_name} | ${sub.department_code}${categoryLabel ? ' | ' + categoryLabel : ''} | Submitted ${formatDateTime(sub.submitted_at)}`;
 
     if (task) {
         document.getElementById('deadlineBlock').classList.remove('hidden');
@@ -3890,10 +4295,12 @@ async function openReviewModal(taskId, facultyRef) {
                 <span class="text-xs font-semibold text-indigo-700">Approval Stage</span>
                 <span class="approval-stage-pill">${escapeHtml(approvalStageLabel(stage))}</span>
             </div>
+            ${formatTaskCategoryLabel(task) ? `<div class="text-xs text-indigo-700 mt-2">Document category: <strong>${escapeHtml(formatTaskCategoryLabel(task))}</strong></div>` : ''}
             ${raw?.review_remarks ? `<div class="text-xs text-indigo-700 mt-2">${escapeHtml(raw.review_remarks)}</div>` : ''}
         </div>`;
 
     document.getElementById('modalFiles').innerHTML = renderFileList(sub.files, 'No submitted files saved.');
+    renderFacultyFileUpdateNotice(raw || sub);
     document.getElementById('adminComment').value = '';
 
     const approveBtn = document.querySelector('#reviewModal button[onclick="approveSubmission()"]');
@@ -3916,8 +4323,45 @@ async function openReviewModal(taskId, facultyRef) {
     document.getElementById('reviewModal').classList.add('open');
 }
 
+function isExpiredJwtResult(result) {
+    if (!result) return false;
+    const err = result.error;
+    const code = String(err?.code || '');
+    const message = String(err?.message || '').toLowerCase();
+    return result.status === 401 || code === 'PGRST303' || message.includes('jwt expired');
+}
+
+async function ensureFreshAuthSession() {
+    if (!db?.auth) return false;
+    const { data: { session } } = await db.auth.getSession();
+    if (!session?.user) return false;
+    const expiresAt = Number(session.expires_at || 0);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (expiresAt && expiresAt <= nowSec + 15) {
+        const { data, error } = await db.auth.refreshSession();
+        return Boolean(data?.session && !error);
+    }
+    return true;
+}
+
+async function redirectToLoginAfterExpiry() {
+    showToast('Your session expired. Please sign in again.', 'error');
+    try {
+        await db?.auth?.signOut({ scope: 'local' });
+    } catch (e) { /* ignore */ }
+    window.location.href = '../login.html';
+}
+
 /* ---------- Updated fetch ---------- */
-async function fetchAllData() {
+async function fetchAllData(isRetry) {
+    if (!isRetry) {
+        const sessionOk = await ensureFreshAuthSession();
+        if (!sessionOk) {
+            await redirectToLoginAfterExpiry();
+            return;
+        }
+    }
+
     const [
         faculty, tasks, assignments, submissions, files,
         notifications, activity, comments, delegates,
@@ -3940,6 +4384,14 @@ async function fetchAllData() {
     const required = { faculty, tasks, assignments, submissions, files, activity, comments, delegates, reportConfigs, reportTargets, approvalHistory };
     const hardError = Object.entries(required).find(([, r]) => r.error);
     if (hardError) {
+        if (!isRetry && isExpiredJwtResult(hardError[1])) {
+            const { data, error } = await db.auth.refreshSession();
+            if (data?.session && !error) {
+                return fetchAllData(true);
+            }
+            await redirectToLoginAfterExpiry();
+            return;
+        }
         console.error('Workflow load error:', hardError[0], hardError[1]);
         showToast(`Unable to load ${hardError[0]}. Check the Supabase schema/RLS.`, 'error');
         return;
@@ -3972,6 +4424,7 @@ async function fetchAllData() {
     }
 
     renderAll();
+    refreshOpenReviewModalFiles();
 }
 
 /* ---------- Realtime includes new workflow tables ---------- */
@@ -4037,6 +4490,7 @@ function filterSubmissions() {
     const search = (searchEl.value || '').toLowerCase();
     const status = statusEl.value;
     const dept = deptEl.value;
+    const category = document.getElementById('categoryFilter')?.value || '';
 
     const taskRows = (workflowState.tasks || []).map(task => {
         const assigns = (workflowState.assignments || []).filter(a => String(a.task_id) === String(task.id));
@@ -4054,16 +4508,19 @@ function filterSubmissions() {
         const task = r.task;
         const matchSearch = !search ||
             normalizeText(task.title).includes(search) ||
+            normalizeText(formatTaskCategoryLabel(task)).includes(search) ||
             r.assignees.some(a => normalizeText(a.full_name).includes(search));
 
         const matchDept = !dept ||
             r.assignees.some(a => normalizeText(a.department_code) === normalizeText(dept));
 
+        const matchCategory = !category || resolveTaskCategory(task) === category;
+
         const statusKey = r.submittedCount === 0
             ? 'notsubmitted'
             : (r.submittedCount >= r.totalAssigned && r.totalAssigned > 0 ? 'approved' : 'underreview');
 
-        return matchSearch && matchDept && (!status || statusKey === status);
+        return matchSearch && matchDept && matchCategory && (!status || statusKey === status);
     });
 
     const tableSurface = document.getElementById('taskTableSurface');
@@ -4081,7 +4538,7 @@ function filterSubmissions() {
 
     const tbody = document.getElementById('submissionsTableBody');
     if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-gray-400 py-12 text-sm">No tasks found.</td></tr>`;
+        tbody.innerHTML = emptyTasksRow('No tasks found', 'Try a different search or filter.');
         return;
     }
 
@@ -4094,9 +4551,9 @@ function filterSubmissions() {
             : '';
 
         return `
-            <tr class="task-row-clickable" onclick="openTaskDetailsPage('${task.id}')">
+            <tr class="task-row-clickable ${taskRowTone(r.summary.className)}" onclick="openTaskDetailsPage('${task.id}')">
                 <td>
-                    <div class="task-row-title font-medium text-[#621708] text-sm leading-snug">${escapeHtml(task.title)} ${recurring}</div>
+                    <div class="task-row-title font-medium text-[#621708] text-sm leading-snug">${escapeHtml(task.title)} ${recurring} ${renderCategoryChip(task)}</div>
                     <div class="text-xs text-gray-400 mt-1">
                         ${escapeHtml(task.reporting_period_label || 'Manual task')} · Click for details
                     </div>
@@ -4230,8 +4687,9 @@ openReviewModal = async function unifiedOpenReviewModal(taskId, facultyRef) {
     const targetFaculty = getFacultyById(sub.faculty_id);
 
     document.getElementById('modalTaskTitle').textContent = task?.title || 'Submission Review';
+    const categoryLabel = formatTaskCategoryLabel(task);
     document.getElementById('modalSubmitter').textContent =
-        `${sub.faculty_name} | ${sub.department_code} | Submitted ${formatDateTime(sub.submitted_at)}`;
+        `${sub.faculty_name} | ${sub.department_code}${categoryLabel ? ' | ' + categoryLabel : ''} | Submitted ${formatDateTime(sub.submitted_at)}`;
 
     if (task) {
         document.getElementById('deadlineBlock').classList.remove('hidden');
@@ -4248,10 +4706,12 @@ openReviewModal = async function unifiedOpenReviewModal(taskId, facultyRef) {
                 <span class="text-xs font-semibold text-indigo-700">Workflow Status</span>
                 <span class="approval-stage-pill">${escapeHtml(statusLabel)}</span>
             </div>
+            ${categoryLabel ? `<div class="text-xs text-indigo-700 mt-2">Document category: <strong>${escapeHtml(categoryLabel)}</strong></div>` : ''}
             ${raw?.review_remarks ? `<div class="text-xs text-indigo-700 mt-2">${escapeHtml(raw.review_remarks)}</div>` : ''}
         </div>`;
 
     document.getElementById('modalFiles').innerHTML = renderFileList(sub.files, 'No submitted files saved.');
+    renderFacultyFileUpdateNotice(raw || sub);
     document.getElementById('adminComment').value = '';
 
     const approveBtn = document.querySelector('#reviewModal button[onclick="approveSubmission()"]');
@@ -4299,6 +4759,11 @@ initRealtime = function unifiedInitRealtime() {
 
 const _wfOriginalInit = init;
 init = async function unifiedInit() {
+    const sessionOk = await ensureFreshAuthSession();
+    if (!sessionOk) {
+        await redirectToLoginAfterExpiry();
+        return;
+    }
     await loadWorkflowActor();
     return _wfOriginalInit();
 };

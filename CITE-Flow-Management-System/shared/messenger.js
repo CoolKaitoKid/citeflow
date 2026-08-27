@@ -35,6 +35,8 @@ window.CiteFlowMessenger = (function () {
         onlineUserIds: new Set(),
         inboxPollingTimer: null,
         reconnectTimer: null,
+        presenceUiTimer: null,
+        inboxReloadTimer: null,
         isReconnecting: false,
         mounted: false,
         initialized: false,
@@ -49,6 +51,7 @@ window.CiteFlowMessenger = (function () {
         isTypingLocally: false,
         localTypingTimer: null,
         remoteTypingTimers: new Map(),
+        remoteTypers: new Map(),
         // User-scoped sets
         pinnedConvoIds: new Set(),
         archivedConvoIds: new Set(),
@@ -57,8 +60,29 @@ window.CiteFlowMessenger = (function () {
         deletedConvoIds: new Set(),
         _lastRenderedMsgSig: null,
         _lastExpRenderedMsgSig: null,
-        _participantsChanged: false
+        _participantsChanged: false,
+        _msgFetchSeq: 0,
+        _inboxChannelToken: 0,
+        _messageChannelToken: 0,
+        _presenceChannelToken: 0,
+        _subscribedConversationId: null,
+        _seenRealtimeMsgIds: new Set(),
+        reactionsByMessage: new Map(),
+        reactionsSupported: null,
+        deliveredColumnAvailable: null,
+        _schemaProbed: false,
+        _markReadTimer: null,
+        selectedMessageId: null
     };
+
+    const REACTION_OPTIONS = [
+        { emoji: "👍", label: "Like" },
+        { emoji: "❤️", label: "Love" },
+        { emoji: "😂", label: "Haha" },
+        { emoji: "😮", label: "Wow" },
+        { emoji: "😢", label: "Sad" },
+        { emoji: "😡", label: "Angry" }
+    ];
 
     /** Load per-user state from localStorage after user ID is known */
     function loadUserScopedState() {
@@ -124,6 +148,423 @@ window.CiteFlowMessenger = (function () {
             const saved = JSON.parse(localStorage.getItem(key) || '{}');
             return saved[convoId] || null;
         } catch (_) { return null; }
+    }
+
+    function channelHealthy(channel) {
+        if (!channel) return false;
+        const status = channel.state;
+        return status === "joined" || status === "joining";
+    }
+
+    function rememberRealtimeMessageId(id) {
+        if (!id || String(id).startsWith("optimistic_")) return false;
+        const key = String(id);
+        if (State._seenRealtimeMsgIds.has(key)) return true;
+        State._seenRealtimeMsgIds.add(key);
+        if (State._seenRealtimeMsgIds.size > 400) {
+            State._seenRealtimeMsgIds = new Set(Array.from(State._seenRealtimeMsgIds).slice(-200));
+        }
+        return false;
+    }
+
+    function participantColumns() {
+        return State.deliveredColumnAvailable
+            ? "user_id, last_read_at, last_delivered_at"
+            : "user_id, last_read_at";
+    }
+
+    function isMissingColumnError(error, columnName) {
+        const text = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+        return text.includes("42703") || text.includes(String(columnName || "").toLowerCase()) || text.includes("schema cache") || text.includes("does not exist");
+    }
+
+    function isMissingTableError(error) {
+        const text = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+        return error?.code === "PGRST205" || text.includes("schema cache") || text.includes("does not exist") || text.includes("could not find the table");
+    }
+
+    async function detectOptionalMessengerSchema() {
+        const sb = getClient();
+        if (!sb || State._schemaProbed) return;
+        State._schemaProbed = true;
+
+        try {
+            const { error: reactionErr } = await sb.from("message_reactions").select("id").limit(1);
+            State.reactionsSupported = !reactionErr;
+            if (reactionErr) {
+                console.warn("CiteFlowMessenger: message_reactions is not available yet. Run shared/messenger-enhancements.sql to enable reactions.");
+            }
+        } catch (_) {
+            State.reactionsSupported = false;
+        }
+
+        try {
+            const { error: deliveredErr } = await sb.from("conversation_participants").select("last_delivered_at").limit(1);
+            State.deliveredColumnAvailable = !deliveredErr;
+            if (deliveredErr && isMissingColumnError(deliveredErr, "last_delivered_at")) {
+                State.deliveredColumnAvailable = false;
+            }
+        } catch (_) {
+            State.deliveredColumnAvailable = false;
+        }
+    }
+
+    function safeOthersOf(conv) {
+        return ((conv && conv.others) || []).filter(o =>
+            String(o.auth_user_id) !== String(State.currentUserId) &&
+            String(o.id) !== String(State.currentUserId)
+        );
+    }
+
+    function isUserOnline(user) {
+        if (!user) return false;
+        if (user.auth_user_id && State.onlineUserIds.has(String(user.auth_user_id))) return true;
+        if (user.id && State.onlineUserIds.has(String(user.id))) return true;
+        if (user.userId && State.onlineUserIds.has(String(user.userId))) return true;
+        return false;
+    }
+
+    function isConversationPeerOnline(conv) {
+        return safeOthersOf(conv).some(isUserOnline);
+    }
+
+    function conversationPresenceLabel(conv) {
+        if (!conv) return "";
+        const others = safeOthersOf(conv);
+        if (conv.is_group) {
+            const onlineCount = others.filter(isUserOnline).length;
+            const memberLabel = `${others.length + 1} members`;
+            return onlineCount > 0 ? `${memberLabel} · ${onlineCount} online` : memberLabel;
+        }
+        if (others[0] && isUserOnline(others[0])) return "Active now";
+        return others[0]?.department || others[0]?.role || "Offline";
+    }
+
+    function wrapAvatarWithPresence(avatarHtml, online) {
+        return `<div class="msgr-avatar-wrap">${avatarHtml}${online ? '<span class="msgr-online-dot" title="Active now"></span>' : ""}</div>`;
+    }
+
+    function setHeaderAvatar(elId, url, name, isGroup, online) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const avatar = renderAvatar(url, name, isGroup).replace('class="msgr-avatar', `id="${elId}" class="msgr-avatar`);
+        const wrapped = wrapAvatarWithPresence(avatar, !isGroup && !!online);
+        const parent = el.parentElement;
+        if (parent && parent.classList.contains("msgr-avatar-wrap")) {
+            parent.outerHTML = wrapped;
+        } else {
+            el.outerHTML = wrapped;
+        }
+    }
+
+    function refreshActiveChatPresence() {
+        const conv = State.activeConversationMeta;
+        if (!conv) return;
+        const label = conversationPresenceLabel(conv);
+        const subEl = document.getElementById("msgrChatSub");
+        const expSubEl = document.getElementById("msgrExpChatSub");
+        if (subEl) subEl.textContent = label;
+        if (expSubEl) expSubEl.textContent = label;
+
+        const others = safeOthersOf(conv);
+        const online = !conv.is_group && isUserOnline(others[0]);
+        const displayName = document.getElementById("msgrChatName")?.textContent || conv.displayName;
+        setHeaderAvatar("msgrChatAvatar", conv.is_group ? null : others[0]?.avatar_url, displayName, conv.is_group, online);
+        setHeaderAvatar("msgrExpChatAvatar", conv.is_group ? null : others[0]?.avatar_url, displayName, conv.is_group, online);
+    }
+
+    function schedulePresenceUiRefresh() {
+        clearTimeout(State.presenceUiTimer);
+        State.presenceUiTimer = setTimeout(() => {
+            refreshActiveChatPresence();
+            renderConversationList(getConvoSearchFilter());
+            renderExpandedConvoList();
+            if (State.activeConversationId && Array.isArray(State._currentActiveMessages)) {
+                renderActiveMessagesUI(State._currentActiveMessages);
+            }
+        }, 120);
+    }
+
+    function scheduleInboxReload() {
+        clearTimeout(State.inboxReloadTimer);
+        State.inboxReloadTimer = setTimeout(() => {
+            loadConversations(false);
+        }, 280);
+    }
+
+    function reactionSignature() {
+        const parts = [];
+        State.reactionsByMessage.forEach((rows, messageId) => {
+            parts.push(`${messageId}:${(rows || []).map(r => `${r.user_id}${r.emoji}`).join(",")}`);
+        });
+        return parts.sort().join("|");
+    }
+
+    function indexReactions(rows) {
+        const next = new Map();
+        (rows || []).forEach((row) => {
+            if (!row?.message_id) return;
+            const key = String(row.message_id);
+            if (!next.has(key)) next.set(key, []);
+            next.get(key).push(row);
+        });
+        State.reactionsByMessage = next;
+    }
+
+    function applyReactionEvent(row, eventType) {
+        if (!row?.message_id) return;
+        const key = String(row.message_id);
+        const current = (State.reactionsByMessage.get(key) || []).slice();
+        const withoutUser = current.filter(r => String(r.user_id) !== String(row.user_id));
+        if (eventType === "DELETE") {
+            State.reactionsByMessage.set(key, withoutUser);
+        } else {
+            withoutUser.push(row);
+            State.reactionsByMessage.set(key, withoutUser);
+        }
+        if (State.activeConversationId && Array.isArray(State._currentActiveMessages)) {
+            renderActiveMessagesUI(State._currentActiveMessages);
+        }
+    }
+
+    function closeReactionPickers() {
+        document.querySelectorAll(".msgr-msg-actions.open").forEach(el => el.classList.remove("open"));
+    }
+
+    function selectMessageRow(messageId) {
+        State.selectedMessageId = messageId ? String(messageId) : null;
+        document.querySelectorAll(".msgr-bubble-row.selected").forEach(el => {
+            if (!State.selectedMessageId || el.dataset.msgId !== State.selectedMessageId) {
+                el.classList.remove("selected");
+            }
+        });
+        if (!State.selectedMessageId) {
+            closeReactionPickers();
+            return;
+        }
+        const safeId = String(State.selectedMessageId).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        document.querySelectorAll(`.msgr-bubble-row[data-msg-id="${safeId}"]`).forEach(el => {
+            el.classList.add("selected");
+        });
+    }
+
+    function renderAttachedReactions(messageId) {
+        if (State.reactionsSupported === false) return "";
+        if (!messageId || String(messageId).startsWith("optimistic_")) return "";
+        const rows = State.reactionsByMessage.get(String(messageId)) || [];
+        if (!rows.length) return "";
+        const grouped = new Map();
+        rows.forEach((row) => {
+            if (!grouped.has(row.emoji)) grouped.set(row.emoji, []);
+            grouped.get(row.emoji).push(row);
+        });
+        const chips = Array.from(grouped.entries()).map(([emoji, people]) => {
+            const mine = people.some(p => String(p.user_id) === String(State.currentUserId));
+            const count = people.length > 1 ? `<span>${people.length}</span>` : "";
+            return `<button type="button" class="msgr-reaction-chip${mine ? " mine" : ""}" data-msgr-emoji="${emoji}" data-msg-id="${escapeHtml(String(messageId))}" title="${people.length} ${people.length === 1 ? "reaction" : "reactions"}">${emoji}${count}</button>`;
+        }).join("");
+        return `<div class="msgr-reaction-attached">${chips}</div>`;
+    }
+
+    function renderMessageActions(messageId) {
+        if (State.reactionsSupported === false) return "";
+        if (!messageId || String(messageId).startsWith("optimistic_")) return "";
+        const mineEmoji = (State.reactionsByMessage.get(String(messageId)) || [])
+            .find(r => String(r.user_id) === String(State.currentUserId))?.emoji;
+        const picker = REACTION_OPTIONS.map(opt =>
+            `<button type="button" class="msgr-reaction-pick${mineEmoji === opt.emoji ? " active" : ""}" data-msgr-emoji="${opt.emoji}" data-msg-id="${escapeHtml(String(messageId))}" title="${opt.label}">${opt.emoji}</button>`
+        ).join("");
+        return `
+            <div class="msgr-msg-actions">
+                <button type="button" class="msgr-reaction-launch" data-msgr-react-launch="1" title="Add a reaction">
+                    <i class="fa-regular fa-face-smile"></i>
+                </button>
+                <div class="msgr-reaction-picker">${picker}</div>
+            </div>`;
+    }
+
+    async function toggleReaction(messageId, emoji) {
+        const sb = getClient();
+        if (!sb || !State.currentUserId || !State.activeConversationId || State.reactionsSupported === false) return;
+        if (!messageId || String(messageId).startsWith("optimistic_") || !emoji) return;
+
+        const key = String(messageId);
+        const existing = (State.reactionsByMessage.get(key) || []).find(r => String(r.user_id) === String(State.currentUserId));
+        const optimisticRow = {
+            id: existing?.id || `optimistic_rx_${Date.now()}`,
+            message_id: messageId,
+            conversation_id: State.activeConversationId,
+            user_id: State.currentUserId,
+            emoji
+        };
+
+        if (existing && existing.emoji === emoji) {
+            applyReactionEvent(existing, "DELETE");
+            const { error } = await sb.from("message_reactions").delete()
+                .eq("message_id", messageId)
+                .eq("user_id", State.currentUserId);
+            if (error) {
+                applyReactionEvent(existing, "INSERT");
+                if (isMissingTableError(error)) State.reactionsSupported = false;
+            }
+            return;
+        }
+
+        applyReactionEvent(optimisticRow, "INSERT");
+        if (existing) {
+            const { error } = await sb.from("message_reactions")
+                .update({ emoji })
+                .eq("message_id", messageId)
+                .eq("user_id", State.currentUserId);
+            if (error) {
+                applyReactionEvent(existing, "INSERT");
+                if (isMissingTableError(error)) State.reactionsSupported = false;
+            }
+            return;
+        }
+
+        const { error } = await sb.from("message_reactions").insert({
+            message_id: messageId,
+            conversation_id: State.activeConversationId,
+            user_id: State.currentUserId,
+            emoji
+        });
+        if (error) {
+            applyReactionEvent(optimisticRow, "DELETE");
+            if (isMissingTableError(error)) State.reactionsSupported = false;
+        }
+    }
+
+    function restoreTypingIndicators() {
+        if (!State.remoteTypers.size) return;
+        State.remoteTypers.forEach((typer, userId) => {
+            if (!document.getElementById(`typing-${userId}`)) {
+                appendTypingIndicator(userId, typer.userName);
+            }
+        });
+    }
+
+    function appendTypingIndicator(userId, userName) {
+        const panelEl = document.getElementById("msgrMessages");
+        const expEl = document.getElementById("msgrExpMessages");
+        if (document.getElementById(`typing-${userId}`)) return;
+        const indicatorHtml = `
+            <div class="msgr-typing-indicator" id="typing-${userId}">
+                <div class="msgr-typing-bubble">
+                    <span class="msgr-dot"></span>
+                    <span class="msgr-dot"></span>
+                    <span class="msgr-dot"></span>
+                </div>
+                <span class="msgr-typing-text">${escapeHtml(userName || "Colleague")} is typing...</span>
+            </div>`;
+        if (panelEl) {
+            panelEl.insertAdjacentHTML("beforeend", indicatorHtml);
+            panelEl.scrollTop = panelEl.scrollHeight;
+        }
+        if (expEl) {
+            expEl.insertAdjacentHTML("beforeend", indicatorHtml);
+            expEl.scrollTop = expEl.scrollHeight;
+        }
+    }
+
+    function sameCalendarDay(a, b) {
+        const da = new Date(a);
+        const db = new Date(b);
+        return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+    }
+
+    function formatDayChip(iso) {
+        if (!iso) return "";
+        const d = new Date(iso);
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(today.getDate() - 1);
+        if (sameCalendarDay(d, today)) return "Today";
+        if (sameCalendarDay(d, yesterday)) return "Yesterday";
+        return d.toLocaleDateString([], {
+            weekday: "long",
+            month: "short",
+            day: "numeric",
+            year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined
+        });
+    }
+
+    function formatMessageTime(iso) {
+        if (!iso) return "";
+        const d = new Date(iso);
+        const startToday = new Date();
+        startToday.setHours(0, 0, 0, 0);
+        const startMsg = new Date(d);
+        startMsg.setHours(0, 0, 0, 0);
+        const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        const diffDays = Math.round((startToday - startMsg) / 86400000);
+        if (diffDays <= 0) return time;
+        if (diffDays < 7) return `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+        return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+    }
+
+    function formatFullTimestamp(iso) {
+        if (!iso) return "";
+        return new Date(iso).toLocaleString([], {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit"
+        });
+    }
+
+    function upsertActiveMessage(msg) {
+        if (!msg || String(msg.conversation_id) !== String(State.activeConversationId)) return false;
+        if (!Array.isArray(State._currentActiveMessages)) State._currentActiveMessages = [];
+        const id = String(msg.id);
+        const existingIdx = State._currentActiveMessages.findIndex(m => String(m.id) === id);
+        if (existingIdx !== -1) {
+            State._currentActiveMessages[existingIdx] = Object.assign({}, State._currentActiveMessages[existingIdx], msg, { is_optimistic: false });
+            return true;
+        }
+        const optIdx = State._currentActiveMessages.findIndex(m =>
+            m.is_optimistic &&
+            String(m.sender_id) === String(msg.sender_id) &&
+            m.content === msg.content
+        );
+        if (optIdx !== -1) {
+            State._currentActiveMessages[optIdx] = msg;
+            return true;
+        }
+        State._currentActiveMessages.push(msg);
+        State._currentActiveMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        return true;
+    }
+
+    function convoRowHtml(c) {
+        const others = safeOthersOf(c);
+        const online = !c.is_group && isUserOnline(others[0]);
+        const avatarHtml = wrapAvatarWithPresence(
+            renderAvatar(c.is_group ? null : others[0]?.avatar_url, c.displayName, c.is_group),
+            online
+        );
+        const preview = c.lastMessage
+            ? (String(c.lastMessage.sender_id) === String(State.currentUserId) ? "You: " : "") + escapeHtml(c.lastMessage.content)
+            : "No messages yet";
+        const time = c.lastMessage ? formatTime(c.lastMessage.created_at) : "";
+        const unreadClass = c.unread ? " unread" : "";
+        const activeClass = String(State.activeConversationId) === String(c.id) ? " active" : "";
+        return `
+            <div class="msgr-convo${unreadClass}${activeClass}" data-id="${c.id}">
+                ${avatarHtml}
+                <div class="msgr-convo-info">
+                    <div class="msgr-convo-name">${c.isPinned ? '<i class="fa-solid fa-thumbtack msgr-pin-icon" title="Pinned"></i> ' : ""}${escapeHtml(c.displayName)}</div>
+                    <div class="msgr-convo-preview">${preview} ${time ? '<span class="msgr-convo-time-inline"> · ' + time + "</span>" : ""}</div>
+                </div>
+                <div class="msgr-convo-meta">
+                    <button type="button" class="msgr-convo-options" data-convoid="${c.id}" title="More options">
+                        <i class="fa-solid fa-ellipsis"></i>
+                    </button>
+                    ${c.unread ? '<div class="msgr-unread-dot"></div>' : ""}
+                </div>
+            </div>`;
     }
 
     const DEFAULT_SUPABASE_URL = 'https://uforealazougjckepggc.supabase.co';
@@ -722,6 +1163,39 @@ window.CiteFlowMessenger = (function () {
         if (!State.globalEventsBound) {
             State.globalEventsBound = true;
             document.addEventListener("click", (e) => {
+                const reactionPick = e.target.closest("[data-msgr-emoji]");
+                if (reactionPick) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const row = reactionPick.closest(".msgr-bubble-row");
+                    if (row?.dataset.msgId) selectMessageRow(row.dataset.msgId);
+                    toggleReaction(reactionPick.dataset.msgId, reactionPick.dataset.msgrEmoji);
+                    closeReactionPickers();
+                    return;
+                }
+                const reactionLaunch = e.target.closest("[data-msgr-react-launch]");
+                if (reactionLaunch) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const actions = reactionLaunch.closest(".msgr-msg-actions");
+                    const row = reactionLaunch.closest(".msgr-bubble-row");
+                    if (row?.dataset.msgId) selectMessageRow(row.dataset.msgId);
+                    document.querySelectorAll(".msgr-msg-actions.open").forEach(el => {
+                        if (el !== actions) el.classList.remove("open");
+                    });
+                    actions?.classList.toggle("open");
+                    return;
+                }
+                const bubbleRow = e.target.closest(".msgr-bubble-row");
+                if (bubbleRow && bubbleRow.closest("#msgrMessages, #msgrExpMessages")) {
+                    closeConvoDropdown();
+                    selectMessageRow(bubbleRow.dataset.msgId);
+                    return;
+                }
+                if (!e.target.closest(".msgr-reaction-picker") && !e.target.closest(".msgr-msg-actions")) {
+                    closeReactionPickers();
+                    selectMessageRow(null);
+                }
                 const expandBtn = e.target.closest("#msgrExpandBtn") || e.target.closest(".msgr-header button[title='Expand']");
                 if (expandBtn) {
                     e.preventDefault();
@@ -886,14 +1360,15 @@ window.CiteFlowMessenger = (function () {
             await loadConversations(false);
             if (State.activeConversationId) {
                 await loadAndRenderActiveMessages(State.activeConversationId);
+                markConversationRead(State.activeConversationId);
             }
-            if (!State.inboxChannel || State.inboxChannel.state === 'closed' || State.inboxChannel.state === 'errored') {
+            if (!channelHealthy(State.inboxChannel)) {
                 subscribeToInbox();
             }
-            if (!State.presenceChannel || State.presenceChannel.state === 'closed' || State.presenceChannel.state === 'errored') {
+            if (!channelHealthy(State.presenceChannel)) {
                 subscribeToPresence();
             }
-            if (State.activeConversationId && (!State.messageChannel || State.messageChannel.state === 'closed' || State.messageChannel.state === 'errored')) {
+            if (State.activeConversationId && !channelHealthy(State.messageChannel)) {
                 subscribeToActiveConversation(State.activeConversationId);
             }
         };
@@ -965,18 +1440,12 @@ window.CiteFlowMessenger = (function () {
                 State.selectedNewUsers = [];
                 State._lastRenderedMsgSig = null;
                 State._lastExpRenderedMsgSig = null;
-                if (State.messageChannel) {
-                    try { sb.removeChannel(State.messageChannel); } catch (_) {}
-                    State.messageChannel = null;
-                }
-                if (State.inboxChannel) {
-                    try { sb.removeChannel(State.inboxChannel); } catch (_) {}
-                    State.inboxChannel = null;
-                }
-                if (State.presenceChannel) {
-                    try { sb.removeChannel(State.presenceChannel); } catch (_) {}
-                    State.presenceChannel = null;
-                }
+                teardownInboxChannel();
+                teardownPresenceChannel();
+                teardownMessageChannel();
+                State._seenRealtimeMsgIds = new Set();
+                State.reactionsByMessage = new Map();
+                State.remoteTypers = new Map();
             }
 
             State.currentUserId = newUid;
@@ -1011,17 +1480,41 @@ window.CiteFlowMessenger = (function () {
         return false;
     }
 
+    function teardownInboxChannel() {
+        State._inboxChannelToken += 1;
+        if (!State.inboxChannel) return;
+        const sb = getClient();
+        try { sb?.removeChannel(State.inboxChannel); } catch (_) {}
+        State.inboxChannel = null;
+    }
+
+    function teardownPresenceChannel() {
+        State._presenceChannelToken += 1;
+        if (!State.presenceChannel) return;
+        const sb = getClient();
+        try { sb?.removeChannel(State.presenceChannel); } catch (_) {}
+        State.presenceChannel = null;
+    }
+
+    function teardownMessageChannel() {
+        State._messageChannelToken += 1;
+        State._subscribedConversationId = null;
+        if (!State.messageChannel) return;
+        const sb = getClient();
+        try { sb?.removeChannel(State.messageChannel); } catch (_) {}
+        State.messageChannel = null;
+    }
+
     /**
      * Realtime Global Presence tracking (tracks who is online)
      */
     function subscribeToPresence() {
         const sb = getClient();
         if (!sb || !State.currentUserId) return;
+        if (channelHealthy(State.presenceChannel)) return;
 
-        if (State.presenceChannel) {
-            try { sb.removeChannel(State.presenceChannel); } catch (_) {}
-            State.presenceChannel = null;
-        }
+        teardownPresenceChannel();
+        const myToken = ++State._presenceChannelToken;
 
         const channel = sb.channel('msgr-presence-global', {
             config: { presence: { key: State.currentUserId } }
@@ -1036,29 +1529,23 @@ window.CiteFlowMessenger = (function () {
                         if (p.userId) State.onlineUserIds.add(String(p.userId));
                     });
                 }
-                // Refresh active messages UI to reflect Sent -> Delivered state in real time
-                if (State.activeConversationId && Array.isArray(State._currentActiveMessages)) {
-                    renderActiveMessagesUI(State._currentActiveMessages);
-                }
+                schedulePresenceUiRefresh();
             })
-            .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+            .on('presence', { event: 'join' }, ({ newPresences }) => {
                 (newPresences || []).forEach(p => {
                     if (p.userId) State.onlineUserIds.add(String(p.userId));
                 });
-                if (State.activeConversationId && Array.isArray(State._currentActiveMessages)) {
-                    renderActiveMessagesUI(State._currentActiveMessages);
-                }
+                schedulePresenceUiRefresh();
             })
-            .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+            .on('presence', { event: 'leave' }, ({ leftPresences }) => {
                 (leftPresences || []).forEach(p => {
                     if (p.userId) State.onlineUserIds.delete(String(p.userId));
                 });
-                if (State.activeConversationId && Array.isArray(State._currentActiveMessages)) {
-                    renderActiveMessagesUI(State._currentActiveMessages);
-                }
+                schedulePresenceUiRefresh();
             });
 
         channel.subscribe(async (status) => {
+            if (myToken !== State._presenceChannelToken) return;
             if (status === 'SUBSCRIBED') {
                 try {
                     await channel.track({
@@ -1067,6 +1554,12 @@ window.CiteFlowMessenger = (function () {
                         onlineAt: new Date().toISOString()
                     });
                 } catch (_) {}
+            }
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setTimeout(() => {
+                    if (myToken !== State._presenceChannelToken) return;
+                    subscribeToPresence();
+                }, 4000);
             }
         });
 
@@ -1084,6 +1577,7 @@ window.CiteFlowMessenger = (function () {
         const hasUser = await resolveCurrentUser();
         console.log("CiteFlowMessenger: init() hasUser:", hasUser, "userId:", State.currentUserId);
         if (hasUser) {
+            await detectOptionalMessengerSchema();
             await loadConversations(true);
             subscribeToInbox();
             subscribeToPresence();
@@ -1098,9 +1592,10 @@ window.CiteFlowMessenger = (function () {
 
         await resolveCurrentUser();
         console.log("CiteFlowMessenger: openPanel() userId:", State.currentUserId);
+        await detectOptionalMessengerSchema();
         await loadConversations(State.conversations.length === 0);
-        if (!State.inboxChannel) subscribeToInbox();
-        if (!State.presenceChannel) subscribeToPresence();
+        if (!channelHealthy(State.inboxChannel)) subscribeToInbox();
+        if (!channelHealthy(State.presenceChannel)) subscribeToPresence();
     }
 
     function closePanel() {
@@ -1119,14 +1614,11 @@ window.CiteFlowMessenger = (function () {
         State.activeConversationId = null;
         State.activeConversationMeta = null;
         State._currentActiveMessages = [];
+        State.selectedMessageId = null;
 
-        if (State.messageChannel) {
-            const sb = getClient();
-            try {
-                sb?.removeChannel(State.messageChannel);
-            } catch (_) {}
-            State.messageChannel = null;
-        }
+        teardownMessageChannel();
+        State.remoteTypers = new Map();
+        State.reactionsByMessage = new Map();
 
         renderConversationList(getConvoSearchFilter());
         renderExpandedConvoList();
@@ -1336,6 +1828,13 @@ window.CiteFlowMessenger = (function () {
             const dedupedKeys = new Set();
             let finalConvos = enriched.filter(c => {
                 if (!c || !c.id) return false;
+
+                // Hide empty conversations with 0 messages unless it is actively open in current UI session
+                const isCurrentlyActive = String(State.activeConversationId) === String(c.id);
+                if (!c.lastMessage && !isCurrentlyActive) {
+                    return false;
+                }
+
                 const safeOthers = (c.others || []).filter(o =>
                     String(o.auth_user_id) !== String(State.currentUserId) &&
                     String(o.id) !== String(State.currentUserId)
@@ -1346,9 +1845,14 @@ window.CiteFlowMessenger = (function () {
                     recipientKey = `group_${c.id}`;
                 } else if (safeOthers.length > 0) {
                     const o = safeOthers[0];
-                    recipientKey = `direct_${(o.auth_user_id || o.id || o.email || o.name || '').toLowerCase()}`;
+                    const uid = o.auth_user_id || o.id || o.email;
+                    if (uid && uid !== 'unknown') {
+                        recipientKey = `direct_${String(uid).toLowerCase()}`;
+                    } else {
+                        recipientKey = `convo_${c.id}`;
+                    }
                 } else {
-                    recipientKey = `direct_${(c.displayName || '').toLowerCase().replace(/\s+/g, '')}`;
+                    recipientKey = `convo_${c.id}`;
                 }
 
                 if (dedupedKeys.has(recipientKey)) return false;
@@ -1422,33 +1926,7 @@ window.CiteFlowMessenger = (function () {
             return;
         }
 
-        listEl.innerHTML = items.map((c) => {
-            const safeOthers = (c.others || []).filter(o =>
-                String(o.auth_user_id) !== String(State.currentUserId) &&
-                String(o.id) !== String(State.currentUserId)
-            );
-            const avatarHtml = renderAvatar(c.is_group ? null : safeOthers[0]?.avatar_url, c.displayName, c.is_group);
-            const preview = c.lastMessage
-                ? (String(c.lastMessage.sender_id) === String(State.currentUserId) ? "You: " : "") + escapeHtml(c.lastMessage.content)
-                : "No messages yet";
-            const time = c.lastMessage ? formatTime(c.lastMessage.created_at) : "";
-            const unreadClass = c.unread ? " unread" : "";
-
-            return `
-                <div class="msgr-convo${unreadClass}${String(State.activeConversationId) === String(c.id) ? " active" : ""}" data-id="${c.id}">
-                    ${avatarHtml}
-                    <div class="msgr-convo-info">
-                        <div class="msgr-convo-name">${c.isPinned ? '<i class="fa-solid fa-thumbtack msgr-pin-icon" title="Pinned"></i> ' : ''}${escapeHtml(c.displayName)}</div>
-                        <div class="msgr-convo-preview">${preview} ${time ? '<span class="msgr-convo-time-inline"> · ' + time + '</span>' : ''}</div>
-                    </div>
-                    <div class="msgr-convo-meta">
-                        <button type="button" class="msgr-convo-options" data-convoid="${c.id}" title="More options">
-                            <i class="fa-solid fa-ellipsis"></i>
-                        </button>
-                        ${c.unread ? '<div class="msgr-unread-dot"></div>' : ""}
-                    </div>
-                </div>`;
-        }).join("");
+        listEl.innerHTML = items.map(convoRowHtml).join("");
 
         listEl.querySelectorAll(".msgr-convo").forEach((el) => {
             el.addEventListener("click", (e) => {
@@ -1535,26 +2013,17 @@ window.CiteFlowMessenger = (function () {
         }
 
         const otherAvatarUrl = (safeOthers.length > 0 && !conv.is_group) ? safeOthers[0].avatar_url : (conv.avatar_url || null);
-        const subText = conv.is_group
-            ? `${safeOthers.length + 1} members`
-            : (safeOthers[0]?.department || safeOthers[0]?.role || "Online");
+        const subText = conversationPresenceLabel(conv);
+        const peerOnline = !conv.is_group && isUserOnline(safeOthers[0]);
 
-        // Panel View updates
         const nameEl = document.getElementById("msgrChatName");
         const subEl = document.getElementById("msgrChatSub");
-        const avatarEl = document.getElementById("msgrChatAvatar");
-
         if (nameEl) nameEl.textContent = displayName;
         if (subEl) subEl.textContent = subText;
-        if (avatarEl) {
-            avatarEl.outerHTML = renderAvatar(conv.is_group ? null : otherAvatarUrl, displayName, conv.is_group)
-                .replace('class="msgr-avatar', 'id="msgrChatAvatar" class="msgr-avatar');
-        }
+        setHeaderAvatar("msgrChatAvatar", conv.is_group ? null : otherAvatarUrl, displayName, conv.is_group, peerOnline);
 
-        // Expanded View updates
         const expNameEl = document.getElementById("msgrExpChatName");
         const expSubEl = document.getElementById("msgrExpChatSub");
-        const expAvatarEl = document.getElementById("msgrExpChatAvatar");
         const placeholderEl = document.getElementById("msgrExpChatPlaceholder");
         const activeEl = document.getElementById("msgrExpChatActive");
 
@@ -1562,10 +2031,7 @@ window.CiteFlowMessenger = (function () {
         if (activeEl) activeEl.style.display = "flex";
         if (expNameEl) expNameEl.textContent = displayName;
         if (expSubEl) expSubEl.textContent = subText;
-        if (expAvatarEl) {
-            expAvatarEl.outerHTML = renderAvatar(conv.is_group ? null : otherAvatarUrl, displayName, conv.is_group)
-                .replace('class="msgr-avatar', 'id="msgrExpChatAvatar" class="msgr-avatar');
-        }
+        setHeaderAvatar("msgrExpChatAvatar", conv.is_group ? null : otherAvatarUrl, displayName, conv.is_group, peerOnline);
 
         if (!isExpandedView) {
             document.getElementById("msgrChat")?.classList.add("show");
@@ -1618,11 +2084,11 @@ window.CiteFlowMessenger = (function () {
 
         const otherAvatarUrl = (safeOthers.length > 0 && !isGroup) ? safeOthers[0].avatar_url : null;
         const isMuted = State.mutedConvoIds.has(conv.id);
-        const sub = isGroup
-            ? `${safeOthers.length + 1} members`
-            : (safeOthers[0]?.department || safeOthers[0]?.role || "Member");
-
-        const avatarHtml = renderAvatar(isGroup ? null : otherAvatarUrl, displayName, isGroup);
+        const sub = conversationPresenceLabel(conv);
+        const avatarHtml = wrapAvatarWithPresence(
+            renderAvatar(isGroup ? null : otherAvatarUrl, displayName, isGroup),
+            !isGroup && isUserOnline(safeOthers[0])
+        );
 
         const allMembers = [
             { name: 'You', department: State.currentUserRole, isSelf: true, avatar_url: State.currentUserAvatar },
@@ -1665,13 +2131,17 @@ window.CiteFlowMessenger = (function () {
                 <summary>Chat members (${allMembers.length})</summary>
                 <div class="msgr-docked-members">
                     ${allMembers.map(m => {
-                        const mAvatar = renderAvatar(m.avatar_url, m.name || m.display_name || 'Member', false);
+                        const mAvatar = wrapAvatarWithPresence(
+                            renderAvatar(m.avatar_url, m.name || m.display_name || 'Member', false),
+                            !m.isSelf && isUserOnline(m)
+                        );
+                        const presenceLabel = m.isSelf ? 'You' : (isUserOnline(m) ? 'Active now' : (m.department || m.role || 'Member'));
                         return `
                             <div class="msgr-docked-member-row">
                                 ${mAvatar}
                                 <div class="msgr-docked-member-info">
                                     <div class="msgr-docked-member-name">${escapeHtml(m.name || m.display_name || 'Member')}${m.isSelf ? ' (you)' : ''}</div>
-                                    <div class="msgr-docked-member-sub">${escapeHtml(m.department || m.role || 'Member')}</div>
+                                    <div class="msgr-docked-member-sub">${escapeHtml(presenceLabel)}</div>
                                 </div>
                             </div>
                         `;
@@ -1699,31 +2169,72 @@ window.CiteFlowMessenger = (function () {
         const sb = getClient();
         if (!sb) return;
 
+        const currentSeq = ++State._msgFetchSeq;
+
         try {
-            const [{ data, error }, { data: partData }] = await Promise.all([
+            const partSelect = participantColumns();
+            const requests = [
                 sb.from("messages")
                     .select("*")
                     .eq("conversation_id", conversationId)
                     .order("created_at", { ascending: true })
                     .limit(200),
                 sb.from("conversation_participants")
-                    .select("user_id, last_read_at")
+                    .select(partSelect)
                     .eq("conversation_id", conversationId)
-            ]);
+            ];
+            if (State.reactionsSupported !== false) {
+                requests.push(
+                    sb.from("message_reactions")
+                        .select("*")
+                        .eq("conversation_id", conversationId)
+                );
+            }
 
-            if (error) {
-                console.warn("CiteFlowMessenger: Error loading messages:", error);
+            const [msgRes, partRes, reactionRes] = await Promise.all(requests);
+
+            if (currentSeq !== State._msgFetchSeq) return;
+            if (String(State.activeConversationId) !== String(conversationId)) return;
+
+            if (msgRes.error) {
+                console.warn("CiteFlowMessenger: Error loading messages:", msgRes.error);
                 return;
             }
 
-            if (Array.isArray(partData)) {
-                State.activeConversationParticipants = partData;
+            if (partRes.error && State.deliveredColumnAvailable !== false && isMissingColumnError(partRes.error, "last_delivered_at")) {
+                State.deliveredColumnAvailable = false;
+                if (currentSeq === State._msgFetchSeq) {
+                    return loadAndRenderActiveMessages(conversationId);
+                }
             }
 
-            const messages = Array.isArray(data) ? data : [];
+            if (Array.isArray(partRes.data)) {
+                State.activeConversationParticipants = partRes.data;
+            }
+
+            if (reactionRes) {
+                if (reactionRes.error && isMissingTableError(reactionRes.error)) {
+                    State.reactionsSupported = false;
+                    State.reactionsByMessage = new Map();
+                } else if (!reactionRes.error) {
+                    State.reactionsSupported = true;
+                    indexReactions(reactionRes.data);
+                }
+            }
+
+            const fetchedMessages = Array.isArray(msgRes.data) ? msgRes.data : [];
+
+            const pendingOptimistic = (State._currentActiveMessages || []).filter(m =>
+                m.is_optimistic && !fetchedMessages.some(f => f.content === m.content && String(f.sender_id) === String(m.sender_id))
+            );
+            const messages = [...fetchedMessages, ...pendingOptimistic];
             State._currentActiveMessages = messages;
 
-            const newSig = messages.map(m => m.id).join(',');
+            const newSig = [
+                messages.map(m => m.id).join(","),
+                (State.activeConversationParticipants || []).map(p => `${p.user_id}:${p.last_read_at || ""}:${p.last_delivered_at || ""}`).join("|"),
+                reactionSignature()
+            ].join("~");
             if (State._lastRenderedMsgSig === newSig && !State._participantsChanged) {
                 return;
             }
@@ -1746,13 +2257,55 @@ window.CiteFlowMessenger = (function () {
         }
     }
 
+    function deliveryStatusHtml(message, lastMyMsgId, participants, others) {
+        if (String(message.sender_id) !== String(State.currentUserId) || message.id !== lastMyMsgId) return "";
+
+        if (message.is_optimistic) {
+            return `<div class="msgr-seen-receipt sending" title="Sending"><i class="fa-solid fa-clock"></i> Sending</div>`;
+        }
+
+        const msgTime = new Date(message.created_at).getTime();
+        const seenParticipant = (participants || []).find(p =>
+            String(p.user_id) !== String(State.currentUserId) &&
+            p.last_read_at &&
+            new Date(p.last_read_at).getTime() >= msgTime - 2000
+        );
+
+        if (seenParticipant) {
+            const seenTime = formatMessageTime(seenParticipant.last_read_at);
+            const seenUser = (others || []).find(o => String(o.auth_user_id) === String(seenParticipant.user_id) || String(o.id) === String(seenParticipant.user_id));
+            const seenAvatar = seenUser?.avatar_url
+                ? `<img src="${escapeHtml(seenUser.avatar_url)}" class="msgr-seen-avatar" alt="">`
+                : `<i class="fa-solid fa-circle-check"></i>`;
+            return `<div class="msgr-seen-receipt seen" title="Seen ${formatFullTimestamp(seenParticipant.last_read_at)}">${seenAvatar} Seen ${seenTime}</div>`;
+        }
+
+        const deliveredParticipant = (participants || []).find(p =>
+            String(p.user_id) !== String(State.currentUserId) &&
+            p.last_delivered_at &&
+            new Date(p.last_delivered_at).getTime() >= msgTime - 2000
+        );
+        const isRecipientOnline = (others || []).some(isUserOnline);
+
+        if (deliveredParticipant || isRecipientOnline) {
+            const when = deliveredParticipant?.last_delivered_at;
+            return `<div class="msgr-seen-receipt delivered" title="${when ? `Delivered ${formatFullTimestamp(when)}` : "Delivered"}"><i class="fa-solid fa-circle-check"></i> Delivered</div>`;
+        }
+
+        return `<div class="msgr-seen-receipt sent" title="Sent ${formatFullTimestamp(message.created_at)}"><i class="fa-regular fa-circle-check"></i> Sent</div>`;
+    }
+
     /**
-     * Unified message bubble HTML builder with Sent / Delivered / Seen states and group sender avatars
+     * Unified message bubble HTML builder with Sending / Sent / Delivered / Seen states
      */
     function renderActiveMessagesUI(messages) {
         const panelEl = document.getElementById("msgrMessages");
         const expEl = document.getElementById("msgrExpMessages");
         if (!panelEl && !expEl) return;
+
+        const stickToBottom = (el) => !el || (el.scrollHeight - el.scrollTop - el.clientHeight < 96);
+        const panelStick = stickToBottom(panelEl);
+        const expStick = stickToBottom(expEl);
 
         const isGroup = State.activeConversationMeta?.is_group;
         const others = State.activeConversationMeta?.others || [];
@@ -1766,76 +2319,75 @@ window.CiteFlowMessenger = (function () {
             }
         }
 
+        let lastDay = "";
         const messagesHtml = (messages || []).map((m) => {
             const mine = String(m.sender_id) === String(State.currentUserId);
             const senderObj = others.find((o) => String(o.auth_user_id) === String(m.sender_id) || String(o.id) === String(m.sender_id));
-            const senderName = mine ? null : (senderObj?.name || senderObj?.display_name || 'Colleague');
+            const senderName = mine ? null : (senderObj?.name || senderObj?.display_name || "Colleague");
             const senderAvatar = senderObj?.avatar_url;
+            const dayChip = formatDayChip(m.created_at);
+            const dayHtml = dayChip && dayChip !== lastDay
+                ? `<div class="msgr-day-chip">${escapeHtml(dayChip)}</div>`
+                : "";
+            if (dayChip) lastDay = dayChip;
 
-            let seenReceiptHtml = "";
-            if (mine && m.id === lastMyMsgId) {
-                const msgTime = new Date(m.created_at).getTime();
-
-                // 1. Seen State: Has the recipient opened the conversation after this message was sent?
-                const seenParticipant = participants.find(p =>
-                    String(p.user_id) !== String(State.currentUserId) &&
-                    p.last_read_at &&
-                    new Date(p.last_read_at).getTime() >= msgTime - 2000
-                );
-
-                if (seenParticipant) {
-                    const seenTime = formatTime(seenParticipant.last_read_at);
-                    const seenUser = others.find(o => String(o.auth_user_id) === String(seenParticipant.user_id) || String(o.id) === String(seenParticipant.user_id));
-                    const seenAvatar = seenUser?.avatar_url
-                        ? `<img src="${escapeHtml(seenUser.avatar_url)}" class="msgr-seen-avatar" alt="">`
-                        : `<i class="fa-solid fa-circle-check"></i>`;
-                    seenReceiptHtml = `<div class="msgr-seen-receipt seen" title="Seen at ${new Date(seenParticipant.last_read_at).toLocaleTimeString()}">${seenAvatar} Seen ${seenTime}</div>`;
-                } else {
-                    // 2. Delivered vs Sent State: Is recipient currently online in Realtime Presence?
-                    const isRecipientOnline = others.some(o =>
-                        (o.auth_user_id && State.onlineUserIds.has(String(o.auth_user_id))) ||
-                        (o.id && State.onlineUserIds.has(String(o.id)))
-                    );
-
-                    if (isRecipientOnline) {
-                        seenReceiptHtml = `<div class="msgr-seen-receipt delivered" title="Delivered"><i class="fa-solid fa-circle-check"></i> Delivered</div>`;
-                    } else {
-                        seenReceiptHtml = `<div class="msgr-seen-receipt sent" title="Sent"><i class="fa-regular fa-circle-check"></i> Sent</div>`;
-                    }
-                }
-            }
+            const timeFull = formatFullTimestamp(m.created_at);
+            const receiptHtml = deliveryStatusHtml(m, lastMyMsgId, participants, others);
+            const attachedHtml = renderAttachedReactions(m.id);
+            const actionsHtml = renderMessageActions(m.id);
+            const wrapClass = attachedHtml ? "msgr-bubble-wrap has-reactions" : "msgr-bubble-wrap";
+            const metaHtml = `
+                <div class="msgr-bubble-meta">
+                    <div class="msgr-bubble-time" title="${escapeHtml(timeFull)}">${escapeHtml(timeFull)}</div>
+                    ${receiptHtml}
+                </div>`;
 
             if (mine) {
                 return `
-                    <div class="msgr-bubble-row mine">
-                        <div class="msgr-bubble">${escapeHtml(m.content)}</div>
-                        <div class="msgr-bubble-time">${formatTime(m.created_at)}</div>
-                        ${seenReceiptHtml}
-                    </div>`;
-            } else {
-                const avatarBubbleHtml = isGroup ? renderAvatar(senderAvatar, senderName, false, "msgr-msg-avatar") : '';
-                return `
-                    <div class="msgr-bubble-row theirs">
-                        <div class="msgr-bubble-group-wrapper">
-                            ${avatarBubbleHtml}
-                            <div class="msgr-bubble-content-col">
-                                ${isGroup ? `<div class="msgr-sender-label">${escapeHtml(senderName)}</div>` : ""}
+                    ${dayHtml}
+                    <div class="msgr-bubble-row mine" data-msg-id="${escapeHtml(String(m.id))}">
+                        <div class="msgr-bubble-stage">
+                            ${actionsHtml}
+                            <div class="${wrapClass}">
                                 <div class="msgr-bubble">${escapeHtml(m.content)}</div>
-                                <div class="msgr-bubble-time">${formatTime(m.created_at)}</div>
+                                ${attachedHtml}
                             </div>
                         </div>
+                        ${metaHtml}
                     </div>`;
             }
+
+            const avatarBubbleHtml = isGroup ? renderAvatar(senderAvatar, senderName, false, "msgr-msg-avatar") : "";
+            return `
+                ${dayHtml}
+                <div class="msgr-bubble-row theirs" data-msg-id="${escapeHtml(String(m.id))}">
+                    <div class="msgr-bubble-group-wrapper">
+                        ${avatarBubbleHtml}
+                        <div class="msgr-bubble-content-col">
+                            ${isGroup ? `<div class="msgr-sender-label">${escapeHtml(senderName)}</div>` : ""}
+                            <div class="msgr-bubble-stage">
+                                <div class="${wrapClass}">
+                                    <div class="msgr-bubble">${escapeHtml(m.content)}</div>
+                                    ${attachedHtml}
+                                </div>
+                                ${actionsHtml}
+                            </div>
+                            ${metaHtml}
+                        </div>
+                    </div>
+                </div>`;
         }).join("");
 
         if (panelEl) {
             panelEl.innerHTML = messagesHtml;
-            panelEl.scrollTop = panelEl.scrollHeight;
+            if (panelStick) panelEl.scrollTop = panelEl.scrollHeight;
         }
         if (expEl) {
             expEl.innerHTML = messagesHtml;
-            expEl.scrollTop = expEl.scrollHeight;
+            if (expStick) expEl.scrollTop = expEl.scrollHeight;
         }
+        if (State.selectedMessageId) selectMessageRow(State.selectedMessageId);
+        restoreTypingIndicators();
     }
 
     /**
@@ -1882,12 +2434,11 @@ window.CiteFlowMessenger = (function () {
         if (!payload || String(payload.userId) === String(State.currentUserId)) return;
 
         const { userId, userName, isTyping } = payload;
-        const panelEl = document.getElementById("msgrMessages");
-        const expEl = document.getElementById("msgrExpMessages");
 
         const removeIndicator = () => {
-            document.querySelectorAll(".msgr-typing-indicator").forEach(el => el.remove());
+            document.querySelectorAll(`#typing-${userId}`).forEach(el => el.remove());
             State.remoteTypingTimers.delete(userId);
+            State.remoteTypers.delete(userId);
         };
 
         if (!isTyping) {
@@ -1895,26 +2446,8 @@ window.CiteFlowMessenger = (function () {
             return;
         }
 
-        if (!document.getElementById(`typing-${userId}`)) {
-            const indicatorHtml = `
-                <div class="msgr-typing-indicator" id="typing-${userId}">
-                    <div class="msgr-typing-bubble">
-                        <span class="msgr-dot"></span>
-                        <span class="msgr-dot"></span>
-                        <span class="msgr-dot"></span>
-                    </div>
-                    <span class="msgr-typing-text">${escapeHtml(userName)} is typing...</span>
-                </div>
-            `;
-            if (panelEl) {
-                panelEl.insertAdjacentHTML('beforeend', indicatorHtml);
-                panelEl.scrollTop = panelEl.scrollHeight;
-            }
-            if (expEl) {
-                expEl.insertAdjacentHTML('beforeend', indicatorHtml);
-                expEl.scrollTop = expEl.scrollHeight;
-            }
-        }
+        State.remoteTypers.set(userId, { userName: userName || "Colleague" });
+        appendTypingIndicator(userId, userName);
 
         if (State.remoteTypingTimers.has(userId)) {
             clearTimeout(State.remoteTypingTimers.get(userId));
@@ -1947,27 +2480,36 @@ window.CiteFlowMessenger = (function () {
         const activeId = State.activeConversationId;
         const nowIso = new Date().toISOString();
 
+        // 1. Optimistic message creation so the user sees their message immediately
+        const tempId = `optimistic_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const optimisticMsg = {
+            id: tempId,
+            conversation_id: activeId,
+            sender_id: State.currentUserId,
+            content: content,
+            created_at: nowIso,
+            is_optimistic: true
+        };
+
+        if (!Array.isArray(State._currentActiveMessages)) State._currentActiveMessages = [];
+        State._currentActiveMessages.push(optimisticMsg);
+        State._lastRenderedMsgSig = null;
+        State._lastExpRenderedMsgSig = null;
+        renderActiveMessagesUI(State._currentActiveMessages);
+
+        // 2. Immediately update the conversation preview so "No messages yet" disappears
+        const activeConv = State.conversations.find(c => String(c.id) === String(activeId));
+        if (activeConv) {
+            activeConv.lastMessage = optimisticMsg;
+            activeConv.sortTime = nowIso;
+        }
+        renderConversationList(getConvoSearchFilter());
+        renderExpandedConvoList();
+
+        // 3. Invalidate any in-flight background load from opening the conversation
+        ++State._msgFetchSeq;
+
         try {
-            const meta = State.activeConversationMeta;
-            if (meta && !meta.is_group && Array.isArray(meta.others)) {
-                for (const other of meta.others) {
-                    const recipientUid = other.auth_user_id || other.id;
-                    if (recipientUid && String(recipientUid) !== String(State.currentUserId) && String(recipientUid).includes('-')) {
-                        const { error: upsertErr } = await sb.from("conversation_participants").upsert({
-                            conversation_id: activeId,
-                            user_id: recipientUid
-                        }, { onConflict: "conversation_id,user_id" });
-                        if (upsertErr) console.warn("CiteFlowMessenger: Upsert recipient participant error:", upsertErr);
-                    }
-                }
-            }
-
-            const { error: selfUpsertErr } = await sb.from("conversation_participants").upsert({
-                conversation_id: activeId,
-                user_id: State.currentUserId
-            }, { onConflict: "conversation_id,user_id" });
-            if (selfUpsertErr) console.warn("CiteFlowMessenger: Upsert self participant error:", selfUpsertErr);
-
             const { data: sentMsg, error } = await sb.from("messages").insert({
                 conversation_id: activeId,
                 sender_id: State.currentUserId,
@@ -1976,6 +2518,9 @@ window.CiteFlowMessenger = (function () {
 
             if (error) {
                 console.warn("CiteFlowMessenger: Error sending message:", error);
+                // Remove failed optimistic message
+                State._currentActiveMessages = (State._currentActiveMessages || []).filter(m => m.id !== tempId);
+                renderActiveMessagesUI(State._currentActiveMessages);
                 if (typeof CiteFlowModal !== 'undefined' && CiteFlowModal.toast) {
                     CiteFlowModal.toast("Failed to send message. Please try again.");
                 } else {
@@ -1986,11 +2531,13 @@ window.CiteFlowMessenger = (function () {
             }
 
             if (sentMsg) {
+                rememberRealtimeMessageId(sentMsg.id);
                 try {
                     await sb.from("conversations").update({ last_message_at: nowIso }).eq("id", activeId);
                 } catch (_) {}
 
-                const activeConv = State.conversations.find(c => String(c.id) === String(activeId));
+                upsertActiveMessage(sentMsg);
+
                 if (activeConv) {
                     activeConv.lastMessage = sentMsg;
                     activeConv.sortTime = nowIso;
@@ -1998,16 +2545,15 @@ window.CiteFlowMessenger = (function () {
 
                 State._lastRenderedMsgSig = null;
                 State._lastExpRenderedMsgSig = null;
-
-                await loadAndRenderActiveMessages(activeId);
-                renderConversationList("");
+                renderActiveMessagesUI(State._currentActiveMessages);
+                renderConversationList(getConvoSearchFilter());
                 renderExpandedConvoList();
             }
         } catch (err) {
             console.warn("CiteFlowMessenger: Error during submitChatMessage:", err);
+        } finally {
+            if (sendBtn) sendBtn.disabled = false;
         }
-
-        if (sendBtn) sendBtn.disabled = false;
     }
 
     /**
@@ -2020,19 +2566,40 @@ window.CiteFlowMessenger = (function () {
         State.manuallyUnreadConvoIds.delete(conversationId);
         saveUnreadState();
 
-        try {
-            await sb
-                .from("conversation_participants")
-                .update({ last_read_at: new Date().toISOString() })
-                .eq("conversation_id", conversationId)
-                .eq("user_id", State.currentUserId);
-        } catch (_) {}
-
-        State._participantsChanged = true;
-
         const conv = State.conversations.find((c) => String(c.id) === String(conversationId));
         if (conv) conv.unread = false;
         updateUnreadBadge();
+
+        clearTimeout(State._markReadTimer);
+        State._markReadTimer = setTimeout(async () => {
+            try {
+                const payload = { last_read_at: new Date().toISOString() };
+                if (State.deliveredColumnAvailable) payload.last_delivered_at = payload.last_read_at;
+                await sb
+                    .from("conversation_participants")
+                    .update(payload)
+                    .eq("conversation_id", conversationId)
+                    .eq("user_id", State.currentUserId);
+            } catch (_) {}
+            State._participantsChanged = true;
+        }, 180);
+    }
+
+    async function markConversationDelivered(conversationId) {
+        const sb = getClient();
+        if (!sb || !State.currentUserId || !conversationId || State.deliveredColumnAvailable === false) return;
+        try {
+            const { error } = await sb
+                .from("conversation_participants")
+                .update({ last_delivered_at: new Date().toISOString() })
+                .eq("conversation_id", conversationId)
+                .eq("user_id", State.currentUserId);
+            if (error && isMissingColumnError(error, "last_delivered_at")) {
+                State.deliveredColumnAvailable = false;
+            } else if (!error) {
+                State.deliveredColumnAvailable = true;
+            }
+        } catch (_) {}
     }
 
     /**
@@ -2041,11 +2608,29 @@ window.CiteFlowMessenger = (function () {
     async function handleRealtimeMessageReceived(msg) {
         if (!msg || !msg.conversation_id) return;
         const cid = String(msg.conversation_id);
+        const isDup = rememberRealtimeMessageId(msg.id);
+        const isFromMe = String(msg.sender_id) === String(State.currentUserId);
+        const isActiveChat = String(State.activeConversationId) === cid;
+
+        if (isActiveChat) {
+            upsertActiveMessage(msg);
+            renderActiveMessagesUI(State._currentActiveMessages);
+            if (!isFromMe) markConversationRead(cid);
+        } else if (!isFromMe && !isDup) {
+            markConversationDelivered(cid);
+        }
+
+        if (isDup) {
+            if (isActiveChat) {
+                renderConversationList(getConvoSearchFilter());
+                renderExpandedConvoList();
+            }
+            return;
+        }
 
         let conv = State.conversations.find(c => String(c.id) === cid);
 
         if (!conv) {
-            // STRICT PRIVACY: Verify current user is actually a participant before reacting
             const sb = getClient();
             if (!sb || !State.currentUserId) return;
             const { data: isParticipant } = await sb
@@ -2055,11 +2640,7 @@ window.CiteFlowMessenger = (function () {
                 .eq("user_id", State.currentUserId)
                 .maybeSingle();
 
-            if (!isParticipant) {
-                // Ignore message completely - current user is not a participant!
-                return;
-            }
-
+            if (!isParticipant) return;
             await loadConversations(false);
             return;
         }
@@ -2073,15 +2654,11 @@ window.CiteFlowMessenger = (function () {
             conv.isSoftDeleted = false;
         }
 
-        const isFromMe = String(msg.sender_id) === String(State.currentUserId);
-        const isActiveChat = String(State.activeConversationId) === cid;
-
         conv.lastMessage = msg;
         conv.sortTime = msg.created_at || new Date().toISOString();
 
         if (isActiveChat) {
             conv.unread = false;
-            markConversationRead(cid);
         } else if (!isFromMe) {
             conv.unread = true;
         }
@@ -2104,45 +2681,75 @@ window.CiteFlowMessenger = (function () {
         const sb = getClient();
         if (!sb || !conversationId) return;
 
-        if (State.messageChannel) {
-            try {
-                sb.removeChannel(State.messageChannel);
-            } catch (_) {}
-            State.messageChannel = null;
-        }
+        const alreadyOnThisChat = channelHealthy(State.messageChannel)
+            && String(State._subscribedConversationId) === String(conversationId);
+        if (alreadyOnThisChat) return;
 
-        const channel = sb.channel(`msgr-convo-${conversationId}`);
+        teardownMessageChannel();
+        const myToken = ++State._messageChannelToken;
+        State._subscribedConversationId = conversationId;
+
+        const channel = sb.channel(`msgr-convo-${conversationId}`, {
+            config: { broadcast: { self: false } }
+        });
 
         channel
             .on(
                 "postgres_changes",
                 { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
-                async (payload) => {
-                    await loadAndRenderActiveMessages(conversationId);
-                    if (payload.new) {
-                        handleRealtimeMessageReceived(payload.new);
-                    }
+                (payload) => {
+                    if (payload?.new) handleRealtimeMessageReceived(payload.new);
                 }
             )
             .on(
                 "postgres_changes",
                 { event: "UPDATE", schema: "public", table: "conversation_participants", filter: `conversation_id=eq.${conversationId}` },
-                async () => {
+                async (payload) => {
+                    const row = payload?.new;
+                    if (row) {
+                        const list = Array.isArray(State.activeConversationParticipants) ? State.activeConversationParticipants.slice() : [];
+                        const idx = list.findIndex(p => String(p.user_id) === String(row.user_id));
+                        if (idx === -1) list.push(row);
+                        else list[idx] = Object.assign({}, list[idx], row);
+                        State.activeConversationParticipants = list;
+                    } else {
+                        const { data } = await sb.from("conversation_participants")
+                            .select(participantColumns())
+                            .eq("conversation_id", conversationId);
+                        if (Array.isArray(data)) State.activeConversationParticipants = data;
+                    }
                     State._participantsChanged = true;
-                    await loadAndRenderActiveMessages(conversationId);
+                    if (Array.isArray(State._currentActiveMessages)) {
+                        renderActiveMessagesUI(State._currentActiveMessages);
+                    }
                 }
             )
             .on("broadcast", { event: "typing" }, ({ payload }) => {
                 handleRemoteTyping(payload);
             });
 
+        if (State.reactionsSupported === true) {
+            channel.on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "message_reactions", filter: `conversation_id=eq.${conversationId}` },
+                (payload) => {
+                    const eventType = payload?.eventType || payload?.event || "";
+                    const row = payload?.new || payload?.old;
+                    if (!row) return;
+                    applyReactionEvent(row, eventType === "DELETE" ? "DELETE" : "INSERT");
+                }
+            );
+        }
+
         channel.subscribe((status) => {
+            if (myToken !== State._messageChannelToken) return;
             if (status === "SUBSCRIBED") {
                 console.log(`CiteFlowMessenger: Active chat listener connected for ${conversationId}.`);
             }
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
                 console.warn(`CiteFlowMessenger: Active chat listener error (${status}). Reconnecting...`);
                 setTimeout(() => {
+                    if (myToken !== State._messageChannelToken) return;
                     if (String(State.activeConversationId) === String(conversationId)) {
                         subscribeToActiveConversation(conversationId);
                     }
@@ -2159,13 +2766,10 @@ window.CiteFlowMessenger = (function () {
     function subscribeToInbox() {
         const sb = getClient();
         if (!sb || !State.currentUserId) return;
+        if (channelHealthy(State.inboxChannel)) return;
 
-        if (State.inboxChannel) {
-            try {
-                sb.removeChannel(State.inboxChannel);
-            } catch (_) {}
-            State.inboxChannel = null;
-        }
+        teardownInboxChannel();
+        const myToken = ++State._inboxChannelToken;
 
         const channel = sb.channel(`msgr-inbox-${State.currentUserId}`);
 
@@ -2174,34 +2778,45 @@ window.CiteFlowMessenger = (function () {
                 "postgres_changes",
                 { event: "INSERT", schema: "public", table: "messages" },
                 (payload) => {
-                    if (payload?.new) {
-                        handleRealtimeMessageReceived(payload.new);
-                    }
+                    if (payload?.new) handleRealtimeMessageReceived(payload.new);
                 }
             )
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "conversations" },
                 () => {
-                    loadConversations(false);
+                    scheduleInboxReload();
                 }
             )
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "conversation_participants" },
-                () => {
-                    loadConversations(false);
+                (payload) => {
+                    const row = payload?.new;
+                    if (row && String(row.conversation_id) === String(State.activeConversationId)) {
+                        const list = Array.isArray(State.activeConversationParticipants) ? State.activeConversationParticipants.slice() : [];
+                        const idx = list.findIndex(p => String(p.user_id) === String(row.user_id));
+                        if (idx === -1 && row.user_id) list.push(row);
+                        else if (idx !== -1) list[idx] = Object.assign({}, list[idx], row);
+                        State.activeConversationParticipants = list;
+                        if (Array.isArray(State._currentActiveMessages)) {
+                            renderActiveMessagesUI(State._currentActiveMessages);
+                        }
+                    }
+                    scheduleInboxReload();
                 }
             );
 
         channel.subscribe((status) => {
+            if (myToken !== State._inboxChannelToken) return;
             if (status === "SUBSCRIBED") {
                 console.log("CiteFlowMessenger: Inbox realtime listener connected.");
             }
-            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
                 console.warn(`CiteFlowMessenger: Inbox listener status: ${status}. Scheduling recovery...`);
                 clearTimeout(State.reconnectTimer);
                 State.reconnectTimer = setTimeout(() => {
+                    if (myToken !== State._inboxChannelToken) return;
                     subscribeToInbox();
                 }, 4000);
             }
@@ -2209,10 +2824,9 @@ window.CiteFlowMessenger = (function () {
 
         State.inboxChannel = channel;
 
-        // Background poller safety net (runs only every 12s as a backup)
         if (!State.inboxPollingTimer) {
             State.inboxPollingTimer = setInterval(async () => {
-                if (State.currentUserId && document.visibilityState === 'visible') {
+                if (State.currentUserId && document.visibilityState === "visible" && !channelHealthy(State.inboxChannel)) {
                     const lastKnownMsg = State.conversations[0]?.lastMessage;
                     if (lastKnownMsg?.created_at) {
                         try {
@@ -2225,7 +2839,7 @@ window.CiteFlowMessenger = (function () {
 
                             if (Array.isArray(newMsgs) && newMsgs.length > 0) {
                                 for (const msg of newMsgs) {
-                                    handleRealtimeMessageReceived(msg);
+                                    await handleRealtimeMessageReceived(msg);
                                 }
                             }
                         } catch (_) {}
@@ -2503,18 +3117,24 @@ window.CiteFlowMessenger = (function () {
 
         if (!isGroup) {
             const targetUser = validRecipients[0];
-            const targetKey = String(targetUser.auth_user_id || targetUser.id || '');
-            const targetEmail = (targetUser.email || '').toLowerCase();
+            const targetUid = targetUser.auth_user_id && targetUser.auth_user_id !== 'unknown' ? String(targetUser.auth_user_id) : null;
+            const targetRawId = targetUser.id && targetUser.id !== 'unknown' ? String(targetUser.id) : null;
+            const targetEmail = (targetUser.email || '').trim().toLowerCase();
 
             let existing = State.conversations.find((c) => {
                 if (c.is_group) return false;
                 const other = c.others?.[0];
                 if (!other) return false;
-                return (
-                    (other.auth_user_id && String(other.auth_user_id) === targetKey) ||
-                    (other.id && String(other.id) === targetKey) ||
-                    (other.email && other.email.toLowerCase() === targetEmail)
-                );
+
+                const oUid = other.auth_user_id && other.auth_user_id !== 'unknown' ? String(other.auth_user_id) : null;
+                const oRawId = other.id && other.id !== 'unknown' ? String(other.id) : null;
+                const oEmail = (other.email || '').trim().toLowerCase();
+
+                if (targetUid && oUid && targetUid === oUid) return true;
+                if (targetRawId && oRawId && targetRawId === oRawId) return true;
+                if (targetEmail && oEmail && targetEmail === oEmail) return true;
+
+                return false;
             });
 
             if (existing) {
@@ -3211,9 +3831,13 @@ window.CiteFlowMessenger = (function () {
         const expEl = document.getElementById("msgrExpanded");
         if (expEl) expEl.style.display = "none";
         document.body.style.overflow = "";
+        stopLocalTypingImmediately();
         State.activeConversationId = null;
         State.activeConversationMeta = null;
         State._currentActiveMessages = [];
+        State.selectedMessageId = null;
+        State.remoteTypers = new Map();
+        teardownMessageChannel();
     }
 
     function renderExpandedConvoList() {
@@ -3234,33 +3858,7 @@ window.CiteFlowMessenger = (function () {
             return;
         }
 
-        listEl.innerHTML = items.map(c => {
-            const safeOthers = (c.others || []).filter(o =>
-                String(o.auth_user_id) !== String(State.currentUserId) &&
-                String(o.id) !== String(State.currentUserId)
-            );
-            const avatarHtml = renderAvatar(c.is_group ? null : safeOthers[0]?.avatar_url, c.displayName, c.is_group);
-            const preview = c.lastMessage
-                ? (String(c.lastMessage.sender_id) === String(State.currentUserId) ? 'You: ' : '') + escapeHtml(c.lastMessage.content)
-                : 'No messages yet';
-            const time = c.lastMessage ? formatTime(c.lastMessage.created_at) : '';
-            const unreadClass = c.unread ? ' unread' : '';
-            const activeClass = String(State.activeConversationId) === String(c.id) ? ' active' : '';
-            return `
-                <div class="msgr-convo${unreadClass}${activeClass}" data-id="${c.id}">
-                    ${avatarHtml}
-                    <div class="msgr-convo-info">
-                        <div class="msgr-convo-name">${c.isPinned ? '<i class="fa-solid fa-thumbtack msgr-pin-icon" title="Pinned"></i> ' : ''}${escapeHtml(c.displayName)}</div>
-                        <div class="msgr-convo-preview">${preview} ${time ? '<span class="msgr-convo-time-inline"> · ' + time + '</span>' : ''}</div>
-                    </div>
-                    <div class="msgr-convo-meta">
-                        <button type="button" class="msgr-convo-options" data-convoid="${c.id}" title="More options">
-                            <i class="fa-solid fa-ellipsis"></i>
-                        </button>
-                        ${c.unread ? '<div class="msgr-unread-dot"></div>' : ""}
-                    </div>
-                </div>`;
-        }).join('');
+        listEl.innerHTML = items.map(convoRowHtml).join("");
 
         listEl.querySelectorAll('.msgr-convo').forEach(el => {
             el.addEventListener('click', (e) => {
@@ -3294,8 +3892,11 @@ window.CiteFlowMessenger = (function () {
         ];
         const isMuted = State.mutedConvoIds.has(conv.id);
 
-        const avatarHtml = renderAvatar(isGroup ? null : otherAvatarUrl, displayName, isGroup)
-            .replace('class="msgr-avatar', 'class="msgr-avatar msgr-exp-info-avatar');
+        const avatarHtml = wrapAvatarWithPresence(
+            renderAvatar(isGroup ? null : otherAvatarUrl, displayName, isGroup)
+                .replace('class="msgr-avatar', 'class="msgr-avatar msgr-exp-info-avatar'),
+            !isGroup && isUserOnline(safeOthers[0])
+        );
 
         inner.innerHTML = `
             <div class="msgr-exp-info-profile">
@@ -3326,8 +3927,11 @@ window.CiteFlowMessenger = (function () {
                 <summary>Chat members (${allMembers.length})</summary>
                 <div class="msgr-exp-members">
                     ${allMembers.map(m => {
-                        const memberAvatar = renderAvatar(m.avatar_url, m.name || m.display_name || 'Member', false);
-                        const roleDesc = m.department || m.role || (m.isSelf ? State.currentUserRole : 'Member');
+                        const memberAvatar = wrapAvatarWithPresence(
+                            renderAvatar(m.avatar_url, m.name || m.display_name || 'Member', false),
+                            !m.isSelf && isUserOnline(m)
+                        );
+                        const roleDesc = m.isSelf ? (State.currentUserRole || 'You') : (isUserOnline(m) ? 'Active now' : (m.department || m.role || 'Member'));
                         return `
                             <div class="msgr-exp-member-row">
                                 ${memberAvatar}

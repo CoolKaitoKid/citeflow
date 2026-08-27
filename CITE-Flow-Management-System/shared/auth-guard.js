@@ -70,15 +70,49 @@
                 return;
             }
 
-            const user = session.user;
+            async function redirectExpiredSession() {
+                console.warn("Auth Guard: Session expired. Redirecting to login...");
+                try {
+                    await sb.auth.signOut({ scope: 'local' });
+                } catch (e) { /* ignore */ }
+                window.location.href = `${prefix}login.html`;
+            }
+
+            // getSession() returns a stored session even after the access JWT expires.
+            // Refresh before any table queries so PostgREST does not return PGRST303.
+            let activeSession = session;
+            const expiresAt = Number(session.expires_at || 0);
+            const nowSec = Math.floor(Date.now() / 1000);
+            if (expiresAt && expiresAt <= nowSec + 15) {
+                const refreshed = await sb.auth.refreshSession();
+                if (refreshed.error || !refreshed.data?.session?.user) {
+                    await redirectExpiredSession();
+                    return;
+                }
+                activeSession = refreshed.data.session;
+            }
+
+            const user = activeSession.user;
             const role = String(user.user_metadata?.role || '').toLowerCase();
             const isWorkflowApprovalPage = currentPath.includes('workflow-approval');
 
-            const { data: facultyRecord } = await sb
+            const facultyLookup = await sb
                 .from('faculty')
                 .select('id, role, position, admin_access, profile_completed, must_change_password, first_login_completed_at, department')
                 .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`)
                 .maybeSingle();
+
+            const facultyAuthFailed = facultyLookup.error && (
+                facultyLookup.status === 401
+                || String(facultyLookup.error.code || '') === 'PGRST303'
+                || String(facultyLookup.error.message || '').toLowerCase().includes('jwt expired')
+            );
+            if (facultyAuthFailed) {
+                await redirectExpiredSession();
+                return;
+            }
+
+            const facultyRecord = facultyLookup.data;
 
             const facultyRole = String(facultyRecord?.role || facultyRecord?.position || role || '').toLowerCase();
             const isChair = facultyRole.includes('chair');
@@ -88,6 +122,11 @@
             const hasAdminAccess = facultyRecord?.admin_access === true;
             const onboardingRequired = needsOnboarding(facultyRecord, user);
             const onboardingDone = isOnboardingComplete(facultyRecord, user);
+
+            // Sync validated encrypted session token with anti-tamper metadata
+            if (window.CiteFlowAuth?.cacheUserInfo) {
+                window.CiteFlowAuth.cacheUserInfo(user, isAdminRole ? 'Admin' : (facultyRecord?.role || 'Faculty'), facultyRecord);
+            }
 
             if (isOnboardingArea) {
                 if (onboardingDone) {

@@ -423,6 +423,10 @@ async function loadFacultyNavNotifications() {
         facultyId = faculty?.id ?? null;
     }
 
+    if (facultyId != null && window.CiteFlowWorkflow?.processDeadlineReminders) {
+        await CiteFlowWorkflow.processDeadlineReminders(sb, { facultyId });
+    }
+
     let query = sb
         .from('wf_notifications')
         .select('*')

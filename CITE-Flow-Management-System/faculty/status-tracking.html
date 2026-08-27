@@ -12,6 +12,7 @@
     <script src="../shared/auth-guard.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
@@ -21,102 +22,258 @@
             --cream: #f5e8c7;
             --ink: #111827;
         }
-        body { color: var(--ink); }
-        .card { background: #fff; border: 1px solid #e9edf3; box-shadow: 0 18px 45px rgba(15, 23, 42, .05); }
-        .soft-card { background: rgba(255,255,255,.78); border: 1px solid #e9edf3; box-shadow: 0 10px 28px rgba(15, 23, 42, .04); }
-        .task-row { transition: border-color .2s ease, background .2s ease, box-shadow .2s ease; }
-        .task-row:hover { background: #fafafa; box-shadow: 0 10px 22px rgba(15, 23, 42, .045); }
-        .task-row.active { border-color: rgba(98, 23, 8, .35); background: #fffaf8; box-shadow: inset 0 0 0 1px rgba(98, 23, 8, .08); }
-        .preview-frame { width: 100%; height: 460px; border: 0; border-radius: 1.25rem; background: #fff; }
-        .preview-img { max-height: 460px; width: 100%; object-fit: contain; border-radius: 1.25rem; background: #fff; }
-        .status-dot { width: 10px; height: 10px; border-radius: 999px; flex: 0 0 auto; }
+        body { color: var(--ink); background: #f3f4f7; }
+        .card { background: #fff; border: 1px solid #e8eaef; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05); }
+        .soft-card { background: #fff; border: 1px solid #e8eaef; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05); }
+        .task-row { transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; border-radius: 0; }
+        .task-row:hover { background: #fafafa; }
+        .task-row.active { background: #fffaf8; box-shadow: inset 3px 0 0 #621708; }
+        .preview-frame { width: 100%; height: 420px; border: 0; border-radius: 14px; background: #fff; }
+        .preview-img { max-height: 420px; width: 100%; object-fit: contain; border-radius: 14px; background: #fff; }
+        .status-dot { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 auto; }
         .indicator-bar { width: 4px; border-radius: 999px; align-self: stretch; flex: 0 0 auto; }
-        .icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-        .filter-btn.active { background:var(--cite-theme); color: #fff; border-color: #621708; }
-        .timeline-step::before { content: ''; position: absolute; left: 10px; top: 28px; bottom: -18px; width: 2px; background: #e5e7eb; }
-        .timeline-step:last-child::before { display: none; }
+        .icon { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+        .filter-btn {
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 13px;
+            line-height: 1.2;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .filter-btn.active { background: var(--cite-theme, #621708); color: #fff; border-color: #621708; }
+
+        .cite-stat { min-height: 132px; padding-left: 1.35rem; }
+        .cite-stat .cite-icon svg { display: block; }
+
+        #statusList .task-row {
+            box-shadow: none;
+            align-items: stretch;
+        }
+        #statusList .row-tone-idle { background: #fff; }
+        #statusList .row-tone-pending { background: #fffdf8; }
+        #statusList .row-tone-progress { background: #fbfbfe; }
+        #statusList .row-tone-approved { background: #f7fdfb; }
+        #statusList .row-tone-rejected { background: #fff8f8; }
+        #statusList .row-tone-revision { background: #fffbf3; }
+        #statusList .task-row.active {
+            background: #fffaf8;
+            box-shadow: inset 3px 0 0 #621708;
+        }
+        .status-row-main { min-width: 0; flex: 1; }
+        .status-row-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .status-row-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 14px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #64748b;
+        }
+        .status-row-meta > span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+        .status-badge-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            max-width: 11.5rem;
+            padding: 5px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.25;
+            text-align: center;
+            white-space: normal;
+            flex-shrink: 0;
+        }
+
+        .status-timeline {
+            padding-top: 8px;
+            overflow-x: hidden;
+        }
+        .status-timeline .cite-stepper {
+            display: flex !important;
+            align-items: flex-start;
+            gap: 0;
+            overflow: visible;
+        }
+        .status-timeline .cite-step {
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 0 8px;
+        }
+        .status-timeline .cite-step:not(:last-child)::after {
+            top: 12px;
+            left: calc(50% + 18px);
+            right: calc(-50% + 18px);
+            height: 2px;
+        }
+        .status-timeline .cite-step-label {
+            min-height: 2.4em;
+            line-height: 1.2;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            word-break: break-word;
+        }
+        .status-timeline .cite-step-date {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .status-timeline .cite-step-note {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #64748b;
+            line-height: 1.35;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            min-height: 2.7em;
+        }
+
+        @media (max-width: 900px) {
+            .status-timeline .cite-stepper {
+                display: flex;
+                flex-direction: column;
+            }
+            .status-timeline .cite-step {
+                flex-direction: row;
+                align-items: flex-start;
+                text-align: left;
+                gap: 12px;
+                padding: 0 0 16px;
+            }
+            .status-timeline .cite-step:not(:last-child)::after {
+                left: 12px;
+                right: auto;
+                top: 26px;
+                bottom: 0;
+                width: 2px;
+                height: auto;
+            }
+            .status-timeline .cite-step-label,
+            .status-timeline .cite-step-note {
+                min-height: 0;
+                -webkit-line-clamp: unset;
+                display: block;
+            }
+            .status-timeline .cite-step-dot { flex-shrink: 0; }
+        }
+
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        @media (max-width: 480px) {
+            .status-row-top {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .status-badge-chip { max-width: 100%; }
+        }
     </style>
-<body class="bg-gray-50">
+</head>
+<body class="bg-gray-50 cite-page">
 
 <div class="flex h-screen w-screen overflow-hidden">
     <div id="sidebar-container"></div>
-    <main class="flex-1 overflow-y-auto ml-[220px] bg-slate-50">
+    <main class="flex-1 overflow-y-auto ml-0 md:ml-[220px] bg-slate-50">
         <div id="navbar-container"></div>
 
-        <div class="max-w-[1500px] mx-auto px-8 py-8 mt-16">
-            <header class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between mb-8">
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+            <header class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between mb-7">
                 <div>
-                    <button onclick="window.history.back()" class="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-[#621708] mb-5">
+                    <button onclick="window.history.back()" class="inline-flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-[#621708] mb-3">
                         <svg class="icon w-4 h-4" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                         Back
                     </button>
-                    <h1 class="text-4xl font-bold tracking-tight text-gray-950">Submission Status</h1>
-                    <p class="text-gray-500 mt-2 max-w-2xl">Review assigned tasks in a clean list, open each task for complete status details, and preview submitted documents when a file URL is available.</p>
+                    <h1 class="cite-title">Submission Status</h1>
+                    <p class="cite-subtitle">Track each assigned task from submission through chairperson and final review.</p>
                 </div>
             </header>
 
-            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">
-                <div class="soft-card rounded-3xl p-5">
+            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+                <div class="cite-stat cite-stat-pending rounded-[16px] p-5">
                     <div class="flex items-center justify-between">
-                        <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center"><svg class="icon" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
-                        <span class="text-xs font-semibold text-gray-400">Needs action</span>
+                        <div class="cite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+                        <span class="text-[11px] font-bold uppercase tracking-wide text-gray-400 whitespace-nowrap">Needs action</span>
                     </div>
-                    <div id="count-pending" class="text-4xl font-bold mt-5">0</div>
+                    <div id="count-pending" class="text-3xl font-extrabold mt-4 tracking-tight">0</div>
                     <div class="text-sm text-gray-500 mt-1">Pending</div>
                 </div>
-                <div class="soft-card rounded-3xl p-5">
+                <div class="cite-stat cite-stat-review rounded-[16px] p-5">
                     <div class="flex items-center justify-between">
-                        <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center"><svg class="icon" viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg></div>
-                        <span class="text-xs font-semibold text-gray-400">Processing</span>
+                        <div class="cite-icon" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;"><svg class="icon" viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg></div>
+                        <span class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Processing</span>
                     </div>
-                    <div id="count-underreview" class="text-4xl font-bold mt-5">0</div>
+                    <div id="count-underreview" class="text-3xl font-extrabold mt-4 tracking-tight">0</div>
                     <div class="text-sm text-gray-500 mt-1">Under Review</div>
                 </div>
-                <div class="soft-card rounded-3xl p-5">
+                <div class="cite-stat cite-stat-approved rounded-[16px] p-5">
                     <div class="flex items-center justify-between">
-                        <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
-                        <span class="text-xs font-semibold text-gray-400">Completed</span>
+                        <div class="cite-icon" style="background:#ecfdf5;border-color:#bbf7d0;color:#047857;"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <span class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Completed</span>
                     </div>
-                    <div id="count-approved" class="text-4xl font-bold mt-5">0</div>
+                    <div id="count-approved" class="text-3xl font-extrabold mt-4 tracking-tight">0</div>
                     <div class="text-sm text-gray-500 mt-1">Approved</div>
                 </div>
-                <div class="soft-card rounded-3xl p-5">
+                <div class="cite-stat cite-stat-revision rounded-[16px] p-5">
                     <div class="flex items-center justify-between">
-                        <div class="w-11 h-11 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center"><svg class="icon" viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></div>
-                        <span class="text-xs font-semibold text-gray-400">Attention</span>
+                        <div class="cite-icon" style="background:#fff1f2;border-color:#fecdd3;color:#be123c;"><svg class="icon" viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></div>
+                        <span class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Attention</span>
                     </div>
-                    <div id="count-rejected" class="text-4xl font-bold mt-5">0</div>
+                    <div id="count-rejected" class="text-3xl font-extrabold mt-4 tracking-tight">0</div>
                     <div class="text-sm text-gray-500 mt-1">Rejected</div>
                 </div>
             </section>
 
-            <section class="card rounded-[2rem] p-5 lg:p-6">
-                <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
+            <section class="card rounded-[16px] p-5 lg:p-6">
+                <div class="flex flex-col gap-4 mb-5">
                     <div>
-                        <h2 class="text-lg font-bold text-gray-950">Assigned Submissions</h2>
-                        <p class="text-sm text-gray-500">Click any row to open the full task details, status timeline, remarks, and submitted document preview.</p>
+                        <h2 class="text-base font-bold text-gray-950">Assigned Submissions</h2>
+                        <p class="text-sm text-gray-500 mt-1">Select a task to see its status timeline, remarks, and files.</p>
                     </div>
-                    <div class="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
-                        <div class="relative flex-1 xl:w-80">
-                            <svg class="icon w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                            <input id="searchInput" oninput="handleSearch(this.value)" type="text" placeholder="Search title, instruction, or remark" class="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-11 pr-4 py-3 text-sm outline-none focus:ring-4 focus:ring-[#621708]/10 focus:border-[#621708]/30">
+                    <div class="flex flex-col lg:flex-row lg:items-center gap-3 min-w-0">
+                        <div class="relative w-full lg:max-w-sm min-w-0">
+                            <svg class="icon w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                            <input id="searchInput" oninput="handleSearch(this.value)" type="text" placeholder="Search title, instruction, or remark" class="w-full bg-white border border-gray-200 rounded-xl pl-11 pr-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-[#621708]/10 focus:border-[#621708]/30">
                         </div>
                         <div class="flex flex-wrap gap-2">
-                            <button onclick="filterStatus('all')" data-filter="all" class="filter-btn active border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">All</button>
-                            <button onclick="filterStatus('notsubmitted')" data-filter="notsubmitted" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Pending</button>
-                            <button onclick="filterStatus('underreview')" data-filter="underreview" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Review</button>
-                            <button onclick="filterStatus('approved')" data-filter="approved" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Approved</button>
-                            <button onclick="filterStatus('rejected')" data-filter="rejected" class="filter-btn border border-gray-200 bg-white px-4 py-2.5 rounded-2xl text-sm font-semibold">Rejected</button>
+                            <button onclick="filterStatus('all')" data-filter="all" class="filter-btn active border border-gray-200 bg-white">All</button>
+                            <button onclick="filterStatus('notsubmitted')" data-filter="notsubmitted" class="filter-btn border border-gray-200 bg-white">Pending</button>
+                            <button onclick="filterStatus('underreview')" data-filter="underreview" class="filter-btn border border-gray-200 bg-white">Review</button>
+                            <button onclick="filterStatus('approved')" data-filter="approved" class="filter-btn border border-gray-200 bg-white">Approved</button>
+                            <button onclick="filterStatus('rejected')" data-filter="rejected" class="filter-btn border border-gray-200 bg-white">Rejected</button>
                         </div>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                    <div class="xl:col-span-6">
-                        <div id="statusList" class="overflow-hidden rounded-[1.5rem] border border-gray-200 bg-white divide-y divide-gray-100"></div>
+                <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+                    <div class="xl:col-span-5 min-w-0">
+                        <div id="statusList" class="overflow-hidden rounded-[16px] border border-gray-200 bg-white divide-y divide-gray-100"></div>
                     </div>
-                    <div class="xl:col-span-6">
-                        <div id="detailPanel" class="bg-gray-50 border border-gray-200 rounded-[1.75rem] p-6 min-h-[560px]"></div>
+                    <div class="xl:col-span-7 min-w-0">
+                        <div id="detailPanel" class="bg-slate-50 border border-gray-200 rounded-[16px] p-4 sm:p-5 min-h-[520px] overflow-hidden"></div>
                     </div>
                 </div>
             </section>
@@ -157,6 +314,18 @@ function daysUntil(iso) {
     const now = new Date();
     const due = new Date(iso);
     return Math.ceil((due.getTime() - now.getTime()) / 86400000);
+}
+function getTaskDeadline(task) {
+    if (window.CiteFlowWorkflow?.getTaskDeadline) {
+        return CiteFlowWorkflow.getTaskDeadline(task);
+    }
+    return task?.deadline_at || task?.due_at || null;
+}
+function getTaskRequirementText(task) {
+    if (window.CiteFlowWorkflow?.getTaskRequirementText) {
+        return CiteFlowWorkflow.getTaskRequirementText(task);
+    }
+    return String(task?.instructions || task?.submission_instructions || '').trim();
 }
 function resolveCurrentFaculty() {
     return currentFaculty;
@@ -273,7 +442,7 @@ async function loadCurrentFacultyProfile() {
 }
 function normalizeStatus(raw, task) {
     const status = raw || 'notsubmitted';
-    if (status === 'notsubmitted' && task?.due_at && new Date(task.due_at).getTime() < Date.now()) return 'late';
+    if (status === 'notsubmitted' && getTaskDeadline(task) && new Date(getTaskDeadline(task)).getTime() < Date.now()) return 'late';
     return status;
 }
 function getStatusLabel(status) {
@@ -300,11 +469,38 @@ function getIndicator(status) {
     };
     return map[status] || map.notsubmitted;
 }
+function getStatusTone(status) {
+    if (status === 'approved') return 'row-tone-approved';
+    if (status === 'rejected') return 'row-tone-rejected';
+    if (status === 'revision') return 'row-tone-revision';
+    if (['submitted', 'late', 'underreview', 'pending'].includes(status)) return 'row-tone-pending';
+    return 'row-tone-idle';
+}
+
+function miniTrackHtml(row) {
+    const stage = row.display?.stage || row.status;
+    let current = 1;
+    let tone = 'is-on';
+    if (['submitted', 'pending', 'underreview', 'chairperson_review'].includes(stage)) current = 3;
+    if (stage === 'final_approval') current = 4;
+    if (stage === 'completed' || stage === 'approved') current = 5;
+    if (stage === 'revision_required' || stage === 'revision') { current = 3; tone = 'is-warn'; }
+    if (stage === 'rejected') { current = 3; tone = 'is-danger'; }
+    return `<span class="cite-mini-track" title="Workflow progress">${[1,2,3,4,5].map(i => `<span class="cite-mini-dot ${i <= current ? tone : ''}"></span>`).join('')}</span>`;
+}
+
+function stepperClass(step) {
+    if (step.key === 'rejected' || step.label === 'Rejected') return step.active || step.done ? 'is-danger' : '';
+    if (step.key === 'revision' || step.label === 'Revision Required') return step.active || step.done ? 'is-warn' : '';
+    if (step.active) return 'is-active';
+    if (step.done) return 'is-done';
+    return '';
+}
 function getDueMeta(row) {
     const status = row.status;
     if (status === 'approved') return { label: 'Approved', color: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' };
-    if (!row.task?.due_at) return { label: 'No due date', color: 'bg-gray-300', text: 'text-gray-600', bg: 'bg-gray-50' };
-    const d = daysUntil(row.task.due_at);
+    if (!getTaskDeadline(row.task)) return { label: 'No due date', color: 'bg-gray-300', text: 'text-gray-600', bg: 'bg-gray-50' };
+    const d = daysUntil(getTaskDeadline(row.task));
     if (d < 0) return { label: `${Math.abs(d)} day${Math.abs(d) === 1 ? '' : 's'} overdue`, color: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' };
     if (d <= 1) return { label: d === 0 ? 'Due today' : '1 day left', color: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' };
     if (d <= 3) return { label: `${d} days left`, color: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50' };
@@ -392,7 +588,7 @@ function renderPreview(file) {
         return;
     }
     const safeUrl = escapeHtml(url);
-    const header = `<div class="flex items-center justify-between gap-3 mb-3"><div class="min-w-0"><div class="text-sm font-bold text-gray-900 truncate">${name}</div><div class="text-xs text-gray-500 truncate">${safeUrl}</div></div><a href="${safeUrl}" target="_blank" rel="noopener" class="shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[#621708] text-white text-xs font-bold hover:bg-[#8c2a10]"><svg class="icon w-4 h-4" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>Open</a></div>`;
+    const header = `<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3"><div class="min-w-0"><div class="text-sm font-bold text-gray-900 break-words">${name}</div><div class="text-xs text-gray-500 truncate">${safeUrl}</div></div><a href="${safeUrl}" target="_blank" rel="noopener" class="shrink-0 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[#621708] text-white text-xs font-bold hover:bg-[#8c2a10]"><svg class="icon w-4 h-4" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>Open</a></div>`;
     if (['png','jpg','jpeg','gif','webp','bmp','svg'].includes(ext)) {
         preview.innerHTML = header + `<img class="preview-img border border-gray-200" src="${safeUrl}" alt="${name}">`;
     } else if (ext === 'pdf') {
@@ -403,51 +599,48 @@ function renderPreview(file) {
 }
 
 function renderTimeline(row) {
+    let steps = [];
     if (window.CiteFlowWorkflow) {
-        const steps = CiteFlowWorkflow.buildTimelineSteps(row.submission, row.task, row.assignment, state.approvalHistory);
-        return steps.map(step => {
-            const dotClass = step.active
-                ? 'bg-[#621708] border-[#f5e8c7] ring-4 ring-[#621708]/20'
-                : step.done
-                    ? 'bg-[#621708] border-[#f5e8c7]'
-                    : 'bg-white border-gray-200';
-            return `<div class="timeline-step relative flex gap-4 pb-8">
-                <div class="relative z-10 w-5 h-5 rounded-full border-4 ${dotClass}"></div>
-                <div class="-mt-1 flex-1">
-                    <div class="text-sm font-semibold text-gray-900">${escapeHtml(step.label)}</div>
-                    <div class="text-xs text-gray-500 mt-1">${formatDateTime(step.date)}</div>
-                    <div class="text-sm text-gray-600 mt-2">${escapeHtml(step.note)}</div>
-                </div>
-            </div>`;
-        }).join('');
+        steps = CiteFlowWorkflow.buildTimelineSteps(row.submission, row.task, row.assignment, state.approvalHistory);
+    } else {
+        const status = row.status;
+        steps = [
+            { key: 'assigned', label: 'Assigned', date: row.assignment?.assigned_at, done: true, note: 'Task assigned to faculty member.' },
+            { key: 'submitted', label: 'Submitted', date: row.submission?.submitted_at, done: !!row.submission?.submitted_at, note: row.submission?.submitted_at ? 'Documents were submitted for review.' : 'Waiting for submission.' },
+            { key: 'reviewed', label: 'Reviewed', date: row.submission?.reviewed_at, done: !!row.submission?.reviewed_at || ['approved','rejected','revision'].includes(status), note: row.submission?.review_remarks || 'No review remarks yet.' }
+        ];
     }
-    const status = row.status;
-    const steps = [
-        { title: 'Assigned', date: row.assignment?.assigned_at, done: true, note: 'Task assigned to faculty member.' },
-        { title: 'Submitted', date: row.submission?.submitted_at, done: !!row.submission?.submitted_at, note: row.submission?.submitted_at ? 'Documents were submitted for review.' : 'Waiting for submission.' },
-        { title: 'Reviewed', date: row.submission?.reviewed_at, done: !!row.submission?.reviewed_at || ['approved','rejected','revision'].includes(status), note: row.submission?.review_remarks || 'No review remarks yet.' }
-    ];
-    return steps.map(step => `<div class="timeline-step relative flex gap-4 pb-8">
-        <div class="relative z-10 w-5 h-5 rounded-full border-4 ${step.done ? 'bg-[#621708] border-[#f5e8c7]' : 'bg-white border-gray-200'}"></div>
-        <div class="-mt-1">
-            <div class="text-sm font-semibold text-gray-900">${step.title}</div>
-            <div class="text-xs text-gray-500 mt-1">${formatDateTime(step.date)}</div>
-            <div class="text-sm text-gray-600 mt-2">${escapeHtml(step.note)}</div>
-        </div>
-    </div>`).join('');
+    return `<div class="status-timeline"><div class="cite-stepper">${steps.map(step => {
+        const cls = stepperClass(step);
+        const icon = cls === 'is-done' || cls === 'is-danger' || cls === 'is-warn'
+            ? '<i class="fa-solid fa-check"></i>'
+            : '';
+        return `<div class="cite-step ${cls}">
+            <div class="cite-step-dot">${icon}</div>
+            <div class="min-w-0">
+                <div class="cite-step-label">${escapeHtml(step.label)}</div>
+                <div class="cite-step-date">${formatDateTime(step.date)}</div>
+                <div class="cite-step-note">${escapeHtml(step.note || '')}</div>
+            </div>
+        </div>`;
+    }).join('')}</div></div>`;
 }
 function renderDetail(row) {
     const panel = document.getElementById('detailPanel');
     if (!row) {
-        panel.innerHTML = `<div class="h-full min-h-[480px] flex items-center justify-center text-center"><div><div class="w-16 h-16 rounded-3xl bg-white border border-gray-200 flex items-center justify-center mx-auto mb-4"><svg class="icon text-gray-400" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><h3 class="font-bold text-gray-900">Select a submission</h3><p class="text-sm text-gray-500 mt-1">Choose a task from the list to see details, files, timeline, and remarks.</p></div></div>`;
+        panel.innerHTML = `<div class="h-full min-h-[420px] flex items-center justify-center text-center"><div class="cite-empty"><div class="cite-empty-icon"><svg class="icon text-gray-400" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><div class="cite-empty-title">Select a submission</div><p class="cite-empty-text">Choose a task from the list to see its timeline, files, and remarks.</p></div></div>`;
         return;
     }
     const due = getDueMeta(row);
     const filesHtml = row.files.length ? row.files.map((f) => {
         const url = getFileUrl(f);
         const encoded = encodeFileForPreview(f);
-        return `<button type="button" onclick="previewFileFromEncoded('${encoded}')" class="w-full text-left flex items-center gap-3 p-3 rounded-2xl bg-white border border-gray-200 hover:border-[#621708]/30 hover:bg-[#fffaf8] transition"><div class="w-10 h-10 rounded-xl bg-gray-50 text-gray-500 flex items-center justify-center"><svg class="icon w-5 h-5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><div class="min-w-0 flex-1"><div class="text-sm font-semibold text-gray-900 truncate">${escapeHtml(f.file_name || 'Uploaded document')}</div><div class="text-xs text-gray-500">${url ? 'Click to preview document' : 'Preview unavailable: missing file URL'}</div></div><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>`;
+        const uploaded = f.created_at || f.uploaded_at || f.updated_at;
+        return `<button type="button" onclick="previewFileFromEncoded('${encoded}')" class="w-full text-left flex items-center gap-3 p-3 rounded-2xl bg-white border border-gray-200 hover:border-[#621708]/30 hover:bg-[#fffaf8] transition"><div class="w-10 h-10 rounded-xl bg-gray-50 text-gray-500 flex items-center justify-center"><svg class="icon w-5 h-5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><div class="min-w-0 flex-1"><div class="text-sm font-semibold text-gray-900 truncate">${escapeHtml(f.file_name || 'Uploaded document')}</div><div class="text-xs text-gray-500">${url ? 'Click to preview document' : 'Preview unavailable: missing file URL'}${uploaded ? ' · ' + formatDateTime(uploaded) : ''}</div></div><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>`;
     }).join('') : '<div class="text-sm text-gray-500 bg-white border border-dashed border-gray-300 rounded-2xl p-4">No submitted documents yet.</div>';
+    const filesUpdatedHtml = window.CiteFlowWorkflow?.facultyFilesWereUpdatedAfterReview?.(row.submission)
+        ? `<div class="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">Files were updated after the last review. The current files are shown below.</div>`
+        : '';
     const taskFileRows = (state.taskFiles || []).filter(tf => String(tf.task_id) === String(row.task.id));
     const attachments = taskFileRows.length ? taskFileRows : (row.task?.attachment_names || []).map(name => ({ file_name: name }));
     const attachmentsHtml = attachments.length ? attachments.map(file => {
@@ -459,47 +652,55 @@ function renderDetail(row) {
         }
         return `<span class="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700"><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${label}</span>`;
     }).join('') : '<span class="text-sm text-gray-500">No required attachment template.</span>';
-    panel.innerHTML = `<div class="flex flex-col gap-6">
-        <div class="bg-white rounded-[1.5rem] border border-gray-200 p-6">
-            <div class="flex items-start justify-between gap-4 mb-5">
-                <div>
-                    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold ${row.display?.chip || getStatusChip(row.status)}"><span class="status-dot ${getIndicator(row.status)}"></span>${escapeHtml(row.display?.label || getStatusLabel(row.status))}</div>
-                    <h3 class="text-2xl font-bold text-gray-950 mt-4">${escapeHtml(row.task.title)}</h3>
-                    <p class="text-sm text-gray-500 mt-2 leading-6">${escapeHtml(row.task.instructions || 'No instructions provided.')}</p>
+    panel.innerHTML = `<div class="flex flex-col gap-5">
+        <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+            <div class="mb-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="status-badge-chip border ${row.display?.chip || getStatusChip(row.status)}"><span class="status-dot ${getIndicator(row.status)}"></span>${escapeHtml(row.display?.label || getStatusLabel(row.status))}</span>
+                    ${window.CiteFlowWorkflow?.resolveDocumentCategory && CiteFlowWorkflow.resolveDocumentCategory(row.task) ? `<span class="status-badge-chip bg-slate-100 text-slate-700 border-slate-200">${escapeHtml(CiteFlowWorkflow.formatDocumentCategory(row.task))}</span>` : ''}
                 </div>
+                <h3 class="text-lg sm:text-xl font-extrabold tracking-tight text-gray-950 mt-3 break-words">${escapeHtml(row.task.title)}</h3>
+                <p class="text-sm text-gray-500 mt-2 leading-6 break-words">${escapeHtml(getTaskRequirementText(row.task) || 'No instructions provided.')}</p>
+                ${row.task.reporting_period_label ? `<p class="text-xs text-gray-500 mt-2">Reporting period: <span class="font-semibold text-gray-700">${escapeHtml(row.task.reporting_period_label)}</span></p>` : ''}
             </div>
             <div class="grid sm:grid-cols-3 gap-3">
-                <div class="rounded-2xl ${due.bg} p-4 border border-gray-100"><div class="text-xs text-gray-500">Due indicator</div><div class="flex items-center gap-2 mt-2"><span class="w-2.5 h-2.5 rounded-full ${due.color}"></span><span class="text-sm font-bold ${due.text}">${due.label}</span></div></div>
-                <div class="rounded-2xl bg-gray-50 p-4 border border-gray-100"><div class="text-xs text-gray-500">Due date</div><div class="text-sm font-bold text-gray-900 mt-2">${formatDate(row.task.due_at)}</div></div>
-                <div class="rounded-2xl bg-gray-50 p-4 border border-gray-100"><div class="text-xs text-gray-500">Submitted</div><div class="text-sm font-bold text-gray-900 mt-2">${formatDate(row.submission?.submitted_at)}</div></div>
+                <div class="rounded-xl ${due.bg} p-4 border border-gray-100 min-w-0"><div class="text-xs text-gray-500">Due indicator</div><div class="flex items-center gap-2 mt-2 min-w-0"><span class="w-2.5 h-2.5 rounded-full ${due.color} shrink-0"></span><span class="text-sm font-bold ${due.text} break-words">${due.label}</span></div></div>
+                <div class="rounded-xl bg-gray-50 p-4 border border-gray-100 min-w-0"><div class="text-xs text-gray-500">Due date</div><div class="text-sm font-bold text-gray-900 mt-2 break-words">${formatDateTime(getTaskDeadline(row.task))}</div></div>
+                <div class="rounded-xl bg-gray-50 p-4 border border-gray-100 min-w-0"><div class="text-xs text-gray-500">Submitted</div><div class="text-sm font-bold text-gray-900 mt-2 break-words">${formatDate(row.submission?.submitted_at)}</div></div>
             </div>
         </div>
-        <div class="grid lg:grid-cols-2 gap-5">
-            <div class="bg-white rounded-[1.5rem] border border-gray-200 p-5">
-                <h4 class="font-bold text-gray-900 mb-4">Progress Timeline</h4>
-                <div>${renderTimeline(row)}</div>
-            </div>
+        <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+            <h4 class="font-bold text-gray-900 mb-4">Progress Timeline</h4>
+            <div>${renderTimeline(row)}</div>
+        </div>
+        <div class="grid grid-cols-1 gap-5 min-w-0">
             <div class="space-y-5">
-                <div class="bg-white rounded-[1.5rem] border border-gray-200 p-5">
+                <div class="bg-white rounded-[16px] border border-gray-200 p-5">
                     <h4 class="font-bold text-gray-900 mb-4">Submitted Documents</h4>
-                    <div class="space-y-3">${filesHtml}</div>
+                    <div class="space-y-3">${filesUpdatedHtml}${filesHtml}</div>
                 </div>
-                <div class="bg-white rounded-[1.5rem] border border-gray-200 p-5">
-                    <div class="flex items-center justify-between gap-3 mb-4">
-                        <h4 class="font-bold text-gray-900">Document Preview</h4>
-                        <span class="text-xs text-gray-400 font-semibold">Preview area</span>
-                    </div>
-                    <div id="documentPreview">${row.files.length ? '<div class="text-sm text-gray-500 bg-white border border-dashed border-gray-300 rounded-2xl p-5 text-center">Select a submitted document above to preview it here.</div>' : '<div class="text-sm text-gray-500 bg-white border border-dashed border-gray-300 rounded-2xl p-5 text-center">No document available for preview.</div>'}</div>
-                </div>
-                <div class="bg-white rounded-[1.5rem] border border-gray-200 p-5">
+                <div class="bg-white rounded-[16px] border border-gray-200 p-5">
                     <h4 class="font-bold text-gray-900 mb-4">Task Attachments</h4>
                     <div class="flex flex-wrap gap-2">${attachmentsHtml}</div>
                 </div>
             </div>
+            <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+                <div class="flex items-center justify-between gap-3 mb-4">
+                    <h4 class="font-bold text-gray-900">Document Preview</h4>
+                    <span class="text-xs text-gray-400 font-semibold">Preview</span>
+                </div>
+                <div id="documentPreview">${row.files.length ? '<div class="text-sm text-gray-500 bg-slate-50 border border-dashed border-gray-300 rounded-xl p-5 text-center">Select a submitted document above to preview it here.</div>' : '<div class="text-sm text-gray-500 bg-slate-50 border border-dashed border-gray-300 rounded-xl p-5 text-center">No document available for preview.</div>'}</div>
+            </div>
         </div>
-        <div class="bg-white rounded-[1.5rem] border border-gray-200 p-5">
-            <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center"><svg class="icon w-5 h-5" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div><h4 class="font-bold text-gray-900">Admin Remarks</h4><p class="text-xs text-gray-500">Latest reviewer feedback</p></div></div>
-            <div class="text-sm text-gray-700 leading-6 bg-gray-50 border border-gray-100 rounded-2xl p-4">${escapeHtml(row.submission?.review_remarks || 'No remarks have been added yet.')}</div>
+        <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+            <div class="flex items-start gap-3 mb-3">
+                <div class="cite-icon shrink-0"><svg class="icon w-5 h-5" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div>
+                <div class="min-w-0">
+                    <h4 class="font-bold text-gray-900">Admin Remarks</h4>
+                    <p class="text-xs text-gray-500 mt-0.5">Latest reviewer feedback</p>
+                </div>
+            </div>
+            <div class="text-sm text-gray-700 leading-6 bg-slate-50 border border-gray-100 rounded-xl p-4 break-words">${escapeHtml(row.submission?.review_remarks || 'No remarks have been added yet.')}</div>
         </div>
     </div>`;
 }
@@ -510,34 +711,28 @@ function renderRows() {
     const container = document.getElementById('statusList');
     if (!rows.length) {
         activeRowKey = null;
-        container.innerHTML = '<div class="text-center text-sm text-gray-500 py-12 bg-gray-50 rounded-3xl border border-dashed border-gray-300">No submissions match the selected view.</div>';
+        container.innerHTML = '<div class="cite-empty"><div class="cite-empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="cite-empty-title">No submissions match this view</div><p class="cite-empty-text">Try another filter or search term.</p></div>';
         renderDetail(null);
         return;
     }
     if (!activeRowKey || !rows.some(r => r.key === activeRowKey)) activeRowKey = rows[0].key;
     container.innerHTML = rows.map(r => {
         const due = getDueMeta(r);
-        return `<button onclick="selectRow('${r.key}')" class="task-row ${activeRowKey === r.key ? 'active' : ''} w-full text-left bg-white px-4 py-4 flex items-stretch gap-4 border-0">
+        return `<button type="button" onclick="selectRow('${r.key}')" class="task-row ${getStatusTone(r.status)} ${activeRowKey === r.key ? 'active' : ''} w-full text-left bg-white px-3 sm:px-4 py-3.5 flex items-stretch gap-3 border-0">
             <span class="indicator-bar ${due.color}"></span>
-            <span class="flex-1 min-w-0 grid grid-cols-12 gap-3 items-center">
-                <span class="col-span-12 md:col-span-5 min-w-0">
-                    <span class="block font-bold text-gray-950 truncate">${escapeHtml(r.task.title)}</span>
-                    <span class="block text-sm text-gray-500 mt-1 truncate">${escapeHtml(r.task.instructions || 'No instructions provided.')}</span>
+            <span class="status-row-main">
+                <span class="status-row-top">
+                    <span class="min-w-0">
+                        <span class="block font-bold text-gray-950 leading-snug break-words">${escapeHtml(r.task.title)}</span>
+                        <span class="block text-sm text-gray-500 mt-1 leading-snug line-clamp-2">${escapeHtml(getTaskRequirementText(r.task) || r.task.instructions || 'No instructions provided.')}</span>
+                    </span>
+                    <span class="status-badge-chip border ${r.display?.chip || getStatusChip(r.status)}">${escapeHtml(r.display?.label || getStatusLabel(r.status))}</span>
                 </span>
-                <span class="col-span-6 md:col-span-2 text-xs text-gray-500">
-                    <span class="block font-semibold text-gray-400 uppercase tracking-wide mb-1">Due</span>
-                    <span class="inline-flex items-center gap-1.5 text-gray-700"><svg class="icon w-4 h-4" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${formatDate(r.task.due_at)}</span>
-                </span>
-                <span class="col-span-6 md:col-span-2 text-xs">
-                    <span class="block font-semibold text-gray-400 uppercase tracking-wide mb-1">Indicator</span>
-                    <span class="inline-flex items-center gap-1.5 ${due.text}"><span class="w-2 h-2 rounded-full ${due.color}"></span>${due.label}</span>
-                </span>
-                <span class="col-span-6 md:col-span-2">
-                    <span class="inline-flex px-3 py-1 rounded-full border text-[11px] font-bold ${r.display?.chip || getStatusChip(r.status)}">${escapeHtml(r.display?.label || getStatusLabel(r.status))}</span>
-                </span>
-                <span class="col-span-6 md:col-span-1 flex items-center justify-end gap-2 text-xs text-gray-500">
-                    <span class="inline-flex items-center gap-1.5"><svg class="icon w-4 h-4" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>${r.files.length}</span>
-                    <svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+                <span class="status-row-meta">
+                    <span title="Due date"><svg class="icon w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${formatDateTime(getTaskDeadline(r.task))}</span>
+                    <span class="${due.text}"><span class="w-2 h-2 rounded-full ${due.color} shrink-0"></span>${due.label}</span>
+                    <span>${miniTrackHtml(r)}</span>
+                    <span><svg class="icon w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>${r.files.length}</span>
                 </span>
             </span>
         </button>`;
@@ -647,7 +842,7 @@ function initRealtime() {
             }
         }, [
             'wf_submissions', 'wf_approval_history', 'wf_notifications', 'wf_task_assignments',
-            'wf_tasks', 'wf_activity_log', 'wf_comments', 'wf_report_configs'
+            'wf_tasks', 'wf_activity_log', 'wf_comments', 'wf_report_configs', 'wf_submission_files'
         ]);
     }
 }

@@ -677,35 +677,30 @@
                 }
             }
 
-            // 1. Verify Active Session & Prepopulate profile
+            // 1. Verify Active Session & Guard against session tampering
             try {
-                const sb = CiteFlowAuth.getClient();
-                const { data: { session } } = await sb.auth.getSession();
-                if (!session || !session.user) {
+                const sessionVerification = await CiteFlowAuth.verifyFirstTimeLoginSession();
+                if (!sessionVerification.valid || !sessionVerification.user) {
+                    console.warn("Onboarding: Invalid or tampered session detected. Redirecting to login...");
                     window.location.href = 'login.html';
                     return;
                 }
 
-                currentSessionUser = session.user;
+                currentSessionUser = sessionVerification.user;
+                const profile = sessionVerification.facultyRecord;
+
+                // If user has already completed onboarding, redirect to dashboard
+                if (!sessionVerification.needsOnboarding) {
+                    window.location.href = 'faculty/dashboard.html';
+                    return;
+                }
+
                 const meta = currentSessionUser.user_metadata || {};
 
                 populateNameFields(meta.full_name || meta.name || '', meta.first_name || '', meta.last_name || '');
                 employeeId.value = meta.employee_id || meta.id_number || 'ASSIGNED-BY-ADMIN';
                 if (meta.department) department.value = meta.department;
                 if (meta.position || meta.role) position.value = meta.position || meta.role || 'Faculty';
-
-                // Load existing faculty profile if available
-                const { data: profile } = await sb
-                    .from('faculty')
-                    .select('*')
-                    .or(`auth_user_id.eq.${currentSessionUser.id},email.ilike.${currentSessionUser.email}`)
-                    .maybeSingle();
-
-                // Already finished onboarding — send to dashboard (do not show wizard again)
-                if (CiteFlowAuth.isOnboardingComplete(profile, currentSessionUser)) {
-                    window.location.href = 'faculty/dashboard.html';
-                    return;
-                }
 
                 if (profile) {
                     if (profile.first_name) firstName.value = profile.first_name;
