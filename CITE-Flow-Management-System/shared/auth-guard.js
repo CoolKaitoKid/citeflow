@@ -89,6 +89,11 @@
             const onboardingRequired = needsOnboarding(facultyRecord, user);
             const onboardingDone = isOnboardingComplete(facultyRecord, user);
 
+            // Sync validated encrypted session token with anti-tamper metadata
+            if (window.CiteFlowAuth?.cacheUserInfo) {
+                window.CiteFlowAuth.cacheUserInfo(user, isAdminRole ? 'Admin' : (facultyRecord?.role || 'Faculty'), facultyRecord);
+            }
+
             if (isOnboardingArea) {
                 if (onboardingDone) {
                     const adminDestination = (isAdminRole || isDean || isSecretary || (isChair && hasAdminAccess))
