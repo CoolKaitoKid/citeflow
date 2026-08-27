@@ -3,21 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calendar - CITE-Flow</title>
+    <title>Faculty Calendar - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../shared/supabase-config.js"></script>
-    <script src="../shared/auth.js"></script>
-    <script src="../shared/auth-guard.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Include jsPDF and AutoTable for PDF Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
         * { font-family: 'Inter', sans-serif; }
+        
+        .card-shadow { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); }
 
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        .nav-icon {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            stroke-width: 2.25;
         }
 
         .calendar-day { 
@@ -25,10 +30,7 @@
             transition: all 0.2s; 
             padding: 8px;
         }
-        .calendar-day:hover { 
-            background-color: #f8f8f8; 
-        }
-        
+        .calendar-day:hover { background-color: #f8f8f8; }
         .calendar-day.today { 
             background-color: #fff1f2; 
             border: 2px solid #9f1239; 
@@ -45,26 +47,18 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .notif-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-            background: #dc2626;
-            display: inline-block;
-        }
-
         .app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}
         .panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}
         .icon-btn{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:12px;background:#fff;color:#334155;transition:all 0.15s ease}
         .icon-btn:hover{background:#f8fafc;border-color:#cbd5e1}
-        .day-cell{min-height:105px;border-right:1px solid #eef2f7;border-bottom:1px solid #eef2f7;transition:.18s}
+        .day-cell{min-height:115px;border-right:1px solid #eef2f7;border-bottom:1px solid #eef2f7;transition:.18s}
         .day-cell:hover{background:#f9fafb}
         .day-cell.selected{background:#fff7ed;box-shadow:inset 0 0 0 1px #c2410c}
         .day-num{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-size:11.5px;font-weight:700;color:#334155}
-        .day-num.today{background:var(--cite-theme, #621708);color:#fff}
+        .day-num.today{background:#621708;color:#fff}
         .mini-day{position:relative;width:30px;height:30px;border-radius:999px;font-size:11.5px;font-weight:700;color:#475569}
         .mini-day:hover{background:#f1f5f9}
-        .mini-day.active{background:var(--cite-theme, #621708);color:#fff}
+        .mini-day.active{background:#621708;color:#fff}
         .mini-day.has:after{content:'';position:absolute;bottom:3px;left:50%;width:4px;height:4px;background:#b45309;border-radius:999px;transform:translateX(-50%)}
         .pill{display:block;width:100%;border-radius:10px;padding:5px 7px;margin-top:4px;font-size:10.5px;line-height:1.2;text-align:left;border:1px solid transparent;cursor:pointer}
         .pill:hover{filter:brightness(.98)}
@@ -72,6 +66,9 @@
         .event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
         .event-exam{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
         .event-workshop{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}
+        .event-announcement{background:#fdf2f8;color:#be185d;border-color:#fbcfe8}
+        .event-deadline{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
+        .event-leave{background:#fffbeb;color:#b45309;border-color:#fde68a}
         .event-other{background:#f8fafc;color:#334155;border-color:#e2e8f0}
         .modal-field{width:100%;border:1px solid #d1d5db;border-radius:14px;padding:10px 12px;font-size:13px;outline:none;background:white}
         .modal-field:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}
@@ -81,39 +78,32 @@
 
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
-    
-    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] bg-slate-50 w-full overflow-x-hidden transition-all duration-300">
+
+    <!-- MAIN CALENDAR CONTENT -->
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] app-surface w-full overflow-x-hidden transition-all duration-300">
         <div id="navbar-container"></div>
 
         <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
-            <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+            <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6 sm:mb-8">
                 <div>
-                    <p class="text-[11px] sm:text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase mb-1">Faculty Calendar</p>
-                    <h1 class="text-2xl sm:text-3xl font-bold text-slate-950">Calendar</h1>
-                    <p class="text-xs sm:text-sm text-slate-500 mt-0.5">View schedules, event details, and feedback requirements assigned by administration.</p>
+                    <div class="text-[11px] sm:text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase mb-1.5">Faculty Portal & Schedule</div>
+                    <h1 class="text-2xl sm:text-3xl font-bold text-slate-950 tracking-tight">Faculty Calendar</h1>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">View admin schedules, announcements, and submit leave requests securely.</p>
                 </div>
-                <div class="flex items-center gap-2.5">
-                    <button onclick="goToday()" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm">Today</button>
+                <div class="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                    <button onclick="goToday()" class="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs sm:text-sm font-semibold hover:bg-slate-50 shadow-sm">Today</button>
+                    <button onclick="prevMonth()" class="icon-btn" aria-label="Previous Month"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
+                    <button onclick="nextMonth()" class="icon-btn" aria-label="Next Month"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
+                    <button onclick="openFileLeaveModal()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-file-lines text-xs"></i> File Leave Request
+                    </button>
+                    <button onclick="exportCalendarPDF()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-download text-xs"></i> Export PDF
+                    </button>
                 </div>
-            </header>
+            </div>
 
-            <!-- Feedback Reminder Banner -->
-            <section id="feedback-reminder-panel" class="panel rounded-2xl sm:rounded-[1.75rem] p-4 sm:p-5 mb-6 hidden">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-                    <div class="flex items-start gap-3 sm:gap-4">
-                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-50 text-amber-700 border border-amber-100 flex items-center justify-center shrink-0">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
-                        </div>
-                        <div>
-                            <div class="text-xs sm:text-sm font-bold text-slate-950">Feedback Reminder</div>
-                            <div id="feedback-reminder-text" class="text-xs sm:text-sm text-slate-500 mt-0.5">You have feedback to submit.</div>
-                        </div>
-                    </div>
-                    <button onclick="openFirstDueFeedback()" class="w-full sm:w-auto px-5 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all">Submit Feedback</button>
-                </div>
-            </section>
-
-            <div class="grid grid-cols-1 2xl:grid-cols-[1fr_340px] gap-6 sm:gap-7">
+            <div class="grid grid-cols-1 2xl:grid-cols-[1fr_380px] gap-6 sm:gap-7">
                 <section class="panel rounded-2xl sm:rounded-[2rem] overflow-hidden">
                     <div class="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div class="flex items-center gap-2 sm:gap-3">
@@ -138,7 +128,7 @@
                                 <h2 id="mini-title" class="font-bold text-sm sm:text-base text-slate-900">Month</h2>
                                 <p class="text-[11px] text-slate-500">Quick date picker</p>
                             </div>
-                            <button onclick="goToday()" class="text-xs font-bold text-[#621708] hover:underline">Today</button>
+                            <button onclick="goToday()" class="text-xs font-semibold text-[#621708] hover:underline">Today</button>
                         </div>
                         <div class="grid grid-cols-7 text-center text-[10.5px] font-bold text-slate-400 mb-1.5">
                             <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
@@ -156,160 +146,401 @@
                         <div id="selected-events" class="space-y-2.5"></div>
                     </section>
 
-                    <section class="panel rounded-2xl sm:rounded-[2rem] p-4 sm:p-5">
-                        <div class="flex items-center justify-between mb-3">
-                            <div>
-                                <h2 class="font-bold text-sm sm:text-base text-slate-900">Upcoming Events</h2>
-                                <p class="text-[11px] text-slate-500">Next scheduled activities</p>
+                    <!-- SINGLE UPCOMING CONTAINER (Schedules only) -->
+                    <div class="space-y-4">
+                        <div class="panel rounded-2xl p-4 bg-white border border-indigo-100 shadow-sm">
+                            <div class="flex items-center justify-between mb-3 pb-2 border-b border-indigo-50">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center text-xs">
+                                        <i class="fa-solid fa-calendar-days"></i>
+                                    </div>
+                                    <span class="text-xs font-bold text-indigo-950 uppercase tracking-wide">Schedules</span>
+                                </div>
+                                <span id="count-schedules" class="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full">0</span>
                             </div>
-                            <span id="upcoming-count" class="text-[11px] font-bold rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-600">0</span>
+                            <div id="list-schedules" class="space-y-2 max-h-[220px] overflow-y-auto pr-1"></div>
                         </div>
-                        <div id="upcoming-events" class="space-y-2.5 max-h-[300px] overflow-y-auto pr-1"></div>
-                    </section>
+                    </div>
                 </aside>
             </div>
         </div>
     </main>
 </div>
 
-<!-- Event Details Modal -->
-<div id="event-modal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
-    <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
-        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-start gap-3 bg-slate-50/50 flex-shrink-0">
-            <div class="min-w-0">
-                <p class="text-[10px] sm:text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Event Details</p>
-                <h2 id="modal-title" class="font-bold text-base sm:text-lg text-slate-950 mt-0.5 truncate"></h2>
+<!-- FILE LEAVE MODAL -->
+<div id="leave-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div>
+                <h2 class="text-base sm:text-lg font-bold text-slate-950">File Faculty Leave Request</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Attach proof (PDF or Image) for admin verification.</p>
             </div>
-            <button onclick="closeModal()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+            <button onclick="closeLeaveModal()" class="icon-btn">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
         </div>
-        <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
-            <div class="grid grid-cols-2 gap-3 text-xs sm:text-sm">
-                <div class="bg-slate-50 rounded-xl p-3"><div class="text-[11px] text-slate-400 font-medium">Type</div><div id="modal-type" class="font-bold text-slate-900 mt-0.5"></div></div>
-                <div class="bg-slate-50 rounded-xl p-3"><div class="text-[11px] text-slate-400 font-medium">Priority</div><div id="modal-priority" class="font-bold text-slate-900 mt-0.5"></div></div>
-                <div class="bg-slate-50 rounded-xl p-3 col-span-2"><div class="text-[11px] text-slate-400 font-medium">Date & Time</div><div id="modal-time" class="font-bold text-slate-900 mt-0.5"></div></div>
-                <div class="bg-slate-50 rounded-xl p-3 col-span-2"><div class="text-[11px] text-slate-400 font-medium">Location</div><div id="modal-location" class="font-bold text-slate-900 mt-0.5"></div></div>
-                <div class="bg-slate-50 rounded-xl p-3"><div class="text-[11px] text-slate-400 font-medium">Repeat</div><div id="modal-repeat" class="font-bold text-slate-900 mt-0.5"></div></div>
-                <div class="bg-slate-50 rounded-xl p-3"><div class="text-[11px] text-slate-400 font-medium">Visibility</div><div id="modal-invitees" class="font-bold text-slate-900 mt-0.5"></div></div>
-                <div id="modal-survey-links-box" class="hidden bg-slate-50 rounded-xl p-3 col-span-2"><div class="text-[11px] text-slate-400 font-medium">Survey Links</div><div id="modal-survey-links" class="font-bold text-slate-900 mt-1.5 space-y-1"></div></div>
-            </div>
-            <div id="modal-feedback-note" class="hidden rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs sm:text-sm text-amber-800 font-medium leading-relaxed"></div>
-            <div><div class="text-xs font-medium text-slate-500 mb-1">Notes</div><div id="modal-notes" class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-xl p-3.5"></div></div>
-            <div id="feedback-button-container" class="hidden pt-2">
-                <button id="feedback-button" onclick="startEventFeedback()" class="w-full py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white font-bold rounded-xl text-xs sm:text-sm shadow-sm transition-all">Submit Feedback Summary</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Feedback Modal -->
-<div id="feedback-modal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
-    <div class="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
-        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-start gap-3 bg-slate-50/50">
+        <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
             <div>
-                <p class="text-[10px] sm:text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Feedback Summary</p>
-                <h2 id="feedback-event-name" class="font-bold text-base sm:text-lg text-slate-950 mt-0.5 truncate"></h2>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Faculty Name</label>
+                <input id="leave-faculty-name" type="text" placeholder="e.g. Ramcee Jade Munoz" class="modal-field">
             </div>
-            <button onclick="closeFeedbackModal()" class="icon-btn"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
-        </div>
-        <div class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto flex-1">
-            <div class="sm:col-span-2" id="feedback-instructions-box"></div>
             <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1.5">Attendance</label>
-                <select id="feedback-attendance" class="modal-field">
-                    <option value="Attended">Attended</option>
-                    <option value="Did Not Attend">Did Not Attend</option>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Leave Type</label>
+                <select id="leave-type" class="modal-field">
+                    <option value="Sick Leave">Sick Leave</option>
+                    <option value="Vacation Leave">Vacation Leave</option>
+                    <option value="Emergency Leave">Emergency Leave</option>
+                    <option value="Study Leave">Study Leave</option>
+                    <option value="Official Business / Seminar">Official Business / Seminar</option>
                 </select>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1.5">Overall Rating</label>
-                <select id="feedback-rating" class="modal-field">
-                    <option value="">Select rating...</option>
-                    <option value="5">5 - Excellent</option>
-                    <option value="4">4 - Very Good</option>
-                    <option value="3">3 - Good</option>
-                    <option value="2">2 - Fair</option>
-                    <option value="1">1 - Needs Improvement</option>
-                </select>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Start Date</label>
+                    <input id="leave-start-date" type="date" class="modal-field">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">End Date</label>
+                    <input id="leave-end-date" type="date" class="modal-field">
+                </div>
             </div>
             <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1.5">Content Quality</label>
-                <select id="feedback-content-quality" class="modal-field">
-                    <option value="Excellent">Excellent</option>
-                    <option value="Very Good">Very Good</option>
-                    <option value="Good">Good</option>
-                    <option value="Fair">Fair</option>
-                    <option value="Needs Improvement">Needs Improvement</option>
-                </select>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Reason / Remarks</label>
+                <textarea id="leave-reason" placeholder="Provide additional details..." rows="2" class="modal-field resize-none"></textarea>
             </div>
             <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1.5">Speaker / Facilitator</label>
-                <select id="feedback-speaker-quality" class="modal-field">
-                    <option value="Excellent">Excellent</option>
-                    <option value="Very Good">Very Good</option>
-                    <option value="Good">Good</option>
-                    <option value="Fair">Fair</option>
-                    <option value="Needs Improvement">Needs Improvement</option>
-                </select>
-            </div>
-            <div class="sm:col-span-2">
-                <label class="block text-xs font-bold text-slate-700 mb-1.5">Feedback Summary</label>
-                <textarea id="feedback-summary" rows="3" class="modal-field resize-none" placeholder="Summarize your experience, learnings, or concerns..."></textarea>
-            </div>
-            <div class="sm:col-span-2">
-                <label class="block text-xs font-bold text-slate-700 mb-1.5">Suggestions</label>
-                <textarea id="feedback-suggestions" rows="2" class="modal-field resize-none" placeholder="Optional suggestions for future events..."></textarea>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Attach Proof Document (PDF, Photo, etc.)</label>
+                <input type="file" id="leave-file-input" class="modal-field text-xs file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#621708] file:text-white hover:file:bg-[#8c2a10]">
+                <p class="text-[10px] text-slate-400 mt-1">Upload approved leave slip, medical certificate, or memo.</p>
             </div>
         </div>
         <div class="border-t border-slate-100 px-6 py-4 flex justify-end gap-2.5 bg-slate-50">
-            <button onclick="closeFeedbackModal()" class="px-5 py-2 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
-            <button onclick="submitFeedback()" class="px-5 py-2 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all">Submit Feedback</button>
+            <button onclick="closeLeaveModal()" class="px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button onclick="submitLeaveFiling()" id="leave-submit-btn" class="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm">Submit Leave</button>
         </div>
     </div>
 </div>
 
-<div id="message-container"></div>
+<!-- DETAILS & FEEDBACK MODAL -->
+<div id="event-detail-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-start gap-3 bg-slate-50/50">
+            <div class="min-w-0">
+                <p class="text-[10px] sm:text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Schedule Details</p>
+                <h2 id="detail-title" class="font-bold text-base sm:text-lg text-slate-950 mt-0.5 truncate"></h2>
+            </div>
+            <button onclick="closeDetailModal()" class="icon-btn">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+            <div class="grid grid-cols-2 gap-3 text-xs sm:text-sm">
+                <div class="bg-slate-50 rounded-xl p-3">
+                    <div class="text-[11px] text-slate-400 font-medium">Type</div>
+                    <div id="detail-type" class="font-bold text-slate-900 mt-0.5"></div>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-3">
+                    <div class="text-[11px] text-slate-400 font-medium">Priority</div>
+                    <div id="detail-priority" class="font-bold text-slate-900 mt-0.5"></div>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-3 col-span-2">
+                    <div class="text-[11px] text-slate-400 font-medium">Date & Time</div>
+                    <div id="detail-time" class="font-bold text-slate-900 mt-0.5"></div>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-3 col-span-2">
+                    <div class="text-[11px] text-slate-400 font-medium">Location</div>
+                    <div id="detail-location" class="font-bold text-slate-900 mt-0.5"></div>
+                </div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-slate-500 mb-1">Notes</div>
+                <div id="detail-notes" class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-xl p-3.5"></div>
+            </div>
+
+            <!-- FEEDBACK FORM SECTION -->
+            <div class="border-t border-slate-100 pt-4 mt-2 space-y-3">
+                <h3 class="text-xs font-bold text-slate-900"><i class="fa-solid fa-comment-dots text-[#621708] mr-1"></i> Submit Event Feedback</h3>
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Overall Rating (1-5)</label>
+                        <select id="fb-overall-rating" class="modal-field text-xs">
+                            <option value="5">5 - Excellent</option>
+                            <option value="4">4 - Very Good</option>
+                            <option value="3">3 - Good</option>
+                            <option value="2">2 - Fair</option>
+                            <option value="1">1 - Poor</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Attendance Status</label>
+                        <select id="fb-attendance" class="modal-field text-xs">
+                            <option value="Present">Present</option>
+                            <option value="Official Business">Official Business</option>
+                            <option value="Absent">Absent</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Content Quality</label>
+                        <input id="fb-content-quality" type="text" placeholder="e.g. Very Informative" class="modal-field text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Speaker Quality</label>
+                        <input id="fb-speaker-quality" type="text" placeholder="e.g. Engaging" class="modal-field text-xs">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Feedback Summary / Comments</label>
+                    <textarea id="fb-summary" rows="2" placeholder="Write summary of your feedback..." class="modal-field resize-none text-xs"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Suggestions</label>
+                    <textarea id="fb-suggestions" rows="2" placeholder="Any suggestions for improvement..." class="modal-field resize-none text-xs"></textarea>
+                </div>
+
+                <button onclick="submitFacultyFeedback()" class="w-full py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white font-semibold rounded-xl text-xs transition-all shadow-sm">Submit Feedback</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 const supabaseUrl='https://uforealazougjckepggc.supabase.co';
 const supabaseAnonKey='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
 const {createClient}=supabase;const supabaseClient=createClient(supabaseUrl,supabaseAnonKey);window.supabaseClient=supabaseClient;
-const months=['January','February','March','April','May','June','July','August','September','October','November','December'];let now=new Date(),currentMonth=now.getMonth(),currentYear=now.getFullYear(),selectedDate=key(now),events=[],feedbacks=[],selectedEventId=null,currentFeedbackEvent=null,currentUser=null;
+const months=['January','February','March','April','May','June','July','August','September','October','November','December'];let now=new Date(),currentMonth=now.getMonth(),currentYear=now.getFullYear(),selectedDate=key(now),events=[],currentDetailEventId=null,currentFacultyUser=null;
+
 function key(d){d=new Date(d);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
-function addDays(d,n){let x=new Date(d);x.setDate(x.getDate()+n);return x}
-function localTime(d){return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(d))}
+function addH(d,h){d=new Date(d);d.setHours(d.getHours()+h);return d}
+function time(d){return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(d))}
 function longDate(k){let [y,m,d]=k.split('-').map(Number);return new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d))}
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','other'].includes(t)?t:'other')}function visibilityLabel(v){return ({all_faculty:'All Faculty',bsit:'BSIT Faculty',bsie:'BSIE Faculty',bit:'BIT Faculty',department_chairs:'Department Chairpersons',admin_only:'Only Me'}[v]||v||'All Faculty')}function canViewEvent(e){let f=getFaculty();let d=f.department;let r=f.role;let v=String(e.visibility||'all_faculty').toLowerCase();if(['all faculty','everyone','faculty'].includes(v))v='all_faculty';if(v==='all_faculty')return true;if(v==='bsit')return d==='bsit';if(v==='bsie')return d==='bsie';if(v==='bit')return d==='bit';if(v==='department_chairs')return r.includes('chair');if(v==='admin_only')return false;return true}
-function getFaculty(){let meta=currentUser?.user_metadata||{};let name=[meta.first_name,meta.last_name].filter(Boolean).join(' ').trim()||currentUser?.email||'Faculty Member';return {id:currentUser?.id||'anonymous-faculty',name,email:currentUser?.email||'',department:String(meta.department||meta.department_code||'').toLowerCase(),role:String(meta.role||meta.position||meta.academic_rank||'faculty').toLowerCase()}}
-function normalize(r){let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addDays(s,0);let due=addDays(r.end_at||r.start_at,r.feedback_due_after_days||1);return{id:r.id,title:r.title,date:key(s),startAt:r.start_at,endAt:r.end_at,time:r.all_day?'All Day':`${localTime(s)} - ${localTime(e)}`,type:r.event_type||'other',location:r.location||'TBA',priority:r.priority||'Normal',notes:r.notes||'',repeat:r.repeat_rule||'Never',visibility:r.visibility_scope||r.visibility||'all_faculty',allDay:!!r.all_day,requiresFeedback:!!r.requires_feedback,feedbackInstructions:r.feedback_instructions||'',feedbackDueAt:due,hasSurveys:!!r.has_survey_links,preSurveyUrl:r.pre_survey_url||'',postSurveyUrl:r.post_survey_url||''}}
-async function initUser(){let {data}=await supabaseClient.auth.getUser();currentUser=data?.user||null}
-async function loadAll(){await Promise.all([loadEvents(),loadFeedbacks()]);renderCalendar();updateFeedbackReminder()}
-async function loadEvents(){let {data,error}=await supabaseClient.from('calendar_events').select('*').order('start_at',{ascending:true});if(error){console.error(error);status('Calendar table not ready. Run the SQL first.');events=[]}else{events=(data||[]).map(normalize).filter(canViewEvent);status('Realtime calendar connected.')}}
-async function loadFeedbacks(){let f=getFaculty();let {data,error}=await supabaseClient.from('calendar_event_feedback').select('*').eq('faculty_id',f.id);if(error){console.warn('Feedback table not ready or no access yet.',error);feedbacks=[]}else feedbacks=data||[]}
+function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','announcement','deadline','other'].includes(t)?t:'other')}
+
+async function loadCalendarEvents(){
+    let {data,error}=await supabaseClient.from('calendar_events').select('*').order('start_at',{ascending:true});
+    if(error){console.error(error);status('Calendar table not ready.');events=[]}
+    else{
+        events=(data||[]).map(r=>{
+            let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addH(s,1);
+            let t=r.event_type||'other';
+            return{
+                id:r.id,
+                title:r.title,
+                date:key(s),
+                startAt:r.start_at,
+                endAt:r.end_at,
+                time:r.all_day?'All Day':`${time(s)} - ${time(e)}`,
+                type:t,
+                location:r.location||'TBA',
+                priority:r.priority||'Normal',
+                notes:r.notes||'',
+                allDay:!!r.all_day
+            };
+        });
+        status('Realtime calendar connected.');
+    }
+    renderCalendar();
+}
+
 function status(t){let el=document.getElementById('realtime-status');if(el)el.textContent=t}
-function subscribe(){supabaseClient.channel('faculty-calendar-realtime').on('postgres_changes',{event:'*',schema:'public',table:'calendar_events'},loadAll).on('postgres_changes',{event:'*',schema:'public',table:'calendar_event_feedback'},loadAll).subscribe(s=>{if(s==='SUBSCRIBED')status('Realtime calendar connected.')})}
-function populateControls(){document.getElementById('month-select').innerHTML=months.map((m,i)=>`<option value="${i}">${m}</option>`).join('');let ys=document.getElementById('year-select');ys.innerHTML='';for(let y=currentYear-5;y<=currentYear+6;y++)ys.innerHTML+=`<option value="${y}">${y}</option>`;document.getElementById('month-select').value=currentMonth;document.getElementById('year-select').value=currentYear}
+function subscribe(){
+    supabaseClient.channel('faculty-calendar-realtime')
+        .on('postgres_changes',{event:'*',schema:'public',table:'calendar_events'},loadCalendarEvents)
+        .subscribe(s=>{if(s==='SUBSCRIBED')status('Realtime calendar connected.')});
+}
+
+function populateControls(){
+    let ms=document.getElementById('month-select');ms.innerHTML=months.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+    let ys=document.getElementById('year-select');ys.innerHTML='';for(let y=currentYear-5;y<=currentYear+6;y++)ys.innerHTML+=`<option value="${y}">${y}</option>`;
+    ms.value=currentMonth;ys.value=currentYear;
+}
 function changeMonthYear(){currentMonth=+document.getElementById('month-select').value;currentYear=+document.getElementById('year-select').value;selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}
-function hasSubmitted(e){return feedbacks.some(f=>String(f.event_id)===String(e.id))}
-function feedbackDue(e){return e.requiresFeedback && new Date()>=new Date(e.feedbackDueAt) && !hasSubmitted(e)}
-function renderCalendar(){document.getElementById('month-select').value=currentMonth;document.getElementById('year-select').value=currentYear;renderGrid();renderMini();renderSelected();renderUpcoming()}
-function renderGrid(){let grid=document.getElementById('calendar-grid'),first=new Date(currentYear,currentMonth,1).getDay(),days=new Date(currentYear,currentMonth+1,0).getDate(),today=key(new Date());let h='<div class="grid grid-cols-7 border-b border-slate-100 bg-slate-50">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">${d}</div>`).join('')+'</div><div class="grid grid-cols-7">';for(let i=0;i<first;i++)h+='<div class="day-cell bg-slate-50/70"></div>';for(let d=1;d<=days;d++){let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,des=events.filter(e=>e.date===dk).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));h+=`<div class="day-cell bg-white p-2 sm:p-2.5 ${dk===selectedDate?'selected':''}" onclick="selectDate('${dk}')"><div class="flex items-center justify-between mb-1"><span class="day-num ${dk===today?'today':''}">${d}</span>${des.length?`<span class="text-[10px] font-bold text-slate-400">${des.length}</span>`:''}</div>`;des.slice(0,2).forEach(e=>h+=`<button onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}"><span class="block font-bold truncate">${esc(e.title)}</span><span class="block opacity-80 truncate text-[9.5px]">${esc(e.time)}${e.requiresFeedback?' • Feedback':''}</span></button>`);if(des.length>2)h+=`<div class="mt-1 text-[10px] font-bold text-slate-400">+${des.length-2} more</div>`;h+='</div>'}let rem=(first+days)%7;if(rem)for(let i=rem;i<7;i++)h+='<div class="day-cell bg-slate-50/70"></div>';grid.innerHTML=h+'</div>'}
-function renderMini(){document.getElementById('mini-title').textContent=`${months[currentMonth]} ${currentYear}`;let first=new Date(currentYear,currentMonth,1).getDay(),days=new Date(currentYear,currentMonth+1,0).getDate(),h='';for(let i=0;i<first;i++)h+='<div></div>';for(let d=1;d<=days;d++){let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,has=events.some(e=>e.date===dk);h+=`<button onclick="selectDate('${dk}')" class="mini-day ${dk===selectedDate?'active':''} ${has?'has':''}">${d}</button>`}document.getElementById('mini-calendar').innerHTML=h}
-function card(e,showDate=false){let badge=feedbackDue(e)?'<span class="mt-1.5 inline-flex px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100 text-[9.5px] font-bold">Feedback due</span>':(e.requiresFeedback?'<span class="mt-1.5 inline-flex px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[9.5px] font-bold">Feedback required</span>':'');return `<button onclick="showEventDetails('${e.id}')" class="w-full text-left rounded-2xl border border-slate-100 hover:border-slate-200 bg-white p-3.5 hover:shadow-sm transition"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded-xl ${cls(e.type)} flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><div class="min-w-0 flex-1"><div class="font-bold text-xs sm:text-sm text-slate-900 truncate">${esc(e.title)}</div><div class="text-[11px] text-slate-500 mt-0.5">${showDate?longDate(e.date)+' • ':''}${esc(e.time)}</div><div class="text-[10px] text-slate-400 mt-0.5 truncate">${esc(e.location)}</div>${badge}</div></div></button>`}
-function renderSelected(){document.getElementById('selected-label').textContent=longDate(selectedDate);let ds=events.filter(e=>e.date===selectedDate).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));document.getElementById('selected-events').innerHTML=ds.length?ds.map(e=>card(e)).join(''):'<div class="text-xs text-slate-500 border border-dashed border-slate-200 rounded-xl p-4 text-center">No schedules for this date.</div>'}
-function renderUpcoming(){let up=events.filter(e=>e.allDay||new Date(e.startAt)>=new Date(new Date().setHours(0,0,0,0))).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt)).slice(0,8);document.getElementById('upcoming-count').textContent=up.length;document.getElementById('upcoming-events').innerHTML=up.length?up.map(e=>card(e,true)).join(''):'<div class="text-xs text-slate-500 border border-dashed border-slate-200 rounded-xl p-4 text-center">No upcoming schedules yet.</div>'}
-function selectDate(d){selectedDate=d;let a=d.split('-').map(Number);currentYear=a[0];currentMonth=a[1]-1;renderCalendar()}function prevMonth(){currentMonth--;if(currentMonth<0){currentMonth=11;currentYear--}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}function nextMonth(){currentMonth++;if(currentMonth>11){currentMonth=0;currentYear++}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}function goToday(){now=new Date();currentMonth=now.getMonth();currentYear=now.getFullYear();selectedDate=key(now);renderCalendar()}
-function updateFeedbackReminder(){let due=events.filter(feedbackDue).sort((a,b)=>new Date(a.feedbackDueAt)-new Date(b.feedbackDueAt));let panel=document.getElementById('feedback-reminder-panel');if(!due.length){panel.classList.add('hidden');return}document.getElementById('feedback-reminder-text').textContent=`You have ${due.length} event${due.length>1?'s':''} requiring feedback. Latest due: ${due[0].title}.`;panel.classList.remove('hidden')}
-function openFirstDueFeedback(){let due=events.filter(feedbackDue).sort((a,b)=>new Date(a.feedbackDueAt)-new Date(b.feedbackDueAt));if(due[0])openFeedback(due[0])}
-function showEventDetails(id){selectedEventId=id;let e=events.find(x=>String(x.id)===String(id));if(!e)return;document.getElementById('modal-title').textContent=e.title;document.getElementById('modal-type').textContent=(e.type||'Event').toUpperCase();document.getElementById('modal-location').textContent=e.location;document.getElementById('modal-time').textContent=`${longDate(e.date)} • ${e.time}`;document.getElementById('modal-priority').textContent=e.priority;document.getElementById('modal-repeat').textContent=e.repeat;document.getElementById('modal-invitees').textContent=visibilityLabel(e.visibility);let surveyBox=document.getElementById('modal-survey-links-box'),surveyLinks=document.getElementById('modal-survey-links');if(e.hasSurveys&&(e.preSurveyUrl||e.postSurveyUrl)){surveyLinks.innerHTML=`${e.preSurveyUrl?`<a class="text-[#621708] hover:underline block text-xs" target="_blank" href="${esc(e.preSurveyUrl)}">Open Pre-Survey</a>`:''}${e.postSurveyUrl?`<a class="text-[#621708] hover:underline block text-xs" target="_blank" href="${esc(e.postSurveyUrl)}">Open Post-Survey</a>`:''}`;surveyBox.classList.remove('hidden')}else{surveyLinks.innerHTML='';surveyBox.classList.add('hidden')}document.getElementById('modal-notes').textContent=e.notes||'No notes provided.';let note=document.getElementById('modal-feedback-note'),box=document.getElementById('feedback-button-container'),btn=document.getElementById('feedback-button');note.classList.add('hidden');box.classList.add('hidden');btn.disabled=false;btn.classList.remove('opacity-50','cursor-not-allowed');if(e.requiresFeedback){let submitted=hasSubmitted(e),due=feedbackDue(e);let message=submitted?'Feedback already submitted for this event.':due?'Feedback is now required for this event.':'Feedback is required, but reminder opens the day after the event.';note.textContent=message;note.classList.remove('hidden');box.classList.remove('hidden');btn.textContent=submitted?'Feedback Submitted':due?'Submit Feedback Summary':'Feedback Opens Tomorrow';if(submitted||!due){btn.disabled=true;btn.classList.add('opacity-50','cursor-not-allowed')}}document.getElementById('event-modal').classList.remove('hidden')}
-function closeModal(){document.getElementById('event-modal').classList.add('hidden')}
-function startEventFeedback(){let e=events.find(x=>String(x.id)===String(selectedEventId));if(e&&feedbackDue(e))openFeedback(e)}
-function openFeedback(e){currentFeedbackEvent=e;document.getElementById('feedback-event-name').textContent=e.title;document.getElementById('feedback-attendance').value='Attended';document.getElementById('feedback-rating').value='';document.getElementById('feedback-content-quality').value='Excellent';document.getElementById('feedback-speaker-quality').value='Excellent';document.getElementById('feedback-summary').value='';document.getElementById('feedback-suggestions').value='';let inst=document.getElementById('feedback-instructions-box');inst.innerHTML=e.feedbackInstructions?`<div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs sm:text-sm text-slate-600"><span class="font-bold text-slate-800">Admin instructions:</span> ${esc(e.feedbackInstructions)}</div>`:'';closeModal();document.getElementById('feedback-modal').classList.remove('hidden')}
-function closeFeedbackModal(){document.getElementById('feedback-modal').classList.add('hidden');currentFeedbackEvent=null}
-async function submitFeedback(){if(!currentFeedbackEvent)return;let rating=document.getElementById('feedback-rating').value;if(!rating)return alert('Please select an overall rating.');let summary=document.getElementById('feedback-summary').value.trim();if(!summary)return alert('Please provide a short feedback summary.');let f=getFaculty();let payload={event_id:currentFeedbackEvent.id,faculty_id:f.id,faculty_name:f.name,faculty_email:f.email,attendance_status:document.getElementById('feedback-attendance').value,overall_rating:Number(rating),content_quality:document.getElementById('feedback-content-quality').value,speaker_quality:document.getElementById('feedback-speaker-quality').value,feedback_summary:summary,suggestions:document.getElementById('feedback-suggestions').value.trim(),submitted_at:new Date().toISOString()};let {error}=await supabaseClient.from('calendar_event_feedback').insert(payload);if(error){console.error(error);return alert('Unable to submit feedback. Please check SQL policies.')}alert('Thank you. Your feedback summary has been submitted.');closeFeedbackModal();await loadAll()}
-window.addEventListener('load',async()=>{await loadSidebar();populateControls();await initUser();await loadAll();subscribe()});
+function renderCalendar(){document.getElementById('month-select').value=currentMonth;document.getElementById('year-select').value=currentYear;renderGrid();renderMini();renderSelected();renderSeparatedUpcoming()}
+
+function renderGrid(){
+    let grid=document.getElementById('calendar-grid'),first=new Date(currentYear,currentMonth,1).getDay(),days=new Date(currentYear,currentMonth+1,0).getDate(),today=key(new Date());
+    let h='<div class="grid grid-cols-7 border-b border-slate-100 bg-slate-50">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">${d}</div>`).join('')+'</div><div class="grid grid-cols-7">';
+    for(let i=0;i<first;i++)h+='<div class="day-cell bg-slate-50/70"></div>';
+    for(let d=1;d<=days;d++){
+        let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        let des=events.filter(e=>e.date===dk).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
+        h+=`<div class="day-cell bg-white p-2 sm:p-2.5 ${dk===selectedDate?'selected':''}" onclick="selectDate('${dk}')"><div class="flex items-center justify-between mb-1"><span class="day-num ${dk===today?'today':''}">${d}</span>${des.length?`<span class="text-[10px] font-bold text-slate-400">${des.length}</span>`:''}</div>`;
+        des.slice(0,2).forEach(e=>h+=`<button onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}"><span class="block font-bold truncate">${esc(e.title)}</span><span class="block opacity-80 truncate text-[9.5px]">${esc(e.time)}</span></button>`);
+        if(des.length>2)h+=`<div class="mt-1 text-[10px] font-bold text-slate-400">+${des.length-2} more</div>`;
+        h+='</div>';
+    }
+    let rem=(first+days)%7;if(rem)for(let i=rem;i<7;i++)h+='<div class="day-cell bg-slate-50/70"></div>';
+    grid.innerHTML=h+'</div>';
+}
+
+function renderMini(){
+    document.getElementById('mini-title').textContent=`${months[currentMonth]} ${currentYear}`;
+    let first=new Date(currentYear,currentMonth,1).getDay(),days=new Date(currentYear,currentMonth+1,0).getDate(),h='';
+    for(let i=0;i<first;i++)h+='<div></div>';
+    for(let d=1;d<=days;d++){
+        let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,has=events.some(e=>e.date===dk);
+        h+=`<button onclick="selectDate('${dk}')" class="mini-day ${dk===selectedDate?'active':''} ${has?'has':''}">${d}</button>`;
+    }
+    document.getElementById('mini-calendar').innerHTML=h;
+}
+
+function card(e,showDate=false){
+    return `<button onclick="showEventDetails('${e.id}')" class="w-full text-left rounded-xl border border-slate-100 hover:border-slate-200 bg-white p-3 transition"><div class="flex items-start gap-2.5"><div class="w-7 h-7 rounded-lg ${cls(e.type)} flex items-center justify-center shrink-0"><i class="fa-solid fa-calendar-days text-[10px]"></i></div><div class="min-w-0 flex-1"><div class="font-bold text-xs text-slate-900 truncate">${esc(e.title)}</div><div class="text-[10px] text-slate-500">${showDate?longDate(e.date)+' • ':''}${esc(e.time)}</div></div></div></button>`;
+}
+
+function renderSelected(){
+    document.getElementById('selected-label').textContent=longDate(selectedDate);
+    let ds=events.filter(e=>e.date===selectedDate).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
+    document.getElementById('selected-events').innerHTML=ds.length?ds.map(e=>card(e)).join(''):'<div class="text-xs text-slate-500 border border-dashed rounded-xl p-4 text-center">No schedules for this date.</div>';
+}
+
+function renderSeparatedUpcoming(){
+    let future=events.filter(e=>new Date(e.startAt)>=new Date(new Date().setHours(0,0,0,0))).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
+    document.getElementById('count-schedules').textContent=future.length;
+    document.getElementById('list-schedules').innerHTML=future.length?future.map(e=>card(e,true)).join(''):'<div class="text-[11px] text-slate-400 italic">No upcoming schedules</div>';
+}
+
+function selectDate(d){selectedDate=d;let a=d.split('-').map(Number);currentYear=a[0];currentMonth=a[1]-1;renderCalendar()}
+function prevMonth(){currentMonth--;if(currentMonth<0){currentMonth=11;currentYear--}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}
+function nextMonth(){currentMonth++;if(currentMonth>11){currentMonth=0;currentYear++}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}
+function goToday(){now=new Date();currentMonth=now.getMonth();currentYear=now.getFullYear();selectedDate=key(now);renderCalendar()}
+
+function openFileLeaveModal(){
+    document.getElementById('leave-faculty-name').value='';
+    document.getElementById('leave-reason').value='';
+    document.getElementById('leave-file-input').value='';
+    document.getElementById('leave-start-date').value=selectedDate;
+    document.getElementById('leave-end-date').value=selectedDate;
+    document.getElementById('leave-modal').classList.remove('hidden');
+}
+function closeLeaveModal(){document.getElementById('leave-modal').classList.add('hidden')}
+
+async function submitLeaveFiling(){
+    let name=document.getElementById('leave-faculty-name').value.trim();
+    let type=document.getElementById('leave-type').value;
+    let startD=document.getElementById('leave-start-date').value;
+    let endD=document.getElementById('leave-end-date').value;
+    let reason=document.getElementById('leave-reason').value.trim();
+    let fileInput=document.getElementById('leave-file-input');
+
+    if(!name||!startD||!endD)return alert('Please fill in required leave details.');
+
+    let submitBtn = document.getElementById('leave-submit-btn');
+    submitBtn.disabled = true; submitBtn.textContent = 'Uploading file...';
+    let attachmentUrl = '';
+
+    if(fileInput.files.length > 0) {
+        let file = fileInput.files[0];
+        let filePath = `leave-proofs/${Date.now()}.${file.name.split('.').pop()}`;
+        let { error: upErr } = await supabaseClient.storage.from('leave-attachments').upload(filePath, file);
+        if(!upErr){let { data: pub } = supabaseClient.storage.from('leave-attachments').getPublicUrl(filePath);attachmentUrl=pub?.publicUrl||'';}
+    }
+    
+    let { error } = await supabaseClient.from('faculty_leaves').insert({
+        faculty_name: name, leave_type: type, start_date: startD, end_date: endD, notes: reason, attachment_url: attachmentUrl, status: 'Approved'
+    });
+    
+    submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave';
+    if(error)return alert('Error saving leave.');
+    closeLeaveModal(); alert('Leave successfully filed and sent to Admin!');
+}
+
+function showEventDetails(id){
+    currentDetailEventId=id;
+    let e=events.find(x=>String(x.id)===String(id));
+    if(!e)return;
+    document.getElementById('detail-title').textContent=e.title;
+    document.getElementById('detail-type').textContent=e.type.toUpperCase();
+    document.getElementById('detail-priority').textContent=e.priority;
+    document.getElementById('detail-time').textContent=`${longDate(e.date)} • ${e.time}`;
+    document.getElementById('detail-location').textContent=e.location;
+    document.getElementById('detail-notes').textContent=e.notes||'No description provided.';
+    document.getElementById('fb-summary').value='';
+    document.getElementById('fb-suggestions').value='';
+    document.getElementById('fb-content-quality').value='';
+    document.getElementById('fb-speaker-quality').value='';
+    document.getElementById('event-detail-modal').classList.remove('hidden');
+}
+function closeDetailModal(){document.getElementById('event-detail-modal').classList.add('hidden')}
+
+async function submitFacultyFeedback(){
+    let summary = document.getElementById('fb-summary').value.trim();
+    let suggestions = document.getElementById('fb-suggestions').value.trim();
+    let contentQuality = document.getElementById('fb-content-quality').value.trim();
+    let speakerQuality = document.getElementById('fb-speaker-quality').value.trim();
+    let rating = parseInt(document.getElementById('fb-overall-rating').value);
+    let attendance = document.getElementById('fb-attendance').value;
+
+    if(!summary) return alert('Please enter a feedback summary.');
+
+    let cleanEventId = currentDetailEventId ? String(currentDetailEventId).replace('event-', '') : null;
+
+    let { error } = await supabaseClient.from('calendar_event_feedback').insert({
+        event_id: cleanEventId,
+        faculty_id: currentFacultyUser?.id || null,
+        faculty_name: currentFacultyUser?.email || 'Faculty Member',
+        faculty_email: currentFacultyUser?.email || '',
+        attendance_status: attendance,
+        overall_rating: rating,
+        content_quality: contentQuality,
+        speaker_quality: speakerQuality,
+        feedback_summary: summary,
+        suggestions: suggestions,
+        submitted_at: new Date().toISOString()
+    });
+
+    if(error){
+        console.error('Feedback Error:', error);
+        return alert('Unable to submit feedback: ' + error.message);
+    }
+
+    alert('Feedback successfully submitted to the admin!');
+    document.getElementById('fb-summary').value='';
+    document.getElementById('fb-suggestions').value='';
+    document.getElementById('fb-content-quality').value='';
+    document.getElementById('fb-speaker-quality').value='';
+    closeDetailModal();
+}
+
+function exportCalendarPDF() {
+    const { jsPDF } = window.jspdf;
+    let doc = new jsPDF();
+    
+    doc.setFontSize(16);
+    doc.text(`CITE-Flow Faculty Calendar - ${months[currentMonth]} ${currentYear}`, 14, 20);
+    
+    let monthEvents = events.filter(e => {
+        let [y, m] = e.date.split('-').map(Number);
+        return y === currentYear && (m - 1) === currentMonth;
+    }).map(e => [e.date, e.title, e.type.toUpperCase(), e.location, e.time]);
+
+    doc.autoTable({
+        startY: 30,
+        head: [['Date', 'Title', 'Type', 'Location', 'Time']],
+        body: monthEvents,
+        theme: 'grid',
+        headStyles: { fillColor: [98, 23, 8] },
+        styles: { fontSize: 9 }
+    });
+
+    doc.save(`CITE-Flow-Faculty-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
+}
+
+async function loadAuthUser(){
+    let {data}=await supabaseClient.auth.getUser();
+    if(data?.user) currentFacultyUser=data.user;
+}
+
+window.addEventListener('load',async()=>{populateControls();await loadSidebar();await loadAuthUser();await loadCalendarEvents();subscribe()});
 </script>
 <script src="../shared/system-ui.js"></script>
+<div id="message-container"></div>
 <script src="faculty-nav.js"></script>
 </body>
 </html>
