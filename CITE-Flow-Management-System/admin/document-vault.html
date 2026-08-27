@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../nav.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/workflow.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -16,6 +17,98 @@
         .folder-card:hover, .doc-card:hover { transform: translateY(-3px); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
         .view-btn.active { background-color: #621708; color: white; }
         .soft-shadow { box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06); }
+        .drive-list {
+            background: #fff;
+            border: 1px solid #e8eaed;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .drive-list-head,
+        .drive-row {
+            display: grid;
+            grid-template-columns: minmax(160px, 1.5fr) 140px 130px 90px 44px;
+            align-items: center;
+            gap: 8px;
+            min-height: 48px;
+            padding: 0 12px 0 16px;
+        }
+        .drive-list-head {
+            color: #5f6368;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 1px solid #e8eaed;
+        }
+        .drive-list-head button {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: inherit;
+            font: inherit;
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+        }
+        .drive-list-head button:hover { color: #202124; }
+        .drive-row {
+            position: relative;
+            border-bottom: 1px solid #e8eaed;
+            cursor: pointer;
+            color: #202124;
+            font-size: 14px;
+        }
+        .drive-row:last-child { border-bottom: none; }
+        .drive-row:hover { background: #f8f9fa; }
+        .drive-name {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+            font-weight: 500;
+        }
+        .drive-name i { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; }
+        .drive-owner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #5f6368;
+            font-size: 13px;
+        }
+        .drive-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #f9ab00;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .drive-muted { color: #5f6368; font-size: 13px; }
+        .drive-sort { justify-self: end; color: #5f6368; font-size: 13px; }
+        .drive-kebab {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            color: #5f6368;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .drive-kebab:hover { background: #e8eaed; color: #202124; }
+        .drive-row .context-menu { right: 8px; top: 42px; }
+        @media (max-width: 768px) {
+            .drive-list-head, .drive-row {
+                grid-template-columns: minmax(0, 1fr) 44px;
+            }
+            .drive-col-owner, .drive-col-date, .drive-col-size, .drive-sort { display: none; }
+        }
         .modal-panel { animation: modalIn 0.18s ease-out; }
         @keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         .document-modal-backdrop { background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); }
@@ -56,9 +149,6 @@
             <section id="main-view" class="max-w-7xl mx-auto">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
                     <div>
-                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#621708]/10 text-[#621708] text-xs font-bold mb-2">
-                            <i class="fa-solid fa-shield-halved"></i> Administrator Workspace
-                        </div>
                         <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">Document Vault</h1>
                         <p class="text-xs sm:text-sm text-slate-500 mt-1">Organize, preview, download, and maintain academic documents.</p>
                     </div>
@@ -72,30 +162,32 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-6 sm:mb-8">
-                    <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-100 soft-shadow">
-                        <div class="text-xs font-bold uppercase tracking-wide text-slate-400">Folders</div>
-                        <div id="stat-folders" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1.5 sm:mt-2">0</div>
-                    </div>
-                    <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-100 soft-shadow">
-                        <div class="text-xs font-bold uppercase tracking-wide text-slate-400">Documents</div>
-                        <div id="stat-documents" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1.5 sm:mt-2">0</div>
-                    </div>
-                    <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-100 soft-shadow sm:col-span-1">
-                        <div class="text-xs font-bold uppercase tracking-wide text-slate-400">Storage Bucket</div>
-                        <div id="stat-bucket" class="text-base sm:text-lg font-extrabold text-[#621708] mt-2">documents</div>
-                    </div>
-                </div>
+                <p class="text-xs sm:text-sm text-slate-500 mb-4">
+                    <span id="stat-folders">0</span> folders ·
+                    <span id="stat-documents">0</span> documents
+                </p>
 
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                        <i class="fa-solid fa-folder-tree text-[#621708]"></i> Folders
-                    </h2>
-                    <button onclick="refreshVault()" class="text-xs sm:text-sm font-bold text-slate-500 hover:text-[#621708]">
-                        <i class="fa-solid fa-rotate-right mr-1.5"></i>Refresh
-                    </button>
+                <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                    <h2 class="text-sm font-semibold text-slate-800">Folders</h2>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="search" id="vault-folder-search" placeholder="Search folders..." oninput="renderFolders()" class="border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs sm:text-sm bg-white w-44 sm:w-56 focus:outline-none focus:border-[#621708]">
+                        </div>
+                        <select id="vault-category-filter" onchange="renderFolders()" class="border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm bg-white focus:outline-none focus:border-[#621708]">
+                            <option value="">All Categories</option>
+                            <option value="DTR">DTR</option>
+                            <option value="LDP">LDP</option>
+                            <option value="Syllabus">Syllabus</option>
+                            <option value="IPCR">IPCR</option>
+                            <option value="TOS">Table of Specifications (TOS)</option>
+                        </select>
+                        <button onclick="refreshVault()" class="text-xs sm:text-sm font-bold text-slate-500 hover:text-[#621708]">
+                            <i class="fa-solid fa-rotate-right mr-1.5"></i>Refresh
+                        </button>
+                    </div>
                 </div>
-                <div id="folders-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6"></div>
+                <div id="folders-grid"></div>
             </section>
 
             <section id="folder-view" class="hidden max-w-7xl mx-auto">
@@ -109,6 +201,7 @@
                             <div id="folder-icon" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shrink-0"></div>
                             <div class="min-w-0">
                                 <h1 id="folder-title" class="text-xl sm:text-2xl font-extrabold text-slate-900 truncate leading-tight"></h1>
+                                <p id="folder-desc" class="text-xs sm:text-sm text-slate-500 mt-0.5 hidden"></p>
                                 <p id="folder-count" class="text-xs sm:text-sm text-slate-500 mt-0.5 sm:mt-1"></p>
                             </div>
                         </div>
@@ -121,7 +214,7 @@
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                     <div class="relative w-full sm:w-80">
                         <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs sm:text-sm"></i>
-                        <input type="text" id="folder-search" placeholder="Search documents..." onkeyup="filterFolderDocuments()" class="w-full bg-white border border-slate-200 rounded-xl pl-9 sm:pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:border-[#621708] focus:ring-4 focus:ring-[#621708]/5">
+                        <input type="search" id="folder-search" placeholder="Search documents..." oninput="filterFolderDocuments()" class="w-full bg-white border border-slate-200 rounded-xl pl-9 sm:pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:border-[#621708] focus:ring-4 focus:ring-[#621708]/5">
                     </div>
                     <div class="flex items-center justify-between sm:justify-end gap-2">
                         <div class="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Layout</div>
@@ -160,7 +253,7 @@
             <input type="hidden" id="edit-folder-id">
             <div>
                 <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">Folder Name</label>
-                <input id="edit-folder-name" type="text" class="w-full border border-slate-200 rounded-2xl px-4 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]" placeholder="e.g. SAMPLE FORMS">
+                <input id="edit-folder-name" type="text" class="w-full border border-slate-200 rounded-2xl px-4 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]" placeholder="e.g. TOS">
             </div>
             <div>
                 <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">Description</label>
@@ -244,6 +337,26 @@
         <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-2.5">
             <button onclick="hideSimpleUploadModal()" class="flex-1 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
             <button onclick="uploadToCurrentFolder()" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold">Upload</button>
+        </div>
+    </div>
+</div>
+
+<div id="move-docs-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col my-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+            <div>
+                <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Move documents</h3>
+                <p class="text-xs sm:text-sm text-slate-500">Choose a destination folder.</p>
+            </div>
+            <button onclick="hideMoveDocsModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-500 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="p-5 sm:p-6">
+            <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">Move to</label>
+            <select id="move-target-folder" class="w-full border border-slate-200 rounded-2xl px-3 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]"></select>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-2.5">
+            <button onclick="hideMoveDocsModal()" class="flex-1 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
+            <button onclick="confirmMoveDocuments()" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold">Move</button>
         </div>
     </div>
 </div>
@@ -344,10 +457,12 @@ let folders = [];
 let documents = [];
 let allDocuments = [];
 let currentFolderId = null;
-let currentFolderView = localStorage.getItem('documentVaultView') || 'large';
+let currentFolderView = localStorage.getItem('documentVaultView') || 'list';
 let selectedDocs = new Set();
 let currentPreviewDocument = null;
 let currentPreviewAccess = null;
+let vaultFolderSort = { key: 'name', dir: 'asc' };
+let vaultDocSort = { key: 'date', dir: 'desc' };
 
 function ensureSupabaseReady(){ if(!supabaseClient){ alert('Supabase is not initialized. Please refresh the page.'); return false; } return true; }
 function isInvalidApiKeyError(error){
@@ -384,6 +499,13 @@ async function recoverFromInvalidApiKey(error){
     return true;
 }
 function normalizeColor(value){ const map = {'text-purple-600':'#6b21a8','text-blue-600':'#2563eb','text-emerald-600':'#059669','text-red-600':'#dc2626','text-rose-600':'#e11d48','text-orange-600':'#ea580c','text-amber-600':'#d97706','text-cyan-600':'#0891b2','text-gray-600':'#475569'}; if(!value) return '#6b21a8'; if(String(value).startsWith('#')) return value; return map[value] || '#6b21a8'; }
+function formatVaultFolderName(name){
+    if (window.CiteFlowWorkflow && typeof CiteFlowWorkflow.resolveDocumentCategory === 'function') {
+        const resolved = CiteFlowWorkflow.resolveDocumentCategory(name);
+        if (resolved) return CiteFlowWorkflow.formatDocumentCategory(resolved);
+    }
+    return name || '';
+}
 function normalizeIcon(value){ return value || 'fa-folder'; }
 function escapeHtml(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
 function jsArg(value){ return JSON.stringify(String(value ?? '')); }
@@ -391,7 +513,58 @@ function selectedKey(value){ return String(value ?? ''); }
 function isSelected(value){ return selectedDocs.has(selectedKey(value)); }
 function sanitizeFileName(name){ return String(name || 'file').replace(/[^\w.\- ]+/g,'_').replace(/\s+/g,'_'); }
 function buildFilePath(folderId, originalName){ return `${folderId}/${Date.now()}-${sanitizeFileName(originalName)}`; }
-function formatFileSize(bytes){ if(!bytes) return '0 B'; const sizes=['B','KB','MB','GB']; const i=Math.min(Math.floor(Math.log(bytes)/Math.log(1024)), sizes.length-1); return Math.round(bytes/Math.pow(1024,i)*100)/100+' '+sizes[i]; }
+function formatFileSize(bytes){ if(!bytes) return '—'; const sizes=['B','KB','MB','GB']; const i=Math.min(Math.floor(Math.log(bytes)/Math.log(1024)), sizes.length-1); return Math.round(bytes/Math.pow(1024,i)*100)/100+' '+sizes[i]; }
+function formatDriveDate(value){
+    if(!value) return '';
+    const d=new Date(value);
+    if(Number.isNaN(d.getTime())) return '';
+    const opts={ month:'short', day:'numeric' };
+    if(d.getFullYear()!==new Date().getFullYear()) opts.year='numeric';
+    return d.toLocaleDateString('en-US', opts);
+}
+function setVaultFolderSort(key){
+    if(vaultFolderSort.key===key) vaultFolderSort.dir=vaultFolderSort.dir==='asc'?'desc':'asc';
+    else { vaultFolderSort.key=key; vaultFolderSort.dir=key==='name'?'asc':'desc'; }
+    renderFolders();
+}
+function sortArrow(key){
+    if(vaultFolderSort.key!==key) return '';
+    return vaultFolderSort.dir==='asc' ? '<i class="fa-solid fa-arrow-up text-xs text-blue-600"></i>' : '<i class="fa-solid fa-arrow-down text-xs text-blue-600"></i>';
+}
+function setVaultDocSort(key){
+    if(vaultDocSort.key===key) vaultDocSort.dir=vaultDocSort.dir==='asc'?'desc':'asc';
+    else { vaultDocSort.key=key; vaultDocSort.dir=key==='name'?'asc':'desc'; }
+    renderFolderDocuments();
+}
+function sortDocArrow(key){
+    if(vaultDocSort.key!==key) return '';
+    return vaultDocSort.dir==='asc' ? '<i class="fa-solid fa-arrow-up text-xs text-blue-600"></i>' : '<i class="fa-solid fa-arrow-down text-xs text-blue-600"></i>';
+}
+function sortDocuments(list){
+    return list.slice().sort((a,b)=>{
+        const dir=vaultDocSort.dir==='asc'?1:-1;
+        if(vaultDocSort.key==='size') return ((Number(a.size_bytes)||0)-(Number(b.size_bytes)||0))*dir;
+        if(vaultDocSort.key==='date') return (new Date(a.uploaded_at||a.created_at||0)-new Date(b.uploaded_at||b.created_at||0))*dir;
+        return String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'})*dir;
+    });
+}
+function getFileIconColor(filename,mimeType=''){
+    const ext=getFileExtension(filename);
+    const type=String(mimeType||'').toLowerCase();
+    if(ext==='pdf'||type.includes('pdf')) return '#ea4335';
+    if(['doc','docx'].includes(ext)||type.includes('word')) return '#4285f4';
+    if(['xls','xlsx','csv'].includes(ext)||type.includes('spreadsheet')||type.includes('excel')) return '#0f9d58';
+    if(['ppt','pptx'].includes(ext)||type.includes('presentation')||type.includes('powerpoint')) return '#fbbc04';
+    if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return '#a142f4';
+    return '#5f6368';
+}
+function setFolderDescription(folder){
+    const descEl=document.getElementById('folder-desc');
+    if(!descEl) return;
+    const text=String(folder?.description||'').trim();
+    if(text){ descEl.textContent=text; descEl.classList.remove('hidden'); }
+    else { descEl.textContent=''; descEl.classList.add('hidden'); }
+}
 function getFileExtension(filename){ return String(filename || '').split('.').pop().toLowerCase(); }
 function getFileTypeLabel(filename,mimeType=''){ const ext=getFileExtension(filename); return ext ? ext.toUpperCase() : (mimeType || 'FILE'); }
 function getFileIconClass(filename,mimeType=''){ const ext=getFileExtension(filename); const type=String(mimeType||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'fa-file-pdf'; if(['doc','docx'].includes(ext)||type.includes('word')) return 'fa-file-word'; if(['xls','xlsx','csv'].includes(ext)||type.includes('spreadsheet')||type.includes('excel')) return 'fa-file-excel'; if(['ppt','pptx'].includes(ext)||type.includes('presentation')||type.includes('powerpoint')) return 'fa-file-powerpoint'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'fa-file-image'; if(['zip','rar','7z'].includes(ext)) return 'fa-file-zipper'; if(['txt','md'].includes(ext)||type.includes('text')) return 'fa-file-lines'; return 'fa-file-lines'; }
@@ -399,42 +572,135 @@ function getFilePreviewKind(doc){ const ext=getFileExtension(doc.name); const ty
 function showDocumentToast(message, icon='fa-circle-check'){ const toast=document.getElementById('documentToast'); const text=document.getElementById('documentToastText'); if(!toast||!text) return; toast.querySelector('i').className=`fa-solid ${icon}`; text.textContent=message; toast.classList.add('show'); clearTimeout(window.__documentToastTimer); window.__documentToastTimer=setTimeout(()=>toast.classList.remove('show'),2600); }
 
 async function refreshVault(){ await loadFolders(); renderFolders(); if(currentFolderId){ await loadDocumentsByFolder(currentFolderId); renderFolderDocuments(); } }
-async function loadFolders(){ if(!ensureSupabaseReady()) return; const {data:folderData,error:folderError}=await supabaseClient.from('folders').select('*').order('name'); if(folderError){ if(await recoverFromInvalidApiKey(folderError)) return; console.error(folderError); alert('Error loading folders: '+folderError.message); return; } const {data:documentData,error:documentError}=await supabaseClient.from('documents').select('*'); if(documentError){ if(await recoverFromInvalidApiKey(documentError)) return; console.error(documentError); allDocuments=[]; folders=folderData||[]; return; } allDocuments=documentData||[]; const countMap=allDocuments.reduce((acc,doc)=>{ acc[doc.folder_id]=(acc[doc.folder_id]||0)+1; return acc; },{}); folders=(folderData||[]).map(folder=>({...folder, color: normalizeColor(folder.color), icon: normalizeIcon(folder.icon), count: countMap[folder.id]||0})); document.getElementById('stat-folders').textContent=folders.length; document.getElementById('stat-documents').textContent=allDocuments.length; document.getElementById('stat-bucket').textContent=STORAGE_BUCKET; }
+async function loadFolders(){ if(!ensureSupabaseReady()) return; const {data:folderData,error:folderError}=await supabaseClient.from('folders').select('*').order('name'); if(folderError){ if(await recoverFromInvalidApiKey(folderError)) return; console.error(folderError); alert('Error loading folders: '+folderError.message); return; } const {data:documentData,error:documentError}=await supabaseClient.from('documents').select('*'); if(documentError){ if(await recoverFromInvalidApiKey(documentError)) return; console.error(documentError); allDocuments=[]; folders=folderData||[]; document.getElementById('stat-folders').textContent=folders.length; document.getElementById('stat-documents').textContent='0'; return; } allDocuments=documentData||[]; const countMap=allDocuments.reduce((acc,doc)=>{ acc[doc.folder_id]=(acc[doc.folder_id]||0)+1; return acc; },{}); folders=(folderData||[]).map(folder=>({...folder, color: normalizeColor(folder.color), icon: normalizeIcon(folder.icon), count: countMap[folder.id]||0})); document.getElementById('stat-folders').textContent=folders.length; document.getElementById('stat-documents').textContent=allDocuments.length; }
 async function loadDocumentsByFolder(folderId){ if(!ensureSupabaseReady()) return; const {data,error}=await supabaseClient.from('documents').select('*').eq('folder_id',folderId).order('uploaded_at',{ascending:false}); if(error){ console.error(error); documents=[]; } else documents=data||[]; }
 
 function renderFolders(){
     const container=document.getElementById('folders-grid');
+    const categoryFilter=document.getElementById('vault-category-filter')?.value || '';
+    const search=(document.getElementById('vault-folder-search')?.value||'').toLowerCase().trim();
+    const visibleFolders=folders.filter(f=>{
+        if(search){
+            const hay=`${formatVaultFolderName(f.name)} ${f.name||''} ${f.description||''}`.toLowerCase();
+            if(!hay.includes(search)) return false;
+        }
+        if(!categoryFilter) return true;
+        if (window.CiteFlowWorkflow && typeof CiteFlowWorkflow.matchesDocumentCategory === 'function') {
+            return CiteFlowWorkflow.matchesDocumentCategory(f.name, categoryFilter);
+        }
+        return String(f.name||'').toUpperCase()===String(categoryFilter).toUpperCase();
+    }).slice().sort((a,b)=>{
+        const dir=vaultFolderSort.dir==='asc'?1:-1;
+        if(vaultFolderSort.key==='date'){
+            return (new Date(a.updated_at||a.created_at||0) - new Date(b.updated_at||b.created_at||0)) * dir;
+        }
+        return String(formatVaultFolderName(a.name)).localeCompare(String(formatVaultFolderName(b.name))) * dir;
+    });
     if(!folders.length){
-        container.innerHTML=`<div class="col-span-full bg-white rounded-2xl p-8 text-center border border-slate-100"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-folder-open"></i></div><h3 class="text-base font-extrabold text-slate-700">No folders yet</h3><p class="text-sm text-slate-500 mt-1">Create a folder and upload documents to get started.</p></div>`;
+        container.innerHTML=`<div class="drive-list"><div class="px-6 py-10 text-center"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-folder-open"></i></div><h3 class="text-base font-extrabold text-slate-700">No folders yet</h3><p class="text-sm text-slate-500 mt-1">Create a folder and upload documents to get started.</p></div></div>`;
         return;
     }
-    container.innerHTML=folders.map(f=>{
-        const description=f.description ? `<div class="text-xs text-slate-500 mt-1 line-clamp-2">${escapeHtml(f.description)}</div>` : '';
-        return `<div onclick='openFolder(${jsArg(f.id)})' class="folder-card bg-white border border-slate-100 rounded-2xl p-4 cursor-pointer relative soft-shadow group"><button onclick='event.stopPropagation(); openFolderMenu(${jsArg(f.id)})' class="absolute top-3 right-3 w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"><i class="fa-solid fa-ellipsis"></i></button><div id="folder-menu-${escapeHtml(f.id)}" class="context-menu hidden bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden"><button onclick='event.stopPropagation(); openFolderEditor(${jsArg(f.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-slate-50"><i class="fa-solid fa-pen-to-square mr-2 text-slate-400"></i>Edit Folder</button><button onclick='event.stopPropagation(); deleteFolderById(${jsArg(f.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-red-50 text-red-600"><i class="fa-solid fa-trash-can mr-2"></i>Delete Folder</button></div><div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-3" style="background-color:${f.color}16;color:${f.color}"><i class="fa-solid ${f.icon}"></i></div><div class="font-extrabold text-base text-slate-900 line-clamp-2 leading-snug">${escapeHtml(f.name)}</div>${description}<div class="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 text-[11px] font-bold rounded-xl"><i class="fa-solid fa-file-lines"></i>${f.count||0} document${(f.count||0)!==1?'s':''}</div></div>`;
-    }).join('');
+    if(!visibleFolders.length){
+        const isSearch=Boolean(search);
+        container.innerHTML=`<div class="drive-list"><div class="px-6 py-10 text-center"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid ${isSearch?'fa-magnifying-glass':'fa-filter'}"></i></div><h3 class="text-base font-extrabold text-slate-700">${isSearch?'No folders match your search':'No folders in this category'}</h3><p class="text-sm text-slate-500 mt-1">${isSearch?'Try a different name or clear the search.':'Switch to All Categories to see every folder.'}</p></div></div>`;
+        return;
+    }
+    container.innerHTML=`<div class="drive-list">
+        <div class="drive-list-head">
+            <button type="button" onclick="setVaultFolderSort('name')">Name ${sortArrow('name')}</button>
+            <div class="drive-col-owner">Owner</div>
+            <button type="button" class="drive-col-date" onclick="setVaultFolderSort('date')">Date modified ${sortArrow('date')}</button>
+            <div class="drive-col-size">File size</div>
+            <div class="drive-sort"><i class="fa-solid fa-arrow-down-short-wide mr-1"></i>Sort</div>
+        </div>
+        ${visibleFolders.map(f=>`
+            <div onclick='openFolder(${jsArg(f.id)})' class="drive-row">
+                <div class="drive-name">
+                    <i class="fa-solid ${f.icon||'fa-folder'}" style="color:${f.color||'#5f6368'}"></i>
+                    <span class="truncate">${escapeHtml(formatVaultFolderName(f.name))}</span>
+                </div>
+                <div class="drive-owner drive-col-owner"><span class="drive-avatar">M</span> me</div>
+                <div class="drive-muted drive-col-date">${escapeHtml(formatDriveDate(f.updated_at||f.created_at))}</div>
+                <div class="drive-muted drive-col-size">—</div>
+                <div onclick="event.stopPropagation()">
+                    <button type="button" class="drive-kebab" onclick='openFolderMenu(${jsArg(f.id)})' title="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                    <div id="folder-menu-${escapeHtml(f.id)}" class="context-menu hidden bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+                        <button onclick='event.stopPropagation(); openFolderEditor(${jsArg(f.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-slate-50"><i class="fa-solid fa-pen-to-square mr-2 text-slate-400"></i>Edit Folder</button>
+                        <button onclick='event.stopPropagation(); deleteFolderById(${jsArg(f.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-red-50 text-red-600"><i class="fa-solid fa-trash-can mr-2"></i>Delete Folder</button>
+                    </div>
+                </div>
+            </div>
+        `).join('')}
+    </div>`;
 }
 function openFolderMenu(id){ document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')); document.getElementById(`folder-menu-${id}`)?.classList.toggle('hidden'); }
+function openDocMenu(id){ document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')); document.getElementById(`doc-menu-${id}`)?.classList.toggle('hidden'); }
 document.addEventListener('click',()=>document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')));
 
-async function openFolder(folderId){ currentFolderId=folderId; selectedDocs.clear(); updateActionBar(); const folder=folders.find(f=>String(f.id)===String(folderId)); if(!folder) return; document.getElementById('main-view').classList.add('hidden'); document.getElementById('folder-view').classList.remove('hidden'); document.getElementById('folder-icon').innerHTML=`<i class="fa-solid ${folder.icon}"></i>`; document.getElementById('folder-icon').style.color=folder.color; document.getElementById('folder-icon').style.backgroundColor=`${folder.color}16`; document.getElementById('folder-title').textContent=folder.name; await loadDocumentsByFolder(folderId); document.getElementById('folder-count').textContent=`${documents.length} document${documents.length!==1?'s':''}`; setFolderView(currentFolderView, false); renderFolderDocuments(); }
+async function openFolder(folderId){ currentFolderId=folderId; selectedDocs.clear(); updateActionBar(); const folder=folders.find(f=>String(f.id)===String(folderId)); if(!folder) return; document.getElementById('main-view').classList.add('hidden'); document.getElementById('folder-view').classList.remove('hidden'); document.getElementById('folder-icon').innerHTML=`<i class="fa-solid ${folder.icon}"></i>`; document.getElementById('folder-icon').style.color=folder.color; document.getElementById('folder-icon').style.backgroundColor=`${folder.color}16`; document.getElementById('folder-title').textContent=formatVaultFolderName(folder.name); setFolderDescription(folder); const searchEl=document.getElementById('folder-search'); if(searchEl) searchEl.value=''; await loadDocumentsByFolder(folderId); document.getElementById('folder-count').textContent=`${documents.length} document${documents.length!==1?'s':''}`; setFolderView(currentFolderView, false); renderFolderDocuments(); window.scrollTo({top:0,behavior:'smooth'}); }
 function goBackToMain(){ document.getElementById('folder-view').classList.add('hidden'); document.getElementById('main-view').classList.remove('hidden'); currentFolderId=null; selectedDocs.clear(); updateActionBar(); }
 function editCurrentFolder(){ if(currentFolderId) openFolderEditor(currentFolderId); }
 async function deleteCurrentFolder(){ if(currentFolderId) await deleteFolderById(currentFolderId); }
 function setFolderView(mode, render=true){ currentFolderView=mode; localStorage.setItem('documentVaultView',mode); document.querySelectorAll('#folder-view .view-btn').forEach(b=>b.classList.remove('active')); document.getElementById(`folder-btn-${mode}`)?.classList.add('active'); if(render) renderFolderDocuments(); }
 function filterFolderDocuments(){ renderFolderDocuments(); }
 function toggleSelect(id){ const key=selectedKey(id); isSelected(key)?selectedDocs.delete(key):selectedDocs.add(key); updateActionBar(); renderFolderDocuments(); }
+function toggleSelectAll(checked){
+    getFilteredDocuments().forEach(doc=>{
+        const key=selectedKey(doc.id);
+        if(checked) selectedDocs.add(key);
+        else selectedDocs.delete(key);
+    });
+    updateActionBar();
+    renderFolderDocuments();
+}
 function updateActionBar(){ const bar=document.getElementById('action-bar'); const count=document.getElementById('selected-count'); if(count) count.textContent=selectedDocs.size; if(bar) bar.classList.toggle('hidden', selectedDocs.size===0); }
+function getFilteredDocuments(){
+    const q=(document.getElementById('folder-search')?.value||'').toLowerCase().trim();
+    return sortDocuments(documents.filter(d=>String(d.folder_id)===String(currentFolderId)).filter(d=>!q||String(d.name||'').toLowerCase().includes(q)));
+}
 
 function renderFolderDocuments(){
     const q=(document.getElementById('folder-search')?.value||'').toLowerCase().trim();
-    const filtered=documents.filter(d=>String(d.folder_id)===String(currentFolderId)).filter(d=>!q||String(d.name||'').toLowerCase().includes(q));
+    const filtered=getFilteredDocuments();
     const container=document.getElementById('folder-documents-container');
     if(!filtered.length){
-        container.innerHTML=`<div class="bg-white rounded-2xl p-8 text-center border border-slate-100"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-file-circle-xmark"></i></div><h3 class="text-base font-extrabold text-slate-700">No documents found</h3><p class="text-sm text-slate-500 mt-1">Try a different search or upload a new file.</p></div>`;
+        container.innerHTML=`<div class="bg-white rounded-2xl p-8 text-center border border-slate-100"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-file-circle-xmark"></i></div><h3 class="text-base font-extrabold text-slate-700">No documents found</h3><p class="text-sm text-slate-500 mt-1">${q?'Try a different search.':'Upload a file to this folder.'}</p></div>`;
         return;
     }
     if(currentFolderView==='list'){
-        container.innerHTML=`<div class="bg-white rounded-2xl border border-slate-100 overflow-x-auto soft-shadow"><div class="min-w-[600px]"><div class="grid grid-cols-[38px_1fr_95px_95px_130px] gap-3 px-4 py-2.5 text-[11px] font-extrabold uppercase tracking-wide text-slate-400 bg-slate-50"><div></div><div>Name</div><div>Type</div><div>Size</div><div class="text-right">Actions</div></div>${filtered.map(doc=>`<div class="grid grid-cols-[38px_1fr_95px_95px_130px] gap-3 items-center px-4 py-3 border-t border-slate-100 hover:bg-slate-50"><input type="checkbox" class="doc-checkbox" ${isSelected(doc.id)?'checked':''} onchange='toggleSelect(${jsArg(doc.id)})'><div class="flex items-center gap-2 min-w-0"><div class="w-9 h-9 rounded-lg bg-slate-100 text-[#621708] flex items-center justify-center shrink-0"><i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i></div><div class="font-bold text-sm text-slate-800 truncate">${escapeHtml(doc.name)}</div></div><div class="text-xs text-slate-500">${getFileTypeLabel(doc.name,doc.mime_type)}</div><div class="text-xs text-slate-500">${formatFileSize(doc.size_bytes)}</div><div class="flex justify-end gap-1.5"><button onclick='viewDocument(${jsArg(doc.id)})' class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-slate-200 hover:bg-white text-slate-600 font-bold" title="Preview"><i class="fa-solid fa-eye"></i></button><button onclick='downloadDocument(${jsArg(doc.id)})' class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#621708] hover:bg-[#8c2a10] text-white font-bold" title="Download"><i class="fa-solid fa-download"></i></button><button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-red-200 hover:bg-red-50 text-red-600 font-bold" title="Delete"><i class="fa-solid fa-trash-can"></i></button></div></div>`).join('')}</div></div>`;
+        const allSelected=filtered.every(doc=>isSelected(doc.id));
+        container.innerHTML=`<div class="drive-list">
+            <div class="drive-list-head">
+                <div class="drive-name">
+                    <input type="checkbox" class="doc-checkbox mr-1" ${allSelected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelectAll(this.checked)" title="Select all">
+                    <button type="button" onclick="setVaultDocSort('name')">Name ${sortDocArrow('name')}</button>
+                </div>
+                <div class="drive-col-owner">Owner</div>
+                <button type="button" class="drive-col-date" onclick="setVaultDocSort('date')">Date modified ${sortDocArrow('date')}</button>
+                <button type="button" class="drive-col-size" onclick="setVaultDocSort('size')">File size ${sortDocArrow('size')}</button>
+                <div class="drive-sort"><i class="fa-solid fa-arrow-down-short-wide mr-1"></i>Sort</div>
+            </div>
+            ${filtered.map(doc=>`
+                <div class="drive-row" onclick='viewDocument(${jsArg(doc.id)})'>
+                    <div class="drive-name">
+                        <input type="checkbox" class="doc-checkbox" ${isSelected(doc.id)?'checked':''} onclick="event.stopPropagation()" onchange='toggleSelect(${jsArg(doc.id)})'>
+                        <i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}" style="color:${getFileIconColor(doc.name,doc.mime_type)}"></i>
+                        <span class="truncate">${escapeHtml(doc.name)}</span>
+                    </div>
+                    <div class="drive-owner drive-col-owner"><span class="drive-avatar">M</span> me</div>
+                    <div class="drive-muted drive-col-date">${escapeHtml(formatDriveDate(doc.uploaded_at||doc.created_at))}</div>
+                    <div class="drive-muted drive-col-size">${formatFileSize(doc.size_bytes)}</div>
+                    <div onclick="event.stopPropagation()">
+                        <button type="button" class="drive-kebab" onclick='openDocMenu(${jsArg(doc.id)})' title="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                        <div id="doc-menu-${escapeHtml(doc.id)}" class="context-menu hidden bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+                            <button onclick='viewDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-slate-50"><i class="fa-solid fa-eye mr-2 text-slate-400"></i>Preview</button>
+                            <button onclick='downloadDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-slate-50"><i class="fa-solid fa-download mr-2 text-slate-400"></i>Download</button>
+                            <button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-red-50 text-red-600"><i class="fa-solid fa-trash-can mr-2"></i>Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>`;
         return;
     }
     const isTiles=currentFolderView==='tiles';
@@ -454,7 +720,7 @@ function closeFolderEditor(){ document.getElementById('folder-editor-modal').cla
 async function saveFolder(){ if(!ensureSupabaseReady()) return; const id=document.getElementById('edit-folder-id').value; const payload={ name: document.getElementById('edit-folder-name').value.trim().toUpperCase(), description: document.getElementById('edit-folder-description').value.trim(), icon: document.getElementById('edit-folder-icon').value, color: document.getElementById('edit-folder-color').value }; if(!payload.name){ alert('Please enter a folder name.'); return; } const existing=folders.find(f=>f.name.toUpperCase()===payload.name && String(f.id)!==String(id)); if(existing){ alert('A folder with this name already exists.'); return; } const result=id? await supabaseClient.from('folders').update(payload).eq('id',id) : await supabaseClient.from('folders').insert(payload); if(result.error){ console.error(result.error); alert('Unable to save folder: '+result.error.message); return; } closeFolderEditor(); await loadFolders(); renderFolders(); if(currentFolderId && String(currentFolderId)===String(id)){ await openFolder(currentFolderId); } showDocumentToast('Folder saved.'); }
 async function deleteFolderById(folderId){ if(!ensureSupabaseReady()) return; const folder=folders.find(f=>String(f.id)===String(folderId)); if(!folder) return; const docs=allDocuments.filter(d=>String(d.folder_id)===String(folderId)); const message=docs.length?`Delete folder "${folder.name}" and its ${docs.length} document(s)? This cannot be undone.`:`Delete folder "${folder.name}"?`; if(!confirm(message)) return; for(const doc of docs){ await removeStorageObject(doc); } const {error:docErr}=await supabaseClient.from('documents').delete().eq('folder_id',folderId); if(docErr){ console.error(docErr); alert('Unable to delete folder documents: '+docErr.message); return; } const {error}=await supabaseClient.from('folders').delete().eq('id',folderId); if(error){ console.error(error); alert('Unable to delete folder: '+error.message); return; } if(String(currentFolderId)===String(folderId)) goBackToMain(); await loadFolders(); renderFolders(); showDocumentToast('Folder deleted.'); }
 
-function showMainUploadModal(){ const select=document.getElementById('doc-folder-select'); select.innerHTML='<option value="">Choose folder</option>'+folders.map(f=>`<option value="${f.id}" ${String(f.id)===String(currentFolderId)?'selected':''}>${escapeHtml(f.name)}</option>`).join(''); document.getElementById('main-upload-modal').classList.remove('hidden'); document.getElementById('main-upload-modal').classList.add('flex'); }
+function showMainUploadModal(){ const select=document.getElementById('doc-folder-select'); select.innerHTML='<option value="">Choose folder</option>'+folders.map(f=>`<option value="${f.id}" ${String(f.id)===String(currentFolderId)?'selected':''}>${escapeHtml(formatVaultFolderName(f.name))}</option>`).join(''); document.getElementById('main-upload-modal').classList.remove('hidden'); document.getElementById('main-upload-modal').classList.add('flex'); }
 function hideMainUploadModal(){ document.getElementById('main-upload-modal').classList.add('hidden'); document.getElementById('main-upload-modal').classList.remove('flex'); document.getElementById('main-file-input').value=''; }
 function showSimpleUploadModal(){ document.getElementById('simple-upload-modal').classList.remove('hidden'); document.getElementById('simple-upload-modal').classList.add('flex'); }
 function hideSimpleUploadModal(){ document.getElementById('simple-upload-modal').classList.add('hidden'); document.getElementById('simple-upload-modal').classList.remove('flex'); document.getElementById('simple-file-input').value=''; }
@@ -478,19 +744,36 @@ async function deleteSelectedDocuments(){
     await refreshVault();
     showDocumentToast('Selected documents deleted.');
 }
-async function moveSelectedDocuments(){
+function hideMoveDocsModal(){
+    const modal=document.getElementById('move-docs-modal');
+    if(!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+function moveSelectedDocuments(){
     if(!selectedDocs.size) return;
     const selectedList=documents.filter(doc=>isSelected(doc.id));
     if(!selectedList.length) return;
-    const targetId=prompt('Enter target Folder ID:\n'+folders.map(f=>`${f.id} - ${f.name}`).join('\n'));
-    if(!targetId) return;
+    const select=document.getElementById('move-target-folder');
+    const options=folders.filter(f=>String(f.id)!==String(currentFolderId));
+    if(!options.length){ alert('Create another folder before moving documents.'); return; }
+    select.innerHTML=options.map(f=>`<option value="${escapeHtml(f.id)}">${escapeHtml(formatVaultFolderName(f.name))}</option>`).join('');
+    const modal=document.getElementById('move-docs-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+async function confirmMoveDocuments(){
+    const selectedList=documents.filter(doc=>isSelected(doc.id));
+    if(!selectedList.length) return;
+    const targetId=document.getElementById('move-target-folder')?.value;
     const target=folders.find(f=>String(f.id)===String(targetId));
-    if(!target){ alert('Folder ID not found.'); return; }
+    if(!target){ alert('Please choose a destination folder.'); return; }
     const ids=selectedList.map(doc=>doc.id);
     const {error}=await supabaseClient.from('documents').update({folder_id:target.id}).in('id',ids);
     if(error){ alert('Unable to move documents: '+error.message); return; }
     selectedDocs.clear();
     updateActionBar();
+    hideMoveDocsModal();
     await refreshVault();
     showDocumentToast('Documents moved.');
 }
@@ -612,7 +895,15 @@ async function downloadDocument(id){
 async function downloadCurrentPreviewDocument(){ if(currentPreviewDocument) await downloadDocument(currentPreviewDocument.id); }
 
 function setupDropZone(){ const dz=document.getElementById('main-drop-zone'); if(!dz) return; ['dragenter','dragover'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.add('drag-over'); })); ['dragleave','drop'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.remove('drag-over'); })); dz.addEventListener('drop',e=>{ document.getElementById('main-file-input').files=e.dataTransfer.files; }); }
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeDocumentPreviewModal(); closeFolderEditor(); hideMainUploadModal(); hideSimpleUploadModal(); } });
+document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape') return;
+    const preview=document.getElementById('documentPreviewModal');
+    if(preview && !preview.classList.contains('hidden')){ closeDocumentPreviewModal(); return; }
+    closeFolderEditor();
+    hideMainUploadModal();
+    hideSimpleUploadModal();
+    hideMoveDocsModal();
+});
 window.onload=async()=>{ setupDropZone(); await loadSidebar(); await refreshVault(); setFolderView(currentFolderView,false); };
 </script>
 <script src="../shared/system-ui.js"></script>

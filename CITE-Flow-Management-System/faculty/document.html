@@ -9,6 +9,7 @@
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth.js"></script>
     <script src="../shared/auth-guard.js"></script>
+    <script src="../shared/workflow.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
     <link rel="stylesheet" href="faculty-nav.css">
@@ -26,6 +27,122 @@
         .folder-card:hover {
             transform: translateY(-4px);
             box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.10);
+        }
+        .drive-list {
+            background: #fff;
+            border: 1px solid #e8eaed;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .drive-list-head,
+        .drive-row {
+            display: grid;
+            grid-template-columns: minmax(160px, 1.5fr) 140px 130px 90px 44px;
+            align-items: center;
+            gap: 8px;
+            min-height: 48px;
+            padding: 0 12px 0 16px;
+        }
+        .drive-list-head {
+            color: #5f6368;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 1px solid #e8eaed;
+        }
+        .drive-list-head button {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: inherit;
+            font: inherit;
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+        }
+        .drive-list-head button:hover { color: #202124; }
+        .view-btn {
+            width: 40px;
+            height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 0.85rem;
+            color: #64748b;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        .view-btn.active { background-color: #621708; color: white; }
+        .soft-shadow { box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06); }
+        .doc-card { transition: all 0.2s ease; border-radius: 1.25rem; }
+        .doc-card:hover { transform: translateY(-3px); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .drive-row {
+            position: relative;
+            border-bottom: 1px solid #e8eaed;
+            cursor: pointer;
+            color: #202124;
+            font-size: 14px;
+        }
+        .drive-row:last-child { border-bottom: none; }
+        .drive-row:hover { background: #f8f9fa; }
+        .drive-name {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+            font-weight: 500;
+        }
+        .drive-name i { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; }
+        .drive-owner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #5f6368;
+            font-size: 13px;
+        }
+        .drive-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #f9ab00;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .drive-muted { color: #5f6368; font-size: 13px; }
+        .drive-sort { justify-self: end; color: #5f6368; font-size: 13px; }
+        .drive-kebab {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            color: #5f6368;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .drive-kebab:hover { background: #e8eaed; color: #202124; }
+        .drive-row .context-menu {
+            position: absolute;
+            right: 8px;
+            top: 42px;
+            min-width: 180px;
+            z-index: 30;
+        }
+        @media (max-width: 768px) {
+            .drive-list-head, .drive-row {
+                grid-template-columns: minmax(0, 1fr) 44px;
+            }
+            .drive-col-owner, .drive-col-date, .drive-col-size, .drive-sort { display: none; }
         }
 
         .modal {
@@ -118,47 +235,76 @@
         <div id="navbar-container"></div>
 
         <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
-            <header class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Document Vault</h1>
-                    <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Browse official templates, forms, and academic guidelines</p>
+            <section id="main-view" class="max-w-7xl mx-auto">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+                    <div>
+                        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">Document Vault</h1>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Browse official templates, forms, and academic guidelines.</p>
+                    </div>
                 </div>
-            </header>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6" id="foldersGrid">
-                <!-- Populated by JS -->
-            </div>
+                <p class="text-xs sm:text-sm text-slate-500 mb-4">
+                    <span id="stat-folders">0</span> folders ·
+                    <span id="stat-documents">0</span> documents
+                </p>
+
+                <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                    <h2 class="text-sm font-semibold text-slate-800">Folders</h2>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="search" id="vault-folder-search" placeholder="Search folders..." oninput="renderFolders()" class="border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs sm:text-sm bg-white w-44 sm:w-56 focus:outline-none focus:border-[#621708]">
+                        </div>
+                        <select id="vault-category-filter" onchange="renderFolders()" class="border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm bg-white focus:outline-none focus:border-[#621708]">
+                            <option value="">All Categories</option>
+                            <option value="DTR">DTR</option>
+                            <option value="LDP">LDP</option>
+                            <option value="Syllabus">Syllabus</option>
+                            <option value="IPCR">IPCR</option>
+                            <option value="TOS">Table of Specifications (TOS)</option>
+                        </select>
+                        <button onclick="refreshVault()" class="text-xs sm:text-sm font-bold text-slate-500 hover:text-[#621708]">
+                            <i class="fa-solid fa-rotate-right mr-1.5"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+                <div id="foldersGrid"></div>
+            </section>
+
+            <section id="folder-view" class="hidden max-w-7xl mx-auto">
+                <button onclick="goBackToMain()" class="inline-flex items-center gap-2 text-slate-500 hover:text-[#621708] mb-4 text-xs sm:text-sm font-semibold">
+                    <i class="fa-solid fa-arrow-left"></i> Back to Document Vault
+                </button>
+
+                <div class="bg-white rounded-2xl sm:rounded-[1.5rem] border border-slate-100 soft-shadow p-4 sm:p-5 mb-5">
+                    <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+                        <div id="folder-icon" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shrink-0"></div>
+                        <div class="min-w-0">
+                            <h1 id="folder-title" class="text-xl sm:text-2xl font-extrabold text-slate-900 truncate leading-tight"></h1>
+                            <p id="folder-desc" class="text-xs sm:text-sm text-slate-500 mt-0.5 hidden"></p>
+                            <p id="folder-count" class="text-xs sm:text-sm text-slate-500 mt-0.5"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <div class="relative w-full sm:w-80">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs sm:text-sm"></i>
+                        <input type="search" id="folder-search" placeholder="Search documents..." oninput="filterFolderDocuments()" class="w-full bg-white border border-slate-200 rounded-xl pl-9 sm:pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:border-[#621708] focus:ring-4 focus:ring-[#621708]/5">
+                    </div>
+                    <div class="flex items-center justify-between sm:justify-end gap-2">
+                        <div class="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Layout</div>
+                        <div class="flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                            <button title="Compact cards" onclick="setFolderView('large')" id="folder-btn-large" class="view-btn"><i class="fa-solid fa-grip"></i></button>
+                            <button title="Tiles" onclick="setFolderView('tiles')" id="folder-btn-tiles" class="view-btn"><i class="fa-solid fa-table-cells-large"></i></button>
+                            <button title="List" onclick="setFolderView('list')" id="folder-btn-list" class="view-btn active"><i class="fa-solid fa-list"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <div id="folder-documents-container"></div>
+            </section>
         </div>
     </main>
-</div>
-
-<!-- Folder Content Modal -->
-<div id="folderModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
-    <div class="modal bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col my-auto">
-        <div class="modal-header px-5 sm:px-8 py-4 sm:py-5 border-b flex items-center justify-between flex-shrink-0">
-            <div class="flex items-center gap-3 sm:gap-4 min-w-0">
-                <span id="modalFolderIcon" class="text-4xl sm:text-5xl text-amber-600 shrink-0">
-                    <i class="fa-solid fa-folder"></i>
-                </span>
-                <div class="min-w-0">
-                    <h2 id="modalFolderName" class="text-lg sm:text-2xl font-bold text-gray-900 truncate"></h2>
-                    <p id="modalFolderDesc" class="text-xs sm:text-sm text-gray-500 truncate"></p>
-                    <div id="modalFolderMeta" class="text-[11px] sm:text-xs text-gray-400 mt-0.5"></div>
-                </div>
-            </div>
-            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-3xl leading-none px-2">&times;</button>
-        </div>
-
-        <div class="flex-1 overflow-y-auto p-4 sm:p-6" id="modalContent">
-            <!-- Files populated by JS -->
-        </div>
-
-        <div class="p-4 sm:p-5 border-t bg-gray-50 flex justify-end flex-shrink-0">
-            <button onclick="closeModal()" class="px-6 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 transition-colors rounded-xl text-xs sm:text-sm font-bold">
-                Close
-            </button>
-        </div>
-    </div>
 </div>
 
 <!-- Document Preview Modal -->
@@ -250,8 +396,111 @@
     let folders = [];
     let documents = [];
     let currentFolderId = null;
+    let vaultFolderSort = { key: 'name', dir: 'asc' };
+    let vaultDocSort = { key: 'date', dir: 'desc' };
+    let currentFolderView = localStorage.getItem('facultyDocumentVaultView') || 'list';
+    let allDocumentCount = 0;
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function jsArg(value) {
+        return JSON.stringify(String(value ?? ''));
+    }
+
+    function formatDriveDate(value) {
+        if (!value) return '';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return '';
+        const opts = { month: 'short', day: 'numeric' };
+        if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+        return d.toLocaleDateString('en-US', opts);
+    }
+
+    function resolveFolderColor(color) {
+        const map = {
+            'text-amber-600': '#d97706',
+            'text-blue-600': '#2563eb',
+            'text-emerald-600': '#059669',
+            'text-purple-600': '#7c3aed',
+            'text-rose-600': '#e11d48',
+            'text-orange-600': '#ea580c',
+            'text-cyan-600': '#0891b2'
+        };
+        if (!color) return '#5f6368';
+        if (String(color).startsWith('#')) return color;
+        return map[color] || '#5f6368';
+    }
+
+    function setVaultFolderSort(key) {
+        if (vaultFolderSort.key === key) vaultFolderSort.dir = vaultFolderSort.dir === 'asc' ? 'desc' : 'asc';
+        else { vaultFolderSort.key = key; vaultFolderSort.dir = key === 'name' ? 'asc' : 'desc'; }
+        renderFolders();
+    }
+
+    function sortArrow(key) {
+        if (vaultFolderSort.key !== key) return '';
+        return vaultFolderSort.dir === 'asc'
+            ? '<i class="fa-solid fa-arrow-up text-xs text-blue-600"></i>'
+            : '<i class="fa-solid fa-arrow-down text-xs text-blue-600"></i>';
+    }
+
+    function setVaultDocSort(key) {
+        if (vaultDocSort.key === key) vaultDocSort.dir = vaultDocSort.dir === 'asc' ? 'desc' : 'asc';
+        else { vaultDocSort.key = key; vaultDocSort.dir = key === 'name' ? 'asc' : 'desc'; }
+        renderFolderDocuments();
+    }
+
+    function sortDocArrow(key) {
+        if (vaultDocSort.key !== key) return '';
+        return vaultDocSort.dir === 'asc'
+            ? '<i class="fa-solid fa-arrow-up text-xs text-blue-600"></i>'
+            : '<i class="fa-solid fa-arrow-down text-xs text-blue-600"></i>';
+    }
+
+    function sortDocuments(list) {
+        return list.slice().sort((a, b) => {
+            const dir = vaultDocSort.dir === 'asc' ? 1 : -1;
+            if (vaultDocSort.key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
+            if (vaultDocSort.key === 'date') return (new Date(a.uploaded_at || a.created_at || 0) - new Date(b.uploaded_at || b.created_at || 0)) * dir;
+            return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }) * dir;
+        });
+    }
+
+    function getFileIconColor(filename, mimeType = '') {
+        const ext = getFileExtension(filename);
+        const type = String(mimeType || '').toLowerCase();
+        if (ext === 'pdf' || type.includes('pdf')) return '#ea4335';
+        if (['doc', 'docx'].includes(ext) || type.includes('word')) return '#4285f4';
+        if (['xls', 'xlsx', 'csv'].includes(ext) || type.includes('spreadsheet') || type.includes('excel')) return '#0f9d58';
+        if (['ppt', 'pptx'].includes(ext) || type.includes('presentation') || type.includes('powerpoint')) return '#fbbc04';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || type.includes('image')) return '#a142f4';
+        return '#5f6368';
+    }
+
+    function openFolderMenu(id) {
+        document.querySelectorAll('.context-menu').forEach(m => m.classList.add('hidden'));
+        document.getElementById(`folder-menu-${id}`)?.classList.toggle('hidden');
+    }
+
+    function openDocMenu(id) {
+        document.querySelectorAll('.context-menu').forEach(m => m.classList.add('hidden'));
+        document.getElementById(`doc-menu-${id}`)?.classList.toggle('hidden');
+    }
+
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.context-menu').forEach(m => m.classList.add('hidden'));
+    });
 
     // ==================== LOAD DATA ====================
+    function formatVaultFolderName(name) {
+        if (window.CiteFlowWorkflow && typeof CiteFlowWorkflow.resolveDocumentCategory === 'function') {
+            const resolved = CiteFlowWorkflow.resolveDocumentCategory(name);
+            if (resolved) return CiteFlowWorkflow.formatDocumentCategory(resolved);
+        }
+        return name || '';
+    }
+
     async function loadFolders() {
         const { data: folderData, error: folderError } = await supabaseClient
             .from('folders')
@@ -271,6 +520,8 @@
         if (documentError) {
             console.error("Load Document Counts Error:", documentError);
             folders = folderData || [];
+            allDocumentCount = 0;
+            updateVaultStats();
             return;
         }
 
@@ -279,10 +530,30 @@
             return acc;
         }, {});
 
+        allDocumentCount = (documentData || []).length;
         folders = (folderData || []).map(folder => ({
             ...folder,
             count: countMap[folder.id] || 0
         }));
+        updateVaultStats();
+    }
+
+    function updateVaultStats() {
+        const statF = document.getElementById('stat-folders');
+        const statD = document.getElementById('stat-documents');
+        if (statF) statF.textContent = folders.length;
+        if (statD) statD.textContent = allDocumentCount;
+    }
+
+    async function refreshVault() {
+        await loadFolders();
+        renderFolders();
+        if (currentFolderId) {
+            await loadDocumentsByFolder(currentFolderId);
+            const countEl = document.getElementById('folder-count');
+            if (countEl) countEl.textContent = `${documents.length} document${documents.length !== 1 ? 's' : ''}`;
+            renderFolderDocuments();
+        }
     }
 
     async function loadDocumentsByFolder(folderId) {
@@ -292,114 +563,239 @@
             .eq('folder_id', folderId)
             .order('uploaded_at', { ascending: false });
 
-        if (error) console.error(error);
-        else documents = data || [];
+        if (error) {
+            console.error(error);
+            documents = [];
+        } else {
+            documents = data || [];
+        }
     }
 
     // ==================== RENDER ====================
     function renderFolders() {
         const container = document.getElementById('foldersGrid');
-        const folderList = Array.isArray(folders) ? folders : [];
+        const categoryFilter = document.getElementById('vault-category-filter')?.value || '';
+        const search = (document.getElementById('vault-folder-search')?.value || '').toLowerCase().trim();
+        const folderList = (Array.isArray(folders) ? folders : []).filter(folder => {
+            if (search) {
+                const hay = `${formatVaultFolderName(folder.name)} ${folder.name || ''} ${folder.description || ''}`.toLowerCase();
+                if (!hay.includes(search)) return false;
+            }
+            if (!categoryFilter) return true;
+            if (window.CiteFlowWorkflow && typeof CiteFlowWorkflow.matchesDocumentCategory === 'function') {
+                return CiteFlowWorkflow.matchesDocumentCategory(folder.name, categoryFilter);
+            }
+            return String(folder.name || '').toUpperCase() === String(categoryFilter).toUpperCase();
+        }).slice().sort((a, b) => {
+            const dir = vaultFolderSort.dir === 'asc' ? 1 : -1;
+            if (vaultFolderSort.key === 'date') {
+                return (new Date(a.updated_at || a.created_at || 0) - new Date(b.updated_at || b.created_at || 0)) * dir;
+            }
+            return String(formatVaultFolderName(a.name)).localeCompare(String(formatVaultFolderName(b.name))) * dir;
+        });
         
-        if (folderList.length === 0) {
+        if (!folders.length) {
             container.innerHTML = `
-                <div class="col-span-full text-center py-12">
-                    <div class="text-5xl mb-3 text-gray-300"><i class="fa-solid fa-folder-open"></i></div>
-                    <h3 class="text-lg font-bold text-gray-700 mb-1">No folders yet</h3>
-                    <p class="text-xs text-gray-500">Documents will appear here once added by administrators.</p>
+                <div class="drive-list">
+                    <div class="text-center py-12">
+                        <div class="text-5xl mb-3 text-gray-300"><i class="fa-solid fa-folder-open"></i></div>
+                        <h3 class="text-lg font-bold text-gray-700 mb-1">No folders yet</h3>
+                        <p class="text-xs text-gray-500">Documents will appear here once added by administrators.</p>
+                    </div>
                 </div>
             `;
             return;
         }
 
-        container.innerHTML = folderList.map(folder => {
-            const colorMap = {
-                'text-amber-600': 'text-amber-600',
-                'text-blue-600': 'text-blue-600',
-                'text-emerald-600': 'text-emerald-600',
-                'text-purple-600': 'text-purple-600',
-                'text-rose-600': 'text-rose-600',
-                'text-orange-600': 'text-orange-600',
-                'text-cyan-600': 'text-cyan-600'
-            };
-            const color = colorMap[folder.color] || 'text-amber-600';
-            const iconClass = folder.icon || 'fa-folder';
-            
-            return `
-                <div onclick="openFolder(${folder.id})" class="folder-card bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 cursor-pointer text-center card-shadow border border-gray-100 hover:border-gray-200">
-                    <div class="text-5xl sm:text-6xl mb-4 ${color}">
-                        <i class="fa-solid ${iconClass}" style="color: inherit;"></i>
-                    </div>
-                    <h3 class="font-bold text-base sm:text-lg text-gray-900 mb-1 leading-snug line-clamp-1">${folder.name}</h3>
-                    <p class="text-xs text-gray-500 mb-4 line-clamp-2 min-h-[32px]">${folder.description || 'No description'}</p>
-                    <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-xl">
-                        <i class="fa-solid fa-file-lines text-gray-400"></i> ${folder.count || 0} file${folder.count !== 1 ? 's' : ''}
+        if (!folderList.length) {
+            const isSearch = Boolean(search);
+            container.innerHTML = `
+                <div class="drive-list">
+                    <div class="text-center py-12">
+                        <div class="text-5xl mb-3 text-gray-300"><i class="fa-solid ${isSearch ? 'fa-magnifying-glass' : 'fa-filter'}"></i></div>
+                        <h3 class="text-lg font-bold text-gray-700 mb-1">${isSearch ? 'No folders match your search' : 'No folders in this category'}</h3>
+                        <p class="text-xs text-gray-500">${isSearch ? 'Try a different name or clear the search.' : 'Switch to All Categories to see every folder.'}</p>
                     </div>
                 </div>
             `;
-        }).join('');
+            return;
+        }
+
+        container.innerHTML = `<div class="drive-list">
+            <div class="drive-list-head">
+                <button type="button" onclick="setVaultFolderSort('name')">Name ${sortArrow('name')}</button>
+                <div class="drive-col-owner">Owner</div>
+                <button type="button" class="drive-col-date" onclick="setVaultFolderSort('date')">Date modified ${sortArrow('date')}</button>
+                <div class="drive-col-size">File size</div>
+                <div class="drive-sort"><i class="fa-solid fa-arrow-down-short-wide mr-1"></i>Sort</div>
+            </div>
+            ${folderList.map(folder => `
+                <div onclick='openFolder(${jsArg(folder.id)})' class="drive-row">
+                    <div class="drive-name">
+                        <i class="fa-solid ${folder.icon || 'fa-folder'}" style="color: ${resolveFolderColor(folder.color)}"></i>
+                        <span class="truncate">${escapeHtml(formatVaultFolderName(folder.name))}</span>
+                    </div>
+                    <div class="drive-owner drive-col-owner"><span class="drive-avatar">A</span> Admin</div>
+                    <div class="drive-muted drive-col-date">${escapeHtml(formatDriveDate(folder.updated_at || folder.created_at))}</div>
+                    <div class="drive-muted drive-col-size">—</div>
+                    <div onclick="event.stopPropagation()">
+                        <button type="button" class="drive-kebab" onclick='openFolderMenu(${jsArg(folder.id)})' title="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                        <div id="folder-menu-${escapeHtml(folder.id)}" class="context-menu hidden bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden">
+                            <button onclick='openFolder(${jsArg(folder.id)})' class="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-gray-50">
+                                <i class="fa-solid fa-folder-open mr-2 text-gray-400"></i>Open
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>`;
     }
 
     async function openFolder(folderId) {
         currentFolderId = folderId;
-        
-        const folder = folders.find(f => f.id === folderId);
+        const folder = folders.find(f => String(f.id) === String(folderId));
         if (!folder) return;
 
-        document.getElementById('modalFolderIcon').innerHTML = `<i class="fa-solid ${folder.icon || 'fa-folder'}" style="color: ${folder.color || '#621708'}"></i>`;
-        document.getElementById('modalFolderName').textContent = folder.name;
-        document.getElementById('modalFolderDesc').textContent = folder.description || 'No description';
-        document.getElementById('modalFolderMeta').textContent = 'Loading documents...';
+        document.getElementById('main-view').classList.add('hidden');
+        document.getElementById('folder-view').classList.remove('hidden');
+        const iconEl = document.getElementById('folder-icon');
+        const color = resolveFolderColor(folder.color);
+        iconEl.innerHTML = `<i class="fa-solid ${folder.icon || 'fa-folder'}"></i>`;
+        iconEl.style.color = color;
+        iconEl.style.backgroundColor = `${color}16`;
+        document.getElementById('folder-title').textContent = formatVaultFolderName(folder.name);
+        const descEl = document.getElementById('folder-desc');
+        const description = String(folder.description || '').trim();
+        if (description) {
+            descEl.textContent = description;
+            descEl.classList.remove('hidden');
+        } else {
+            descEl.textContent = '';
+            descEl.classList.add('hidden');
+        }
+        const searchEl = document.getElementById('folder-search');
+        if (searchEl) searchEl.value = '';
 
         await loadDocumentsByFolder(folderId);
-        
-        const content = document.getElementById('modalContent');
-        
-        if (!documents || documents.length === 0) {
-            content.innerHTML = `
-                <div class="text-center py-12">
-                    <div class="text-4xl mb-2 text-gray-300"><i class="fa-solid fa-folder-open"></i></div>
-                    <h3 class="text-base font-bold text-gray-700 mb-1">No documents in this folder</h3>
-                    <p class="text-xs text-gray-500">Check back later for official templates.</p>
+        document.getElementById('folder-count').textContent = `${documents.length} document${documents.length !== 1 ? 's' : ''}`;
+        setFolderView(currentFolderView, false);
+        renderFolderDocuments();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function goBackToMain() {
+        document.getElementById('folder-view').classList.add('hidden');
+        document.getElementById('main-view').classList.remove('hidden');
+        currentFolderId = null;
+    }
+
+    function setFolderView(mode, render = true) {
+        currentFolderView = mode;
+        localStorage.setItem('facultyDocumentVaultView', mode);
+        document.querySelectorAll('#folder-view .view-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`folder-btn-${mode}`)?.classList.add('active');
+        if (render) renderFolderDocuments();
+    }
+
+    function filterFolderDocuments() {
+        renderFolderDocuments();
+    }
+
+    function getFilteredDocuments() {
+        const q = (document.getElementById('folder-search')?.value || '').toLowerCase().trim();
+        return sortDocuments(
+            documents
+                .filter(d => String(d.folder_id) === String(currentFolderId))
+                .filter(d => !q || String(d.name || '').toLowerCase().includes(q))
+        );
+    }
+
+    function renderFolderDocuments() {
+        const q = (document.getElementById('folder-search')?.value || '').toLowerCase().trim();
+        const filtered = getFilteredDocuments();
+        const container = document.getElementById('folder-documents-container');
+        if (!container) return;
+
+        if (!filtered.length) {
+            container.innerHTML = `
+                <div class="bg-white rounded-2xl p-8 text-center border border-slate-100">
+                    <div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-file-circle-xmark"></i></div>
+                    <h3 class="text-base font-extrabold text-slate-700">No documents found</h3>
+                    <p class="text-sm text-slate-500 mt-1">${q ? 'Try a different search.' : 'Check back later for official templates.'}</p>
                 </div>
             `;
-        } else {
-            content.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">`;
-            
-            documents.forEach(doc => {
-                const fileIcon = getFileIcon(doc.name, doc.mime_type);
-                const fileSize = formatFileSize(doc.size_bytes);
-                const fileType = doc.name.split('.').pop().toUpperCase();
-                const uploadedDate = doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'Unknown';
-                
-                content.innerHTML += `
-                    <div class="file-card bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5">
-                        <div class="text-3xl sm:text-4xl shrink-0 w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center text-[#621708]">${fileIcon}</div>
-                        <div class="flex-1 min-w-0">
-                            <p class="font-bold text-xs sm:text-sm text-gray-900 leading-snug truncate">${doc.name}</p>
-                            <p class="text-[11px] text-gray-500 mt-1 truncate">${fileType} • ${fileSize} • ${uploadedDate}</p>
-                            
-                            <div class="flex gap-2 mt-3">
-                                <button onclick="viewDocument(${doc.id})" 
-                                        class="flex-1 py-1.5 text-xs font-bold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors">
-                                    <i class="fa-solid fa-eye mr-1"></i>Preview
+            return;
+        }
+
+        if (currentFolderView === 'list') {
+            container.innerHTML = `<div class="drive-list">
+                <div class="drive-list-head">
+                    <button type="button" onclick="setVaultDocSort('name')">Name ${sortDocArrow('name')}</button>
+                    <div class="drive-col-owner">Owner</div>
+                    <button type="button" class="drive-col-date" onclick="setVaultDocSort('date')">Date modified ${sortDocArrow('date')}</button>
+                    <button type="button" class="drive-col-size" onclick="setVaultDocSort('size')">File size ${sortDocArrow('size')}</button>
+                    <div class="drive-sort"><i class="fa-solid fa-arrow-down-short-wide mr-1"></i>Sort</div>
+                </div>
+                ${filtered.map(doc => `
+                    <div class="drive-row" onclick='viewDocument(${jsArg(doc.id)})'>
+                        <div class="drive-name">
+                            <i class="fa-solid ${getFileIconClass(doc.name, doc.mime_type)}" style="color:${getFileIconColor(doc.name, doc.mime_type)}"></i>
+                            <span class="truncate">${escapeHtml(doc.name)}</span>
+                        </div>
+                        <div class="drive-owner drive-col-owner"><span class="drive-avatar">A</span> Admin</div>
+                        <div class="drive-muted drive-col-date">${escapeHtml(formatDriveDate(doc.uploaded_at || doc.created_at))}</div>
+                        <div class="drive-muted drive-col-size">${formatFileSize(doc.size_bytes)}</div>
+                        <div onclick="event.stopPropagation()">
+                            <button type="button" class="drive-kebab" onclick='openDocMenu(${jsArg(doc.id)})' title="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                            <div id="doc-menu-${escapeHtml(doc.id)}" class="context-menu hidden bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden">
+                                <button onclick='viewDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-gray-50">
+                                    <i class="fa-solid fa-eye mr-2 text-gray-400"></i>Preview
                                 </button>
-                                <button onclick="downloadDocument(${doc.id})" 
-                                        class="flex-1 py-1.5 text-xs font-bold bg-[#621708] text-white hover:bg-[#8c2a10] rounded-xl transition-colors shadow-sm">
-                                    <i class="fa-solid fa-download mr-1"></i>Download
+                                <button onclick='downloadDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-gray-50">
+                                    <i class="fa-solid fa-download mr-2 text-gray-400"></i>Download
                                 </button>
                             </div>
                         </div>
                     </div>
-                `;
-            });
-            
-            content.innerHTML += `</div>`;
+                `).join('')}
+            </div>`;
+            return;
         }
-        document.getElementById('modalFolderMeta').textContent = `${documents.length} document${documents.length !== 1 ? 's' : ''} available`;
-        
-        document.getElementById('folderModal').classList.remove('hidden');
-        document.getElementById('folderModal').classList.add('flex');
+
+        const isTiles = currentFolderView === 'tiles';
+        const grid = isTiles ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
+        container.innerHTML = `<div class="grid ${grid} gap-4">${filtered.map(doc => isTiles ? renderTileDoc(doc) : renderLargeDoc(doc)).join('')}</div>`;
+    }
+
+    function docMeta(doc) {
+        const date = doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'Unknown';
+        return `${getFileTypeLabel(doc.name, doc.mime_type)} • ${formatFileSize(doc.size_bytes)} • ${date}`;
+    }
+
+    function renderLargeDoc(doc) {
+        return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow">
+            <div class="h-20 sm:h-24 rounded-2xl mb-3 flex items-center justify-center text-3xl sm:text-4xl bg-slate-100" style="color:${getFileIconColor(doc.name, doc.mime_type)}"><i class="fa-solid ${getFileIconClass(doc.name, doc.mime_type)}"></i></div>
+            <div class="font-extrabold text-xs sm:text-sm leading-snug line-clamp-2 text-slate-900 min-h-[34px] sm:min-h-[38px]">${escapeHtml(doc.name)}</div>
+            <div class="text-[10px] sm:text-[11px] text-slate-500 mt-1 truncate">${escapeHtml(docMeta(doc))}</div>
+            <div class="grid grid-cols-2 gap-2 mt-3">
+                <button onclick='viewDocument(${jsArg(doc.id)})' class="text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-xl font-bold text-slate-700 py-1.5"><i class="fa-solid fa-eye mr-1"></i>Preview</button>
+                <button onclick='downloadDocument(${jsArg(doc.id)})' class="text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl font-bold py-1.5"><i class="fa-solid fa-download mr-1"></i>Download</button>
+            </div>
+        </div>`;
+    }
+
+    function renderTileDoc(doc) {
+        return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow flex gap-3 items-start">
+            <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-xl sm:text-2xl shrink-0" style="color:${getFileIconColor(doc.name, doc.mime_type)}"><i class="fa-solid ${getFileIconClass(doc.name, doc.mime_type)}"></i></div>
+            <div class="flex-1 min-w-0">
+                <div class="font-extrabold text-xs sm:text-sm text-slate-900 truncate">${escapeHtml(doc.name)}</div>
+                <div class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 truncate">${escapeHtml(docMeta(doc))}</div>
+                <div class="flex flex-wrap gap-1.5 sm:gap-2 mt-2.5 sm:mt-3">
+                    <button onclick='viewDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-lg font-bold text-slate-700"><i class="fa-solid fa-eye mr-1"></i>Preview</button>
+                    <button onclick='downloadDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-lg font-bold"><i class="fa-solid fa-download mr-1"></i>Download</button>
+                </div>
+            </div>
+        </div>`;
     }
 
     // ==================== DOCUMENT ACTIONS ====================
@@ -430,12 +826,26 @@
         return 'fa-file-lines';
     }
 
-    function getFileIcon(filename, mimeType = '') {
-        return `<i class="fa-solid ${getFileIconClass(filename, mimeType)}"></i>`;
+    function getFilePreviewKind(doc) {
+        const ext = getFileExtension(doc.name);
+        const type = String(doc.mime_type || '').toLowerCase();
+        if (ext === 'pdf' || type.includes('pdf')) return 'direct';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || type.includes('image')) return 'direct';
+        if (['txt', 'md', 'csv'].includes(ext) || type.includes('text')) return 'direct';
+        if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) return 'office';
+        return 'direct';
+    }
+
+    function makePreviewUrl(doc, access) {
+        const kind = getFilePreviewKind(doc);
+        if (kind === 'office' && access?.url && !access.url.startsWith('blob:')) {
+            return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(access.url)}`;
+        }
+        return access.url;
     }
 
     function formatFileSize(bytes) {
-        if (!bytes) return '0 B';
+        if (!bytes) return '—';
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(1024));
         return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
@@ -555,7 +965,7 @@
         modal.classList.add('flex');
 
         setTimeout(() => {
-            frame.src = access.url;
+            frame.src = makePreviewUrl(doc, access);
         }, 50);
 
         frame.onload = () => {
@@ -583,8 +993,8 @@
     }
 
     function openPreviewInNewTab() {
-        if (!currentPreviewAccess?.url) return;
-        window.open(currentPreviewAccess.url, '_blank');
+        if (!currentPreviewDocument || !currentPreviewAccess?.url) return;
+        window.open(makePreviewUrl(currentPreviewDocument, currentPreviewAccess), '_blank');
     }
 
     async function viewDocument(id) {
@@ -647,25 +1057,14 @@
         await downloadDocument(currentPreviewDocument.id);
     }
 
-    // ==================== MODAL FUNCTIONS ====================
-    function closeModal() {
-        const modal = document.getElementById('folderModal');
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        currentFolderId = null;
-    }
-
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeModal();
+        if (e.key !== 'Escape') return;
+        const preview = document.getElementById('documentPreviewModal');
+        if (preview && !preview.classList.contains('hidden')) {
             closeDocumentPreviewModal();
+            return;
         }
-    });
-
-    document.getElementById('folderModal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeModal();
-        }
+        if (currentFolderId) goBackToMain();
     });
 
     // ==================== INITIALIZE ====================
@@ -674,6 +1073,7 @@
         if (supabaseClient) {
             await loadFolders();
             renderFolders();
+            setFolderView(currentFolderView, false);
         }
     };
 </script>
