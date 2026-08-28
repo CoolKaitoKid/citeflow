@@ -12,6 +12,7 @@
     <script src="../shared/auth-guard.js"></script>
     <script src="../shared/workflow.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="faculty-nav.css">
 
     <style>
@@ -132,6 +133,33 @@
             height: 100%;
             object-fit: cover;
         }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+        }
+
+        .chip button {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .chip button:hover {
+            color: #ef4444;
+        }
     </style>
 </head>
 
@@ -221,6 +249,7 @@
                 <button id="research-tab-btn" onclick="switchTab('research')" class="tab-btn">Research</button>
                 <button id="extension-tab-btn" onclick="switchTab('extension')" class="tab-btn">Extension</button>
                 <button id="others-tab-btn" onclick="switchTab('others')" class="tab-btn">Others</button>
+                <button id="accomplishments-tab-btn" onclick="switchTab('accomplishments')" class="tab-btn">Accomplishments</button>
                 <button id="workload-tab-btn" onclick="switchTab('workload')" class="tab-btn">Workload</button>
             </nav>
 
@@ -298,6 +327,15 @@
                         <div><p class="text-xs text-slate-500">Years of Experience</p><p id="overviewExperience" class="font-semibold text-slate-950 mt-1">—</p></div>
                     </div>
                 </div>
+
+                <div id="leaveInfoCard" class="card p-6 mb-7 hidden">
+                    <h2 class="text-lg font-semibold text-slate-950 mb-4">Leave Information</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div><p class="text-xs text-slate-500">Leave Status</p><p id="overviewLeaveStatus" class="font-semibold text-slate-950 mt-1">—</p></div>
+                        <div><p class="text-xs text-slate-500">Leave Start Date</p><p id="overviewLeaveStartDate" class="font-semibold text-slate-950 mt-1">—</p></div>
+                        <div><p class="text-xs text-slate-500">Leave End Date</p><p id="overviewLeaveEndDate" class="font-semibold text-slate-950 mt-1">—</p></div>
+                    </div>
+                </div>
             </section>
 
             <!-- RESEARCH TAB -->
@@ -349,6 +387,38 @@
                         <button onclick="openCategorizedDocumentUploadModal('Other')" class="primary-btn flex items-center gap-2" data-theme-primary="true">Add Other Document</button>
                     </div>
                     <div id="othersList" class="space-y-3"><div class="text-sm text-slate-500">No other documents loaded yet.</div></div>
+                </div>
+            </section>
+
+            <!-- ACCOMPLISHMENTS TAB -->
+            <section id="accomplishments-tab" class="hidden">
+                <div class="card p-6 mb-5">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-950">Accomplishments & Engagement</h2>
+                            <p class="text-sm text-slate-500">Track seminars, trainings, conferences, awards, and other professional accomplishments.</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button onclick="generateAccomplishmentReport()" class="secondary-btn flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2"/>
+                                    <rect x="9" y="13" width="6" height="8" rx="1"/>
+                                    <path d="M12 2v4"/>
+                                </svg>
+                                Generate &amp; Print Report
+                            </button>
+                            <button onclick="openAccomplishmentModal()" class="primary-btn flex items-center gap-2" data-theme-primary="true">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3">
+                                    <path d="M12 5v14"/>
+                                    <path d="M5 12h14"/>
+                                </svg>
+                                Add Accomplishment
+                            </button>
+                        </div>
+                    </div>
+                    <div id="accomplishmentsList" class="space-y-4">
+                        <div class="text-sm text-slate-500">No accomplishments recorded yet.</div>
+                    </div>
                 </div>
             </section>
 
@@ -622,6 +692,28 @@
                 <label class="field-label">Years of Experience</label>
                 <input id="editYearsExperience" type="number" min="0" class="field" placeholder="0">
             </div>
+
+            <div class="md:col-span-2 border-t border-slate-200 pt-5 mt-2">
+                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase mb-4">Leave Status</p>
+            </div>
+            <div>
+                <label class="field-label">Status</label>
+                <select id="editLeaveStatus" class="field" onchange="onEditLeaveStatusChange()">
+                    <option>Active</option>
+                    <option>On Maternity Leave</option>
+                    <option>On Study Leave</option>
+                    <option>On Sabbatical Leave</option>
+                    <option>On Vacation/Sick Leave</option>
+                </select>
+            </div>
+            <div id="editLeaveStartGroup" class="hidden">
+                <label class="field-label">Leave Start Date</label>
+                <input id="editLeaveStartDate" type="date" class="field">
+            </div>
+            <div id="editLeaveEndGroup" class="hidden">
+                <label class="field-label">Leave End Date</label>
+                <input id="editLeaveEndDate" type="date" class="field">
+            </div>
         </div>
 
         <div class="border-t border-slate-100 bg-slate-50 px-7 py-5 flex justify-end gap-3 flex-shrink-0">
@@ -714,9 +806,10 @@
 
             <div>
                 <label class="field-label">Status</label>
-                <select id="researchStatus" class="field">
+                <select id="researchStatus" class="field" onchange="onResearchStatusChange()">
                     <option>Ongoing</option>
-                    <option>Completed</option>
+                    <option>Completed but not Published</option>
+                    <option>Completed and Published</option>
                 </select>
             </div>
 
@@ -736,6 +829,20 @@
             </div>
 
             <div class="md:col-span-2">
+                <label class="field-label">Authors / Co-Authors</label>
+                <div class="flex items-center gap-2 mb-2">
+                    <input id="researchAuthorInput" class="field flex-1" placeholder="Enter author name and press Enter">
+                    <button type="button" onclick="addResearchAuthor()" class="secondary-btn !py-2 !px-4 text-xs">Add</button>
+                </div>
+                <div id="researchAuthorChips" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <div id="publicationUrlGroup" class="md:col-span-2 hidden">
+                <label class="field-label">Publication URL</label>
+                <input id="researchPublicationUrl" type="url" class="field" placeholder="https://journal.example.com/article/...">
+            </div>
+
+            <div class="md:col-span-2">
                 <label class="field-label">Description</label>
                 <textarea id="researchDescription" rows="3" class="field" placeholder="Briefly describe the research project"></textarea>
             </div>
@@ -745,6 +852,69 @@
             <button onclick="closeResearchUploadModal()" class="secondary-btn">Cancel</button>
             <button id="saveResearchBtn" onclick="saveResearchUpload()" class="primary-btn" data-theme-primary="true">
                 Save Research
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ACCOMPLISHMENT UPLOAD MODAL -->
+<div id="accomplishmentModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto">
+        <div class="px-7 py-5 border-b border-slate-100 flex items-start justify-between gap-4 flex-shrink-0">
+            <div>
+                <p class="text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Accomplishment</p>
+                <h2 class="text-xl font-semibold text-slate-950 mt-1">Add Accomplishment Record</h2>
+                <p class="text-sm text-slate-500 mt-1">Record a professional accomplishment and upload proof if available.</p>
+            </div>
+            <button onclick="closeAccomplishmentModal()" class="icon-btn" aria-label="Close">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M6 18L18 6"/>
+                    <path d="M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
+            <div class="md:col-span-2">
+                <label class="field-label">Title</label>
+                <input id="accomplishmentTitle" class="field" placeholder="e.g. National IT Conference 2026">
+            </div>
+
+            <div>
+                <label class="field-label">Type</label>
+                <select id="accomplishmentType" class="field">
+                    <option>Seminar</option>
+                    <option>Training</option>
+                    <option>Conference</option>
+                    <option>Workshop</option>
+                    <option>Award</option>
+                    <option>Honors/Recognition</option>
+                    <option>Certification</option>
+                    <option>Other</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="field-label">Date Achieved</label>
+                <input id="accomplishmentDate" type="date" class="field">
+            </div>
+
+            <div class="md:col-span-2">
+                <label class="field-label">Proof Image (Certificate, Attendance Photo)</label>
+                <input id="accomplishmentProofFile" type="file" accept="image/*" class="field">
+                <p class="text-xs text-slate-500 mt-1">Upload a photo of your certificate, attendance record, or similar proof.</p>
+            </div>
+
+            <div class="md:col-span-2">
+                <label class="field-label">Description</label>
+                <textarea id="accomplishmentDescription" rows="3" class="field" placeholder="Briefly describe the accomplishment"></textarea>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-100 bg-slate-50 px-7 py-5 flex justify-end gap-3 flex-shrink-0">
+            <button onclick="closeAccomplishmentModal()" class="secondary-btn">Cancel</button>
+            <button id="saveAccomplishmentBtn" onclick="saveAccomplishment()" class="primary-btn" data-theme-primary="true">
+                Save Accomplishment
             </button>
         </div>
     </div>
@@ -933,7 +1103,7 @@ function setImageOrInitials(imgId, fallbackId, photoUrl, name) {
 }
 
 function switchTab(tab) {
-    const tabs = ['overview', 'research', 'extension', 'others', 'workload'];
+    const tabs = ['overview', 'research', 'extension', 'others', 'accomplishments', 'workload'];
 
     tabs.forEach(item => {
         document.getElementById(`${item}-tab`).classList.toggle('hidden', item !== tab);
@@ -1037,6 +1207,7 @@ async function loadFacultyProfile() {
     renderProfile();
     await loadWorkloadEntries();
     await loadResearch();
+    await loadAccomplishments();
     await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
     await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.');
 }
@@ -1073,12 +1244,48 @@ function renderProfile() {
     document.getElementById('overviewExperience').textContent = currentFaculty.years_experience ? `${currentFaculty.years_experience} year(s)` : '—';
 
     const statusBadge = document.getElementById('profileStatusBadge');
-    if (String(status).toLowerCase() === 'active') {
-        statusBadge.textContent = 'Active';
-        statusBadge.className = 'badge bg-emerald-50 text-emerald-700 border border-emerald-100';
-    } else {
-        statusBadge.textContent = status;
-        statusBadge.className = 'badge bg-red-50 text-red-700 border border-red-100';
+    const statusLower = String(status).toLowerCase();
+    const leaveStatusColors = {
+        'active': 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+        'on maternity leave': 'bg-pink-50 text-pink-700 border border-pink-100',
+        'on study leave': 'bg-indigo-50 text-indigo-700 border border-indigo-100',
+        'on sabbatical leave': 'bg-purple-50 text-purple-700 border border-purple-100',
+        'on vacation/sick leave': 'bg-amber-50 text-amber-700 border border-amber-100',
+    };
+    statusBadge.textContent = status;
+    statusBadge.className = 'badge ' + (leaveStatusColors[statusLower] || 'bg-red-50 text-red-700 border border-red-100');
+
+    // Leave information card
+    const leaveInfoCard = document.getElementById('leaveInfoCard');
+    const isOnLeave = statusLower.startsWith('on ');
+    if (leaveInfoCard) {
+        leaveInfoCard.classList.toggle('hidden', !isOnLeave);
+        if (isOnLeave) {
+            document.getElementById('overviewLeaveStatus').textContent = status;
+            document.getElementById('overviewLeaveStartDate').textContent = formatLongDate(currentFaculty.leave_start_date);
+            document.getElementById('overviewLeaveEndDate').textContent = formatLongDate(currentFaculty.leave_end_date);
+
+            // Check for expired leave
+            if (currentFaculty.leave_end_date) {
+                const endDate = new Date(currentFaculty.leave_end_date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                if (endDate < today) {
+                    document.getElementById('overviewLeaveEndDate').innerHTML =
+                        formatLongDate(currentFaculty.leave_end_date) +
+                        ' <span class="badge bg-red-50 text-red-700 border border-red-100 ml-2">Expired</span>';
+                    statusBadge.textContent = status + ' (Expired)';
+                    statusBadge.className = 'badge bg-red-50 text-red-700 border border-red-100';
+                    // Silently revert to Active in DB — will reflect on next page load
+                    supabaseClient.from('faculty').update({
+                        status: 'Active',
+                        leave_start_date: null,
+                        leave_end_date: null,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', currentFaculty.id);
+                }
+            }
+        }
     }
 
     setImageOrInitials('profileAvatar', 'profileAvatarFallback', photoUrl, name);
@@ -1231,6 +1438,20 @@ async function archiveWorkload(type, id) {
     await loadWorkloadEntries();
 }
 
+function getResearchStatusBadge(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === 'completed and published') return { label: 'Completed & Published', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-100' };
+    if (s === 'completed but not published') return { label: 'Completed (Unpublished)', cls: 'bg-amber-50 text-amber-700 border border-amber-100' };
+    return { label: 'Ongoing', cls: 'bg-blue-50 text-blue-700 border border-blue-100' };
+}
+
+function renderAuthorChips(authors) {
+    if (!authors || !Array.isArray(authors) || !authors.length) return '';
+    return '<div class="flex flex-wrap gap-1.5 mt-2">' +
+        authors.map(a => `<span class="chip">${esc(a)}</span>`).join('') +
+        '</div>';
+}
+
 async function loadResearch() {
     const container = document.getElementById('researchList');
 
@@ -1249,21 +1470,31 @@ async function loadResearch() {
         }
 
         container.innerHTML = data.map(project => {
-            const completed = String(project.status || '').toLowerCase() === 'completed';
+            const badge = getResearchStatusBadge(project.status);
+            const isPublished = String(project.status || '').toLowerCase() === 'completed and published';
+            const authors = Array.isArray(project.authors) ? project.authors : [];
 
             return `
                 <div class="border border-slate-200 rounded-2xl p-5">
                     <div class="flex items-start justify-between gap-4">
-                        <div>
+                        <div class="flex-1">
                             <div class="font-semibold text-slate-900">${esc(project.title || 'Untitled Research')}</div>
                             <p class="text-sm text-slate-500 mt-1">${esc(project.description || 'No description provided')}</p>
+                            ${renderAuthorChips(authors)}
                         </div>
-                        <span class="badge ${completed ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}">
-                            ${completed ? 'Completed' : 'Ongoing'}
+                        <span class="badge ${badge.cls} whitespace-nowrap">
+                            ${badge.label}
                         </span>
                     </div>
 
-                    ${completed && project.file_url ? `<a href="${esc(project.file_url)}" target="_blank" class="inline-flex mt-4 text-sm font-semibold text-[#621708]">Download completed research file</a>` : ''}
+                    ${project.file_url ? `<a href="${esc(project.file_url)}" target="_blank" class="inline-flex mt-4 text-sm font-semibold text-[#621708]">Download research file</a>` : ''}
+
+                    ${isPublished && project.publication_url ? `
+                        <a href="${esc(project.publication_url)}" target="_blank" rel="noopener noreferrer"
+                           class="inline-flex items-center gap-1.5 mt-3 ml-0 px-3 py-1.5 rounded-full text-xs font-bold bg-[#621708] text-white hover:bg-[#8c2a10] transition-colors">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            View Publication
+                        </a>` : ''}
                 </div>
             `;
         }).join('');
@@ -1397,6 +1628,13 @@ function openEditProfileModal() {
 
     autoUpdateFullName();
 
+    // Leave status fields
+    const currentStatus = currentFaculty.status || 'Active';
+    document.getElementById('editLeaveStatus').value = currentStatus;
+    document.getElementById('editLeaveStartDate').value = currentFaculty.leave_start_date ? String(currentFaculty.leave_start_date).split('T')[0] : '';
+    document.getElementById('editLeaveEndDate').value = currentFaculty.leave_end_date ? String(currentFaculty.leave_end_date).split('T')[0] : '';
+    onEditLeaveStatusChange();
+
     document.getElementById('editProfileModal').classList.remove('hidden');
     document.getElementById('editProfileModal').classList.add('flex');
 }
@@ -1420,6 +1658,15 @@ async function saveProfileChanges() {
     const fullName = `${firstName} ${middleInitial ? middleInitial + ' ' : ''}${lastName}`.trim();
     
     let profilePhotoUrl = '';
+
+    const leaveStatus = document.getElementById('editLeaveStatus').value;
+    const isLeaveStatus = leaveStatus.startsWith('On ');
+    if (isLeaveStatus) {
+        const leaveStart = document.getElementById('editLeaveStartDate').value;
+        if (!leaveStart) return alert('Please set a leave start date.');
+        const leaveEnd = document.getElementById('editLeaveEndDate').value;
+        if (leaveEnd && leaveEnd < leaveStart) return alert('Leave end date must be on or after the start date.');
+    }
 
     try {
         profilePhotoUrl = await uploadProfilePictureIfSelected();
@@ -1446,6 +1693,9 @@ async function saveProfileChanges() {
         educational_qualification: document.getElementById('editEducationalQualification').value.trim(),
         eligibility: document.getElementById('editEligibility').value.trim(),
         years_experience: Number(document.getElementById('editYearsExperience').value || 0),
+        status: document.getElementById('editLeaveStatus').value,
+        leave_start_date: document.getElementById('editLeaveStartDate').value || null,
+        leave_end_date: document.getElementById('editLeaveEndDate').value || null,
         updated_at: new Date().toISOString()
     };
 
@@ -1481,6 +1731,22 @@ async function saveProfileChanges() {
 
     closeEditProfileModal();
     await loadFacultyProfile();
+
+    // Log leave status change to engagement audit trail
+    if (typeof window.EngagementLogger !== 'undefined') {
+        const leaveVal = document.getElementById('editLeaveStatus')?.value || payload.status;
+        window.EngagementLogger.logActivity({
+            facultyId: currentFaculty.id,
+            facultyName: fullName,
+            department: payload.department,
+            activityType: 'Profile Update',
+            activityTitle: 'Updated faculty profile',
+            description: `Updated profile. Status: ${leaveVal}`,
+            sourceModule: 'Faculty Profile',
+            details: { Status: leaveVal, 'Leave Start': payload.leave_start_date || 'N/A', 'Leave End': payload.leave_end_date || 'N/A' }
+        });
+    }
+
     alert('Profile updated successfully!');
 }
 
@@ -1592,8 +1858,15 @@ async function saveResearchUpload() {
     const startDate = document.getElementById('researchStartDate').value || null;
     const endDate = document.getElementById('researchEndDate').value || null;
     const file = document.getElementById('researchFile').files[0];
+    const publicationUrl = document.getElementById('researchPublicationUrl').value.trim();
 
     if (!title) return alert('Please enter a research title.');
+
+    if (status === 'Completed and Published' && publicationUrl) {
+        try { new URL(publicationUrl); } catch (_) {
+            return alert('Please enter a valid publication URL.');
+        }
+    }
 
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
@@ -1614,6 +1887,8 @@ async function saveResearchUpload() {
             file_name: file ? file.name : null,
             file_url: uploaded.publicUrl,
             file_path: uploaded.path,
+            authors: researchAuthors,
+            publication_url: status === 'Completed and Published' ? publicationUrl : null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
         };
@@ -1624,6 +1899,21 @@ async function saveResearchUpload() {
         closeResearchUploadModal();
         clearResearchUploadForm();
         await loadResearch();
+
+        // Log to engagement audit trail
+        if (typeof window.EngagementLogger !== 'undefined') {
+            window.EngagementLogger.logActivity({
+                facultyId: currentFaculty.id,
+                facultyName: currentFaculty.full_name || currentFaculty.name,
+                department: currentFaculty.department,
+                activityType: 'Research',
+                activityTitle: `Added research: ${title}`,
+                description: `Added research project "${title}" with status: ${status}`,
+                sourceModule: 'Faculty Profile',
+                details: { Title: title, Status: status, Authors: researchAuthors.join(', ') || 'None' }
+            });
+        }
+
         alert('Research record saved successfully.');
     } catch (error) {
         alert('Unable to save research record: ' + error.message);
@@ -1640,6 +1930,272 @@ function clearResearchUploadForm() {
     document.getElementById('researchStartDate').value = '';
     document.getElementById('researchEndDate').value = '';
     document.getElementById('researchFile').value = '';
+    document.getElementById('researchPublicationUrl').value = '';
+    document.getElementById('researchAuthorInput').value = '';
+    document.getElementById('researchAuthorChips').innerHTML = '';
+    document.getElementById('publicationUrlGroup').classList.add('hidden');
+    researchAuthors = [];
+}
+
+// ===================== RESEARCH AUTHORS =====================
+let researchAuthors = [];
+
+function addResearchAuthor() {
+    const input = document.getElementById('researchAuthorInput');
+    const name = input.value.trim();
+    if (!name) return;
+    if (researchAuthors.includes(name)) { input.value = ''; return; }
+    researchAuthors.push(name);
+    input.value = '';
+    renderResearchAuthorChips();
+}
+
+function removeResearchAuthor(index) {
+    researchAuthors.splice(index, 1);
+    renderResearchAuthorChips();
+}
+
+function renderResearchAuthorChips() {
+    const container = document.getElementById('researchAuthorChips');
+    container.innerHTML = researchAuthors.map((name, i) =>
+        `<span class="chip">${esc(name)}<button type="button" onclick="removeResearchAuthor(${i})" title="Remove">&times;</button></span>`
+    ).join('');
+}
+
+function onResearchStatusChange() {
+    const status = document.getElementById('researchStatus').value;
+    const pubGroup = document.getElementById('publicationUrlGroup');
+    pubGroup.classList.toggle('hidden', status !== 'Completed and Published');
+}
+
+// ===================== LEAVE STATUS =====================
+function onEditLeaveStatusChange() {
+    const status = document.getElementById('editLeaveStatus').value;
+    const isLeave = status.startsWith('On ');
+    document.getElementById('editLeaveStartGroup').classList.toggle('hidden', !isLeave);
+    document.getElementById('editLeaveEndGroup').classList.toggle('hidden', !isLeave);
+}
+
+// ===================== ACCOMPLISHMENTS =====================
+function openAccomplishmentModal() {
+    document.getElementById('accomplishmentModal').classList.remove('hidden');
+    document.getElementById('accomplishmentModal').classList.add('flex');
+}
+
+function closeAccomplishmentModal() {
+    document.getElementById('accomplishmentModal').classList.add('hidden');
+    document.getElementById('accomplishmentModal').classList.remove('flex');
+}
+
+async function loadAccomplishments() {
+    const container = document.getElementById('accomplishmentsList');
+    if (!container || !currentFaculty?.id) return;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('faculty_accomplishments')
+            .select('*')
+            .eq('faculty_id', currentFaculty.id)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (!data || !data.length) {
+            container.innerHTML = '<div class="text-sm text-slate-500">No accomplishments recorded yet.</div>';
+            return;
+        }
+
+        const typeIcons = {
+            'Seminar': '🎤', 'Training': '📚', 'Conference': '🏛️',
+            'Workshop': '🔧', 'Award': '🏆', 'Honors/Recognition': '🎖️', 'Certification': '📜', 'Other': '📌'
+        };
+
+        container.innerHTML = data.map(item => {
+            const icon = typeIcons[item.accomplishment_type] || '📌';
+            return `
+                <div class="border border-slate-200 rounded-2xl p-5">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-lg">${icon}</span>
+                                <div class="font-semibold text-slate-900">${esc(item.title || 'Untitled')}</div>
+                            </div>
+                            <p class="text-sm text-slate-500 mt-1">${esc(item.description || 'No description provided')}</p>
+                            <div class="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                                <span class="badge bg-slate-100 text-slate-600 border border-slate-200">${esc(item.accomplishment_type || 'Other')}</span>
+                                ${item.date_achieved ? `<span>Achieved: ${formatLongDate(item.date_achieved)}</span>` : ''}
+                            </div>
+                        </div>
+                        ${item.proof_file_url ? `
+                            <a href="${esc(item.proof_file_url)}" target="_blank" class="flex-shrink-0">
+                                <img src="${esc(item.proof_file_url)}" alt="Proof" class="w-16 h-16 rounded-xl object-cover border border-slate-200">
+                            </a>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        container.innerHTML = '<div class="text-sm text-slate-500">Unable to load accomplishments.</div>';
+    }
+}
+
+async function saveAccomplishment() {
+    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+
+    const saveBtn = document.getElementById('saveAccomplishmentBtn');
+    const title = document.getElementById('accomplishmentTitle').value.trim();
+    const type = document.getElementById('accomplishmentType').value;
+    const description = document.getElementById('accomplishmentDescription').value.trim();
+    const dateAchieved = document.getElementById('accomplishmentDate').value || null;
+    const file = document.getElementById('accomplishmentProofFile').files[0];
+
+    if (!title) return alert('Please enter a title for the accomplishment.');
+    if (!dateAchieved) return alert('Please specify the date this was achieved.');
+
+    if (file && !file.type.startsWith('image/')) {
+        return alert('Please select a valid image file for proof.');
+    }
+    if (file && file.size > 5 * 1024 * 1024) {
+        return alert('Proof image must be 5 MB or smaller.');
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+        let uploaded = { publicUrl: '', path: '' };
+        if (file) {
+            uploaded = await uploadToStorage('faculty-accomplishments', file, `faculty-${currentFaculty.id}`);
+        }
+
+        const payload = {
+            faculty_id: currentFaculty.id,
+            title,
+            accomplishment_type: type,
+            description,
+            date_achieved: dateAchieved,
+            proof_file_name: file ? file.name : null,
+            proof_file_url: uploaded.publicUrl,
+            proof_file_path: uploaded.path,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabaseClient.from('faculty_accomplishments').insert(payload);
+        if (error) throw error;
+
+        closeAccomplishmentModal();
+        clearAccomplishmentForm();
+        await loadAccomplishments();
+
+        // Log to engagement audit trail
+        if (typeof window.EngagementLogger !== 'undefined') {
+            window.EngagementLogger.logActivity({
+                facultyId: currentFaculty.id,
+                facultyName: currentFaculty.full_name || currentFaculty.name,
+                department: currentFaculty.department,
+                activityType: type,
+                activityTitle: title,
+                description: `Recorded accomplishment: ${title} (${type})`,
+                sourceModule: 'Faculty Profile',
+                details: { Type: type, Title: title, Date: dateAchieved || 'Not set' }
+            });
+        }
+
+        alert('Accomplishment saved successfully.');
+    } catch (error) {
+        alert('Unable to save accomplishment: ' + error.message);
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Accomplishment';
+    }
+}
+
+function clearAccomplishmentForm() {
+    document.getElementById('accomplishmentTitle').value = '';
+    document.getElementById('accomplishmentType').value = 'Seminar';
+    document.getElementById('accomplishmentDescription').value = '';
+    document.getElementById('accomplishmentDate').value = '';
+    document.getElementById('accomplishmentProofFile').value = '';
+}
+
+async function generateAccomplishmentReport() {
+    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+
+    const { data, error } = await supabaseClient
+        .from('faculty_accomplishments')
+        .select('*')
+        .eq('faculty_id', currentFaculty.id)
+        .order('date_achieved', { ascending: false });
+
+    if (error) return alert('Unable to load accomplishments for report.');
+    if (!data || !data.length) return alert('No accomplishments to include in the report.');
+
+    const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty Member';
+    const dept = currentFaculty.department || 'N/A';
+    const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    const rows = data.map((item, i) => `
+        <tr>
+            <td style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center;">${i + 1}</td>
+            <td style="padding:8px 12px;border:1px solid #e2e8f0;">${esc(item.title)}</td>
+            <td style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center;">${esc(item.accomplishment_type || 'Other')}</td>
+            <td style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center;">${item.date_achieved ? new Date(item.date_achieved).toLocaleDateString() : '—'}</td>
+            <td style="padding:8px 12px;border:1px solid #e2e8f0;">${esc(item.description || '—')}</td>
+            <td style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center;">${item.proof_file_url ? '<span style="color:#059669;">✓ Attached</span>' : '—'}</td>
+        </tr>
+    `).join('');
+
+    const reportHtml = `
+        <div style="font-family:'Inter',Arial,sans-serif;padding:40px;max-width:900px;margin:0 auto;">
+            <div style="text-align:center;margin-bottom:30px;">
+                <h1 style="font-size:20px;color:#621708;margin:0;">CITE-Flow Management System</h1>
+                <h2 style="font-size:16px;color:#334155;margin:6px 0 0;">Faculty Accomplishment & Engagement Report</h2>
+            </div>
+            <div style="margin-bottom:24px;font-size:13px;color:#475569;">
+                <p><strong>Faculty Name:</strong> ${esc(facultyName)}</p>
+                <p><strong>Department:</strong> ${esc(dept)}</p>
+                <p><strong>Date Generated:</strong> ${today}</p>
+                <p><strong>Total Accomplishments:</strong> ${data.length}</p>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead>
+                    <tr style="background:#f8fafc;">
+                        <th style="padding:10px 12px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#334155;">#</th>
+                        <th style="padding:10px 12px;border:1px solid #e2e8f0;text-align:left;font-weight:700;color:#334155;">Title</th>
+                        <th style="padding:10px 12px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#334155;">Type</th>
+                        <th style="padding:10px 12px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#334155;">Date</th>
+                        <th style="padding:10px 12px;border:1px solid #e2e8f0;text-align:left;font-weight:700;color:#334155;">Description</th>
+                        <th style="padding:10px 12px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#334155;">Proof</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div style="margin-top:30px;text-align:center;font-size:11px;color:#94a3b8;">
+                <p>Generated by CITE-Flow Management System</p>
+            </div>
+        </div>
+    `;
+
+    const tempContainer = document.createElement('div');
+    tempContainer.innerHTML = reportHtml;
+    document.body.appendChild(tempContainer);
+
+    const options = {
+        margin: [10, 10, 10, 10],
+        filename: `Accomplishment_Report_${facultyName.replace(/[^a-zA-Z0-9-_]/g, '_').replace(/_+/g, '_')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    try {
+        await html2pdf().set(options).from(tempContainer).save();
+    } catch (err) {
+        alert('Unable to generate PDF: ' + err.message);
+    } finally {
+        document.body.removeChild(tempContainer);
+    }
 }
 
 window.addEventListener('load', async () => {
@@ -1647,6 +2203,9 @@ window.addEventListener('load', async () => {
         await loadSidebar();
     }
     document.getElementById('editPhotoFile')?.addEventListener('change', previewEditProfilePhoto);
+    document.getElementById('researchAuthorInput')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); addResearchAuthor(); }
+    });
     resetTeachingSchedules();
     await loadFacultyProfile();
     switchTab('overview');
@@ -1654,6 +2213,7 @@ window.addEventListener('load', async () => {
 </script>
 
 <script src="../shared/system-ui.js"></script>
+<script src="../admin/engagement-logger.js"></script>
 <script src="faculty-nav.js"></script>
 </body>
 </html>
