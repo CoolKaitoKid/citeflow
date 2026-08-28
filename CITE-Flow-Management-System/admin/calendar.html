@@ -8,45 +8,17 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="../nav.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Include jsPDF and AutoTable for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
         * { font-family: 'Inter', sans-serif; }
-        
         .card-shadow { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); }
-
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
-        }
-
-        .calendar-day { 
-            min-height: 110px; 
-            transition: all 0.2s; 
-            padding: 8px;
-        }
+        .nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.25; }
+        .calendar-day { min-height: 110px; transition: all 0.2s; padding: 8px; }
         .calendar-day:hover { background-color: #f8f8f8; }
-        .calendar-day.today { 
-            background-color: #fff1f2; 
-            border: 2px solid #9f1239; 
-            font-weight: 700;
-            color: #9f1239;
-        }
-        
-        .event-block {
-            font-size: 0.75rem;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-top: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        .calendar-day.today { background-color: #fff1f2; border: 2px solid #9f1239; font-weight: 700; color: #9f1239; }
+        .event-block { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}
         .panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}
         .icon-btn{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:12px;background:#fff;color:#334155;transition:all 0.15s ease}
@@ -66,7 +38,7 @@
         .event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
         .event-exam{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
         .event-workshop{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}
-        .event-announcement{background:#fdf2f8;color:#be185d;border-color:#fbcfe8}
+        .event-event{background:#e0f2fe;color:#0369a1;border-color:#bae6fd}
         .event-deadline{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
         .event-leave{background:#fffbeb;color:#b45309;border-color:#fde68a}
         .event-other{background:#f8fafc;color:#334155;border-color:#e2e8f0}
@@ -78,11 +50,8 @@
 
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
-
-    <!-- MAIN CALENDAR CONTENT -->
     <main class="flex-1 min-h-screen ml-0 md:ml-[220px] app-surface w-full overflow-x-hidden transition-all duration-300">
         <div id="navbar-container"></div>
-
         <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
             <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6 sm:mb-8">
                 <div>
@@ -116,7 +85,6 @@
                             <span id="realtime-status">Connecting realtime calendar...</span>
                         </div>
                     </div>
-                    <!-- Responsive Grid Container -->
                     <div class="overflow-x-auto">
                         <div id="calendar-grid" class="bg-white min-w-[650px]"></div>
                     </div>
@@ -150,7 +118,7 @@
                         <div id="selected-events" class="space-y-2.5"></div>
                     </section>
 
-                    <!-- SEPARATED UPCOMING CONTAINERS FOR ADMIN -->
+                    <!-- SEPARATED UPCOMING CONTAINERS -->
                     <div class="space-y-4">
                         <!-- 1. Schedules Container -->
                         <div class="panel rounded-2xl p-4 bg-white border border-indigo-100 shadow-sm">
@@ -163,10 +131,24 @@
                                 </div>
                                 <span id="count-schedules" class="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full">0</span>
                             </div>
-                            <div id="list-schedules" class="space-y-2 max-h-[180px] overflow-y-auto pr-1"></div>
+                            <div id="list-schedules" class="space-y-2 max-h-[150px] overflow-y-auto pr-1"></div>
                         </div>
 
-                        <!-- 2. Faculty Leaves Container -->
+                        <!-- 2. Upcoming Events Container -->
+                        <div class="panel rounded-2xl p-4 bg-white border border-sky-100 shadow-sm">
+                            <div class="flex items-center justify-between mb-3 pb-2 border-b border-sky-50">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center text-xs">
+                                        <i class="fa-solid fa-bullhorn"></i>
+                                    </div>
+                                    <span class="text-xs font-bold text-sky-950 uppercase tracking-wide">Upcoming Events</span>
+                                </div>
+                                <span id="count-upcoming" class="text-[10px] font-bold px-2 py-0.5 bg-sky-50 text-sky-700 rounded-full">0</span>
+                            </div>
+                            <div id="list-upcoming" class="space-y-2 max-h-[150px] overflow-y-auto pr-1"></div>
+                        </div>
+
+                        <!-- 3. Faculty Leaves Container -->
                         <div class="panel rounded-2xl p-4 bg-white border border-amber-100 shadow-sm">
                             <div class="flex items-center justify-between mb-3 pb-2 border-b border-amber-50">
                                 <div class="flex items-center gap-2">
@@ -177,7 +159,7 @@
                                 </div>
                                 <span id="count-leaves" class="text-[10px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full">0</span>
                             </div>
-                            <div id="list-leaves" class="space-y-2 max-h-[180px] overflow-y-auto pr-1"></div>
+                            <div id="list-leaves" class="space-y-2 max-h-[150px] overflow-y-auto pr-1"></div>
                         </div>
                     </div>
                 </aside>
@@ -206,6 +188,7 @@
             <div>
                 <label class="block text-xs font-bold text-slate-700 mb-1.5">Event Type</label>
                 <select id="modal-event-type" class="modal-field">
+                    <option value="event">School Event / General Event</option>
                     <option value="meeting">Meeting</option>
                     <option value="seminar">Seminar</option>
                     <option value="exam">Exam</option>
@@ -274,7 +257,7 @@
                     <input type="checkbox" id="modal-requires-feedback" class="mt-0.5 w-4 h-4 accent-[#621708]">
                     <span>
                         <span class="block text-xs font-bold text-slate-900">Require faculty feedback after this event</span>
-                        <span class="block text-[11px] text-slate-500 mt-0.5">Faculty users will see a feedback reminder starting the day after the event.</span>
+                        <span class="block text-[11px] text-slate-500 mt-0.5">Faculty users can submit feedback starting after the event up to 10 hours later.</span>
                     </span>
                 </label>
                 <label class="block text-xs font-bold text-slate-700 mt-3 mb-1">Feedback Instructions</label>
@@ -336,7 +319,6 @@
                 <div id="detail-notes" class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-xl p-3.5"></div>
             </div>
 
-            <!-- ATTACHMENT PROOF VIEW FOR ADMIN -->
             <div id="detail-attachment-box" class="hidden pt-1">
                 <div class="text-xs font-medium text-slate-500 mb-1">Faculty Proof Attachment</div>
                 <a id="detail-attachment-link" href="#" target="_blank" class="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold hover:bg-amber-100 transition">
@@ -344,7 +326,6 @@
                 </a>
             </div>
 
-            <!-- ADMIN FEEDBACK MONITORING SECTION -->
             <div id="admin-feedbacks-section" class="hidden border-t border-slate-100 pt-4 mt-2 space-y-2">
                 <div class="text-xs font-bold text-slate-900"><i class="fa-solid fa-comments text-[#621708] mr-1"></i> Faculty Feedback Submissions</div>
                 <div id="admin-feedbacks-list" class="space-y-2 max-h-[200px] overflow-y-auto pr-1"></div>
@@ -369,10 +350,20 @@ function addH(d,h){d=new Date(d);d.setHours(d.getHours()+h);return d}
 function time(d){return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(d))}
 function longDate(k){let [y,m,d]=k.split('-').map(Number);return new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d))}
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','deadline','other'].includes(t)?t:'other')}
+function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','deadline','event','other'].includes(t)?t:'other')}
 function visibilityLabel(v){return ({all_faculty:'All Faculty',bsit:'BSIT Faculty',bsie:'BSIE Faculty',bit:'BIT Faculty',department_chairs:'Department Chairpersons',admin_only:'Only Me'}[v]||v||'All Faculty')}
-function toggleSurveyLinks(){let enabled=document.getElementById('modal-has-surveys')?.checked;document.getElementById('modal-survey-fields')?.classList.toggle('hidden',!enabled)}
-function normalize(r){let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addH(s,1);return{id:r.id,title:r.title,date:key(s),startAt:r.start_at,endAt:r.end_at,time:r.all_day?'All Day':`${time(s)} - ${time(e)}`,type:r.event_type||'other',location:r.location||'TBA',priority:r.priority||'Normal',notes:r.notes||'',repeat:r.repeat_rule||'Never',visibility:r.visibility_scope||r.visibility||'all_faculty',allDay:!!r.all_day,requiresFeedback:!!r.requires_feedback,feedbackInstructions:r.feedback_instructions||'',feedbackDueAfterDays:r.feedback_due_after_days||1,hasSurveys:!!r.has_survey_links,preSurveyUrl:r.pre_survey_url||'',postSurveyUrl:r.post_survey_url||''}}
+
+function normalize(r){
+    let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addH(s,1);
+    return {
+        id:r.id, title:r.title, date:key(s), startAt:r.start_at, endAt:r.end_at,
+        time:r.all_day?'All Day':`${time(s)} - ${time(e)}`, type:r.event_type||'other', 
+        location:r.location||'TBA', priority:r.priority||'Normal', notes:r.notes||'', 
+        repeat:r.repeat_rule||'Never', visibility:r.visibility_scope||r.visibility||'all_faculty', 
+        allDay:!!r.all_day, requiresFeedback:!!r.requires_feedback, 
+        feedbackInstructions:r.feedback_instructions||''
+    }
+}
 
 async function loadAllAdminData(){
     let [calRes, leaveRes] = await Promise.all([
@@ -388,8 +379,7 @@ async function loadAllAdminData(){
                 id: 'event-' + r.id, realId: r.id, title: norm.title, date: norm.date, startAt: norm.startAt, endAt: norm.endAt,
                 time: norm.time, type: norm.type, category: 'schedule', location: norm.location, priority: norm.priority,
                 notes: norm.notes, repeat: norm.repeat, visibility: norm.visibility, allDay: norm.allDay,
-                requiresFeedback: norm.requiresFeedback, hasSurveys: norm.hasSurveys, preSurveyUrl: norm.preSurveyUrl,
-                postSurveyUrl: norm.postSurveyUrl, attachmentUrl: '', isLeave: false
+                requiresFeedback: norm.requiresFeedback, attachmentUrl: '', isLeave: false
             };
         }));
     }
@@ -457,11 +447,18 @@ function card(e,showDate=false){
 
 function renderSeparatedUpcoming(){
     let future=events.filter(e=>new Date(e.startAt)>=new Date(new Date().setHours(0,0,0,0))).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
-    let schedules=future.filter(e=>e.category==='schedule');
-    let leaves=future.filter(e=>e.category==='leave');
+    
+    let schoolEvents = future.filter(e => e.category === 'schedule' && e.type === 'event');
+    let schedules = future.filter(e => e.category === 'schedule' && e.type !== 'event');
+    let leaves = future.filter(e => e.category === 'leave');
 
     document.getElementById('count-schedules').textContent=schedules.length;
     document.getElementById('list-schedules').innerHTML=schedules.length?schedules.map(e=>card(e,true)).join(''):'<div class="text-xs text-slate-400 italic">No upcoming schedules</div>';
+
+    if(document.getElementById('count-upcoming')) {
+        document.getElementById('count-upcoming').textContent=schoolEvents.length;
+        document.getElementById('list-upcoming').innerHTML=schoolEvents.length?schoolEvents.map(e=>card(e,true)).join(''):'<div class="text-xs text-slate-400 italic">No upcoming events</div>';
+    }
 
     document.getElementById('count-leaves').textContent=leaves.length;
     document.getElementById('list-leaves').innerHTML=leaves.length?leaves.map(e=>card(e,true)).join(''):'<div class="text-xs text-slate-400 italic">No upcoming leaves</div>';
@@ -484,7 +481,7 @@ function openAddEventModal(edit=null,d=null){
     document.getElementById('save-button').textContent=isEditing?'Save Changes':'Create Schedule';
     let bd=d||selectedDate,st=new Date(`${bd}T09:00:00`),en=addH(st,1);
     document.getElementById('modal-event-title').value=edit?.title||'';
-    document.getElementById('modal-event-type').value=edit?.type||'seminar';
+    document.getElementById('modal-event-type').value=edit?.type||'event';
     document.getElementById('modal-priority').value=edit?.priority||'Normal';
     document.getElementById('modal-location').value=edit?.location||'';
     document.getElementById('modal-repeat').value=edit?.repeat||'Never';
@@ -643,10 +640,8 @@ async function removeCurrentEvent(){
 function exportCalendarPDF() {
     const { jsPDF } = window.jspdf;
     let doc = new jsPDF();
-    
     doc.setFontSize(16);
     doc.text(`CITE-Flow Admin Calendar - ${months[currentMonth]} ${currentYear}`, 14, 20);
-    
     let monthEvents = events.filter(e => {
         let [y, m] = e.date.split('-').map(Number);
         return y === currentYear && (m - 1) === currentMonth;
@@ -660,7 +655,6 @@ function exportCalendarPDF() {
         headStyles: { fillColor: [98, 23, 8] },
         styles: { fontSize: 9 }
     });
-
     doc.save(`CITE-Flow-Admin-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
 }
 

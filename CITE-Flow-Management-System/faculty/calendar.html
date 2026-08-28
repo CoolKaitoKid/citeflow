@@ -8,45 +8,17 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Include jsPDF and AutoTable for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
         * { font-family: 'Inter', sans-serif; }
-        
         .card-shadow { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); }
-
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
-        }
-
-        .calendar-day { 
-            min-height: 110px; 
-            transition: all 0.2s; 
-            padding: 8px;
-        }
+        .nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.25; }
+        .calendar-day { min-height: 110px; transition: all 0.2s; padding: 8px; }
         .calendar-day:hover { background-color: #f8f8f8; }
-        .calendar-day.today { 
-            background-color: #fff1f2; 
-            border: 2px solid #9f1239; 
-            font-weight: 700;
-            color: #9f1239;
-        }
-        
-        .event-block {
-            font-size: 0.75rem;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-top: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        .calendar-day.today { background-color: #fff1f2; border: 2px solid #9f1239; font-weight: 700; color: #9f1239; }
+        .event-block { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}
         .panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}
         .icon-btn{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:12px;background:#fff;color:#334155;transition:all 0.15s ease}
@@ -66,6 +38,7 @@
         .event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
         .event-exam{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
         .event-workshop{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}
+        .event-event{background:#e0f2fe;color:#0369a1;border-color:#bae6fd}
         .event-announcement{background:#fdf2f8;color:#be185d;border-color:#fbcfe8}
         .event-deadline{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
         .event-leave{background:#fffbeb;color:#b45309;border-color:#fde68a}
@@ -78,11 +51,8 @@
 
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
-
-    <!-- MAIN CALENDAR CONTENT -->
     <main class="flex-1 min-h-screen ml-0 md:ml-[220px] app-surface w-full overflow-x-hidden transition-all duration-300">
         <div id="navbar-container"></div>
-
         <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
             <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6 sm:mb-8">
                 <div>
@@ -115,7 +85,6 @@
                             <span id="realtime-status">Connecting realtime calendar...</span>
                         </div>
                     </div>
-                    <!-- Responsive Grid Container -->
                     <div class="overflow-x-auto">
                         <div id="calendar-grid" class="bg-white min-w-[650px]"></div>
                     </div>
@@ -146,7 +115,7 @@
                         <div id="selected-events" class="space-y-2.5"></div>
                     </section>
 
-                    <!-- SINGLE UPCOMING CONTAINER (Schedules only) -->
+                    <!-- SEPARATED UPCOMING CONTAINERS FOR FACULTY -->
                     <div class="space-y-4">
                         <div class="panel rounded-2xl p-4 bg-white border border-indigo-100 shadow-sm">
                             <div class="flex items-center justify-between mb-3 pb-2 border-b border-indigo-50">
@@ -158,7 +127,20 @@
                                 </div>
                                 <span id="count-schedules" class="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full">0</span>
                             </div>
-                            <div id="list-schedules" class="space-y-2 max-h-[220px] overflow-y-auto pr-1"></div>
+                            <div id="list-schedules" class="space-y-2 max-h-[160px] overflow-y-auto pr-1"></div>
+                        </div>
+
+                        <div class="panel rounded-2xl p-4 bg-white border border-sky-100 shadow-sm">
+                            <div class="flex items-center justify-between mb-3 pb-2 border-b border-sky-50">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center text-xs">
+                                        <i class="fa-solid fa-bullhorn"></i>
+                                    </div>
+                                    <span class="text-xs font-bold text-sky-950 uppercase tracking-wide">Upcoming Events</span>
+                                </div>
+                                <span id="count-upcoming" class="text-[10px] font-bold px-2 py-0.5 bg-sky-50 text-sky-700 rounded-full">0</span>
+                            </div>
+                            <div id="list-upcoming" class="space-y-2 max-h-[160px] overflow-y-auto pr-1"></div>
                         </div>
                     </div>
                 </aside>
@@ -257,53 +239,59 @@
                 <div id="detail-notes" class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-xl p-3.5"></div>
             </div>
 
-            <!-- FEEDBACK FORM SECTION -->
-            <div class="border-t border-slate-100 pt-4 mt-2 space-y-3">
+            <!-- FEEDBACK FORM SECTION (Dynamic 10-Hour Window Control) -->
+            <div id="feedback-container-wrapper" class="border-t border-slate-100 pt-4 mt-2 space-y-3">
                 <h3 class="text-xs font-bold text-slate-900"><i class="fa-solid fa-comment-dots text-[#621708] mr-1"></i> Submit Event Feedback</h3>
                 
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Overall Rating (1-5)</label>
-                        <select id="fb-overall-rating" class="modal-field text-xs">
-                            <option value="5">5 - Excellent</option>
-                            <option value="4">4 - Very Good</option>
-                            <option value="3">3 - Good</option>
-                            <option value="2">2 - Fair</option>
-                            <option value="1">1 - Poor</option>
-                        </select>
+                <div id="feedback-active-content" class="space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Overall Rating (1-5)</label>
+                            <select id="fb-overall-rating" class="modal-field text-xs">
+                                <option value="5">5 - Excellent</option>
+                                <option value="4">4 - Very Good</option>
+                                <option value="3">3 - Good</option>
+                                <option value="2">2 - Fair</option>
+                                <option value="1">1 - Poor</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Attendance Status</label>
+                            <select id="fb-attendance" class="modal-field text-xs">
+                                <option value="Present">Present</option>
+                                <option value="Official Business">Official Business</option>
+                                <option value="Absent">Absent</option>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Attendance Status</label>
-                        <select id="fb-attendance" class="modal-field text-xs">
-                            <option value="Present">Present</option>
-                            <option value="Official Business">Official Business</option>
-                            <option value="Absent">Absent</option>
-                        </select>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Content Quality</label>
+                            <input id="fb-content-quality" type="text" placeholder="e.g. Very Informative" class="modal-field text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-700 mb-1">Speaker Quality</label>
+                            <input id="fb-speaker-quality" type="text" placeholder="e.g. Engaging" class="modal-field text-xs">
+                        </div>
                     </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Feedback Summary / Comments</label>
+                        <textarea id="fb-summary" rows="2" placeholder="Write summary of your feedback..." class="modal-field resize-none text-xs"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Suggestions</label>
+                        <textarea id="fb-suggestions" rows="2" placeholder="Any suggestions for improvement..." class="modal-field resize-none text-xs"></textarea>
+                    </div>
+
+                    <button onclick="submitFacultyFeedback()" class="w-full py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white font-semibold rounded-xl text-xs transition-all shadow-sm">Submit Feedback</button>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Content Quality</label>
-                        <input id="fb-content-quality" type="text" placeholder="e.g. Very Informative" class="modal-field text-xs">
-                    </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Speaker Quality</label>
-                        <input id="fb-speaker-quality" type="text" placeholder="e.g. Engaging" class="modal-field text-xs">
-                    </div>
+                <div id="feedback-locked-notice" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> <b id="feedback-lock-title">Feedback not yet available.</b> <span id="feedback-lock-msg">You can submit feedback only after the event has concluded (up to 10 hours after).</span>
                 </div>
-
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Feedback Summary / Comments</label>
-                    <textarea id="fb-summary" rows="2" placeholder="Write summary of your feedback..." class="modal-field resize-none text-xs"></textarea>
-                </div>
-
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Suggestions</label>
-                    <textarea id="fb-suggestions" rows="2" placeholder="Any suggestions for improvement..." class="modal-field resize-none text-xs"></textarea>
-                </div>
-
-                <button onclick="submitFacultyFeedback()" class="w-full py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white font-semibold rounded-xl text-xs transition-all shadow-sm">Submit Feedback</button>
             </div>
         </div>
     </div>
@@ -320,7 +308,7 @@ function addH(d,h){d=new Date(d);d.setHours(d.getHours()+h);return d}
 function time(d){return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(d))}
 function longDate(k){let [y,m,d]=k.split('-').map(Number);return new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d))}
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','announcement','deadline','other'].includes(t)?t:'other')}
+function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','announcement','deadline','event','other'].includes(t)?t:'other')}
 
 async function loadCalendarEvents(){
     let {data,error}=await supabaseClient.from('calendar_events').select('*').order('start_at',{ascending:true});
@@ -402,8 +390,17 @@ function renderSelected(){
 
 function renderSeparatedUpcoming(){
     let future=events.filter(e=>new Date(e.startAt)>=new Date(new Date().setHours(0,0,0,0))).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
-    document.getElementById('count-schedules').textContent=future.length;
-    document.getElementById('list-schedules').innerHTML=future.length?future.map(e=>card(e,true)).join(''):'<div class="text-[11px] text-slate-400 italic">No upcoming schedules</div>';
+    
+    let schoolEvents = future.filter(e => e.type === 'event');
+    let schedules = future.filter(e => e.type !== 'event');
+
+    document.getElementById('count-schedules').textContent=schedules.length;
+    document.getElementById('list-schedules').innerHTML=schedules.length?schedules.map(e=>card(e,true)).join(''):'<div class="text-[11px] text-slate-400 italic">No upcoming schedules</div>';
+
+    if(document.getElementById('count-upcoming')) {
+        document.getElementById('count-upcoming').textContent=schoolEvents.length;
+        document.getElementById('list-upcoming').innerHTML=schoolEvents.length?schoolEvents.map(e=>card(e,true)).join(''):'<div class="text-[11px] text-slate-400 italic">No upcoming events</div>';
+    }
 }
 
 function selectDate(d){selectedDate=d;let a=d.split('-').map(Number);currentYear=a[0];currentMonth=a[1]-1;renderCalendar()}
@@ -461,10 +458,37 @@ function showEventDetails(id){
     document.getElementById('detail-time').textContent=`${longDate(e.date)} • ${e.time}`;
     document.getElementById('detail-location').textContent=e.location;
     document.getElementById('detail-notes').textContent=e.notes||'No description provided.';
+    
     document.getElementById('fb-summary').value='';
     document.getElementById('fb-suggestions').value='';
     document.getElementById('fb-content-quality').value='';
     document.getElementById('fb-speaker-quality').value='';
+
+    // 10-HOUR FEEDBACK WINDOW CHECK
+    let nowTime = new Date().getTime();
+    let eventEndTime = new Date(e.endAt || e.startAt).getTime();
+    let deadlineTime = eventEndTime + (10 * 60 * 60 * 1000); // 10 hours allowance
+
+    let activeContent = document.getElementById('feedback-active-content');
+    let lockedNotice = document.getElementById('feedback-locked-notice');
+    let lockTitle = document.getElementById('feedback-lock-title');
+    let lockMsg = document.getElementById('feedback-lock-msg');
+
+    if (nowTime < eventEndTime) {
+        activeContent.classList.add('hidden');
+        lockedNotice.classList.remove('hidden');
+        lockTitle.textContent = "Feedback not yet available.";
+        lockMsg.textContent = "You can submit feedback only after the event has concluded (up to 10 hours after).";
+    } else if (nowTime > deadlineTime) {
+        activeContent.classList.add('hidden');
+        lockedNotice.classList.remove('hidden');
+        lockTitle.textContent = "Feedback period has closed.";
+        lockMsg.textContent = "The 10-hour window to submit feedback for this event has already passed.";
+    } else {
+        activeContent.classList.remove('hidden');
+        lockedNotice.classList.add('hidden');
+    }
+
     document.getElementById('event-detail-modal').classList.remove('hidden');
 }
 function closeDetailModal(){document.getElementById('event-detail-modal').classList.add('hidden')}
@@ -511,10 +535,8 @@ async function submitFacultyFeedback(){
 function exportCalendarPDF() {
     const { jsPDF } = window.jspdf;
     let doc = new jsPDF();
-    
     doc.setFontSize(16);
     doc.text(`CITE-Flow Faculty Calendar - ${months[currentMonth]} ${currentYear}`, 14, 20);
-    
     let monthEvents = events.filter(e => {
         let [y, m] = e.date.split('-').map(Number);
         return y === currentYear && (m - 1) === currentMonth;
@@ -528,7 +550,6 @@ function exportCalendarPDF() {
         headStyles: { fillColor: [98, 23, 8] },
         styles: { fontSize: 9 }
     });
-
     doc.save(`CITE-Flow-Faculty-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
 }
 
