@@ -122,6 +122,8 @@
         root.style.setProperty('--cite-theme-active', palette.activeNav);
         root.style.setProperty('--cite-theme-soft', palette.panel);
         root.style.setProperty('--cite-theme-soft-text', palette.panelText);
+        root.style.setProperty('--cite-brand', palette.theme);
+        root.style.setProperty('--cite-brand-2', palette.hover);
 
         const css = `
             .sidebar { 
@@ -181,6 +183,18 @@
                 color: var(--cite-theme-text) !important;
                 border: 1px solid var(--cite-theme-border) !important;
             }
+            [class*="text-[#621708]"] { color: var(--cite-theme) !important; }
+            [class*="border-[#621708]"] { border-color: var(--cite-theme) !important; }
+            [class*="bg-[#621708]"] { background-color: var(--cite-theme) !important; }
+            .tab-btn.active {
+                color: var(--cite-theme) !important;
+                border-bottom-color: var(--cite-theme) !important;
+            }
+            .day-num.today, .mini-day.active {
+                background-color: var(--cite-theme) !important;
+                color: var(--cite-theme-text) !important;
+            }
+            .cite-kicker { color: var(--cite-theme) !important; }
         `;
 
         let styleEl = document.getElementById('citeflow-theme-style');
@@ -238,8 +252,11 @@
     }
 
     function getVisibleNotifications() {
-        const all = getNotifications();
-        return all.filter((n) => n.audience === 'all' || n.audience === ROLE);
+        const all = getNotifications().filter((n) => n.audience === 'all' || n.audience === ROLE);
+        if (ROLE === 'admin' && window.CiteFlowSettings?.filterNotifications) {
+            return window.CiteFlowSettings.filterNotifications(all, 'admin');
+        }
+        return all;
     }
 
     function unreadCount() {
@@ -306,6 +323,9 @@
     document.addEventListener('DOMContentLoaded', function () {
         if (!PAGE_PATH.includes('/auth') && !PAGE_PATH.includes('login')) {
             migrateLegacyFeedbackNotifications();
+        }
+        if (window.CiteFlowSettings?.loadPreferences) {
+            window.CiteFlowSettings.loadPreferences().catch(() => {});
         }
     });
 })();

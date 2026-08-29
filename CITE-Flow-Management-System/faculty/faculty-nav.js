@@ -1,5 +1,16 @@
 // CITE-Flow Faculty Navigation Manager
 
+function ensureCiteFlowSettings() {
+    if (window.CiteFlowSettings) return Promise.resolve(window.CiteFlowSettings);
+    return new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = '../shared/cite-settings.js';
+        script.onload = () => resolve(window.CiteFlowSettings || null);
+        script.onerror = () => resolve(null);
+        document.head.appendChild(script);
+    });
+}
+
 function getFacultyCurrentPageFile() {
     const parts = window.location.pathname.split("/").filter(Boolean);
     const current = parts[parts.length - 1] || "dashboard";
@@ -369,12 +380,16 @@ function formatFacultyNavDate(iso) {
 }
 
 function filterFacultyNavNotifications(items, facultyId) {
-    return (items || []).filter((notification) => {
+    const scoped = (items || []).filter((notification) => {
         if (facultyId != null && notification.faculty_id != null) {
             return String(notification.faculty_id) === String(facultyId);
         }
         return notification.faculty_id == null;
     });
+    if (window.CiteFlowSettings?.filterNotifications) {
+        return window.CiteFlowSettings.filterNotifications(scoped, 'faculty');
+    }
+    return scoped;
 }
 
 function renderFacultyNavNotifications(items) {
@@ -416,6 +431,13 @@ async function loadFacultyNavNotifications() {
     const { data: sessionData } = await sb.auth.getSession();
     const user = sessionData?.session?.user;
     if (!user) return;
+
+    await ensureCiteFlowSettings();
+    if (window.CiteFlowSettings?.loadPreferences) {
+        try {
+            await window.CiteFlowSettings.loadPreferences();
+        } catch (_) { /* keep defaults if preferences cannot be loaded */ }
+    }
 
     let facultyId = null;
     if (window.CiteFlowWorkflow?.getCurrentFaculty) {

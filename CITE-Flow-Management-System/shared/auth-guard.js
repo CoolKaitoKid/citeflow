@@ -96,6 +96,16 @@
             const role = String(user.user_metadata?.role || '').toLowerCase();
             const isWorkflowApprovalPage = currentPath.includes('workflow-approval');
 
+            let adminProfile = null;
+            try {
+                const adminLookup = await sb
+                    .from('admin_profiles')
+                    .select('id, role, department')
+                    .eq('id', user.id)
+                    .maybeSingle();
+                if (!adminLookup.error) adminProfile = adminLookup.data || null;
+            } catch (_) {}
+
             const facultyLookup = await sb
                 .from('faculty')
                 .select('id, role, position, admin_access, profile_completed, must_change_password, first_login_completed_at, department')
@@ -113,12 +123,18 @@
             }
 
             const facultyRecord = facultyLookup.data;
-
+            const adminProfileRole = String(adminProfile?.role || '').toLowerCase();
             const facultyRole = String(facultyRecord?.role || facultyRecord?.position || role || '').toLowerCase();
             const isChair = facultyRole.includes('chair');
-            const isDean = facultyRole === 'dean';
-            const isSecretary = facultyRole.includes('secretary');
-            const isAdminRole = role === 'admin' || role === 'administrator' || facultyRole === 'admin' || facultyRole === 'administrator';
+            const isDean = facultyRole === 'dean' || adminProfileRole.includes('dean');
+            const isSecretary = facultyRole.includes('secretary') || adminProfileRole.includes('secretary');
+            const isAdminRole = role === 'admin'
+                || role === 'administrator'
+                || facultyRole === 'admin'
+                || facultyRole === 'administrator'
+                || adminProfileRole === 'admin'
+                || adminProfileRole === 'administrator'
+                || Boolean(adminProfile);
             const hasAdminAccess = facultyRecord?.admin_access === true;
             const onboardingRequired = needsOnboarding(facultyRecord, user);
             const onboardingDone = isOnboardingComplete(facultyRecord, user);
@@ -142,10 +158,10 @@
                 if (isWorkflowApprovalPage) {
                     const canWorkflow = isAdminRole || isDean || isSecretary || isChair || hasAdminAccess;
                     if (!canWorkflow) {
-                        window.location.href = `${prefix}login.html`;
+                        window.location.href = isInsideSubfolder ? 'dashboard.html' : `${prefix}admin/dashboard.html`;
                         return;
                     }
-                } else if (role === 'faculty' || (facultyRole === 'faculty' && !hasAdminAccess && !isChair && !isDean && !isSecretary)) {
+                } else if (role === 'faculty' || (facultyRole === 'faculty' && !hasAdminAccess && !isChair && !isDean && !isSecretary && !isAdminRole)) {
                     window.location.href = isInsideSubfolder ? '../faculty/dashboard.html' : 'faculty/dashboard.html';
                     return;
                 }

@@ -11,550 +11,431 @@
     <script src="../shared/auth-guard.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        
         * { font-family: 'Inter', sans-serif; }
-
         :root {
             --cite-theme: #621708;
             --cite-theme-hover: #8c2a10;
+            --cite-theme-text: #ffffff;
+            --cite-theme-border: rgba(98, 23, 8, 0.14);
         }
-
         .settings-card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 24px;
-            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.05);
+            background: #fff;
+            border: 1px solid #e8eaef;
+            border-radius: 20px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.05);
         }
-
         .section-icon {
-            width: 42px;
-            height: 42px;
-            border-radius: 14px;
-            background: color-mix(in srgb, var(--cite-theme) 9%, white);
-            border: 1px solid color-mix(in srgb, var(--cite-theme) 14%, white);
+            width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+            display: inline-flex; align-items: center; justify-content: center;
             color: var(--cite-theme);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
+            background: color-mix(in srgb, var(--cite-theme) 9%, white);
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
         }
-
-        .field-label {
-            display: block;
-            font-size: 12px;
-            font-weight: 600;
-            color: #334155;
-            margin-bottom: 6px;
-        }
-
-        .field-input {
-            width: 100%;
-            border: 1px solid #d1d5db;
-            border-radius: 14px;
-            padding: 10px 12px;
-            font-size: 13px;
-            color: #0f172a;
-            background: #ffffff;
-            outline: none;
-            transition: all 0.2s ease;
-        }
-
-        .field-input:focus {
-            border-color: var(--cite-theme);
-            box-shadow: 0 0 0 4px color-mix(in srgb, var(--cite-theme) 12%, transparent);
-        }
-
-        .toggle {
-            position: relative;
-            width: 44px;
-            height: 24px;
-            border-radius: 9999px;
-            background: #e2e8f0;
-            transition: all 0.25s ease;
-            flex-shrink: 0;
-            display: inline-block;
-        }
-
-        .toggle::after {
-            content: "";
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 20px;
-            height: 20px;
-            border-radius: 9999px;
-            background: #ffffff;
-            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
-            transition: all 0.25s ease;
-        }
-
-        input:checked + .toggle {
-            background: var(--cite-theme);
-        }
-
-        input:checked + .toggle::after {
-            transform: translateX(20px);
-        }
-
         .primary-btn {
-            background: var(--cite-theme);
-            color: #ffffff;
-            border-radius: 14px;
-            padding: 10px 18px;
-            font-size: 13px;
-            font-weight: 700;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 0.2s ease;
+            background: var(--cite-theme); color: var(--cite-theme-text);
+            border: 1px solid var(--cite-theme-border); border-radius: 12px;
+            padding: 10px 16px; font-size: 13px; font-weight: 700;
         }
-
-        .primary-btn:hover {
-            background: var(--cite-theme-hover);
-            transform: translateY(-1px);
-        }
-
+        .primary-btn:hover { background: var(--cite-theme-hover); }
         .secondary-btn {
-            background: #ffffff;
-            color: #334155;
-            border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            padding: 10px 18px;
-            font-size: 13px;
-            font-weight: 700;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 0.2s ease;
+            background: #fff; color: #334155; border: 1px solid #e2e8f0;
+            border-radius: 12px; padding: 10px 16px; font-size: 13px; font-weight: 700;
         }
-
-        .secondary-btn:hover {
-            background: #f8fafc;
-            border-color: #cbd5e1;
+        .secondary-btn:hover { background: #f8fafc; }
+        .ghost-link { display: inline-flex; align-items: center; gap: 8px; color: var(--cite-theme); font-size: 13px; font-weight: 700; }
+        .toggle { position: relative; display: inline-flex; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle span { position: absolute; inset: 0; background: #e5e7eb; border-radius: 999px; transition: .2s; }
+        .toggle span:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 999px; transition: .2s; box-shadow: 0 1px 3px rgba(15,23,42,.2); }
+        .toggle input:checked + span { background: var(--cite-theme); }
+        .toggle input:checked + span:before { transform: translateX(20px); }
+        .toggle input:disabled + span { cursor: default; opacity: .7; }
+        .theme-picker-swatch {
+            width: 72px; height: 72px; border-radius: 999px; border: 4px solid #fff;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12), 0 0 0 1px #e5e7eb;
         }
-
-        .toast {
-            position: fixed;
-            right: 20px;
-            bottom: 20px;
-            z-index: 2600;
-            transform: translateY(20px);
-            opacity: 0;
-            pointer-events: none;
-            transition: all 0.25s ease;
+        #themePickerLabel { cursor: default; }
+        body.settings-editing #themePickerLabel { cursor: pointer; }
+        body.settings-editing #themePickerLabel:hover .theme-picker-swatch { transform: scale(1.04); }
+        .preview-shell { border: 1px solid #e8eaef; border-radius: 14px; overflow: hidden; background: #fff; }
+        .action-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+            padding: 14px 16px; border: 1px solid #eef1f5; border-radius: 14px; background: #f8fafc;
         }
-
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
+        .toast { position: fixed; right: 20px; bottom: 20px; z-index: 2600; transform: translateY(16px); opacity: 0; pointer-events: none; transition: .25s; }
+        .toast.show { transform: none; opacity: 1; }
+        body:not(.settings-editing) .edit-only { pointer-events: none; }
     </style>
 </head>
-
 <body class="bg-gray-50 overflow-x-hidden min-h-screen">
-
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
-
-    <!-- MAIN CONTENT -->
-    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] bg-slate-50 w-full overflow-x-hidden transition-all duration-300">
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] bg-slate-50 w-full overflow-x-hidden">
         <div id="navbar-container"></div>
-
-        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
-            <!-- Header -->
-            <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <header class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-7">
                 <div>
-                    <p class="text-[11px] sm:text-xs font-semibold tracking-[0.22em] uppercase text-[#621708] mb-1" style="color: var(--cite-theme);">
-                        Settings Module
-                    </p>
-                    <h1 class="text-2xl sm:text-3xl font-bold text-slate-950">
-                        System Settings
-                    </h1>
-                    <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
-                        Manage your account information, notification preferences, and appearance settings.
-                    </p>
+                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950">Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1 max-w-xl">Manage your CITE-Flow preferences, appearance, notifications, and security.</p>
                 </div>
-
                 <div class="flex items-center gap-2.5">
-                    <button onclick="resetSettings()" class="secondary-btn shadow-sm">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
-                            <path d="M3 12a9 9 0 1 0 3-6.7"/>
-                            <path d="M3 4v6h6"/>
-                        </svg>
-                        Reset
-                    </button>
-                    <button onclick="saveSettings()" class="primary-btn shadow-sm" data-theme-primary="true">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/>
-                            <path d="M17 21v-8H7v8"/>
-                            <path d="M7 3v5h8"/>
-                        </svg>
-                        Save Changes
-                    </button>
+                    <button id="editBtn" type="button" class="primary-btn" data-theme-primary="true">Edit</button>
+                    <button id="cancelBtn" type="button" class="secondary-btn hidden">Cancel</button>
+                    <button id="saveBtn" type="button" class="primary-btn hidden" data-theme-primary="true">Save Changes</button>
                 </div>
             </header>
 
-            <div class="grid grid-cols-1 2xl:grid-cols-[1fr_340px] gap-6 sm:gap-7 pb-20">
-                <div class="space-y-6">
-                    <!-- General Settings -->
-                    <section class="settings-card p-5 sm:p-7" id="general-settings">
-                        <div class="flex items-start gap-3.5 mb-5 sm:mb-6">
-                            <div class="section-icon">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                                    <circle cx="12" cy="7" r="4"/>
-                                </svg>
-                            </div>
-                            <div>
-                                <h2 class="text-base sm:text-lg font-bold text-slate-950">General Settings</h2>
-                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
-                                    Update your basic account and contact information.
-                                </p>
+            <div id="settingsError" class="hidden mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+            <div class="space-y-5 pb-16">
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-regular fa-user"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Account</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Your identity is managed in My Profile. Department is set by administration.</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                        <div id="accountAvatar" class="w-16 h-16 rounded-2xl bg-slate-100 text-slate-500 font-bold flex items-center justify-center overflow-hidden shrink-0">—</div>
+                        <div class="min-w-0 flex-1">
+                            <div id="accountName" class="text-lg font-bold text-slate-950 truncate">Loading…</div>
+                            <div id="accountEmail" class="text-sm text-slate-500 truncate">—</div>
+                            <div class="mt-2">
+                                <span id="accountDept" class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">—</span>
                             </div>
                         </div>
+                        <a href="faculty-profile.html" class="ghost-link shrink-0">Open My Profile <i class="fa-solid fa-arrow-right text-xs"></i></a>
+                    </div>
+                </section>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-                            <div>
-                                <label for="fullName" class="field-label">Full Name</label>
-                                <input id="fullName" type="text" class="field-input" placeholder="Enter full name">
-                            </div>
-
-                            <div>
-                                <label for="emailAddress" class="field-label">Email</label>
-                                <input id="emailAddress" type="email" class="field-input" placeholder="Enter email address">
-                            </div>
-
-                            <div>
-                                <label for="department" class="field-label">Department</label>
-                                <select id="department" class="field-input">
-                                    <option value="BIT - Bachelor of Industrial Technology">BIT - Bachelor of Industrial Technology</option>
-                                    <option value="BSIT - Bachelor of Science in Information Technology">BSIT - Bachelor of Science in Information Technology</option>
-                                    <option value="BSIE - Bachelor of Science in Industrial Engineering">BSIE - Bachelor of Science in Industrial Engineering</option>
-                                    <option value="College of Technology and Engineering">College of Technology and Engineering</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label for="phoneNumber" class="field-label">Phone Number</label>
-                                <input id="phoneNumber" type="tel" class="field-input" placeholder="Enter phone number">
-                            </div>
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-solid fa-palette"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Appearance</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Choose any color for the CITE-Flow theme. It updates the sidebar, buttons, and accents across the system.</p>
                         </div>
-                    </section>
-
-                    <!-- Notification Preferences -->
-                    <section class="settings-card p-5 sm:p-7" id="notification-settings">
-                        <div class="flex items-start gap-3.5 mb-5 sm:mb-6">
-                            <div class="section-icon">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/>
-                                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                                </svg>
-                            </div>
-                            <div>
-                                <h2 class="text-base sm:text-lg font-bold text-slate-950">Notification Preferences</h2>
-                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
-                                    Choose which notifications you want to receive.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="space-y-3 sm:space-y-4">
-                            <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <div>
-                                    <h3 class="text-xs sm:text-sm font-bold text-slate-900">Email Notifications</h3>
-                                    <p class="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-                                        Receive updates about submissions, approvals, and system responses.
-                                    </p>
-                                </div>
-                                <label class="cursor-pointer">
-                                    <input id="emailNotifications" type="checkbox" class="sr-only">
-                                    <span class="toggle"></span>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-5">
+                        <div>
+                            <div class="text-xs font-bold text-slate-700 mb-3">Theme color</div>
+                            <div class="flex items-center gap-4">
+                                <label id="themePickerLabel" for="themePicker" class="relative shrink-0">
+                                    <input type="color" id="themePicker" value="#621708" disabled
+                                        class="absolute inset-0 opacity-0 w-full h-full cursor-pointer">
+                                    <div id="themePreview" class="theme-picker-swatch transition" style="background:#621708"></div>
                                 </label>
-                            </div>
-
-                            <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                 <div>
-                                    <h3 class="text-xs sm:text-sm font-bold text-slate-900">Deadline Reminders</h3>
-                                    <p class="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-                                        Get notified before submission due dates and pending requirements.
-                                    </p>
+                                    <p class="text-sm font-bold text-slate-800">Click the circle to choose any color</p>
+                                    <p class="text-xs text-slate-500 mt-0.5">Current: <b id="themeHexDisplay" class="font-mono">#621708</b></p>
                                 </div>
-                                <label class="cursor-pointer">
-                                    <input id="deadlineReminders" type="checkbox" class="sr-only">
-                                    <span class="toggle"></span>
-                                </label>
-                            </div>
-
-                            <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <div>
-                                    <h3 class="text-xs sm:text-sm font-bold text-slate-900">Event Invitations</h3>
-                                    <p class="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-                                        Receive alerts for calendar events, seminars, meetings, and invitations.
-                                    </p>
-                                </div>
-                                <label class="cursor-pointer">
-                                    <input id="eventInvitations" type="checkbox" class="sr-only">
-                                    <span class="toggle"></span>
-                                </label>
                             </div>
                         </div>
-                    </section>
-
-                    <!-- Appearance Settings -->
-                    <section class="settings-card p-5 sm:p-7" id="appearance-settings">
-                        <div class="flex items-start gap-3.5 mb-5 sm:mb-6">
-                            <div class="section-icon">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <circle cx="13.5" cy="6.5" r=".5"/>
-                                    <circle cx="17.5" cy="10.5" r=".5"/>
-                                    <circle cx="8.5" cy="7.5" r=".5"/>
-                                    <circle cx="6.5" cy="12.5" r=".5"/>
-                                    <path d="M12 2C6.5 2 2 6.1 2 11.2C2 15.9 5.8 20 10.7 20h1.8c1.4 0 2.5-1.1 2.5-2.5c0-.6-.2-1.1-.5-1.5h1.6c3.3 0 5.9-2.6 5.9-5.9C22 5.6 17.5 2 12 2Z"/>
-                                </svg>
+                        <div class="preview-shell">
+                            <div class="h-9" style="background: var(--cite-theme)"></div>
+                            <div class="p-3 space-y-2">
+                                <div class="h-2 rounded bg-slate-200 w-2/3"></div>
+                                <div class="h-2 rounded bg-slate-100 w-full"></div>
+                                <button type="button" class="mt-1 px-3 py-1.5 rounded-lg text-xs font-bold" data-theme-primary="true">Action</button>
                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-regular fa-bell"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Notifications</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">In-app alerts for submissions, reviews, and tasks. Messenger mute stays in Messenger.</p>
+                        </div>
+                    </div>
+                    <div class="space-y-2.5" id="notifRows"></div>
+                </section>
+
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-regular fa-calendar"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Academic Period</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Set by Administration. Faculty cannot change this.</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                            <div class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Academic Year</div>
+                            <div id="academicYearLabel" class="text-sm font-bold text-slate-950 mt-1">—</div>
+                        </div>
+                        <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                            <div class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Semester</div>
+                            <div id="academicSemesterLabel" class="text-sm font-bold text-slate-950 mt-1">—</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Security</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Password, two-factor authentication, and sign out.</p>
+                        </div>
+                    </div>
+                    <div class="space-y-2.5">
+                        <div class="action-row">
                             <div>
-                                <h2 class="text-base sm:text-lg font-bold text-slate-950">Appearance Settings</h2>
-                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
-                                    Select a preferred theme color for buttons and supported interface elements.
-                                </p>
+                                <div class="text-sm font-bold text-slate-900">Change Password</div>
+                                <div class="text-xs text-slate-500 mt-0.5">Send a reset code to your account email.</div>
                             </div>
+                            <button id="settings-change-password" type="button" class="secondary-btn">Change</button>
                         </div>
-
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                                <div>
-                                    <h3 class="text-xs sm:text-sm font-bold text-slate-900">
-                                        Theme Color
-                                    </h3>
-                                    <p class="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-                                        Click the circle to choose any custom accent color.
-                                    </p>
-                                </div>
-
-                                <div class="flex items-center gap-3">
-                                    <label class="relative cursor-pointer">
-                                        <input type="color" id="themeColorPicker" value="#621708" class="absolute inset-0 opacity-0 w-12 h-12 cursor-pointer" aria-label="Choose theme color">
-                                        <div id="themePreview" class="w-12 h-12 rounded-full border-4 border-white shadow-md transition" style="background:#621708"></div>
-                                    </label>
-                                    <div>
-                                        <div class="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase">Current</div>
-                                        <div id="currentColorText" class="text-xs sm:text-sm font-bold text-slate-900 font-mono">#621708</div>
-                                    </div>
-                                </div>
+                        <div class="action-row">
+                            <div>
+                                <div class="text-sm font-bold text-slate-900">Two-Factor Authentication</div>
+                                <div id="twofa-status-text" class="text-xs text-slate-500 mt-0.5">Add an extra layer of security to your account.</div>
                             </div>
+                            <button id="twofa-toggle-btn" type="button" class="secondary-btn"><span id="twofa-toggle-label">Enable</span></button>
                         </div>
-                    </section>
-                </div>
-
-                <!-- Quick Navigation Sidebar -->
-                <aside class="space-y-5">
-                    <section class="settings-card p-5 sticky top-20">
-                        <h2 class="font-bold text-sm sm:text-base text-slate-950">Settings Navigation</h2>
-                        <p class="text-xs text-slate-500 mt-0.5">Quick jump to section</p>
-                        <div class="mt-4 space-y-2 text-xs sm:text-sm">
-                            <a href="#general-settings" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 font-semibold text-slate-700 hover:bg-slate-50">
-                                <span>General Settings</span>
-                                <i class="fa-solid fa-arrow-right text-xs text-slate-400"></i>
-                            </a>
-                            <a href="#notification-settings" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 font-semibold text-slate-700 hover:bg-slate-50">
-                                <span>Notification Preferences</span>
-                                <i class="fa-solid fa-arrow-right text-xs text-slate-400"></i>
-                            </a>
-                            <a href="#appearance-settings" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 font-semibold text-slate-700 hover:bg-slate-50">
-                                <span>Appearance Settings</span>
-                                <i class="fa-solid fa-arrow-right text-xs text-slate-400"></i>
-                            </a>
+                        <div class="action-row">
+                            <div>
+                                <div class="text-sm font-bold text-slate-900">Sign Out</div>
+                                <div class="text-xs text-slate-500 mt-0.5">End your current CITE-Flow session.</div>
+                            </div>
+                            <button id="settings-sign-out" type="button" class="secondary-btn text-red-600 border-red-200">Sign Out</button>
                         </div>
-                    </section>
-                </aside>
+                    </div>
+                </section>
             </div>
         </div>
     </main>
 </div>
 
-<!-- CONFIRM MODAL -->
-<div id="confirmModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[2500] items-center justify-center p-3 sm:p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
-        <div class="p-6 border-b border-slate-100">
-            <p class="text-[10px] font-semibold tracking-[0.18em] text-[#621708] uppercase" style="color: var(--cite-theme);">Confirmation</p>
-            <h3 id="confirmTitle" class="text-base sm:text-lg font-bold text-slate-950 mt-1">Confirm action</h3>
-            <p id="confirmMessage" class="text-xs sm:text-sm text-slate-500 mt-1">Please confirm this action.</p>
+<div id="twofa-modal" class="hidden fixed inset-0 bg-slate-950/50 z-[2500] items-center justify-center p-4">
+    <div class="bg-white rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-start justify-between">
+            <div>
+                <p class="text-[10px] font-semibold tracking-[0.18em] uppercase" style="color: var(--cite-theme)">Security</p>
+                <h2 class="text-lg font-semibold text-slate-950 mt-1">Set Up Two-Factor Authentication</h2>
+            </div>
+            <button type="button" id="twofa-modal-close" class="secondary-btn px-3 py-2">Close</button>
         </div>
-        <div class="px-6 py-4 bg-slate-50 flex justify-end gap-2.5">
-            <button onclick="closeConfirmModal(false)" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
-            <button onclick="closeConfirmModal(true)" class="px-5 py-2 rounded-xl bg-[#621708] text-white text-xs sm:text-sm font-bold hover:bg-[#8c2a10]" data-theme-primary="true">Continue</button>
+        <div class="p-6 space-y-4">
+            <p class="text-sm text-slate-600">Scan this QR code with an authenticator app, then enter the code.</p>
+            <div id="twofa-qr-container" class="p-4 border border-slate-200 rounded-2xl flex items-center justify-center min-h-[180px] bg-slate-50 text-sm text-slate-500">Generating QR code...</div>
+            <form id="twofa-verify-form" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Authentication Code</label>
+                    <input id="twofa-code" type="text" inputmode="numeric" maxlength="8" placeholder="123456" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm tracking-widest">
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" id="twofa-modal-cancel" class="secondary-btn">Cancel</button>
+                    <button id="twofa-verify-btn" type="submit" class="primary-btn" data-theme-primary="true">Verify and Enable</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
-<!-- Toast -->
 <div id="toast" class="toast">
-    <div class="rounded-2xl border border-emerald-200 bg-white shadow-xl px-4 py-3 flex items-center gap-3">
-        <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path d="m5 13 4 4L19 7"/>
-            </svg>
-        </div>
-        <div>
-            <div id="toastTitle" class="text-xs sm:text-sm font-bold text-slate-900">Settings saved</div>
-            <div id="toastMessage" class="text-[11px] text-slate-500">Your preferences have been updated successfully.</div>
-        </div>
+    <div class="rounded-2xl border border-emerald-200 bg-white shadow-xl px-4 py-3 max-w-sm">
+        <div id="toastTitle" class="text-sm font-bold text-slate-900">Settings saved</div>
+        <div id="toastMessage" class="text-xs text-slate-500 mt-0.5">Your preferences have been updated.</div>
     </div>
 </div>
 
+<script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
+<script src="../shared/account-security.js"></script>
+<script src="../shared/workflow.js"></script>
+<script src="faculty-nav.js"></script>
 <script>
-    const STORAGE_KEY = 'citeflow_faculty_settings';
-    let confirmResolver = null;
+    const FACULTY_NOTIFS = [
+        { key: 'tasks', title: 'Task updates', hint: 'New assignments and deadline reminders.' },
+        { key: 'approvals', title: 'Approvals', hint: 'When a submission is approved.' },
+        { key: 'revision', title: 'Returned for revision', hint: 'When a reviewer requests changes.' },
+        { key: 'rejection', title: 'Rejection', hint: 'When a submission is rejected.' },
+        { key: 'submissions', title: 'Submission updates', hint: 'Confirmations when you submit or update files.' }
+    ];
 
-    const defaultSettings = {
-        fullName: 'Maria Santos',
-        emailAddress: 'maria.santos@ctu.edu.ph',
-        department: 'BIT - Bachelor of Industrial Technology',
-        phoneNumber: '+63 912 345 6789',
-        emailNotifications: true,
-        deadlineReminders: true,
-        eventInvitations: true,
-        themeColor: '#621708'
-    };
-
-    let selectedThemeColor = defaultSettings.themeColor;
-
-    function getSavedSettings() {
-        try {
-            const saved = localStorage.getItem(STORAGE_KEY);
-            return saved ? { ...defaultSettings, ...JSON.parse(saved) } : { ...defaultSettings };
-        } catch (error) {
-            console.warn('Unable to load saved settings:', error);
-            return { ...defaultSettings };
-        }
-    }
-
-    function applySettings(settings) {
-        document.getElementById('fullName').value = settings.fullName;
-        document.getElementById('emailAddress').value = settings.emailAddress;
-        document.getElementById('department').value = settings.department;
-        document.getElementById('phoneNumber').value = settings.phoneNumber;
-
-        document.getElementById('emailNotifications').checked = !!settings.emailNotifications;
-        document.getElementById('deadlineReminders').checked = !!settings.deadlineReminders;
-        document.getElementById('eventInvitations').checked = !!settings.eventInvitations;
-
-        selectedThemeColor = settings.themeColor || defaultSettings.themeColor;
-        updateColorPicker(selectedThemeColor);
-        applyThemeColor(selectedThemeColor);
-    }
-
-    function collectSettings() {
-        return {
-            fullName: document.getElementById('fullName').value.trim() || defaultSettings.fullName,
-            emailAddress: document.getElementById('emailAddress').value.trim() || defaultSettings.emailAddress,
-            department: document.getElementById('department').value || defaultSettings.department,
-            phoneNumber: document.getElementById('phoneNumber').value.trim() || defaultSettings.phoneNumber,
-            emailNotifications: document.getElementById('emailNotifications').checked,
-            deadlineReminders: document.getElementById('deadlineReminders').checked,
-            eventInvitations: document.getElementById('eventInvitations').checked,
-            themeColor: selectedThemeColor
-        };
-    }
-
-    function changeTheme(color) {
-        selectedThemeColor = color;
-        updateColorPicker(color);
-        applyThemeColor(color);
-    }
-
-    function updateColorPicker(color) {
-        const colorPicker = document.getElementById('themeColorPicker');
-        const colorText = document.getElementById('currentColorText');
-        const colorPreview = document.getElementById('themePreview');
-
-        if (colorPicker) colorPicker.value = color;
-        if (colorText) colorText.textContent = color.toUpperCase();
-        if (colorPreview) colorPreview.style.backgroundColor = color;
-    }
-
-    function applyThemeColor(color) {
-        document.documentElement.style.setProperty('--cite-theme', color);
-        if (window.CiteFlowUI && typeof window.CiteFlowUI.setTheme === 'function') {
-            window.CiteFlowUI.setTheme(color);
-        }
-
-        document.querySelectorAll('[data-theme-primary="true"]').forEach((element) => {
-            element.style.backgroundColor = color;
-        });
-    }
-
-    function saveSettings() {
-        const settings = collectSettings();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-        applyThemeColor(settings.themeColor);
-        showToast('Settings saved', 'Your preferences have been saved successfully.');
-    }
-
-    async function resetSettings() {
-        const confirmed = await askConfirm(
-            'Reset settings', 
-            'This will restore all default user settings and theme color. Do you want to continue?'
-        );
-        if (!confirmed) return;
-
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultSettings));
-        applySettings({ ...defaultSettings });
-        showToast('Defaults restored', 'The default settings have been applied.');
-    }
-
-    function askConfirm(title, message) {
-        document.getElementById('confirmTitle').textContent = title;
-        document.getElementById('confirmMessage').textContent = message;
-        const modal = document.getElementById('confirmModal');
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        return new Promise((resolve) => { confirmResolver = resolve; });
-    }
-
-    function closeConfirmModal(result) {
-        const modal = document.getElementById('confirmModal');
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        if (confirmResolver) confirmResolver(result);
-        confirmResolver = null;
-    }
+    let isEditing = false;
+    let snapshot = null;
+    let selectedTheme = window.CiteFlowUI?.getTheme?.() || '#621708';
 
     function showToast(title, message) {
-        const toast = document.getElementById('toast');
         document.getElementById('toastTitle').textContent = title;
         document.getElementById('toastMessage').textContent = message;
-
+        const toast = document.getElementById('toast');
         toast.classList.add('show');
-        clearTimeout(showToast.timer);
-        showToast.timer = setTimeout(() => {
-            toast.classList.remove('show');
-        }, 2500);
+        setTimeout(() => toast.classList.remove('show'), 2600);
     }
 
+    function showError(message) {
+        const el = document.getElementById('settingsError');
+        if (!message) { el.classList.add('hidden'); el.textContent = ''; return; }
+        el.textContent = message;
+        el.classList.remove('hidden');
+    }
+
+    function initials(name, email) {
+        const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+        if (parts[0]) return parts[0].slice(0, 2).toUpperCase();
+        return String(email || 'FM').slice(0, 2).toUpperCase();
+    }
+
+    function renderAccount(profile) {
+        const name = profile.name || 'Faculty';
+        const email = profile.email || '—';
+        document.getElementById('accountName').textContent = name;
+        document.getElementById('accountEmail').textContent = email;
+        document.getElementById('accountDept').textContent = profile.department || '—';
+        const avatar = document.getElementById('accountAvatar');
+        if (profile.avatar) {
+            avatar.innerHTML = `<img src="${profile.avatar}" alt="" class="w-full h-full object-cover">`;
+        } else {
+            avatar.textContent = initials(name, email);
+        }
+    }
+
+    function renderNotifRows(prefs) {
+        document.getElementById('notifRows').innerHTML = FACULTY_NOTIFS.map((item) => `
+            <label class="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div>
+                    <div class="text-sm font-bold text-slate-900">${item.title}</div>
+                    <div class="text-xs text-slate-500 mt-0.5">${item.hint}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" data-pref="${item.key}" ${prefs[item.key] !== false ? 'checked' : ''} disabled><span></span></label>
+            </label>
+        `).join('');
+    }
+
+    function collectPrefs() {
+        const prefs = window.CiteFlowSettings.defaultPrefs('faculty');
+        document.querySelectorAll('[data-pref]').forEach((input) => {
+            prefs[input.dataset.pref] = input.checked;
+        });
+        return prefs;
+    }
+
+    function toThemeHex(color) {
+        const value = String(color || '#621708').trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toLowerCase();
+        if (/^#[0-9a-fA-F]{3}$/.test(value)) {
+            return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase();
+        }
+        return '#621708';
+    }
+
+    function renderTheme(color) {
+        selectedTheme = toThemeHex(color);
+        const picker = document.getElementById('themePicker');
+        const preview = document.getElementById('themePreview');
+        const hex = document.getElementById('themeHexDisplay');
+        if (picker) {
+            picker.value = selectedTheme;
+            picker.disabled = !isEditing;
+        }
+        if (preview) preview.style.background = selectedTheme;
+        if (hex) hex.textContent = selectedTheme.toUpperCase();
+    }
+
+    function applyThemeLive(color) {
+        selectedTheme = toThemeHex(color);
+        window.CiteFlowUI?.setTheme?.(selectedTheme);
+        const preview = document.getElementById('themePreview');
+        const hex = document.getElementById('themeHexDisplay');
+        if (preview) preview.style.background = selectedTheme;
+        if (hex) hex.textContent = selectedTheme.toUpperCase();
+        const picker = document.getElementById('themePicker');
+        if (picker && picker.value !== selectedTheme) picker.value = selectedTheme;
+    }
+
+    function setEditing(next) {
+        isEditing = next;
+        document.body.classList.toggle('settings-editing', next);
+        document.getElementById('editBtn').classList.toggle('hidden', next);
+        document.getElementById('cancelBtn').classList.toggle('hidden', !next);
+        document.getElementById('saveBtn').classList.toggle('hidden', !next);
+        document.querySelectorAll('[data-pref]').forEach((el) => { el.disabled = !next; });
+        renderTheme(selectedTheme);
+    }
+
+    function takeSnapshot() {
+        snapshot = { theme: selectedTheme, prefs: collectPrefs() };
+    }
+
+    function restoreSnapshot() {
+        if (!snapshot) return;
+        selectedTheme = snapshot.theme;
+        window.CiteFlowUI?.setTheme?.(snapshot.theme);
+        renderNotifRows(snapshot.prefs);
+        renderTheme(snapshot.theme);
+    }
+
+    async function loadAccount() {
+        const sb = window.supabaseClient;
+        const { data } = await sb.auth.getUser();
+        const user = data?.user;
+        if (!user) return;
+        let profile = {
+            name: user.user_metadata?.full_name || user.user_metadata?.name || user.email,
+            email: user.email,
+            department: user.user_metadata?.department || '—',
+            avatar: user.user_metadata?.avatar_url || user.user_metadata?.profile_photo_url || ''
+        };
+        if (window.CiteFlowWorkflow?.getCurrentFaculty) {
+            const faculty = await window.CiteFlowWorkflow.getCurrentFaculty(user);
+            if (faculty) {
+                profile = {
+                    name: faculty.full_name || faculty.name || profile.name,
+                    email: faculty.email || profile.email,
+                    department: faculty.department || profile.department,
+                    avatar: faculty.profile_photo_url || faculty.avatar_url || profile.avatar
+                };
+            }
+        }
+        renderAccount(profile);
+    }
+
+    async function saveAll() {
+        try {
+            window.CiteFlowUI?.setTheme?.(selectedTheme);
+            await window.CiteFlowSettings.savePreferences(collectPrefs());
+            showToast('Saved', 'Your preferences have been updated.');
+            setEditing(false);
+            takeSnapshot();
+            showError('');
+        } catch (error) {
+            showError(error.message || 'Unable to save settings.');
+        }
+    }
+
+    document.getElementById('editBtn').addEventListener('click', () => { takeSnapshot(); setEditing(true); });
+    document.getElementById('cancelBtn').addEventListener('click', () => { restoreSnapshot(); setEditing(false); });
+    document.getElementById('saveBtn').addEventListener('click', saveAll);
+
     document.addEventListener('DOMContentLoaded', async () => {
-        if (typeof loadSidebar === 'function') {
-            await loadSidebar();
-        }
-
-        applySettings(getSavedSettings());
-
-        const themeColorPicker = document.getElementById('themeColorPicker');
-        if (themeColorPicker) {
-            themeColorPicker.addEventListener('input', function () {
-                changeTheme(this.value);
-            });
-        }
+        if (typeof loadSidebar === 'function') await loadSidebar();
+        selectedTheme = window.CiteFlowUI?.getTheme?.() || selectedTheme;
+        document.getElementById('themePicker')?.addEventListener('input', (event) => {
+            if (!isEditing) return;
+            applyThemeLive(event.target.value);
+        });
+        document.getElementById('themePickerLabel')?.addEventListener('click', (event) => {
+            if (!isEditing) event.preventDefault();
+        });
+        const [period, prefs] = await Promise.all([
+            window.CiteFlowSettings.getAcademicPeriod(true),
+            window.CiteFlowSettings.loadPreferences(true)
+        ]);
+        document.getElementById('academicYearLabel').textContent = period.academic_year;
+        document.getElementById('academicSemesterLabel').textContent = period.semester;
+        renderNotifRows(prefs);
+        renderTheme(selectedTheme);
+        await loadAccount();
     });
 </script>
-
-<script src="../shared/workflow.js"></script>
-<script src="../shared/system-ui.js"></script>
-<script src="faculty-nav.js"></script>
 </body>
 </html>

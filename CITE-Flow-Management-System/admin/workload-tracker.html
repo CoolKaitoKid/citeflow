@@ -223,6 +223,7 @@
     const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
     const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
     const supabaseClient = supabase.createClient(supabaseUrl, supabaseAnonKey);
+    window.supabaseClient = supabaseClient;
 
     let faculties = [], teachingLoads = [], workloadSummaries = [], currentFilteredRows = [];
 
@@ -310,13 +311,28 @@
         const dept = document.getElementById('departmentFilter').value;
         const semester = document.getElementById('semesterFilter').value;
 
-        const filtered = workloadSummaries.filter(summary => {
-            const haystack = [summary.facultyName, summary.department, ...summary.teaching.map(t => 
+        const filtered = workloadSummaries.map((summary) => {
+            const teaching = semester
+                ? summary.teaching.filter((item) => String(item.semester || '') === semester)
+                : summary.teaching;
+            const metrics = getTeachingMetrics(teaching);
+            return {
+                ...summary,
+                teaching,
+                teachingTotal: sumUnits(teaching),
+                preparations: metrics.preparations,
+                sections: metrics.sections,
+                totalStudents: metrics.totalStudents,
+                hoursPerWeek: metrics.hours
+            };
+        }).filter((summary) => {
+            if (semester && !summary.teaching.length) return false;
+
+            const haystack = [summary.facultyName, summary.department, ...summary.teaching.map((t) =>
                 `${t.subject_code} ${t.subject_title} ${t.section}`)].join(' ').toLowerCase();
 
             const matchesSearch = !query || haystack.includes(query);
             const matchesDept = !dept || summary.department === dept;
-
             return matchesSearch && matchesDept;
         });
 
@@ -377,7 +393,8 @@
     }
 
     async function showDetails(facultyId) {
-        const summary = workloadSummaries.find(s => String(s.facultyId) === String(facultyId));
+        const summary = currentFilteredRows.find(s => String(s.facultyId) === String(facultyId))
+            || workloadSummaries.find(s => String(s.facultyId) === String(facultyId));
         if (!summary) return alert("Faculty not found.");
 
         document.getElementById('detailName').textContent = summary.facultyName;
@@ -397,7 +414,10 @@
             return;
         }
 
-        const html = data.length ? data.map(item => `
+        const semester = document.getElementById('semesterFilter')?.value || '';
+        const rows = semester ? data.filter((item) => String(item.semester || '') === semester) : data;
+
+        const html = rows.length ? rows.map(item => `
             <div class="border border-slate-200 rounded-2xl p-4 sm:p-5 mb-3 sm:mb-4 bg-slate-50/50">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
@@ -423,15 +443,31 @@
         alert("Export functionality can be expanded here (PDF/Excel/Word)");
     }
 
+    async function applyDefaultSemesterFilter() {
+        const select = document.getElementById('semesterFilter');
+        if (!select || !window.CiteFlowSettings) return;
+        try {
+            const period = await window.CiteFlowSettings.getAcademicPeriod();
+            const mapped = window.CiteFlowSettings.mapToTeachingSemester(period.semester);
+            if ([...select.options].some((option) => option.value === mapped)) {
+                select.value = mapped;
+            }
+        } catch (_) {
+            /* keep All Semesters if the academic period cannot be loaded */
+        }
+    }
+
     // Initialize
     window.onload = async () => {
         await loadSidebar();
+        await applyDefaultSemesterFilter();
         await loadAllWorkloads();
     };
 </script>
 
 <script src="../nav.js" defer></script>
 <script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
 <div id="message-container"></div>
 </body>
 </html>

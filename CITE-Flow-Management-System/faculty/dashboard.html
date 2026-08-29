@@ -426,7 +426,15 @@ async function loadFacultyProfile() {
 }
 
 async function loadAcademicPeriod() {
+    const el = document.getElementById('academicPeriodText');
+    if (!el) return;
     try {
+        if (window.CiteFlowSettings) {
+            const period = await window.CiteFlowSettings.getAcademicPeriod();
+            el.textContent = window.CiteFlowSettings.formatPeriodLabel(period);
+            return;
+        }
+
         const { data, error } = await supabaseClient
             .from('system_settings')
             .select('*')
@@ -435,14 +443,13 @@ async function loadAcademicPeriod() {
 
         if (error) throw error;
 
-        const academicYear = data?.academic_year || '2025-2026';
+        const academicYear = data?.academic_year || '2026-2027';
         const semester = data?.semester || 'First Semester';
-
-        document.getElementById('academicPeriodText').textContent =
-            `Academic Year ${academicYear} • ${semester}`;
+        el.textContent = `Academic Year ${academicYear} • ${semester}`;
     } catch (error) {
-        document.getElementById('academicPeriodText').textContent =
-            'Academic Year 2025-2026 • First Semester';
+        el.textContent = window.CiteFlowSettings
+            ? window.CiteFlowSettings.formatPeriodLabel()
+            : 'Academic Year 2026-2027 • First Semester';
     }
 }
 
@@ -568,6 +575,7 @@ window.addEventListener('load', async () => {
 
 <script src="../shared/workflow.js"></script>
 <script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
 <script src="faculty-nav.js"></script>
 </body>
 </html>

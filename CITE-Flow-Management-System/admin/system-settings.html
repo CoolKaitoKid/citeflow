@@ -3,378 +3,292 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Settings - CITE-Flow</title>
+    <title>Settings - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="../nav.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth.js"></script>
+    <script src="../shared/auth-guard.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
         :root {
             --cite-theme: #621708;
             --cite-theme-hover: #8c2a10;
             --cite-theme-text: #ffffff;
             --cite-theme-soft: #f8fafc;
-            --cite-theme-soft-text: #111827;
+            --cite-theme-border: rgba(98, 23, 8, 0.14);
         }
-        .card-shadow { box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06); }
-        .nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.25; }
-        .app-surface { background: linear-gradient(135deg, #f8fafc, #f7f7fb 48%, #f9fafb); }
-        .panel { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06); }
-        .setting-input { width: 100%; border: 1px solid #d1d5db; border-radius: 14px; padding: 10px 12px; font-size: 13px; outline: none; background: #fff; transition: all 0.2s ease; }
-        .setting-input:focus { border-color: var(--cite-theme); box-shadow: 0 0 0 4px rgba(98, 23, 8, 0.08); }
-        .icon-box { width: 42px; height: 42px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; color: var(--cite-theme); background: color-mix(in srgb, var(--cite-theme) 9%, white); border: 1px solid color-mix(in srgb, var(--cite-theme) 14%, white); flex-shrink: 0; }
-        .toggle { position: relative; display: inline-flex; align-items: center; width: 44px; height: 24px; flex-shrink: 0; }
+        .app-surface { background: #f3f4f7; }
+        .settings-card {
+            background: #fff;
+            border: 1px solid #e8eaef;
+            border-radius: 20px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.05);
+        }
+        .section-icon {
+            width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            color: var(--cite-theme);
+            background: color-mix(in srgb, var(--cite-theme) 9%, white);
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
+        }
+        .field {
+            width: 100%; border: 1px solid #dbe1ea; border-radius: 12px;
+            padding: 10px 12px; font-size: 13px; outline: none; background: #fff; color: #0f172a;
+        }
+        .field:focus { border-color: var(--cite-theme); box-shadow: 0 0 0 4px color-mix(in srgb, var(--cite-theme) 12%, transparent); }
+        .field:disabled, select:disabled { background: #f8fafc; color: #475569; cursor: default; }
+        .primary-btn {
+            background: var(--cite-theme); color: var(--cite-theme-text);
+            border: 1px solid var(--cite-theme-border); border-radius: 12px;
+            padding: 10px 16px; font-size: 13px; font-weight: 700;
+        }
+        .primary-btn:hover { background: var(--cite-theme-hover); }
+        .secondary-btn {
+            background: #fff; color: #334155; border: 1px solid #e2e8f0;
+            border-radius: 12px; padding: 10px 16px; font-size: 13px; font-weight: 700;
+        }
+        .secondary-btn:hover { background: #f8fafc; }
+        .ghost-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            color: var(--cite-theme); font-size: 13px; font-weight: 700;
+        }
+        .toggle { position: relative; display: inline-flex; width: 44px; height: 24px; flex-shrink: 0; }
         .toggle input { opacity: 0; width: 0; height: 0; }
-        .toggle span { position: absolute; cursor: pointer; inset: 0; background: #e5e7eb; border-radius: 999px; transition: .2s; }
-        .toggle span:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 999px; transition: .2s; box-shadow: 0 1px 3px rgba(15, 23, 42, .2); }
+        .toggle span { position: absolute; inset: 0; background: #e5e7eb; border-radius: 999px; transition: .2s; cursor: pointer; }
+        .toggle span:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 999px; transition: .2s; box-shadow: 0 1px 3px rgba(15,23,42,.2); }
         .toggle input:checked + span { background: var(--cite-theme); }
         .toggle input:checked + span:before { transform: translateX(20px); }
-        .toast { position: fixed; bottom: 20px; right: 20px; z-index: 2600; transform: translateY(20px); opacity: 0; pointer-events: none; transition: all .25s ease; }
-        .toast.show { transform: translateY(0); opacity: 1; }
+        .toggle input:disabled + span { cursor: default; opacity: .7; }
+        .theme-picker-swatch {
+            width: 72px; height: 72px; border-radius: 999px; border: 4px solid #fff;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12), 0 0 0 1px #e5e7eb;
+        }
+        #themePickerLabel { cursor: default; }
+        body.settings-editing #themePickerLabel { cursor: pointer; }
+        body.settings-editing #themePickerLabel:hover .theme-picker-swatch { transform: scale(1.04); }
+        .preview-shell { border: 1px solid #e8eaef; border-radius: 14px; overflow: hidden; background: #fff; }
+        .action-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+            padding: 14px 16px; border: 1px solid #eef1f5; border-radius: 14px; background: #f8fafc;
+        }
+        .toast { position: fixed; right: 20px; bottom: 20px; z-index: 2600; transform: translateY(16px); opacity: 0; pointer-events: none; transition: .25s; }
+        .toast.show { transform: none; opacity: 1; }
+        body:not(.settings-editing) .edit-only { pointer-events: none; }
     </style>
 </head>
 <body class="bg-gray-50 overflow-x-hidden min-h-screen">
-
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
-    
-    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] app-surface w-full overflow-x-hidden transition-all duration-300">
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] app-surface w-full overflow-x-hidden">
         <div id="navbar-container"></div>
-
-        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
-            <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <header class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-7">
                 <div>
-                    <p class="text-[11px] sm:text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase mb-1">System Settings Module</p>
-                    <h1 class="text-2xl sm:text-3xl font-bold text-slate-950">System Settings</h1>
-                    <p class="text-xs sm:text-sm text-slate-500 mt-1">Configure institutional details, notifications, backups, and appearance.</p>
+                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950">Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1 max-w-xl">Manage your CITE-Flow preferences, appearance, notifications, and security. The academic period configured here is used across the system.</p>
                 </div>
                 <div class="flex items-center gap-2.5">
-                    <button onclick="resetSettings()" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm">Reset</button>
-                    <button onclick="saveSettings()" data-theme-primary="true" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#621708] text-white text-xs sm:text-sm font-bold hover:bg-[#8c2a10] shadow-sm transition-all">Save Changes</button>
+                    <button id="editBtn" type="button" class="primary-btn" data-theme-primary="true">Edit</button>
+                    <button id="cancelBtn" type="button" class="secondary-btn hidden">Cancel</button>
+                    <button id="saveBtn" type="button" class="primary-btn hidden" data-theme-primary="true">Save Changes</button>
                 </div>
             </header>
 
-            <div class="grid grid-cols-1 2xl:grid-cols-[1fr_340px] gap-6 sm:gap-7">
-                <div class="space-y-6 sm:space-y-7">
-                    <!-- General Settings -->
-                    <section class="panel rounded-2xl sm:rounded-[2rem] p-5 sm:p-7" id="general-settings">
-                        <div class="flex items-start gap-3 sm:gap-4 mb-5 sm:mb-6">
-                            <div class="icon-box">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16M9 21v-6h6v6M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01"/></svg>
-                            </div>
-                            <div>
-                                <h2 class="text-lg sm:text-xl font-bold text-slate-950 mt-0.5">General Settings</h2>
-                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Maintain primary institutional identity and academic period.</p>
+            <div id="settingsError" class="hidden mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+            <div class="space-y-5">
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-regular fa-user"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Account</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Your identity is managed in My Profile.</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                        <div id="accountAvatar" class="w-16 h-16 rounded-2xl bg-slate-100 text-slate-500 font-bold flex items-center justify-center overflow-hidden shrink-0">—</div>
+                        <div class="min-w-0 flex-1">
+                            <div id="accountName" class="text-lg font-bold text-slate-950 truncate">Loading…</div>
+                            <div id="accountEmail" class="text-sm text-slate-500 truncate">—</div>
+                            <div class="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold">
+                                <span id="accountRole" class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">—</span>
+                                <span id="accountDept" class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">—</span>
                             </div>
                         </div>
+                        <a href="admin-profile.html" class="ghost-link shrink-0">Open My Profile <i class="fa-solid fa-arrow-right text-xs"></i></a>
+                    </div>
+                </section>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div class="sm:col-span-2">
-                                <label class="block text-xs font-bold text-slate-700 mb-1.5">System Name</label>
-                                <input id="setting-system-name" type="text" value="CITE-Flow Management System" class="setting-input">
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label class="block text-xs font-bold text-slate-700 mb-1.5">Institution</label>
-                                <input id="setting-institution" type="text" value="College of Technology and Engineering" class="setting-input">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-700 mb-1.5">Academic Year</label>
-                                <input id="setting-academic-year" type="text" value="2025-2026" class="setting-input">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-700 mb-1.5">Semester</label>
-                                <select id="setting-semester" class="setting-input">
-                                    <option>First Semester</option>
-                                    <option>Second Semester</option>
-                                    <option>Summer</option>
-                                </select>
-                            </div>
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-solid fa-palette"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Appearance</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Choose any color for the CITE-Flow theme. It updates the sidebar, buttons, and accents across the system.</p>
                         </div>
-                    </section>
-
-                    <!-- Notification Settings -->
-                    <section class="panel rounded-2xl sm:rounded-[2rem] p-5 sm:p-7" id="notification-settings">
-                        <div class="flex items-start gap-3 sm:gap-4 mb-5 sm:mb-6">
-                            <div class="icon-box">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0a3 3 0 0 1-6 0"/></svg>
-                            </div>
-                            <div>
-                                <h2 class="text-lg sm:text-xl font-bold text-slate-950 mt-0.5">Notification Settings</h2>
-                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Control alerts for approvals, uploads, and reports.</p>
-                            </div>
-                        </div>
-
-                        <div class="divide-y divide-slate-100 text-xs sm:text-sm">
-                            <div class="py-3.5 flex items-center justify-between gap-4">
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-5">
+                        <div>
+                            <div class="text-xs font-bold text-slate-700 mb-3">Theme color</div>
+                            <div class="flex items-center gap-4">
+                                <label id="themePickerLabel" for="themePicker" class="relative shrink-0">
+                                    <input type="color" id="themePicker" value="#621708" disabled
+                                        class="absolute inset-0 opacity-0 w-full h-full cursor-pointer">
+                                    <div id="themePreview" class="theme-picker-swatch transition" style="background:#621708"></div>
+                                </label>
                                 <div>
-                                    <div class="font-bold text-slate-900">Email Notifications</div>
-                                    <div class="text-slate-500 mt-0.5 text-xs">Send email updates for important system events.</div>
+                                    <p class="text-sm font-bold text-slate-800">Click the circle to choose any color</p>
+                                    <p class="text-xs text-slate-500 mt-0.5">Current: <b id="themeHexDisplay" class="font-mono">#621708</b></p>
                                 </div>
-                                <label class="toggle"><input id="notify-email" type="checkbox" checked><span></span></label>
-                            </div>
-                            <div class="py-3.5 flex items-center justify-between gap-4">
-                                <div>
-                                    <div class="font-bold text-slate-900">Workflow Approvals</div>
-                                    <div class="text-slate-500 mt-0.5 text-xs">Notify administrators when approvals require attention.</div>
-                                </div>
-                                <label class="toggle"><input id="notify-workflow" type="checkbox" checked><span></span></label>
-                            </div>
-                            <div class="py-3.5 flex items-center justify-between gap-4">
-                                <div>
-                                    <div class="font-bold text-slate-900">Document Uploads</div>
-                                    <div class="text-slate-500 mt-0.5 text-xs">Notify when faculty upload or update documents.</div>
-                                </div>
-                                <label class="toggle"><input id="notify-document" type="checkbox" checked><span></span></label>
-                            </div>
-                            <div class="py-3.5 flex items-center justify-between gap-4">
-                                <div>
-                                    <div class="font-bold text-slate-900">Feedback Submissions</div>
-                                    <div class="text-slate-500 mt-0.5 text-xs">Notify when event feedback summaries are submitted.</div>
-                                </div>
-                                <label class="toggle"><input id="notify-feedback" type="checkbox" checked><span></span></label>
-                            </div>
-                            <div class="py-3.5 flex items-center justify-between gap-4">
-                                <div>
-                                    <div class="font-bold text-slate-900">Weekly Reports</div>
-                                    <div class="text-slate-500 mt-0.5 text-xs">Prepare weekly summary reports for administrators.</div>
-                                </div>
-                                <label class="toggle"><input id="notify-weekly" type="checkbox"><span></span></label>
                             </div>
                         </div>
-                    </section>
-
-                    <!-- Database & Backup -->
-                    <section class="panel rounded-2xl sm:rounded-[2rem] p-5 sm:p-7" id="backup-settings">
-                        <div class="flex items-start gap-3 sm:gap-4 mb-5 sm:mb-6">
-                            <div class="icon-box">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
+                        <div class="preview-shell">
+                            <div class="h-9" style="background: var(--cite-theme)"></div>
+                            <div class="p-3 space-y-2">
+                                <div class="h-2 rounded bg-slate-200 w-2/3"></div>
+                                <div class="h-2 rounded bg-slate-100 w-full"></div>
+                                <button type="button" class="mt-1 px-3 py-1.5 rounded-lg text-xs font-bold" data-theme-primary="true">Action</button>
                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-regular fa-bell"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Notifications</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">In-app alerts only. These control what appears in your workflow notification feed.</p>
+                        </div>
+                    </div>
+                    <div class="space-y-2.5" id="notifRows"></div>
+                </section>
+
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-regular fa-calendar"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Academic Period</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">System-wide setting used by faculty dashboards and related modules.</p>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800 mb-4">
+                        This academic period is shared across CITE-Flow and may affect information displayed to faculty.
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5">Academic Year</label>
+                            <input id="academicYear" class="field" data-edit-field placeholder="2026-2027" disabled>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5">Semester</label>
+                            <select id="academicSemester" class="field" data-edit-field disabled></select>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-card p-5 sm:p-6">
+                    <div class="flex items-start gap-3 mb-5">
+                        <div class="section-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-950">Security</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Password, two-factor authentication, and sign out.</p>
+                        </div>
+                    </div>
+                    <div class="space-y-2.5">
+                        <div class="action-row">
                             <div>
-                                <h2 class="text-lg sm:text-xl font-bold text-slate-950 mt-0.5">Database & Backup</h2>
-                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Manage automatic backups and recovery actions.</p>
+                                <div class="text-sm font-bold text-slate-900">Change Password</div>
+                                <div class="text-xs text-slate-500 mt-0.5">Send a reset code to your account email.</div>
                             </div>
+                            <button id="settings-change-password" type="button" class="secondary-btn">Change</button>
                         </div>
-
-                        <div class="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-4 sm:gap-6">
-                            <div class="space-y-4">
-                                <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                                    <div>
-                                        <div class="font-bold text-xs sm:text-sm text-slate-900">Automatic Backups</div>
-                                        <div class="text-[11px] sm:text-xs text-slate-500 mt-0.5">Enable daily backup scheduling for system records.</div>
-                                    </div>
-                                    <label class="toggle"><input id="backup-auto" type="checkbox" checked><span></span></label>
-                                </div>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Backup Time</label>
-                                        <input id="backup-time" type="time" value="02:00" class="setting-input">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Retention Period</label>
-                                        <select id="backup-retention" class="setting-input">
-                                            <option value="7">7 days</option>
-                                            <option value="30" selected>30 days</option>
-                                            <option value="90">90 days</option>
-                                            <option value="365">1 year</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="rounded-2xl bg-slate-950 text-white p-4 sm:p-5 flex flex-col justify-between gap-4">
-                                <div>
-                                    <div class="text-[11px] text-slate-400 font-semibold uppercase">Last Backup</div>
-                                    <div id="lastBackupLabel" class="font-bold text-xs sm:text-sm mt-1">No backup recorded</div>
-                                </div>
-                                <div class="grid gap-2">
-                                    <button onclick="createBackup()" class="w-full rounded-xl bg-white text-slate-950 px-3.5 py-2 text-xs font-bold hover:bg-slate-100 transition-all shadow-sm">Create Backup Now</button>
-                                    <button onclick="restoreBackup()" class="w-full rounded-xl border border-white/20 px-3.5 py-2 text-xs font-bold hover:bg-white/10 transition-all">Restore</button>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- Appearance -->
-                    <section class="panel rounded-2xl sm:rounded-[2rem] p-5 sm:p-7" id="appearance-settings">
-                        <div class="flex items-start gap-3 sm:gap-4 mb-5 sm:mb-6">
-                            <div class="icon-box">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 0 0 0 18h1.5a2.5 2.5 0 0 0 0-5H12a2 2 0 0 1 0-4h3a3 3 0 0 0 0-6h-3Z"/><circle cx="7.5" cy="10" r=".5"/><circle cx="9.5" cy="7" r=".5"/><circle cx="13" cy="7" r=".5"/></svg>
-                            </div>
+                        <div class="action-row">
                             <div>
-                                <h2 class="text-lg sm:text-xl font-bold text-slate-950 mt-0.5">Appearance</h2>
-                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Select a theme color applied globally across pages.</p>
+                                <div class="text-sm font-bold text-slate-900">Two-Factor Authentication</div>
+                                <div id="twofa-status-text" class="text-xs text-slate-500 mt-0.5">Add an extra layer of security to your account.</div>
                             </div>
+                            <button id="twofa-toggle-btn" type="button" class="secondary-btn"><span id="twofa-toggle-label">Enable</span></button>
                         </div>
-
-                        <div class="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6 items-start">
+                        <div class="action-row">
                             <div>
-                                <label class="block text-xs font-bold text-slate-700 mb-2">Theme Color</label>
-                                <div id="theme-colors" class="flex items-center gap-4"></div>
-                                <p class="text-xs text-slate-400 mt-3">The selected color updates the sidebar, navigation buttons, and accent elements.</p>
+                                <div class="text-sm font-bold text-slate-900">Sign Out</div>
+                                <div class="text-xs text-slate-500 mt-0.5">End your current CITE-Flow session.</div>
                             </div>
-                            <div class="rounded-2xl border border-slate-200 p-4 bg-slate-50">
-                                <div class="text-[11px] font-bold tracking-wide uppercase text-slate-500 mb-2">Preview</div>
-                                <div class="rounded-xl overflow-hidden border border-slate-200 bg-white">
-                                    <div class="h-10" style="background:var(--cite-theme)"></div>
-                                    <div class="p-3 space-y-2">
-                                        <div class="h-2.5 rounded bg-slate-200 w-2/3"></div>
-                                        <div class="h-2.5 rounded bg-slate-100 w-full"></div>
-                                        <button data-theme-primary="true" class="mt-1 px-3 py-1.5 rounded-lg bg-[#621708] text-white text-xs font-bold">Action</button>
-                                    </div>
-                                </div>
-                            </div>
+                            <button id="settings-sign-out" type="button" class="secondary-btn text-red-600 border-red-200">Sign Out</button>
                         </div>
-                    </section>
-                </div>
-
-                <!-- Aside quick navigation -->
-                <aside class="space-y-5">
-                    <section class="panel rounded-2xl sm:rounded-[2rem] p-5 sticky top-20">
-                        <h2 class="font-bold text-sm sm:text-base text-slate-950">Settings Navigation</h2>
-                        <p class="text-xs text-slate-500 mt-0.5">Quick jump to section</p>
-                        <div class="mt-4 space-y-2 text-xs sm:text-sm">
-                            <a href="#general-settings" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 font-semibold text-slate-700 hover:bg-slate-50">
-                                <span>General Settings</span>
-                                <i class="fa-solid fa-arrow-right text-xs text-slate-400"></i>
-                            </a>
-                            <a href="#notification-settings" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 font-semibold text-slate-700 hover:bg-slate-50">
-                                <span>Notification Settings</span>
-                                <i class="fa-solid fa-arrow-right text-xs text-slate-400"></i>
-                            </a>
-                            <a href="#backup-settings" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 font-semibold text-slate-700 hover:bg-slate-50">
-                                <span>Database & Backup</span>
-                                <i class="fa-solid fa-arrow-right text-xs text-slate-400"></i>
-                            </a>
-                            <a href="#appearance-settings" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 font-semibold text-slate-700 hover:bg-slate-50">
-                                <span>Appearance</span>
-                                <i class="fa-solid fa-arrow-right text-xs text-slate-400"></i>
-                            </a>
-                        </div>
-                        <div class="mt-5 rounded-2xl bg-slate-50 border border-slate-100 p-4">
-                            <div class="text-[11px] text-slate-400 font-bold uppercase">Current Academic Period</div>
-                            <div id="academicSummary" class="text-xs sm:text-sm font-bold text-slate-950 mt-1">2025-2026 · First Semester</div>
-                        </div>
-                    </section>
-                </aside>
-            </div>
-
-            <div class="mt-8 flex flex-col sm:flex-row sm:justify-end gap-2.5">
-                <button onclick="resetSettings()" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50">Reset</button>
-                <button onclick="saveSettings()" data-theme-primary="true" class="w-full sm:w-auto px-8 py-2.5 rounded-xl bg-[#621708] text-white text-xs sm:text-sm font-bold hover:bg-[#8c2a10] shadow-sm">Save Changes</button>
+                    </div>
+                </section>
             </div>
         </div>
     </main>
 </div>
 
-<!-- CONFIRM MODAL -->
-<div id="confirmModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[2500] flex items-center justify-center p-3 sm:p-4 overflow-y-auto min-h-screen">
-    <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden my-auto">
-        <div class="p-6 border-b border-slate-100">
-            <p class="text-[10px] font-semibold tracking-[0.18em] text-[#621708] uppercase">Confirmation</p>
-            <h3 id="confirmTitle" class="text-base sm:text-lg font-bold text-slate-950 mt-1">Confirm action</h3>
-            <p id="confirmMessage" class="text-xs sm:text-sm text-slate-500 mt-1">Please confirm this action.</p>
+<div id="confirmModal" class="hidden fixed inset-0 bg-slate-950/50 z-[2500] items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+        <div class="p-6">
+            <h3 id="confirmTitle" class="text-lg font-bold text-slate-950">Confirm</h3>
+            <p id="confirmMessage" class="text-sm text-slate-500 mt-1"></p>
         </div>
         <div class="px-6 py-4 bg-slate-50 flex justify-end gap-2.5">
-            <button onclick="closeConfirmModal(false)" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
-            <button onclick="closeConfirmModal(true)" data-theme-primary="true" class="px-5 py-2 rounded-xl bg-[#621708] text-white text-xs sm:text-sm font-bold hover:bg-[#8c2a10]">Continue</button>
+            <button type="button" id="confirmNo" class="secondary-btn">Cancel</button>
+            <button type="button" id="confirmYes" class="primary-btn" data-theme-primary="true">Save period</button>
+        </div>
+    </div>
+</div>
+
+<div id="twofa-modal" class="hidden fixed inset-0 bg-slate-950/50 z-[2500] items-center justify-center p-4">
+    <div class="bg-white rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-start justify-between">
+            <div>
+                <p class="text-[10px] font-semibold tracking-[0.18em] uppercase" style="color: var(--cite-theme)">Security</p>
+                <h2 class="text-lg font-semibold text-slate-950 mt-1">Set Up Two-Factor Authentication</h2>
+            </div>
+            <button type="button" id="twofa-modal-close" class="secondary-btn px-3 py-2">Close</button>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="text-sm text-slate-600">Scan this QR code with an authenticator app, then enter the code.</p>
+            <div id="twofa-qr-container" class="p-4 border border-slate-200 rounded-2xl flex items-center justify-center min-h-[180px] bg-slate-50 text-sm text-slate-500">Generating QR code...</div>
+            <form id="twofa-verify-form" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Authentication Code</label>
+                    <input id="twofa-code" type="text" inputmode="numeric" maxlength="8" placeholder="123456" class="field tracking-widest">
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" id="twofa-modal-cancel" class="secondary-btn">Cancel</button>
+                    <button id="twofa-verify-btn" type="submit" class="primary-btn" data-theme-primary="true">Verify and Enable</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
 <div id="toast" class="toast">
-    <div class="rounded-2xl bg-slate-950 text-white px-4 sm:px-5 py-3 sm:py-3.5 shadow-2xl flex items-start gap-3 max-w-sm">
-        <svg class="w-5 h-5 text-emerald-300 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        <div>
-            <div id="toastTitle" class="text-xs sm:text-sm font-bold">Saved</div>
-            <div id="toastMessage" class="text-[11px] sm:text-xs text-slate-300 mt-0.5">Changes have been applied.</div>
-        </div>
+    <div class="rounded-2xl bg-slate-950 text-white px-4 py-3 shadow-2xl max-w-sm">
+        <div id="toastTitle" class="text-sm font-bold">Saved</div>
+        <div id="toastMessage" class="text-xs text-slate-300 mt-0.5">Settings updated.</div>
     </div>
 </div>
 
+<script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
+<script src="../shared/account-security.js"></script>
+<script src="../nav.js" defer></script>
 <script>
-    const SETTINGS_KEY = 'citeflow_system_settings';
-    let selectedThemeColor = window.CiteFlowUI?.getTheme() || '#621708';
+    const ADMIN_NOTIFS = [
+        { key: 'submissions', title: 'New submissions', hint: 'When faculty submit or update workflow documents.' },
+        { key: 'tasks', title: 'Task and workflow activity', hint: 'Assignments, reminders, and task updates.' },
+        { key: 'reviews', title: 'Review activity', hint: 'Approvals, revisions, and rejections in the workflow feed.' },
+        { key: 'seminar_feedback', title: 'Seminar feedback', hint: 'In-app alerts when faculty submit event feedback.' }
+    ];
+
+    let isEditing = false;
+    let snapshot = null;
+    let selectedTheme = window.CiteFlowUI?.getTheme?.() || '#621708';
     let confirmResolver = null;
-
-    const defaultSettings = {
-        systemName: 'CITE-Flow Management System',
-        institution: 'College of Technology and Engineering',
-        academicYear: '2025-2026',
-        semester: 'First Semester',
-        notifications: {
-            email: true,
-            workflow: true,
-            document: true,
-            feedback: true,
-            weekly: false
-        },
-        backup: {
-            automatic: true,
-            time: '02:00',
-            retention: '30',
-            lastBackup: ''
-        }
-    };
-
-    function getSettings() {
-        try {
-            return { ...defaultSettings, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')) };
-        } catch (_) {
-            return defaultSettings;
-        }
-    }
-
-    function setSettings(settings) {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    }
-
-    function updateAcademicSummary() {
-        const academicYear = document.getElementById('setting-academic-year').value || 'Not set';
-        const semester = document.getElementById('setting-semester').value || 'Not set';
-        document.getElementById('academicSummary').textContent = `${academicYear} · ${semester}`;
-    }
-
-    function loadSettings() {
-        const s = getSettings();
-        document.getElementById('setting-system-name').value = s.systemName || defaultSettings.systemName;
-        document.getElementById('setting-institution').value = s.institution || defaultSettings.institution;
-        document.getElementById('setting-academic-year').value = s.academicYear || defaultSettings.academicYear;
-        document.getElementById('setting-semester').value = s.semester || defaultSettings.semester;
-        document.getElementById('notify-email').checked = !!s.notifications?.email;
-        document.getElementById('notify-workflow').checked = !!s.notifications?.workflow;
-        document.getElementById('notify-document').checked = !!s.notifications?.document;
-        document.getElementById('notify-feedback').checked = !!s.notifications?.feedback;
-        document.getElementById('notify-weekly').checked = !!s.notifications?.weekly;
-        document.getElementById('backup-auto').checked = !!s.backup?.automatic;
-        document.getElementById('backup-time').value = s.backup?.time || defaultSettings.backup.time;
-        document.getElementById('backup-retention').value = s.backup?.retention || defaultSettings.backup.retention;
-        document.getElementById('lastBackupLabel').textContent = s.backup?.lastBackup ? new Date(s.backup.lastBackup).toLocaleString() : 'No backup recorded';
-        updateAcademicSummary();
-    }
-
-    function collectSettings() {
-        const current = getSettings();
-        return {
-            ...current,
-            systemName: document.getElementById('setting-system-name').value.trim() || defaultSettings.systemName,
-            institution: document.getElementById('setting-institution').value.trim() || defaultSettings.institution,
-            academicYear: document.getElementById('setting-academic-year').value.trim() || defaultSettings.academicYear,
-            semester: document.getElementById('setting-semester').value,
-            notifications: {
-                email: document.getElementById('notify-email').checked,
-                workflow: document.getElementById('notify-workflow').checked,
-                document: document.getElementById('notify-document').checked,
-                feedback: document.getElementById('notify-feedback').checked,
-                weekly: document.getElementById('notify-weekly').checked
-            },
-            backup: {
-                automatic: document.getElementById('backup-auto').checked,
-                time: document.getElementById('backup-time').value || '02:00',
-                retention: document.getElementById('backup-retention').value,
-                lastBackup: current.backup?.lastBackup || ''
-            }
-        };
-    }
 
     function showToast(title, message) {
         document.getElementById('toastTitle').textContent = title;
@@ -382,6 +296,118 @@
         const toast = document.getElementById('toast');
         toast.classList.add('show');
         setTimeout(() => toast.classList.remove('show'), 2600);
+    }
+
+    function showError(message) {
+        const el = document.getElementById('settingsError');
+        if (!message) { el.classList.add('hidden'); el.textContent = ''; return; }
+        el.textContent = message;
+        el.classList.remove('hidden');
+    }
+
+    function initials(name, email) {
+        const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+        if (parts[0]) return parts[0].slice(0, 2).toUpperCase();
+        return String(email || 'AD').slice(0, 2).toUpperCase();
+    }
+
+    function renderAccount(profile) {
+        const name = profile.name || 'Administrator';
+        const email = profile.email || '—';
+        document.getElementById('accountName').textContent = name;
+        document.getElementById('accountEmail').textContent = email;
+        document.getElementById('accountRole').textContent = profile.role || 'Administrator';
+        document.getElementById('accountDept').textContent = profile.department || 'College of Technology and Engineering';
+        const avatar = document.getElementById('accountAvatar');
+        if (profile.avatar) {
+            avatar.innerHTML = `<img src="${profile.avatar}" alt="" class="w-full h-full object-cover">`;
+        } else {
+            avatar.textContent = initials(name, email);
+        }
+    }
+
+    function renderNotifRows(prefs) {
+        document.getElementById('notifRows').innerHTML = ADMIN_NOTIFS.map((item) => `
+            <label class="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div>
+                    <div class="text-sm font-bold text-slate-900">${item.title}</div>
+                    <div class="text-xs text-slate-500 mt-0.5">${item.hint}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" data-pref="${item.key}" ${prefs[item.key] !== false ? 'checked' : ''} disabled><span></span></label>
+            </label>
+        `).join('');
+    }
+
+    function collectPrefs() {
+        const prefs = window.CiteFlowSettings.defaultPrefs('admin');
+        document.querySelectorAll('[data-pref]').forEach((input) => {
+            prefs[input.dataset.pref] = input.checked;
+        });
+        return prefs;
+    }
+
+    function toThemeHex(color) {
+        const value = String(color || '#621708').trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toLowerCase();
+        if (/^#[0-9a-fA-F]{3}$/.test(value)) {
+            return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase();
+        }
+        return '#621708';
+    }
+
+    function renderTheme(color) {
+        selectedTheme = toThemeHex(color);
+        const picker = document.getElementById('themePicker');
+        const preview = document.getElementById('themePreview');
+        const hex = document.getElementById('themeHexDisplay');
+        if (picker) {
+            picker.value = selectedTheme;
+            picker.disabled = !isEditing;
+        }
+        if (preview) preview.style.background = selectedTheme;
+        if (hex) hex.textContent = selectedTheme.toUpperCase();
+    }
+
+    function applyThemeLive(color) {
+        selectedTheme = toThemeHex(color);
+        window.CiteFlowUI?.setTheme?.(selectedTheme);
+        const preview = document.getElementById('themePreview');
+        const hex = document.getElementById('themeHexDisplay');
+        if (preview) preview.style.background = selectedTheme;
+        if (hex) hex.textContent = selectedTheme.toUpperCase();
+        const picker = document.getElementById('themePicker');
+        if (picker && picker.value !== selectedTheme) picker.value = selectedTheme;
+    }
+
+    function setEditing(next) {
+        isEditing = next;
+        document.body.classList.toggle('settings-editing', next);
+        document.getElementById('editBtn').classList.toggle('hidden', next);
+        document.getElementById('cancelBtn').classList.toggle('hidden', !next);
+        document.getElementById('saveBtn').classList.toggle('hidden', !next);
+        document.querySelectorAll('[data-edit-field]').forEach((el) => { el.disabled = !next; });
+        document.querySelectorAll('[data-pref]').forEach((el) => { el.disabled = !next; });
+        renderTheme(selectedTheme);
+    }
+
+    function takeSnapshot() {
+        snapshot = {
+            theme: selectedTheme,
+            prefs: collectPrefs(),
+            academic_year: document.getElementById('academicYear').value,
+            semester: document.getElementById('academicSemester').value
+        };
+    }
+
+    function restoreSnapshot() {
+        if (!snapshot) return;
+        selectedTheme = snapshot.theme;
+        window.CiteFlowUI?.setTheme?.(snapshot.theme);
+        document.getElementById('academicYear').value = snapshot.academic_year;
+        document.getElementById('academicSemester').value = snapshot.semester;
+        renderNotifRows(snapshot.prefs);
+        renderTheme(snapshot.theme);
     }
 
     function askConfirm(title, message) {
@@ -393,200 +419,99 @@
         return new Promise((resolve) => { confirmResolver = resolve; });
     }
 
-    function closeConfirmModal(result) {
-        const modal = document.getElementById('confirmModal');
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        if (confirmResolver) confirmResolver(result);
-        confirmResolver = null;
-    }
-
-    function renderThemeColors() {
-        const current = window.CiteFlowUI?.getTheme ? window.CiteFlowUI.getTheme() : selectedThemeColor;
-
-        document.getElementById("theme-colors").innerHTML = `
-            <label class="relative cursor-pointer">
-                <input
-                    type="color"
-                    id="themePicker"
-                    value="${current}"
-                    class="absolute inset-0 opacity-0 w-16 h-16 sm:w-20 sm:h-20 cursor-pointer">
-                <div
-                    id="themePreview"
-                    class="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-white shadow-lg transition"
-                    style="background:${current}">
-                </div>
-            </label>
-            <div>
-                <p class="font-bold text-xs sm:text-sm text-slate-800">
-                    Click circle to choose color
-                </p>
-                <p class="text-xs text-gray-500 mt-0.5">
-                    Current: <b id="themeHexDisplay" class="font-mono">${current}</b>
-                </p>
-            </div>
-        `;
-
-        document.getElementById("themePicker").addEventListener("input", function() {
-            changeThemeColor(this.value);
-            const hexDisplay = document.getElementById("themeHexDisplay");
-            if (hexDisplay) hexDisplay.textContent = this.value;
-        });
-    }
-
-    function changeThemeColor(color) {
-        selectedThemeColor = color;
-        if (window.CiteFlowUI?.setTheme) {
-            window.CiteFlowUI.setTheme(color);
-        }
-        const prev = document.getElementById("themePreview");
-        if (prev) prev.style.background = color;
-    }
-
-    function saveSettings() {
-        const settings = collectSettings();
-        setSettings(settings);
-        if (window.CiteFlowUI?.setTheme) {
-            window.CiteFlowUI.setTheme(selectedThemeColor);
-        }
-        updateAcademicSummary();
-        showToast("Saved", "Settings updated successfully.");
-    }
-
-    async function resetSettings() {
-        const confirmed = await askConfirm(
-            'Reset system settings', 
-            'This will restore all system settings and the theme color to their default values.'
-        );
-        if (!confirmed) return;
-
-        const DEFAULT_THEME = '#621708';
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaultSettings));
-        loadSettings();
-
-        if (window.CiteFlowUI?.setTheme) {
-            window.CiteFlowUI.setTheme(DEFAULT_THEME);
-        }
-        selectedThemeColor = DEFAULT_THEME;
-
-        const picker = document.getElementById('themePicker');
-        const preview = document.getElementById('themePreview');
-        const hexDisplay = document.getElementById('themeHexDisplay');
-        if (picker) picker.value = DEFAULT_THEME;
-        if (preview) preview.style.background = DEFAULT_THEME;
-        if (hexDisplay) hexDisplay.textContent = DEFAULT_THEME;
-
-        showToast('Settings reset', 'Default values and theme restored.');
-    }
-
-    function createBackup() {
-        const settings = collectSettings();
-        settings.backup.lastBackup = new Date().toISOString();
-        setSettings(settings);
-        document.getElementById('lastBackupLabel').textContent = new Date(settings.backup.lastBackup).toLocaleString();
-        showToast('Backup created', 'New backup record created.');
-    }
-
-    async function restoreBackup() {
-        const confirmed = await askConfirm('Restore backup', 'Restore from latest backup record? Review source before continuing.');
-        if (!confirmed) return;
-        showToast('Restore started', 'Restore request prepared.');
-    }
-
-    ['setting-academic-year', 'setting-semester'].forEach(id => {
-        document.addEventListener('input', (event) => {
-            if (event.target && event.target.id === id) updateAcademicSummary();
-        });
-        document.addEventListener('change', (event) => {
-            if (event.target && event.target.id === id) updateAcademicSummary();
-        });
-    });
-
-    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-    const { createClient } = supabase;
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-    window.supabaseClient = supabaseClient;
-
-    let currentUser = null;
-    let currentProfile = null;
-
-    function formatFullName(firstName, lastName, fallback) {
-        const composed = [firstName, lastName].filter(Boolean).join(' ').trim();
-        return composed || fallback || 'Unknown User';
-    }
-
-    function getProfileFromAuthMetadata(user) {
-        const metadata = user?.user_metadata || {};
-        return {
-            first_name: metadata.first_name || '',
-            last_name: metadata.last_name || '',
-            email: user?.email || '',
-            role: metadata.role || 'Administrator',
-            avatar_url: metadata.avatar_url || ''
+    async function loadAccount() {
+        const sb = window.supabaseClient;
+        const { data } = await sb.auth.getUser();
+        const user = data?.user;
+        if (!user) return;
+        let profile = {
+            name: [user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ') || user.email,
+            email: user.email,
+            role: user.user_metadata?.role || 'Administrator',
+            department: user.user_metadata?.department || 'College of Technology and Engineering',
+            avatar: user.user_metadata?.avatar_url || ''
         };
-    }
-
-    function isAdminProfilesMissingError(error) {
-        if (!error) return false;
-        const code = String(error.code || '').toUpperCase();
-        const message = String(error.message || '').toLowerCase();
-        return code === '42P01' || code === 'PGRST205' || (message.includes('admin_profiles') && (message.includes('does not exist') || message.includes('relation')));
-    }
-
-    function renderProfile(profile, user) {
-        const fullName = formatFullName(profile.first_name, profile.last_name, user?.email);
-        const role = profile.role || 'Administrator';
-        const avatarUrl = profile.avatar_url || '';
-        const profileNameEl = document.getElementById('profileName');
-        const profileRoleEl = document.getElementById('profileRole');
-        const sidebarAvatar = document.getElementById('sidebarAvatar');
-        const sidebarAvatarFallback = document.getElementById('sidebarAvatarFallback');
-        if (profileNameEl) profileNameEl.textContent = fullName;
-        if (profileRoleEl) profileRoleEl.textContent = role;
-        if (avatarUrl) {
-            if (sidebarAvatar) { sidebarAvatar.src = avatarUrl; sidebarAvatar.classList.remove('hidden'); }
-            if (sidebarAvatarFallback) sidebarAvatarFallback.classList.add('hidden');
-        } else {
-            if (sidebarAvatar) { sidebarAvatar.src = ''; sidebarAvatar.classList.add('hidden'); }
-            if (sidebarAvatarFallback) sidebarAvatarFallback.classList.remove('hidden');
-        }
-    }
-
-    async function loadAdminProfile() {
-        const { data: authData, error: authError } = await supabaseClient.auth.getUser();
-        if (authError || !authData?.user) return;
-        currentUser = authData.user;
-        let profile = getProfileFromAuthMetadata(currentUser);
-        const { data: dbProfile, error: dbError } = await supabaseClient.from('admin_profiles').select('*').eq('id', currentUser.id).maybeSingle();
-        if (dbError) {
-            if (isAdminProfilesMissingError(dbError)) console.warn('admin_profiles table not found. Using auth metadata only.');
-            else console.error('Error fetching admin profile:', dbError);
-        } else if (dbProfile) {
+        const { data: dbProfile } = await sb.from('admin_profiles').select('*').eq('id', user.id).maybeSingle();
+        if (dbProfile) {
             profile = {
-                first_name: dbProfile.first_name || profile.first_name,
-                last_name: dbProfile.last_name || profile.last_name,
+                name: dbProfile.full_name || [dbProfile.first_name, dbProfile.last_name].filter(Boolean).join(' ') || profile.name,
                 email: dbProfile.email || profile.email,
                 role: dbProfile.role || profile.role,
-                avatar_url: dbProfile.avatar_url || profile.avatar_url
+                department: dbProfile.department || profile.department,
+                avatar: dbProfile.avatar_url || profile.avatar
             };
         }
-        currentProfile = profile;
-        renderProfile(currentProfile, currentUser);
+        renderAccount(profile);
     }
 
-    window.addEventListener('DOMContentLoaded', async () => {
-        await loadSidebar();
-        loadSettings();
-        if (window.CiteFlowUI?.getTheme) {
-            selectedThemeColor = window.CiteFlowUI.getTheme();
+    async function saveAll() {
+        const nextPeriod = {
+            academic_year: document.getElementById('academicYear').value.trim(),
+            semester: document.getElementById('academicSemester').value
+        };
+        const periodChanged = snapshot && (snapshot.academic_year !== nextPeriod.academic_year || snapshot.semester !== nextPeriod.semester);
+        if (periodChanged) {
+            const ok = await askConfirm(
+                'Update academic period?',
+                'This academic period is shared across CITE-Flow and may affect information displayed to faculty.'
+            );
+            if (!ok) return;
         }
-        renderThemeColors();
-        loadAdminProfile();
+        try {
+            window.CiteFlowUI?.setTheme?.(selectedTheme);
+            await window.CiteFlowSettings.savePreferences(collectPrefs());
+            if (periodChanged) await window.CiteFlowSettings.saveAcademicPeriod(nextPeriod);
+            showToast('Saved', 'Your settings have been updated.');
+            setEditing(false);
+            takeSnapshot();
+            showError('');
+        } catch (error) {
+            showError(error.message || 'Unable to save settings.');
+        }
+    }
+
+    document.getElementById('editBtn').addEventListener('click', () => { takeSnapshot(); setEditing(true); });
+    document.getElementById('cancelBtn').addEventListener('click', () => { restoreSnapshot(); setEditing(false); });
+    document.getElementById('saveBtn').addEventListener('click', saveAll);
+    document.getElementById('confirmYes').addEventListener('click', () => {
+        document.getElementById('confirmModal').classList.add('hidden');
+        document.getElementById('confirmModal').classList.remove('flex');
+        if (confirmResolver) confirmResolver(true);
+        confirmResolver = null;
+    });
+    document.getElementById('confirmNo').addEventListener('click', () => {
+        document.getElementById('confirmModal').classList.add('hidden');
+        document.getElementById('confirmModal').classList.remove('flex');
+        if (confirmResolver) confirmResolver(false);
+        confirmResolver = null;
+    });
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        if (typeof loadSidebar === 'function') await loadSidebar();
+        const semesterSelect = document.getElementById('academicSemester');
+        semesterSelect.innerHTML = window.CiteFlowSettings.SEMESTERS.map((item) => `<option value="${item}">${item}</option>`).join('');
+        selectedTheme = window.CiteFlowUI?.getTheme?.() || selectedTheme;
+        document.getElementById('themePicker')?.addEventListener('input', (event) => {
+            if (!isEditing) return;
+            applyThemeLive(event.target.value);
+        });
+        document.getElementById('themePickerLabel')?.addEventListener('click', (event) => {
+            if (!isEditing) event.preventDefault();
+        });
+        const [period, prefs] = await Promise.all([
+            window.CiteFlowSettings.getAcademicPeriod(true),
+            window.CiteFlowSettings.loadPreferences(true)
+        ]);
+        document.getElementById('academicYear').value = period.academic_year;
+        document.getElementById('academicSemester').value = period.semester;
+        renderNotifRows(prefs);
+        renderTheme(selectedTheme);
+        await loadAccount();
+        if (period.fromFallback) {
+            showError('Academic period is using a fallback value until system_settings is available in Supabase.');
+        }
     });
 </script>
-<script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
-<script src="../nav.js" defer></script>
 </body>
 </html>

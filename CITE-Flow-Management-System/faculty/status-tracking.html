@@ -535,13 +535,16 @@ function refreshNavNotifications() {
     }
 
     const faculty = resolveCurrentFaculty();
-    const filtered = (state.notifications || []).filter((notification) => {
+    let filtered = (state.notifications || []).filter((notification) => {
         if (!faculty) return true;
         if (notification.faculty_id != null) {
             return String(notification.faculty_id) === String(faculty.id);
         }
         return true;
     });
+    if (window.CiteFlowSettings?.filterNotifications) {
+        filtered = window.CiteFlowSettings.filterNotifications(filtered, 'faculty');
+    }
 
     window.refreshFacultyNavNotifications(filtered);
 }
@@ -820,7 +823,13 @@ async function fetchAllData() {
         state.submissions = submissions.data || [];
         const submissionIds = new Set(state.submissions.map(s => String(s.id)));
         state.files = files.error ? [] : (files.data || []).filter(f => submissionIds.has(String(f.submission_id)));
+        if (window.CiteFlowSettings?.loadPreferences) {
+            try { await window.CiteFlowSettings.loadPreferences(); } catch (_) { /* keep defaults */ }
+        }
         state.notifications = notifications.error ? [] : (notifications.data || []);
+        if (window.CiteFlowSettings?.filterNotifications) {
+            state.notifications = window.CiteFlowSettings.filterNotifications(state.notifications, 'faculty');
+        }
         state.taskFiles = taskFiles.error ? [] : (taskFiles.data || []);
         state.approvalHistory = approvalHistory.error ? [] : (approvalHistory.data || []);
         renderRows();
@@ -862,6 +871,7 @@ window.onload = async () => {
 };
 </script>
 <script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
 <script src="faculty-nav.js"></script>
 </body>
 </html>

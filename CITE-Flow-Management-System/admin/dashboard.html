@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="../nav.css">
     <style>
@@ -104,8 +105,33 @@
             color: #0f172a;
         }
         .field:focus { border-color: #621708; box-shadow: 0 0 0 4px rgba(98,23,8,.08); }
+        select.field {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            min-height: 42px;
+            padding: 10px 44px 10px 14px;
+            background-color: #fff;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1h10L6 7z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            background-size: 12px 8px;
+        }
+        select.field:focus {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23621708' d='M1 1h10L6 7z'/%3E%3C/svg%3E");
+        }
         .progress-track { height: 10px; background: #eef2f7; border-radius: 999px; overflow: hidden; }
         .progress-fill { height: 100%; border-radius: 999px; transition: width 0.35s ease; }
+        #recentActivityList > div {
+            cursor: default;
+        }
+        @media (max-width: 640px) {
+            select.field {
+                width: 100%;
+                padding-right: 44px;
+                background-position: right 16px center;
+            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 overflow-x-hidden min-h-screen">
@@ -139,7 +165,7 @@
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Total Documents</p>
                             <p id="totalDocuments" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-2">0</p>
-                            <p id="totalDocumentsTrend" class="text-xs text-slate-500 mt-2">No trend available</p>
+                            <p id="totalDocumentsTrend" class="text-xs text-slate-500 mt-2">Loading…</p>
                         </div>
                         <div class="metric-icon-ring">
                             <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
@@ -300,7 +326,10 @@
 <script>
 const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+const supabaseClient = window.supabaseClient || window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+});
+window.supabaseClient = supabaseClient;
 
 let currentUser = null;
 let currentProfile = null;
@@ -313,6 +342,45 @@ function formatFullName(firstName, lastName, fallback) {
 function safeCount(data) { return Array.isArray(data) ? data.length : 0; }
 function sumUnits(rows) { return (rows || []).reduce((sum, row) => sum + (Number(row.units) || 0), 0); }
 function percent(value, total) { return total > 0 ? Math.round((value / total) * 100) : 0; }
+function documentTimestamp(row) {
+    return row?.uploaded_at || row?.created_at || row?.updated_at || null;
+}
+
+function documentTrendLabel(docs) {
+    const total = Array.isArray(docs) ? docs.length : 0;
+    if (total === 0) return 'No documents yet';
+
+    const now = Date.now();
+    const day = 86400000;
+    const recentStart = now - 30 * day;
+    const previousStart = now - 60 * day;
+    let dated = 0;
+    let recent = 0;
+    let previous = 0;
+
+    (docs || []).forEach((row) => {
+        const raw = documentTimestamp(row);
+        const time = raw ? new Date(raw).getTime() : NaN;
+        if (!Number.isFinite(time)) return;
+        dated += 1;
+        if (time >= recentStart) recent += 1;
+        else if (time >= previousStart) previous += 1;
+    });
+
+    if (dated === 0) {
+        return total === 1 ? '1 document on file' : `${total} documents on file`;
+    }
+    if (recent === 0 && previous === 0) {
+        return total === 1 ? '1 document on file' : `${total} documents on file`;
+    }
+    if (previous === 0) {
+        return recent === 1 ? '1 added in the last 30 days' : `${recent} added in the last 30 days`;
+    }
+    const delta = recent - previous;
+    if (delta === 0) return 'No change vs previous 30 days';
+    const sign = delta > 0 ? '+' : '';
+    return `${sign}${delta} vs previous 30 days`;
+}
 function clamp(value) { return Math.max(0, Math.min(100, Math.round(value))); }
 function esc(value) { return String(value || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function formatDate(value) {
@@ -335,7 +403,8 @@ async function loadDashboardData() {
     const department = document.getElementById('departmentFilter').value;
     const mode = document.getElementById('trendsMode').value;
 
-    const [documents, research, teaching, advisory, adminRoles, activities, engagement] = await Promise.all([
+    const [vaultDocuments, documents, research, teaching, advisory, adminRoles, activities, engagement] = await Promise.all([
+        safeSelect('documents', '*'),
         safeSelect('faculty_documents', '*'),
         safeSelect('faculty_research_projects', '*'),
         safeSelect('faculty_teaching_loads', '*'),
@@ -345,6 +414,9 @@ async function loadDashboardData() {
         safeSelect('engagement_logs', '*')
     ]);
 
+    const filteredVaultDocs = department
+        ? vaultDocuments.filter(row => row.department === department || !row.department)
+        : vaultDocuments;
     const filteredDocs = department ? documents.filter(row => row.department === department || !row.department) : documents;
     const filteredResearch = department ? research.filter(row => row.department === department || !row.department) : research;
     const filteredTeaching = department ? teaching.filter(row => row.department === department || !row.department) : teaching;
@@ -352,7 +424,7 @@ async function loadDashboardData() {
     const filteredAdminRoles = department ? adminRoles.filter(row => row.department === department || !row.department) : adminRoles;
     const filteredEngagement = department ? engagement.filter(row => row.department === department || !row.department) : engagement;
 
-    const totalDocs = safeCount(filteredDocs);
+    const totalDocs = safeCount(filteredVaultDocs);
     const approvedDocs = filteredDocs.filter(row => ['approved', 'completed'].includes(String(row.status || '').toLowerCase())).length;
     const pendingDocs = filteredDocs.filter(row => ['submitted', 'pending', 'pending review', 'for review'].includes(String(row.status || '').toLowerCase())).length;
 
@@ -368,7 +440,7 @@ async function loadDashboardData() {
     document.getElementById('totalDocuments').textContent = totalDocs;
     document.getElementById('approvedDocuments').textContent = approvedDocs;
     document.getElementById('pendingDocuments').textContent = pendingDocs;
-    document.getElementById('totalDocumentsTrend').textContent = `${totalDocs} document record${totalDocs === 1 ? '' : 's'} tracked`;
+    document.getElementById('totalDocumentsTrend').textContent = documentTrendLabel(filteredVaultDocs);
     document.getElementById('approvedTrend').textContent = `${percent(approvedDocs, Math.max(totalDocs, 1))}% approval share`;
     document.getElementById('pendingTrend').textContent = `${pendingDocs} pending review`;
 
@@ -388,7 +460,7 @@ async function loadDashboardData() {
         teachingLoad: workloadTotal
     });
     updateTrendsChart({ totalDocs, approvedDocs, pendingDocs, workloadTotal, completedResearch, mode });
-    renderRecentActivities(activities, filteredEngagement, filteredDocs);
+    renderRecentActivities(activities, filteredEngagement, filteredVaultDocs);
 }
 
 function updatePerformanceChart(value) {
@@ -490,7 +562,7 @@ function renderRecentActivities(activities, engagement, documents) {
     const combined = [
         ...activities.map(item => ({ title: item.action || 'System Activity', meta: item.details_text || item.module || 'Activity recorded', time: item.created_at })),
         ...engagement.map(item => ({ title: item.activity_title || item.activity_type || 'Engagement Activity', meta: item.description || item.source_module || 'Engagement recorded', time: item.created_at || item.activity_at })),
-        ...documents.map(item => ({ title: item.document_name || item.title || 'Document submitted', meta: item.status || item.document_type || 'Document record', time: item.created_at }))
+        ...documents.map(item => ({ title: item.name || item.document_name || item.title || 'Document submitted', meta: item.status || item.document_type || item.mime_type || 'Document record', time: item.uploaded_at || item.created_at }))
     ].filter(item => item.title).sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0)).slice(0, 6);
 
     const list = document.getElementById('recentActivityList');
@@ -570,6 +642,7 @@ async function loadAdminProfile() {
 
 function subscribeRealtime() {
     supabaseClient.channel('dashboard-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_research_projects' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_teaching_loads' }, loadDashboardData)
@@ -581,10 +654,10 @@ function subscribeRealtime() {
 }
 
 window.addEventListener('load', async () => {
-    await loadSidebar();
-    await loadAdminProfile();
-    await loadDashboardData();
-    subscribeRealtime();
+    try { await loadSidebar(); } catch (error) { console.warn('Dashboard navigation load skipped:', error); }
+    try { await loadAdminProfile(); } catch (error) { console.warn('Dashboard profile load skipped:', error); }
+    try { await loadDashboardData(); } catch (error) { console.error('Dashboard data load failed:', error); }
+    try { subscribeRealtime(); } catch (error) { console.warn('Dashboard realtime skipped:', error); }
 });
 </script>
 <script src="../nav.js"></script>

@@ -317,6 +317,12 @@ async function loadAdminNavigation() {
         mountNavPart(doc.getElementById("profileModal"), null, true);
         mountNavPart(doc.querySelector(".message-btn"), "message-container", true);
 
+        const logoImg = document.querySelector(".logo-area img");
+        if (logoImg) {
+            const prefix = isInAdminFolder() ? "../" : "";
+            logoImg.src = `${prefix}assets/ctu-logo.png`;
+        }
+
         mountNavPart(doc.getElementById("msgrBackdrop"), null, true);
         mountNavPart(doc.getElementById("msgrDropdown"), null, true);
         mountNavPart(doc.getElementById("msgrPanel"), null, true);

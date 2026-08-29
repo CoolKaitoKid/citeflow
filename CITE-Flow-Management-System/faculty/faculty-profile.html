@@ -336,6 +336,19 @@
                         <div><p class="text-xs text-slate-500">Leave End Date</p><p id="overviewLeaveEndDate" class="font-semibold text-slate-950 mt-1">—</p></div>
                     </div>
                 </div>
+
+                <section class="card p-6 mb-7">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-950">Security</h2>
+                            <p class="text-sm text-slate-500 mt-1">Password, two-factor authentication, and sign out live in Settings.</p>
+                        </div>
+                        <a href="system-settings.html" class="primary-btn inline-flex items-center gap-2" data-theme-primary="true">
+                            Open Settings
+                            <span aria-hidden="true">→</span>
+                        </a>
+                    </div>
+                </section>
             </section>
 
             <!-- RESEARCH TAB -->
@@ -553,7 +566,7 @@
 
             <div>
                 <label class="field-label">Academic Year</label>
-                <input id="teachingAcademicYear" class="field" placeholder="2025-2026">
+                <input id="teachingAcademicYear" class="field" placeholder="2026-2027">
             </div>
 
             <div class="md:col-span-2">
@@ -1355,9 +1368,19 @@ function renderWorkload() {
         : '<div class="text-sm text-slate-500">No teaching loads added yet.</div>';
 }
 
-function openTeachingModal() {
+async function openTeachingModal() {
     document.getElementById('teachingModal').classList.remove('hidden');
     document.getElementById('teachingModal').classList.add('flex');
+    if (!window.CiteFlowSettings) return;
+    try {
+        const period = await window.CiteFlowSettings.getAcademicPeriod();
+        const yearEl = document.getElementById('teachingAcademicYear');
+        const semEl = document.getElementById('teachingSemester');
+        if (yearEl) yearEl.value = period.academic_year || yearEl.value;
+        if (semEl) semEl.value = window.CiteFlowSettings.mapToTeachingSemester(period.semester);
+    } catch (_) {
+        /* keep the form defaults if the academic period cannot be loaded */
+    }
 }
 
 function closeTeachingModal() {
@@ -2213,6 +2236,7 @@ window.addEventListener('load', async () => {
 </script>
 
 <script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
 <script src="../admin/engagement-logger.js"></script>
 <script src="faculty-nav.js"></script>
 </body>

@@ -11,6 +11,7 @@
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/workflow.js"></script>
     <script src="../shared/auth-guard.js"></script>
+    <script src="../shared/cite-settings.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="../nav.css">
@@ -116,9 +117,9 @@
         * { font-family: 'Inter', sans-serif; }
 
         /* ─── Main Surface ──────────────────────────────────────────── */
-        .main-surface { background: #fff; border-radius: 16px; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05); border: 1px solid #e8eaef; }
-        .stat-card { background: #fff; border-radius: 16px; border: 1px solid #e8eaef; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05); transition: box-shadow 0.2s, transform 0.18s; overflow: hidden; }
-        .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .main-surface { background: #fff; border-radius: 12px; box-shadow: none; border: 1px solid #e8eaef; }
+        .stat-card { background: #fff; border-radius: 12px; border: 1px solid #e8eaef; box-shadow: none; overflow: hidden; }
+        .stat-card:hover { box-shadow: none; }
 
         /* ─── Table ─────────────────────────────────────────────────── */
         .data-table thead th { background: #fafafa; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af; text-transform: uppercase; padding: 14px 20px; border-bottom: 1px solid #f3f4f6; }
@@ -277,6 +278,40 @@
         .action-dropdown { position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); min-width: 160px; z-index: 60; display: none; padding: 6px; margin-top: 4px; }
         .action-dropdown.open { display: block; }
         .action-dropdown.open-up { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 4px; }
+        .dropdown-item.is-disabled {
+            color: #94a3b8;
+            cursor: default;
+            pointer-events: none;
+            font-size: 12px;
+        }
+        .wf-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #fff;
+            border: 1px solid #e8eaef;
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-bottom: 16px;
+        }
+        .wf-section-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+        .action-trigger {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            justify-content: center;
+        }
+        @media (max-width: 768px) {
+            .wf-toolbar { flex-direction: column; align-items: stretch; }
+            .wf-toolbar .field-input, .wf-toolbar .view-toggle { width: 100% !important; }
+        }
 
 
 
@@ -286,8 +321,8 @@
         .view-toggle button { padding:9px 13px; font-size:12.5px; font-weight:600; color:#6b7280; border:0; background:transparent; cursor:pointer; }
         .view-toggle button.active { background:#621708; color:#fff; }
         .task-card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
-        .task-folder-card { background:#fff; border:1px solid #f0f0f0; border-radius:16px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.05); cursor:pointer; transition:transform .15s, box-shadow .15s, border-color .15s; }
-        .task-folder-card:hover { transform:translateY(-2px); box-shadow:0 10px 26px rgba(0,0,0,.08); border-color:#ead7ce; }
+        .task-folder-card { background:#fff; border:1px solid #e8eaef; border-radius:12px; padding:16px; box-shadow:none; cursor:pointer; transition:border-color .15s, background .15s; }
+        .task-folder-card:hover { transform:none; box-shadow:none; border-color:#d6dbe3; background:#fafbfc; }
         .folder-icon { width:46px; height:34px; border-radius:8px 8px 10px 10px; background:#f5e8c7; position:relative; border:1px solid #edd6a7; }
         .folder-icon::before { content:''; position:absolute; top:-7px; left:6px; width:22px; height:10px; border-radius:7px 7px 0 0; background:#f5e8c7; border:1px solid #edd6a7; border-bottom:0; }
         .mini-bar-track { height:8px; background:#f3f4f6; border-radius:99px; overflow:hidden; }
@@ -326,9 +361,9 @@
             transition:box-shadow .15s,border-color .15s,transform .15s;
         }
         .report-config-card:hover {
-            border-color:#ead7ce;
-            box-shadow:0 6px 18px rgba(0,0,0,.06);
-            transform:translateY(-1px);
+            border-color:#d6dbe3;
+            box-shadow:none;
+            transform:none;
         }
         .config-chip {
             display:inline-flex;
@@ -467,8 +502,9 @@
         <div id="workflowMainView" class="max-w-6xl mx-auto px-8 py-8 mt-16">
 
             <!-- Page Header -->
-            <div class="flex items-start justify-between mb-8">
+            <div class="flex items-start justify-between mb-6">
                 <div>
+                    <p class="cite-kicker">Workflow</p>
                     <div class="flex items-center flex-wrap gap-2.5 mb-1">
                         <h1 class="cite-title">Document Submissions</h1>
                         <div class="cite-live">
@@ -476,10 +512,10 @@
                             Live
                         </div>
                     </div>
-                    <p class="cite-subtitle">Review pending work, approve completed files, and return items that need revision.</p>
+                    <p class="cite-subtitle">Review submissions, track progress, and manage assigned faculty tasks.</p>
                 </div>
                 <div class="flex items-center gap-2.5">
-<button onclick="openAccessModal()" class="btn btn-ghost">
+                    <button onclick="openAccessModal()" class="btn btn-ghost">
                         <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -497,15 +533,13 @@
             <!-- =========================================================
                  RECURRING REPORT CONFIGURATION
                  ========================================================= -->
-            <div class="main-surface p-6 mb-6">
-                <div class="flex items-start justify-between gap-4 mb-5">
+            <p class="wf-section-label">Recurring reports</p>
+            <div class="main-surface p-5 mb-6">
+                <div class="flex items-start justify-between gap-4 mb-4">
                     <div>
-                        <div class="flex items-center gap-2">
-                            <h2 class="text-base font-semibold text-gray-900">Mandatory Report Configuration</h2>
-                            <span class="config-chip active"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Automatic</span>
-                        </div>
-                        <p class="text-xs text-gray-500 mt-1">
-                            Configure recurring faculty reports. The system creates the next reporting-period task automatically.
+                        <h2 class="text-[15px] font-semibold text-slate-900">Mandatory Report Configuration</h2>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Recurring reports generate faculty tasks automatically. Edit those templates here — not from the task list.
                         </p>
                     </div>
                     <button onclick="openReportConfigModal()" class="btn btn-primary btn-sm">
@@ -521,8 +555,9 @@
                 </div>
             </div>
 
+            <p class="wf-section-label">Overview</p>
             <!-- Stats row -->
-            <div class="grid grid-cols-4 gap-4 mb-6">
+            <div class="grid grid-cols-4 gap-3 mb-6">
                 <div class="stat-card cite-stat-pending p-5">
                     <div class="flex items-start justify-between mb-3">
                         <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pending Review</div>
@@ -577,9 +612,10 @@
                 </div>
             </div>
 
+            <p class="wf-section-label">Assigned tasks</p>
             <!-- Filter bar -->
-            <div class="flex gap-3 mb-4">
-                <div class="relative flex-1">
+            <div class="wf-toolbar">
+                <div class="relative flex-1 min-w-0">
                     <svg style="width:15px;height:15px;position:absolute;left:14px;top:50%;transform:translateY(-50%);stroke:#9ca3af;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
@@ -607,7 +643,7 @@
                     <option value="IPCR">IPCR</option>
                     <option value="TOS">Table of Specifications (TOS)</option>
                 </select>
-                <div class="view-toggle" title="Switch main page task layout">
+                <div class="view-toggle shrink-0" title="Switch main page task layout">
                     <button id="listViewBtn" class="active" onclick="setTaskViewMode('list')">List</button>
                     <button id="folderViewBtn" onclick="setTaskViewMode('folder')">Folder</button>
                 </div>
@@ -622,7 +658,7 @@
                             <th class="text-left">Assigned To</th>
                             <th class="text-left">Deadline</th>
                             <th class="text-left">Status</th>
-                            <th class="text-left">Action</th>
+                            <th class="text-right" style="width:88px">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="submissionsTableBody">
@@ -659,6 +695,7 @@
                 </div>
                 <div class="flex items-center gap-2.5">
                     <button onclick="openActivityLogModal()" class="btn btn-ghost btn-sm">Activity Log</button>
+                    <button id="detailTaskManageBtn" type="button" class="btn btn-ghost btn-sm hidden"></button>
                     <button onclick="openAssignModal()" class="btn btn-primary btn-sm">Assign New Task</button>
                 </div>
             </div>
@@ -1541,6 +1578,61 @@ function renderCategoryChip(taskOrValue) {
     return `<span class="config-chip">${escapeHtml(label)}</span>`;
 }
 
+function isGeneratedRecurringTask(task) {
+    if (!task) return false;
+    const flag = task.is_recurring;
+    if (flag === true || flag === 1 || String(flag).toLowerCase() === 'true') return true;
+    return task.report_config_id != null && String(task.report_config_id).trim() !== '';
+}
+
+function canEditDeleteWorkflowTask(task) {
+    return !isGeneratedRecurringTask(task);
+}
+
+function renderTaskActionMenu(task) {
+    const id = String(task.id || '');
+    const canManage = canEditDeleteWorkflowTask(task);
+    const reportId = task.report_config_id ? String(task.report_config_id) : '';
+    const configExists = !!reportId && (workflowState.reportConfigs || []).some((config) => String(config.id) === reportId);
+
+    const manageItems = canManage
+        ? `
+            <div class="dropdown-item" onclick="event.stopPropagation(); openEditTaskModal('${id}')">
+                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                Edit
+            </div>
+            <div class="dropdown-item danger" onclick="event.stopPropagation(); deleteTask('${id}')">
+                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                Delete
+            </div>`
+        : (configExists
+            ? `
+            <div class="dropdown-item" onclick="event.stopPropagation(); openReportConfigModal('${reportId}')">
+                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                Manage Report
+            </div>`
+            : `<div class="dropdown-item is-disabled">Managed as a recurring report</div>`);
+
+    return `
+        <div class="action-menu">
+            <button type="button" onclick="event.stopPropagation(); toggleActionMenu('${id}')" class="btn btn-ghost btn-sm action-trigger" aria-label="Task actions">
+                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+            <div id="action-${id}" class="action-dropdown">
+                <div class="dropdown-item" onclick="event.stopPropagation(); openTaskDetailsPage('${id}')">
+                    <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    View Details
+                </div>
+                <div class="dropdown-item" onclick="event.stopPropagation(); openAnalyticsModal('${id}')">
+                    <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
+                    View Analytics
+                </div>
+                ${manageItems}
+            </div>
+        </div>
+    `;
+}
+
 function onTaskCategoryChange() {
     const wf = window.CiteFlowWorkflow;
     const category = document.getElementById('taskCategory')?.value;
@@ -1727,7 +1819,10 @@ function renderTaskCardContainer(taskRows) {
             <div class="task-folder-card" onclick="openTaskDetailsPage('${task.id}')">
                 <div class="flex items-start justify-between gap-3 mb-4">
                     <div class="folder-icon"></div>
-                    <span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span>
+                    <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+                        <span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span>
+                        ${renderTaskActionMenu(task)}
+                    </div>
                 </div>
                 <div class="font-semibold text-gray-900 leading-snug mb-1">${escapeHtml(task.title)}</div>
                 <div class="text-xs text-gray-500 mb-1">${renderCategoryChip(task)}</div>
@@ -1804,30 +1899,8 @@ function filterSubmissions() {
                     <div class="mt-0.5">${countdown}</div>
                 </td>
                 <td><span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span></td>
-                <td onclick="event.stopPropagation()">
-                    <div class="action-menu">
-                        <button onclick="event.stopPropagation(); toggleActionMenu('${task.id}')" class="btn btn-ghost btn-sm">
-                            <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-                        </button>
-                        <div id="action-${task.id}" class="action-dropdown">
-                            <div class="dropdown-item" onclick="event.stopPropagation(); openTaskDetailsPage('${task.id}')">
-                                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                View Details
-                            </div>
-                            <div class="dropdown-item" onclick="event.stopPropagation(); openAnalyticsModal('${task.id}')">
-                                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
-                                View Analytics
-                            </div>
-                            <div class="dropdown-item" onclick="event.stopPropagation(); openEditTaskModal('${task.id}')">
-                                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                                Edit
-                            </div>
-                            <div class="dropdown-item danger" onclick="event.stopPropagation(); deleteTask('${task.id}')">
-                                <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
-                                Delete
-                            </div>
-                        </div>
-                    </div>
+                <td onclick="event.stopPropagation()" class="text-right">
+                    ${renderTaskActionMenu(task)}
                 </td>
             </tr>
         `;
@@ -2012,6 +2085,22 @@ function renderTaskDetailPage(taskId, options = {}) {
     document.getElementById('detailTaskInstructions').textContent = task.instructions || 'No instructions provided.';
     document.getElementById('detailTaskAttachments').innerHTML = renderFileList(getTaskAttachments(task), 'No task attachments.');
 
+    const manageBtn = document.getElementById('detailTaskManageBtn');
+    if (manageBtn) {
+        if (canEditDeleteWorkflowTask(task)) {
+            manageBtn.classList.remove('hidden');
+            manageBtn.textContent = 'Edit Task';
+            manageBtn.onclick = () => openEditTaskModal(task.id);
+        } else if (task.report_config_id) {
+            manageBtn.classList.remove('hidden');
+            manageBtn.textContent = 'Manage Report';
+            manageBtn.onclick = () => openReportConfigModal(task.report_config_id);
+        } else {
+            manageBtn.classList.add('hidden');
+            manageBtn.onclick = null;
+        }
+    }
+
     renderDetailDepartmentProgress(rows);
     renderDetailSubmissionList(rows);
 
@@ -2191,6 +2280,16 @@ async function openEditTaskModal(taskId) {
     const task = getTaskById(taskId);
     if (!task) {
         showToast('Task not found.', 'error');
+        return;
+    }
+
+    if (!canEditDeleteWorkflowTask(task)) {
+        if (task.report_config_id) {
+            showToast('This task is generated from a mandatory report. Edit the report template instead.', 'warn');
+            openReportConfigModal(task.report_config_id);
+            return;
+        }
+        showToast('This recurring task cannot be edited as a one-off assignment.', 'warn');
         return;
     }
 
@@ -2418,6 +2517,10 @@ async function updateTaskRealtime({ taskId, title, instructions, dueAt, assigned
 async function deleteTask(taskId) {
     const task = getTaskById(taskId);
     if (!task) return;
+    if (!canEditDeleteWorkflowTask(task)) {
+        showToast('Generated recurring tasks cannot be deleted here. Edit or disable the report configuration instead.', 'warn');
+        return;
+    }
     if (!confirm(`Delete task "${task.title}"? This removes the task assignment list from the admin page.`)) return;
     await db.from('wf_task_assignments').delete().eq('task_id', taskId);
     await db.from('wf_submissions').delete().eq('task_id', taskId);
@@ -3057,7 +3160,7 @@ async function fetchAllData() {
     workflowState.assignments = assignments.data || [];
     workflowState.submissions = submissions.data || [];
     workflowState.submissionFiles = files.data || [];
-    workflowState.notifications = notifications.data || [];
+    workflowState.notifications = await applyAdminNotificationPrefs(notifications.data || []);
     workflowState.activity = activity.data || [];
     workflowState.comments = comments.data || [];
     workflowState.delegatedAccess = delegates.data || [];
@@ -4352,6 +4455,16 @@ async function redirectToLoginAfterExpiry() {
     window.location.href = '../login.html';
 }
 
+async function applyAdminNotificationPrefs(items) {
+    if (window.CiteFlowSettings?.loadPreferences) {
+        try { await window.CiteFlowSettings.loadPreferences(); } catch (_) { /* keep defaults */ }
+    }
+    if (window.CiteFlowSettings?.filterNotifications) {
+        return window.CiteFlowSettings.filterNotifications(items || [], 'admin');
+    }
+    return items || [];
+}
+
 /* ---------- Updated fetch ---------- */
 async function fetchAllData(isRetry) {
     if (!isRetry) {
@@ -4405,7 +4518,7 @@ async function fetchAllData(isRetry) {
     workflowState.assignments = assignments.data || [];
     workflowState.submissions = submissions.data || [];
     workflowState.submissionFiles = files.data || [];
-    workflowState.notifications = notifications.error ? [] : (notifications.data || []);
+    workflowState.notifications = await applyAdminNotificationPrefs(notifications.error ? [] : (notifications.data || []));
     workflowState.activity = activity.data || [];
     workflowState.comments = comments.data || [];
     workflowState.delegatedAccess = delegates.data || [];
@@ -4546,7 +4659,7 @@ function filterSubmissions() {
         const task = r.task;
         const deadline = task.deadline_at || task.due_at;
         const countdown = deadlineCountdown(deadline);
-        const recurring = task.is_recurring
+        const recurring = isGeneratedRecurringTask(task)
             ? `<span class="config-chip active ml-2">Recurring</span>`
             : '';
 
@@ -4564,20 +4677,8 @@ function filterSubmissions() {
                     <div class="mt-0.5">${countdown}</div>
                 </td>
                 <td><span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span></td>
-                <td onclick="event.stopPropagation()">
-                    <div class="action-menu">
-                        <button onclick="event.stopPropagation(); toggleActionMenu('${task.id}')" class="btn btn-ghost btn-sm">
-                            <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>
-                            </svg>
-                        </button>
-                        <div id="action-${task.id}" class="action-dropdown">
-                            <div class="dropdown-item" onclick="event.stopPropagation(); openTaskDetailsPage('${task.id}')">View Details</div>
-                            <div class="dropdown-item" onclick="event.stopPropagation(); openAnalyticsModal('${task.id}')">View Analytics</div>
-                            ${task.is_recurring ? '' : `<div class="dropdown-item" onclick="event.stopPropagation(); openEditTaskModal('${task.id}')">Edit</div>`}
-                            ${task.is_recurring ? '' : `<div class="dropdown-item danger" onclick="event.stopPropagation(); deleteTask('${task.id}')">Delete</div>`}
-                        </div>
-                    </div>
+                <td onclick="event.stopPropagation()" class="text-right">
+                    ${renderTaskActionMenu(task)}
                 </td>
             </tr>
         `;
