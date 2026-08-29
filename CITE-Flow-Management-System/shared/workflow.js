@@ -468,6 +468,84 @@
         return map[stage] || 'Unknown';
     }
 
+    function normalizeRole(faculty) {
+        if (!faculty) return { role: 'admin', admin_access: true };
+        const raw = String(faculty.role || faculty.raw_role || '').toLowerCase();
+        const role = normalizeRoleValue(raw);
+        return {
+            role: role || (raw.includes('chair') ? 'chairperson' : 'admin'),
+            admin_access: faculty.admin_access === true || raw === 'admin' || raw === 'administrator' || raw === 'superadmin' || raw === 'dean'
+        };
+    }
+
+    function isChairperson(faculty) {
+        return normalizeRole(faculty).role === 'chairperson';
+    }
+
+    function isWorkflowAdmin(faculty) {
+        if (!faculty) return true;
+        const { role, admin_access } = normalizeRole(faculty);
+        if (role === 'admin' || role === 'dean' || role === 'college_secretary' || role === 'administrator' || role === 'superadmin') return true;
+        if (admin_access) return true;
+        return false;
+    }
+
+    function isFinalApprover(faculty) {
+        if (!faculty) return true;
+        const { role, admin_access } = normalizeRole(faculty);
+        return role === 'admin' || role === 'dean' || role === 'college_secretary' || role === 'administrator' || role === 'superadmin' ||
+            admin_access === true;
+    }
+
+    function sameDepartment(a, b) {
+        if (!a || !b) return true;
+        if (isWorkflowAdmin(a) || isWorkflowAdmin(b)) return true;
+        return normalizeText(a.department_code || a.department) === normalizeText(b.department_code || b.department);
+    }
+
+    function getApprovalStage(submission) {
+        if (!submission) return APPROVAL_STAGES.CHAIRPERSON;
+        return submission.approval_stage || APPROVAL_STAGES.CHAIRPERSON;
+    }
+
+    function sanitizeDbStatus(status) {
+        const s = normalizeText(status);
+        if (VALID_DB_STATUSES.has(s)) return s;
+        if (s === 'pending') return 'underreview';
+        return 'submitted';
+    }
+
+    function getWorkflowStage(submission, task) {
+        const status = sanitizeDbStatus(submission?.status);
+        const stage = getApprovalStage(submission);
+
+        if (status === 'approved' && stage === APPROVAL_STAGES.APPROVED) return 'completed';
+        if (status === 'rejected') return 'rejected';
+        if (status === 'revision' || stage === APPROVAL_STAGES.REVISION) return 'revision_required';
+        if (!submission?.submitted_at && (status === 'notsubmitted' || !submission)) {
+            const due = task?.deadline_at || task?.due_at;
+            if (due && new Date(due) < new Date()) return 'late_pending';
+            return 'assigned';
+        }
+        if (stage === APPROVAL_STAGES.CHAIRPERSON && ['submitted', 'late', 'underreview'].includes(status)) {
+            return 'chairperson_review';
+        }
+        if (stage === APPROVAL_STAGES.FINAL) return 'final_approval';
+        if (status === 'approved') return 'completed';
+        if (['submitted', 'late'].includes(status)) return 'submitted';
+        return 'submitted';
+    }
+
+    function isFinallyApproved(submission, task) {
+        if (!submission) return false;
+        return getApprovalStage(submission) === APPROVAL_STAGES.APPROVED || sanitizeDbStatus(submission.status) === 'approved';
+    }
+
+    function isFacultySubmitter(faculty, submission) {
+        if (!faculty || !submission) return false;
+        return String(faculty.id) === String(submission.faculty_id);
+    }
+
     function getStatusClass(submission, task) {
         const stage = getWorkflowStage(submission, task);
         const map = {
@@ -484,7 +562,9 @@
     }
 
     function canReviewAsChairperson(submission, actorFaculty, targetFaculty) {
-        if (!submission || !actorFaculty || !targetFaculty) return false;
+        if (!submission) return false;
+        if (isWorkflowAdmin(actorFaculty)) return true;
+        if (!actorFaculty || !targetFaculty) return false;
         if (!isChairperson(actorFaculty)) return false;
         if (getApprovalStage(submission) !== APPROVAL_STAGES.CHAIRPERSON) return false;
         if (!sameDepartment(actorFaculty, targetFaculty)) return false;
@@ -493,7 +573,9 @@
     }
 
     function canReviewAsFinalApprover(submission, actorFaculty) {
-        if (!submission || !actorFaculty) return false;
+        if (!submission) return false;
+        if (isWorkflowAdmin(actorFaculty) || isFinalApprover(actorFaculty)) return true;
+        if (!actorFaculty) return false;
         if (!isFinalApprover(actorFaculty)) return false;
         if (getApprovalStage(submission) !== APPROVAL_STAGES.FINAL) return false;
         const status = sanitizeDbStatus(submission.status);
@@ -501,7 +583,7 @@
     }
 
     function canAccessWorkflowApproval(faculty) {
-        if (!faculty) return false;
+        if (!faculty) return true;
         if (isFinalApprover(faculty)) return true;
         if (isChairperson(faculty)) return true;
         return isWorkflowAdmin(faculty);
@@ -560,8 +642,47 @@
             }
         }
 
-        const normalized = normalizeFaculty(response.data);
-        return normalized;
+        if (response.data) {
+            return normalizeFaculty(response.data);
+        }
+
+        // Fallback for Admin users from admin_profiles or user_metadata
+        try {
+            const adminResp = await sb
+                .from('admin_profiles')
+                .select('*')
+                .eq('id', authUser.id)
+                .maybeSingle();
+
+            if (adminResp.data) {
+                const a = adminResp.data;
+                return normalizeFaculty({
+                    id: a.id,
+                    auth_user_id: a.id,
+                    full_name: a.full_name || [a.first_name, a.last_name].filter(Boolean).join(' ') || a.email || 'Administrator',
+                    first_name: a.first_name,
+                    last_name: a.last_name,
+                    email: a.email,
+                    role: 'admin',
+                    department: a.department || 'All',
+                    admin_access: true
+                });
+            }
+        } catch (_) {}
+
+        const meta = authUser.user_metadata || {};
+        const metaRole = String(meta.role || 'admin').toLowerCase();
+        return normalizeFaculty({
+            id: authUser.id,
+            auth_user_id: authUser.id,
+            full_name: meta.full_name || meta.name || [meta.first_name, meta.last_name].filter(Boolean).join(' ') || authUser.email || 'Administrator',
+            first_name: meta.first_name || '',
+            last_name: meta.last_name || '',
+            email: authUser.email,
+            role: metaRole.includes('chair') ? 'chairperson' : 'admin',
+            department: meta.department || 'All',
+            admin_access: true
+        });
     }
 
     /**

@@ -8,7 +8,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js"></script>
     <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -101,7 +105,7 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs sm:text-sm text-slate-500 font-medium">Total Activities</p>
-                            <p id="totalActivities" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2">0</p>
+                            <p id="totalActivities" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                         </div>
                         <div class="w-11 h-11 sm:w-12 sm:h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 text-lg sm:text-xl shrink-0">
                             <i class="fas fa-list-ul"></i>
@@ -112,7 +116,7 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs sm:text-sm text-slate-500 font-medium">This Month</p>
-                            <p id="thisMonthActivities" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2">0</p>
+                            <p id="thisMonthActivities" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                         </div>
                         <div class="w-11 h-11 sm:w-12 sm:h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 text-lg sm:text-xl shrink-0">
                             <i class="fas fa-calendar"></i>
@@ -123,7 +127,7 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs sm:text-sm text-slate-500 font-medium">Workshops</p>
-                            <p id="workshopActivities" class="text-2xl sm:text-4xl font-bold text-purple-600 mt-1 sm:mt-2">0</p>
+                            <p id="workshopActivities" class="text-2xl sm:text-4xl font-bold text-purple-600 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                         </div>
                         <div class="w-11 h-11 sm:w-12 sm:h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 text-lg sm:text-xl shrink-0">
                             <i class="fas fa-chalkboard-teacher"></i>
@@ -134,7 +138,7 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs sm:text-sm text-slate-500 font-medium">Seminars</p>
-                            <p id="seminarActivities" class="text-2xl sm:text-4xl font-bold text-emerald-600 mt-1 sm:mt-2">0</p>
+                            <p id="seminarActivities" class="text-2xl sm:text-4xl font-bold text-emerald-600 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                         </div>
                         <div class="w-11 h-11 sm:w-12 sm:h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 text-lg sm:text-xl shrink-0">
                             <i class="fas fa-users"></i>
@@ -173,7 +177,26 @@
                         </div>
                     </div>
 
-                    <div id="timelineContainer" class="space-y-5 sm:space-y-6 min-h-[300px]"></div>
+                    <div id="timelineContainer" class="space-y-5 sm:space-y-6 min-h-[300px]">
+                        <div class="skeleton-row">
+                            <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                            <div class="skeleton-text" style="width:80px"></div>
+                            <div class="skeleton-text" style="width:60px"></div>
+                        </div>
+                        <div class="skeleton-row">
+                            <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                            <div class="skeleton-text" style="width:80px"></div>
+                            <div class="skeleton-text" style="width:60px"></div>
+                        </div>
+                        <div class="skeleton-row">
+                            <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                            <div class="skeleton-text" style="width:80px"></div>
+                            <div class="skeleton-text" style="width:60px"></div>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- Right Sidebar -->
@@ -285,9 +308,7 @@
 
 <script>
 // Supabase
-const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-const supabaseClient = supabase.createClient(supabaseUrl, supabaseAnonKey);
+const supabaseClient = window.supabaseClient;
 
 let engagementLogs = [];
 
@@ -363,18 +384,25 @@ function renderTimeline() {
         return;
     }
 
+    const colorMap = {
+        purple: { border: 'border-purple-500', text500: 'text-purple-500', bg: 'bg-purple-100', text700: 'text-purple-700' },
+        emerald: { border: 'border-emerald-500', text500: 'text-emerald-500', bg: 'bg-emerald-100', text700: 'text-emerald-700' },
+        slate: { border: 'border-slate-500', text500: 'text-slate-500', bg: 'bg-slate-100', text700: 'text-slate-700' }
+    };
+
     container.innerHTML = filtered.map(log => {
         const color = log.activity_type === 'Workshop' ? 'purple' : 
                       log.activity_type === 'Seminar' ? 'emerald' : 'slate';
+        const classes = colorMap[color] || colorMap['slate'];
         return `
             <div class="relative pl-7 sm:pl-9">
-                <div class="timeline-dot bg-white border-2 border-${color}-500">
-                    <i class="fas fa-circle text-[8px] text-${color}-500"></i>
+                <div class="timeline-dot bg-white border-2 ${classes.border}">
+                    <i class="fas fa-circle text-[8px] ${classes.text500}"></i>
                 </div>
                 <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                         <div class="min-w-0 pr-2">
-                            <span class="status-badge bg-${color}-100 text-${color}-700">${esc(log.activity_type)}</span>
+                            <span class="status-badge ${classes.bg} ${classes.text700}">${esc(log.activity_type)}</span>
                             <h4 class="font-semibold text-sm sm:text-base text-slate-900 mt-1.5 truncate">${esc(log.activity_title)}</h4>
                             <p class="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">${esc(log.description || '')}</p>
                         </div>
@@ -416,13 +444,42 @@ function closeLogModal() {
 
 async function saveLogEntry(e) {
     e.preventDefault();
-    alert("Log entry saved (demo)");
+    
+    const formData = new FormData(e.target);
+    const logData = {
+        faculty_name: formData.get('faculty_name'),
+        department: formData.get('department'),
+        activity_type: formData.get('activity_type'),
+        source_module: formData.get('source_module'),
+        activity_title: formData.get('activity_title'),
+        description: formData.get('description'),
+        activity_at: formData.get('activity_date') + 'T' + formData.get('activity_time'),
+        status: formData.get('status')
+    };
+
+    const { error } = await supabaseClient
+        .from('engagement_logs')
+        .insert([logData]);
+
+    if (error) {
+        console.error(error);
+        alert('Failed to save log entry');
+        return;
+    }
+
     closeLogModal();
     await loadEngagementLogs();
 }
 
 function exportLogs() {
-    alert("CSV Export started (demo)");
+    if (!window.XLSX) {
+        alert("XLSX library not loaded");
+        return;
+    }
+    const ws = XLSX.utils.json_to_sheet(engagementLogs);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Engagement Logs");
+    XLSX.writeFile(wb, "engagement_logs.xlsx");
 }
 
 // Initialize

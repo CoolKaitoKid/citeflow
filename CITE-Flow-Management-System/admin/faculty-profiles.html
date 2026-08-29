@@ -13,8 +13,10 @@
     />
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js"></script>
     <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -49,6 +51,19 @@
             background: #f1f5f9;
             color: #334155;
             border: 1px solid #e2e8f0;
+        }
+
+        #profile-status option {
+            background-color: #ffffff !important;
+            color: #1e293b !important;
+            font-weight: 500;
+            padding: 8px 12px;
+        }
+        #profile-status option:hover,
+        #profile-status option:focus,
+        #profile-status option:checked {
+            background-color: #f8fafc !important;
+            color: #0f172a !important;
         }
     </style>
 </head>
@@ -135,6 +150,64 @@
                     </div>
                 </div>
 
+            </div>
+
+
+            <!-- =====================================================
+                 SEARCH & FILTERS
+            ====================================================== -->
+
+            <div class="bg-white rounded-3xl p-5 mb-6 card-shadow">
+                <div class="flex flex-wrap items-center gap-4">
+
+                    <!-- Search by Name / Email -->
+                    <div class="flex-1 min-w-[220px] relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input
+                            id="facultySearch"
+                            type="text"
+                            placeholder="Search by name or email..."
+                            oninput="applyFacultyFilters()"
+                            class="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#621708]/20 focus:border-[#621708] transition-all"
+                        >
+                    </div>
+
+                    <!-- Role Filter -->
+                    <div class="min-w-[160px]">
+                        <select
+                            id="roleFilter"
+                            onchange="applyFacultyFilters()"
+                            class="w-full px-4 py-2.5 border border-gray-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#621708]/20 focus:border-[#621708] cursor-pointer transition-all"
+                        >
+                            <option value="">All Roles</option>
+                            <option value="faculty">Faculty</option>
+                            <option value="chairperson">Chairperson</option>
+                            <option value="dean">Dean</option>
+                            <option value="instructor">Instructor</option>
+                            <option value="professor">Professor</option>
+                        </select>
+                    </div>
+
+                    <!-- Department Filter -->
+                    <div class="min-w-[160px]">
+                        <select
+                            id="deptFilter"
+                            onchange="applyFacultyFilters()"
+                            class="w-full px-4 py-2.5 border border-gray-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#621708]/20 focus:border-[#621708] cursor-pointer transition-all"
+                        >
+                            <option value="">All Departments</option>
+                            <option value="BSIT">BSIT</option>
+                            <option value="BSIE">BSIE</option>
+                            <option value="BIT">BIT</option>
+                        </select>
+                    </div>
+
+                    <!-- Result Count -->
+                    <div id="filterResultCount" class="text-xs text-gray-400 font-medium px-2 hidden">
+                        0 results
+                    </div>
+
+                </div>
             </div>
 
 
@@ -246,12 +319,12 @@
                         <select id="profile-status" onchange="onAdminStatusChange()" 
                             class="cursor-pointer px-4 py-1.5 rounded-3xl text-sm font-medium bg-emerald-100 text-emerald-700 border-0 outline-none appearance-none pr-8"
                             style="background-image: url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23475569%27 stroke-width=%272%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 8px center;">
-                            <option value="Active">Active</option>
-                            <option value="Inactive">Inactive</option>
-                            <option value="On Maternity Leave">On Maternity Leave</option>
-                            <option value="On Study Leave">On Study Leave</option>
-                            <option value="On Sabbatical Leave">On Sabbatical Leave</option>
-                            <option value="On Vacation/Sick Leave">On Vacation/Sick Leave</option>
+                            <option value="Active" style="background:#ffffff; color:#1e293b;">Active</option>
+                            <option value="Inactive" style="background:#ffffff; color:#1e293b;">Inactive</option>
+                            <option value="On Maternity Leave" style="background:#ffffff; color:#1e293b;">On Maternity Leave</option>
+                            <option value="On Study Leave" style="background:#ffffff; color:#1e293b;">On Study Leave</option>
+                            <option value="On Sabbatical Leave" style="background:#ffffff; color:#1e293b;">On Sabbatical Leave</option>
+                            <option value="On Vacation/Sick Leave" style="background:#ffffff; color:#1e293b;">On Vacation/Sick Leave</option>
                         </select>
 
                     </div>
@@ -682,10 +755,10 @@
 
 <div
     id="editModal"
-    class="hidden fixed inset-0 bg-black/60 items-center justify-center z-[9999]"
+    class="hidden fixed inset-0 bg-black/60 items-center justify-center z-[9999] p-4 overflow-y-auto"
 >
 
-    <div class="bg-white rounded-3xl w-full max-w-2xl mx-4 overflow-hidden shadow-2xl">
+    <div class="bg-white rounded-3xl w-full max-w-2xl mx-auto my-auto overflow-hidden shadow-2xl">
 
         <div class="px-8 py-6 border-b flex justify-between items-center bg-gray-50">
 
@@ -722,7 +795,7 @@
             </button>
 
             <button
-                onclick="saveEditChanges()"
+                onclick="saveEdit()"
                 class="bg-[#621708] hover:bg-[#8c2a10] text-white px-8 py-3 rounded-2xl font-medium"
             >
                 Save Changes
@@ -1055,10 +1128,7 @@
 
     const { createClient } = supabase;
 
-    const supabaseClient = createClient(
-        supabaseUrl,
-        supabaseAnonKey
-    );
+    const supabaseClient = window.supabaseClient;
 
 
     /*
@@ -1475,49 +1545,50 @@
     ============================================================= */
 
     function normalizeFacultyRow(row) {
+        let yearsInService = row.years_in_service ?? row.years_experience ?? row.years_in_cite ?? row.experience_years;
+        if (yearsInService === undefined || yearsInService === null || yearsInService === '') {
+            if (row.start_date || row.created_at) {
+                const start = new Date(row.start_date || row.created_at);
+                const now = new Date();
+                const diffYears = Math.floor((now - start) / (1000 * 60 * 60 * 24 * 365.25));
+                if (!isNaN(diffYears) && diffYears >= 0) {
+                    yearsInService = diffYears;
+                }
+            }
+        }
 
         return {
-
             id: row.id,
             rawId: row.id,
+            raw: row,
 
-            name:
-                row.full_name ||
-                row.name ||
-                'Unnamed Faculty',
+            name: row.full_name || row.name || [row.first_name, row.last_name].filter(Boolean).join(' ') || 'Unnamed Faculty',
+            firstName: row.first_name || '',
+            middleName: row.middle_name || '',
+            lastName: row.last_name || '',
 
-            position:
-                row.position ||
-                row.role ||
-                'Faculty',
+            position: row.position || row.role || 'Faculty',
+            role: row.role || row.position || 'Faculty',
+            academicRank: row.academic_rank || row.rank || row.position || '—',
 
-            status:
-                row.status ||
-                'Active',
+            status: row.status || 'Active',
+            department: row.department || 'N/A',
+            shift: row.shift || '—',
+            teachingStatus: row.teaching_status || (row.status === 'Active' ? 'Active' : row.status) || 'Active',
+            yearsInService: (yearsInService !== undefined && yearsInService !== null && yearsInService !== '') ? String(yearsInService) : '—',
 
-            department:
-                row.department ||
-                'N/A',
+            email: row.email || row.private_email || '-',
+            phone: row.phone || 'No contact number',
+            employeeId: row.employee_id || '-',
+            photoUrl: row.profile_photo_url || row.avatar_url || row.photo_url || '',
 
-            email:
-                row.email ||
-                row.private_email ||
-                '-',
-
-            phone:
-                row.phone ||
-                'No contact number',
-
-            employeeId:
-                row.employee_id ||
-                '-',
-
-            photoUrl:
-                row.profile_photo_url ||
-                ''
-
+            contractType: row.contract_type || 'Full-time',
+            employmentType: row.employment_type || row.employment_status || 'Regular',
+            startDate: row.start_date || (row.created_at ? row.created_at.split('T')[0] : 'N/A'),
+            endDate: row.end_date || 'N/A',
+            salary: row.salary || '—',
+            renewal: row.renewal || 'Yes'
         };
-
     }
 
 
@@ -1585,11 +1656,26 @@
             document.getElementById('faculty-grid');
 
         if (grid) {
-            grid.innerHTML = `
-                <div class="col-span-3 bg-white rounded-3xl p-10 text-center text-gray-500">
-                    Loading faculty profiles...
-                </div>
-            `;
+            const skeletonCard = `
+                <div class="skeleton-card">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center gap-4">
+                            <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                            <div>
+                                <div class="skeleton-text" style="width:120px;margin-bottom:8px"></div>
+                                <div class="skeleton-text sm" style="width:80px"></div>
+                            </div>
+                        </div>
+                        <div class="skeleton-text" style="width:60px;height:22px;border-radius:999px"></div>
+                    </div>
+                    <div class="space-y-3 mt-6">
+                        <div class="flex justify-between"><div class="skeleton-text sm" style="width:40px"></div><div class="skeleton-text" style="width:140px"></div></div>
+                        <div class="flex justify-between"><div class="skeleton-text sm" style="width:30px"></div><div class="skeleton-text" style="width:80px"></div></div>
+                        <div class="flex justify-between"><div class="skeleton-text sm" style="width:65px"></div><div class="skeleton-text" style="width:50px;border-radius:999px"></div></div>
+                        <div class="flex justify-between"><div class="skeleton-text sm" style="width:55px"></div><div class="skeleton-text" style="width:70px;border-radius:999px"></div></div>
+                    </div>
+                </div>`;
+            grid.innerHTML = skeletonCard.repeat(6);
         }
 
         const {
@@ -1668,6 +1754,68 @@
 
 
     /* =============================================================
+       SEARCH & FILTER
+    ============================================================= */
+
+    function applyFacultyFilters() {
+        const searchVal = (document.getElementById('facultySearch')?.value || '').toLowerCase().trim();
+        const roleVal = (document.getElementById('roleFilter')?.value || '').toLowerCase();
+        const deptVal = (document.getElementById('deptFilter')?.value || '').toUpperCase();
+
+        let filtered = facultyData;
+
+        // Search by name or email
+        if (searchVal) {
+            filtered = filtered.filter(f => {
+                const name = (f.name || '').toLowerCase();
+                const email = (f.email || '').toLowerCase();
+                return name.includes(searchVal) || email.includes(searchVal);
+            });
+        }
+
+        // Filter by role/position
+        if (roleVal) {
+            filtered = filtered.filter(f => {
+                const pos = (f.position || '').toLowerCase();
+                return pos.includes(roleVal);
+            });
+        }
+
+        // Filter by department
+        if (deptVal) {
+            filtered = filtered.filter(f => {
+                const dept = (f.department || '').toUpperCase();
+                return dept === deptVal || dept.includes(deptVal);
+            });
+        }
+
+        renderFacultyCards(filtered);
+        updateStats(filtered);
+
+        // Show result count when filters are active
+        const countEl = document.getElementById('filterResultCount');
+        if (countEl) {
+            if (searchVal || roleVal || deptVal) {
+                countEl.textContent = `${filtered.length} of ${facultyData.length} results`;
+                countEl.classList.remove('hidden');
+            } else {
+                countEl.classList.add('hidden');
+            }
+        }
+    }
+
+    function clearFacultyFilters() {
+        const searchEl = document.getElementById('facultySearch');
+        const roleEl = document.getElementById('roleFilter');
+        const deptEl = document.getElementById('deptFilter');
+        if (searchEl) searchEl.value = '';
+        if (roleEl) roleEl.value = '';
+        if (deptEl) deptEl.value = '';
+        applyFacultyFilters();
+    }
+
+
+    /* =============================================================
        STATS
     ============================================================= */
 
@@ -1735,9 +1883,15 @@
 
         if (!data.length) {
 
+            const hasFilters = (document.getElementById('facultySearch')?.value || '').trim() ||
+                              document.getElementById('roleFilter')?.value ||
+                              document.getElementById('deptFilter')?.value;
+
             grid.innerHTML = `
                 <div class="col-span-3 bg-white rounded-3xl p-10 text-center text-gray-500">
-                    No faculty members found.
+                    <i class="fa-solid ${hasFilters ? 'fa-filter-circle-xmark' : 'fa-users-slash'} text-3xl text-gray-300 mb-3"></i>
+                    <div class="text-sm">${hasFilters ? 'No faculty members match your search or filters.' : 'No faculty members found.'}</div>
+                    ${hasFilters ? '<button onclick="clearFacultyFilters()" class="mt-3 text-xs text-[#621708] hover:underline font-medium">Clear all filters</button>' : ''}
                 </div>
             `;
 
@@ -1903,68 +2057,31 @@
             .classList.remove('hidden');
 
 
-        document.getElementById(
-            'profile-name'
-        ).textContent =
-            faculty.name;
+        document.getElementById('profile-name').textContent = faculty.name;
+        document.getElementById('profile-position').textContent = faculty.position;
+        document.getElementById('profile-phone').textContent = faculty.phone || 'No contact number';
+        document.getElementById('profile-email').textContent = faculty.email || '-';
 
+        // General Information
+        document.getElementById('gen-employee-id').textContent = faculty.employeeId || '—';
+        document.getElementById('gen-department').textContent = faculty.department || '—';
+        document.getElementById('gen-access-role').textContent = faculty.role || faculty.position || 'Faculty';
+        document.getElementById('gen-academic-rank').textContent = faculty.academicRank || faculty.position || '—';
+        document.getElementById('gen-years').textContent = faculty.yearsInService !== '—' ? `${faculty.yearsInService} Year(s)` : '—';
+        document.getElementById('gen-shift').textContent = faculty.shift || '—';
+        document.getElementById('gen-teaching-status').textContent = faculty.teachingStatus || 'Active';
 
-        document.getElementById(
-            'profile-position'
-        ).textContent =
-            faculty.position;
+        // Contract Information
+        const setIfExists = (elemId, val) => { const el = document.getElementById(elemId); if (el) el.textContent = val || '—'; };
+        setIfExists('con-contract-type', faculty.contractType || 'Full-time');
+        setIfExists('con-start-date', faculty.startDate || 'N/A');
+        setIfExists('con-salary', faculty.salary && faculty.salary !== '—' ? (String(faculty.salary).startsWith('₱') ? faculty.salary : `₱${Number(faculty.salary).toLocaleString()}`) : '—');
+        setIfExists('con-employment-type', faculty.employmentType || 'Regular');
+        setIfExists('con-end-date', faculty.endDate || 'N/A');
+        setIfExists('con-renewal', faculty.renewal || 'Yes');
 
-
-        document.getElementById(
-            'profile-phone'
-        ).textContent =
-            faculty.phone;
-
-
-        document.getElementById(
-            'profile-email'
-        ).textContent =
-            faculty.email;
-
-
-        document.getElementById(
-            'profile-status'
-        ).textContent =
-            faculty.status;
-
-
-        document.getElementById(
-            'gen-employee-id'
-        ).textContent =
-            faculty.employeeId;
-
-
-        document.getElementById(
-            'gen-department'
-        ).textContent =
-            faculty.department;
-
-
-        document.getElementById(
-            'gen-access-role'
-        ).textContent =
-            faculty.position;
-
-
-        document.getElementById(
-            'gen-academic-rank'
-        ).textContent =
-            faculty.position;
-
-
-        const avatar =
-            document.getElementById(
-                'profile-avatar'
-            );
-
-
+        const avatar = document.getElementById('profile-avatar');
         if (faculty.photoUrl) {
-
             avatar.innerHTML = `
                 <img
                     src="${faculty.photoUrl}"
@@ -1973,26 +2090,18 @@
                     onerror="this.outerHTML='<div class=&quot;w-full h-full bg-gray-100 rounded-full flex items-center justify-center text-3xl font-semibold text-gray-500&quot;>${initials(faculty.name)}</div>'"
                 >
             `;
-
         } else {
-
-            avatar.textContent =
-                initials(faculty.name);
-
+            avatar.textContent = initials(faculty.name);
         }
 
-
         currentStatus = faculty.status || 'Active';
-
         const statusSelect = document.getElementById('profile-status');
         if (statusSelect) {
             statusSelect.value = currentStatus;
         }
 
         updateStatusBadge();
-
         switchTab(0);
-        
         loadFacultyResearch(faculty.rawId || id);
 
     }
@@ -2338,435 +2447,278 @@
 
                     </div>
 
-
-                    <div>
-
+                                         <div>
                         <label class="block text-sm text-gray-600 mb-1">
                             Academic Rank
                         </label>
-
-                        <select
+                        <input
                             id="edit-academic-rank"
+                            type="text"
+                            list="rank-options"
+                            value="${document.getElementById('gen-academic-rank').textContent === '—' ? '' : document.getElementById('gen-academic-rank').textContent}"
+                            placeholder="e.g. Professor IV, Instructor I"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
-                            <option value="Associate Degree">
-                                Associate Degree
-                            </option>
-
-                            <option value="Bachelor's Degree">
-                                Bachelor's Degree
-                            </option>
-
-                            <option value="Master's Degree">
-                                Master's Degree
-                            </option>
-
-                            <option value="Doctoral Degree">
-                                Doctoral Degree
-                            </option>
-
-                            <option value="Professional Degree">
-                                Professional Degree
-                            </option>
-
-                        </select>
-
+                        <datalist id="rank-options">
+                            <option value="Instructor I">
+                            <option value="Instructor II">
+                            <option value="Instructor III">
+                            <option value="Assistant Professor I">
+                            <option value="Assistant Professor II">
+                            <option value="Assistant Professor III">
+                            <option value="Assistant Professor IV">
+                            <option value="Associate Professor I">
+                            <option value="Associate Professor II">
+                            <option value="Associate Professor III">
+                            <option value="Associate Professor IV">
+                            <option value="Associate Professor V">
+                            <option value="Professor I">
+                            <option value="Professor II">
+                            <option value="Professor III">
+                            <option value="Professor IV">
+                            <option value="Professor V">
+                            <option value="Professor VI">
+                            <option value="University Professor">
+                        </datalist>
                     </div>
 
-
                     <div>
-
                         <label class="block text-sm text-gray-600 mb-1">
                             Years in Service
                         </label>
-
                         <input
                             id="edit-years"
                             type="number"
-                            value="${document.getElementById('gen-years').textContent.replace(' Years', '')}"
+                            value="${document.getElementById('gen-years').textContent.replace(/[^0-9]/g, '')}"
+                            placeholder="e.g. 5"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
                     </div>
 
-
                     <div>
-
                         <label class="block text-sm text-gray-600 mb-1">
                             Shift
                         </label>
-
                         <select
                             id="edit-shift"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
-                            <option value="Morning">
-                                Morning
-                            </option>
-
-                            <option value="Afternoon">
-                                Afternoon
-                            </option>
-
-                            <option value="Night">
-                                Night
-                            </option>
-
+                            <option value="Morning">Morning</option>
+                            <option value="Afternoon">Afternoon</option>
+                            <option value="Night">Night</option>
+                            <option value="Flexible">Flexible</option>
                         </select>
-
                     </div>
 
                 </div>
-
             `;
+
+            // Select matching dropdown values
+            const accessRoleVal = document.getElementById('gen-access-role').textContent;
+            const deptVal = document.getElementById('gen-department').textContent;
+            const statusVal = document.getElementById('gen-teaching-status').textContent;
+            const shiftVal = document.getElementById('gen-shift').textContent;
+            if (document.getElementById('edit-access-role')) document.getElementById('edit-access-role').value = accessRoleVal;
+            if (document.getElementById('edit-department')) document.getElementById('edit-department').value = deptVal;
+            if (document.getElementById('edit-teaching-status')) document.getElementById('edit-teaching-status').value = statusVal;
+            if (document.getElementById('edit-shift') && shiftVal !== '—') document.getElementById('edit-shift').value = shiftVal;
 
         } else if (section === 'contract') {
 
-            title.textContent =
-                'Edit Contract Information';
-
+            title.textContent = 'Edit Contract Information';
 
             body.innerHTML = `
-
                 <div class="space-y-6">
-
                     <div>
-
                         <label class="block text-sm text-gray-600 mb-1">
                             Contract Type
                         </label>
-
                         <select
                             id="edit-contract-type"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
-                            <option value="Full-Time">
-                                Full-Time
-                            </option>
-
-                            <option value="Part-Time">
-                                Part-Time
-                            </option>
-
-                            <option value="Temporary">
-                                Temporary
-                            </option>
-
-                            <option value="Visiting">
-                                Visiting
-                            </option>
-
-                            <option value="Research Faculty">
-                                Research Faculty
-                            </option>
-
-                            <option value="Administrative Faculty">
-                                Administrative Faculty
-                            </option>
-
+                            <option value="Full-Time">Full-Time</option>
+                            <option value="Part-Time">Part-Time</option>
+                            <option value="Temporary">Temporary</option>
+                            <option value="Visiting">Visiting</option>
+                            <option value="Research Faculty">Research Faculty</option>
+                            <option value="Administrative Faculty">Administrative Faculty</option>
                         </select>
-
                     </div>
 
-
                     <div>
-
                         <label class="block text-sm text-gray-600 mb-1">
                             Start Date
                         </label>
-
                         <input
                             id="edit-start-date"
                             type="date"
-                            value="${document.getElementById('con-start-date').textContent === 'N/A' ? '' : document.getElementById('con-start-date').textContent}"
+                            value="${document.getElementById('con-start-date')?.textContent === 'N/A' || document.getElementById('con-start-date')?.textContent === '—' ? '' : document.getElementById('con-start-date')?.textContent}"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
                     </div>
 
-
                     <div>
-
                         <label class="block text-sm text-gray-600 mb-1">
                             End Date
                         </label>
-
                         <input
                             id="edit-end-date"
                             type="date"
-                            value="${document.getElementById('con-end-date').textContent === 'N/A' ? '' : document.getElementById('con-end-date').textContent}"
+                            value="${document.getElementById('con-end-date')?.textContent === 'N/A' || document.getElementById('con-end-date')?.textContent === '—' ? '' : document.getElementById('con-end-date')?.textContent}"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
                     </div>
 
-
                     <div>
-
                         <label class="block text-sm text-gray-600 mb-1">
                             Employment Type
                         </label>
-
                         <select
                             id="edit-employment-type"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
-                            <option value="Regular">
-                                Regular
-                            </option>
-
-                            <option value="Probationary">
-                                Probationary
-                            </option>
-
-                            <option value="Contractual">
-                                Contractual
-                            </option>
-
-                            <option value="Job Order">
-                                Job Order
-                            </option>
-
-                            <option value="Part-Time">
-                                Part-Time
-                            </option>
-
-                            <option value="Project Based">
-                                Project Based
-                            </option>
-
+                            <option value="Regular">Regular</option>
+                            <option value="Probationary">Probationary</option>
+                            <option value="Contractual">Contractual</option>
+                            <option value="Job Order">Job Order</option>
+                            <option value="Part-Time">Part-Time</option>
+                            <option value="Project Based">Project Based</option>
                         </select>
-
                     </div>
 
-
                     <div>
-
                         <label class="block text-sm text-gray-600 mb-1">
                             Salary (₱)
                         </label>
-
                         <input
                             id="edit-salary"
                             type="text"
-                            value="${document.getElementById('con-salary').textContent.replace('₱', '').trim()}"
+                            value="${(document.getElementById('con-salary')?.textContent || '').replace(/[^0-9.]/g, '')}"
+                            placeholder="e.g. 35000"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
                     </div>
 
-
                     <div>
-
                         <label class="block text-sm text-gray-600 mb-1">
-                            Renewal
+                            Renewal Status
                         </label>
-
                         <select
                             id="edit-renewal"
                             class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                         >
-
-                            <option value="For Renewal">
-                                For Renewal
-                            </option>
-
-                            <option value="Renewed">
-                                Renewed
-                            </option>
-
-                            <option value="Not Renewed">
-                                Not Renewed
-                            </option>
-
-                            <option value="N/A (Permanent)">
-                                N/A (Permanent)
-                            </option>
-
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                            <option value="Pending Review">Pending Review</option>
+                            <option value="N/A">N/A</option>
                         </select>
-
                     </div>
-
                 </div>
-
             `;
-
         }
 
-
-        modal.classList.remove(
-            'hidden'
-        );
-
-        modal.classList.add(
-            'flex'
-        );
-
-
-        document.body.style.overflow =
-            'hidden';
-
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        document.body.style.overflow = 'hidden';
     }
 
 
-    function closeEditModal() {
+    /* =============================================================
+       SAVE EDIT
+    ============================================================= */
 
-        const modal =
-            document.getElementById(
-                'editModal'
-            );
+    async function saveEdit() {
+        if (!selectedFacultyId) return;
 
+        let updatedPayload = {};
 
-        modal.classList.add(
-            'hidden'
-        );
+        if (currentEditSection === 'general') {
+            const empId = document.getElementById('edit-employee-id')?.value || null;
+            const accessRole = document.getElementById('edit-access-role')?.value || 'Faculty';
+            const dept = document.getElementById('edit-department')?.value || 'BSIT';
+            const teachingStatus = document.getElementById('edit-teaching-status')?.value || 'Active';
+            const academicRank = document.getElementById('edit-academic-rank')?.value || null;
+            const years = document.getElementById('edit-years')?.value ? Number(document.getElementById('edit-years').value) : null;
+            const shift = document.getElementById('edit-shift')?.value || null;
 
-        modal.classList.remove(
-            'flex'
-        );
+            document.getElementById('gen-employee-id').textContent = empId || '—';
+            document.getElementById('gen-access-role').textContent = accessRole;
+            document.getElementById('gen-department').textContent = dept;
+            document.getElementById('gen-teaching-status').textContent = teachingStatus;
+            document.getElementById('gen-academic-rank').textContent = academicRank || '—';
+            document.getElementById('gen-years').textContent = years !== null ? `${years} Year(s)` : '—';
+            document.getElementById('gen-shift').textContent = shift || '—';
 
-
-        document.body.style.overflow =
-            '';
-
-    }
-
-
-    function saveEditChanges() {
-
-        if (
-            currentEditSection ===
-            'general'
-        ) {
-
-            document.getElementById(
-                'gen-employee-id'
-            ).textContent =
-                document.getElementById(
-                    'edit-employee-id'
-                ).value || '-';
-
-
-            document.getElementById(
-                'gen-access-role'
-            ).textContent =
-                document.getElementById(
-                    'edit-access-role'
-                ).value || 'Faculty';
-
-
-            document.getElementById(
-                'gen-department'
-            ).textContent =
-                document.getElementById(
-                    'edit-department'
-                ).value || 'BSIT';
-
-
-            document.getElementById(
-                'gen-teaching-status'
-            ).textContent =
-                document.getElementById(
-                    'edit-teaching-status'
-                ).value || 'Active';
-
-
-            document.getElementById(
-                'gen-academic-rank'
-            ).textContent =
-                document.getElementById(
-                    'edit-academic-rank'
-                ).value || '-';
-
-
-            document.getElementById(
-                'gen-years'
-            ).textContent =
-                (
-                    document.getElementById(
-                        'edit-years'
-                    ).value || '-'
-                ) + ' Years';
-
-
-            document.getElementById(
-                'gen-shift'
-            ).textContent =
-                document.getElementById(
-                    'edit-shift'
-                ).value || '-';
-
+            updatedPayload = {
+                employee_id: empId,
+                role: accessRole,
+                department: dept,
+                teaching_status: teachingStatus,
+                academic_rank: academicRank,
+                years_experience: years,
+                years_in_service: years,
+                shift: shift
+            };
         }
 
+        if (currentEditSection === 'contract') {
+            const contractType = document.getElementById('edit-contract-type')?.value || 'Full-time';
+            const startDate = document.getElementById('edit-start-date')?.value || null;
+            const endDate = document.getElementById('edit-end-date')?.value || null;
+            const employmentType = document.getElementById('edit-employment-type')?.value || 'Regular';
+            const salary = document.getElementById('edit-salary')?.value || null;
+            const renewal = document.getElementById('edit-renewal')?.value || 'N/A';
 
-        if (
-            currentEditSection ===
-            'contract'
-        ) {
+            document.getElementById('con-contract-type').textContent = contractType;
+            document.getElementById('con-start-date').textContent = startDate || 'N/A';
+            document.getElementById('con-end-date').textContent = endDate || 'N/A';
+            document.getElementById('con-employment-type').textContent = employmentType;
+            document.getElementById('con-salary').textContent = salary ? (String(salary).startsWith('₱') ? salary : `₱${Number(salary).toLocaleString()}`) : '—';
+            document.getElementById('con-renewal').textContent = renewal;
 
-            document.getElementById(
-                'con-contract-type'
-            ).textContent =
-                document.getElementById(
-                    'edit-contract-type'
-                ).value || 'Full-time';
-
-
-            document.getElementById(
-                'con-start-date'
-            ).textContent =
-                document.getElementById(
-                    'edit-start-date'
-                ).value || 'N/A';
-
-
-            document.getElementById(
-                'con-end-date'
-            ).textContent =
-                document.getElementById(
-                    'edit-end-date'
-                ).value || 'N/A';
-
-
-            document.getElementById(
-                'con-employment-type'
-            ).textContent =
-                document.getElementById(
-                    'edit-employment-type'
-                ).value || 'Regular';
-
-
-            document.getElementById(
-                'con-salary'
-            ).textContent =
-                '₱' +
-                (
-                    document.getElementById(
-                        'edit-salary'
-                    ).value || 'XX,XXX'
-                );
-
-
-            document.getElementById(
-                'con-renewal'
-            ).textContent =
-                document.getElementById(
-                    'edit-renewal'
-                ).value || 'N/A';
-
+            updatedPayload = {
+                contract_type: contractType,
+                start_date: startDate,
+                end_date: endDate,
+                employment_type: employmentType,
+                salary: salary,
+                renewal: renewal
+            };
         }
 
+        // Persist to Supabase
+        const { error } = await supabaseClient
+            .from('faculty')
+            .update(updatedPayload)
+            .eq('id', selectedFacultyId);
+
+        if (error) {
+            console.error('Failed to update faculty in database:', error);
+            alert('Failed to save to database: ' + error.message);
+        } else {
+            // Update local memory data
+            const local = facultyData.find(f => f.id === selectedFacultyId);
+            if (local) {
+                Object.assign(local, normalizeFacultyRow({ ...local.raw, ...updatedPayload, id: selectedFacultyId }));
+            }
+        }
 
         closeEditModal();
+        alert('Changes saved successfully!');
+    }
 
-        alert(
-            'Changes saved successfully!'
-        );
+    function saveEditChanges() {
+        return saveEdit();
+    }
 
+    function closeEditModal() {
+        const modal = document.getElementById('editModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+        document.body.style.overflow = '';
     }
 
 
