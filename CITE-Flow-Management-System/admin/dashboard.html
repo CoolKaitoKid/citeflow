@@ -8,8 +8,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
@@ -132,6 +134,15 @@
                 background-position: right 16px center;
             }
         }
+
+        /* Skeleton loader for cards */
+        .skeleton-pulse {
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes skeleton-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
     </style>
 </head>
 <body class="bg-slate-50 overflow-x-hidden min-h-screen">
@@ -159,16 +170,28 @@
                 </div>
             </header>
 
-            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+                <div class="dashboard-card metric-card metric-4 p-5 sm:p-6">
+                    <div class="relative flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-xs sm:text-sm font-semibold text-slate-500">Active Faculty</p>
+                            <p id="activeFacultyCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-2"><span class="skeleton-text inline-block" style="width:60px; height:32px;"></span></p>
+                            <p id="activeFacultyTrend" class="text-xs text-violet-600 mt-2">Faculty members</p>
+                        </div>
+                        <div class="metric-icon-ring">
+                            <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                    </div>
+                </div>
                 <div class="dashboard-card metric-card metric-1 p-5 sm:p-6">
                     <div class="relative flex items-center justify-between gap-4">
                         <div>
-                            <p class="text-xs sm:text-sm font-semibold text-slate-500">Total Documents</p>
-                            <p id="totalDocuments" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p class="text-xs sm:text-sm font-semibold text-slate-500">Total Submissions</p>
+                            <p id="totalDocuments" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-2"><span class="skeleton-text inline-block" style="width:60px; height:32px;"></span></p>
                             <p id="totalDocumentsTrend" class="text-xs text-slate-500 mt-2">Loading…</p>
                         </div>
                         <div class="metric-icon-ring">
-                            <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+                            <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                         </div>
                     </div>
                 </div>
@@ -176,7 +199,7 @@
                     <div class="relative flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Approved</p>
-                            <p id="approvedDocuments" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-2">0</p>
+                            <p id="approvedDocuments" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-2"><span class="skeleton-text inline-block" style="width:60px; height:32px;"></span></p>
                             <p id="approvedTrend" class="text-xs text-emerald-600 mt-2">Approved records</p>
                         </div>
                         <div class="metric-icon-ring">
@@ -184,12 +207,12 @@
                         </div>
                     </div>
                 </div>
-                <div class="dashboard-card metric-card metric-3 p-5 sm:p-6 sm:col-span-2 xl:col-span-1">
+                <div class="dashboard-card metric-card metric-3 p-5 sm:p-6">
                     <div class="relative flex items-center justify-between gap-4">
                         <div>
-                            <p class="text-xs sm:text-sm font-semibold text-slate-500">Submission Status</p>
-                            <p id="pendingDocuments" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-2">0</p>
-                            <p id="pendingTrend" class="text-xs text-amber-600 mt-2">Awaiting submission review</p>
+                            <p class="text-xs sm:text-sm font-semibold text-slate-500">Pending Review</p>
+                            <p id="pendingDocuments" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-2"><span class="skeleton-text inline-block" style="width:60px; height:32px;"></span></p>
+                            <p id="pendingTrend" class="text-xs text-amber-600 mt-2">Awaiting review</p>
                         </div>
                         <div class="metric-icon-ring">
                             <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>
@@ -202,18 +225,25 @@
                 <div class="dashboard-card p-5 sm:p-6 xl:col-span-8">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                         <div>
-                            <h2 class="text-base sm:text-lg font-semibold text-slate-950">Recent Statistics and Trends</h2>
-                            <p class="text-xs sm:text-sm text-slate-500 mt-1">Track documents, approvals, submission status, and research activity over time.</p>
+                            <h2 class="text-base sm:text-lg font-semibold text-slate-950">Monthly Activity Trends</h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-1">Track submissions, approvals, and research activity over the last 6 months.</p>
                         </div>
                         <div class="flex items-center gap-3">
-                            <label class="text-xs sm:text-sm text-slate-500 font-medium">Sort by</label>
+                            <label class="text-xs sm:text-sm text-slate-500 font-medium">View</label>
                             <select id="trendsMode" class="field min-w-[130px]" onchange="loadDashboardData()">
                                 <option value="overview">Overview</option>
-                                <option value="documents">Documents</option>
+                                <option value="submissions">Submissions</option>
+                                <option value="workload">Workload</option>
                             </select>
                         </div>
                     </div>
-                    <div class="h-[240px] sm:h-[290px] w-full">
+                    <div class="h-[240px] sm:h-[290px] w-full relative">
+                        <div id="trendsSkeleton" class="skeleton-chart absolute inset-0 flex items-center justify-center">
+                            <div class="text-center w-full">
+                                <div class="skeleton-circle mx-auto" style="width:40px;height:40px;margin-bottom:12px"></div>
+                                <div class="skeleton-text mx-auto" style="width:120px"></div>
+                            </div>
+                        </div>
                         <canvas id="trendsChart"></canvas>
                     </div>
                 </div>
@@ -224,6 +254,7 @@
                         <p class="text-xs sm:text-sm text-slate-500 mt-1">Performance percentage based on approvals, completed work, and active workload progress.</p>
                     </div>
                     <div class="relative w-[180px] h-[180px] sm:w-[210px] sm:h-[210px] mx-auto my-3">
+                        <div id="donutSkeleton" class="skeleton-chart absolute inset-0 flex items-center justify-center rounded-full"></div>
                         <canvas id="performanceDonut"></canvas>
                         <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <div class="text-center">
@@ -232,14 +263,18 @@
                             </div>
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-3 mt-4">
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4 text-center sm:text-left">
+                    <div class="grid grid-cols-3 gap-3 mt-4">
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center">
                             <div class="text-[11px] sm:text-xs text-slate-500">Approval Rate</div>
                             <div id="approvalStat" class="text-base sm:text-lg font-semibold text-slate-900 mt-1">0%</div>
                         </div>
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4 text-center sm:text-left">
-                            <div class="text-[11px] sm:text-xs text-slate-500">Research Completion</div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center">
+                            <div class="text-[11px] sm:text-xs text-slate-500">Research</div>
                             <div id="researchStat" class="text-base sm:text-lg font-semibold text-slate-900 mt-1">0%</div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center">
+                            <div class="text-[11px] sm:text-xs text-slate-500">Submission</div>
+                            <div id="submissionStat" class="text-base sm:text-lg font-semibold text-slate-900 mt-1">0%</div>
                         </div>
                     </div>
                 </div>
@@ -276,7 +311,7 @@
                         <div>
                             <div class="flex items-center justify-between text-xs sm:text-sm mb-2">
                                 <span class="font-medium text-slate-700">Teaching Load</span>
-                                <span id="teachingLoadLabel" class="font-semibold text-slate-900">0</span>
+                                <span id="teachingLoadLabel" class="font-semibold text-slate-900">0 units</span>
                             </div>
                             <div class="progress-track"><div id="teachingLoadBar" class="progress-fill bg-amber-500" style="width:0%"></div></div>
                         </div>
@@ -289,17 +324,17 @@
                         <p class="text-xs sm:text-sm text-slate-500 mt-1">Open common administrative actions.</p>
                     </div>
                     <div class="space-y-3">
-                        <button onclick="quickAction('document')" class="primary-btn w-full">
-                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14"/><path d="m7 10 5-5 5 5"/><path d="M5 21h14"/></svg>
-                            Upload Document
-                        </button>
-                        <button onclick="quickAction('approval')" class="secondary-btn w-full">
+                        <button onclick="quickAction('approval')" class="primary-btn w-full">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="m5 12 5 5L20 7"/></svg>
                             Review Approvals
                         </button>
+                        <button onclick="quickAction('document')" class="secondary-btn w-full">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14"/><path d="m7 10 5-5 5 5"/><path d="M5 21h14"/></svg>
+                            Document Vault
+                        </button>
                         <button onclick="quickAction('workload')" class="secondary-btn w-full">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                            View Workload
+                            Workload Tracker
                         </button>
                         <button onclick="quickAction('analytics')" class="secondary-btn w-full">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
@@ -311,10 +346,33 @@
                 <div class="dashboard-card p-5 sm:p-6 xl:col-span-4">
                     <div class="mb-5">
                         <h2 class="text-base sm:text-lg font-semibold text-slate-950">Recent Activity</h2>
-                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Recent statistics and system trends from faculty and administrative activity.</p>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Latest system activity from faculty and administrative actions.</p>
                     </div>
                     <div id="recentActivityList" class="space-y-3">
-                        <div class="text-sm text-slate-500">Loading recent activity...</div>
+                        <div class="skeleton-row">
+                            <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                            <div class="skeleton-text" style="width:80px"></div>
+                            <div class="skeleton-text" style="width:60px"></div>
+                        </div>
+                        <div class="skeleton-row">
+                            <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                            <div class="skeleton-text" style="width:80px"></div>
+                            <div class="skeleton-text" style="width:60px"></div>
+                        </div>
+                        <div class="skeleton-row">
+                            <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                            <div class="skeleton-text" style="width:80px"></div>
+                            <div class="skeleton-text" style="width:60px"></div>
+                        </div>
+                        <div class="skeleton-row">
+                            <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                            <div class="skeleton-text" style="width:80px"></div>
+                            <div class="skeleton-text" style="width:60px"></div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -324,18 +382,19 @@
 <div id="message-container"></div>
 
 <script>
-const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-const supabaseClient = window.supabaseClient || window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-});
-window.supabaseClient = supabaseClient;
+const supabaseClient = window.supabaseClient || (window.supabase && window.__SUPABASE_URL__
+    ? window.supabase.createClient(window.__SUPABASE_URL__, window.__SUPABASE_ANON__, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    })
+    : null);
+if (supabaseClient) window.supabaseClient = supabaseClient;
 
 let currentUser = null;
 let currentProfile = null;
 let performanceChart = null;
 let trendsChart = null;
 
+/* ─── Utility helpers ─── */
 function formatFullName(firstName, lastName, fallback) {
     return [firstName, lastName].filter(Boolean).join(' ').trim() || fallback || 'Administrator';
 }
@@ -387,10 +446,20 @@ function formatDate(value) {
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? 'Recently' : d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
 }
+function getMonthLabel(date) {
+    return new Date(date).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+}
 
-async function safeSelect(table, query = '*') {
+/* ─── Safe Supabase fetch ─── */
+async function safeSelect(table, query = '*', filters = null) {
     try {
-        const { data, error } = await supabaseClient.from(table).select(query);
+        let q = supabaseClient.from(table).select(query);
+        if (filters) {
+            for (const [col, val] of Object.entries(filters)) {
+                q = q.eq(col, val);
+            }
+        }
+        const { data, error } = await q;
         if (error) throw error;
         return data || [];
     } catch (error) {
@@ -399,80 +468,244 @@ async function safeSelect(table, query = '*') {
     }
 }
 
+/* ─── Build a faculty_id → department lookup map ─── */
+function buildFacultyDeptMap(facultyList) {
+    const map = {};
+    for (const f of facultyList) {
+        map[f.id] = f.department || '';
+    }
+    return map;
+}
+
+/* Filter rows by department using the faculty_id → department map */
+function filterByDept(rows, deptMap, department) {
+    if (!department) return rows;
+    return rows.filter(row => {
+        // Try direct department field first (some tables may have it)
+        if (row.department) return row.department === department;
+        // Then use faculty_id lookup
+        if (row.faculty_id && deptMap[row.faculty_id]) return deptMap[row.faculty_id] === department;
+        // Include rows without faculty_id (system-level)
+        return false;
+    });
+}
+
+/* ─── Get last 6 months labels ─── */
+function getLast6Months() {
+    const months = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({
+            label: d.toLocaleString('en-US', { month: 'short' }),
+            year: d.getFullYear(),
+            month: d.getMonth()
+        });
+    }
+    return months;
+}
+
+/* Count items per month based on a date field */
+function countByMonth(items, dateField, months) {
+    return months.map(m => {
+        return items.filter(item => {
+            const d = new Date(item[dateField]);
+            return d.getFullYear() === m.year && d.getMonth() === m.month;
+        }).length;
+    });
+}
+
+/* ═══════════════════════════════════════════════════
+   MAIN DATA LOADER
+   ═══════════════════════════════════════════════════ */
 async function loadDashboardData() {
     const department = document.getElementById('departmentFilter').value;
     const mode = document.getElementById('trendsMode').value;
 
-    const [vaultDocuments, documents, research, teaching, advisory, adminRoles, activities, engagement] = await Promise.all([
+    // Fetch all data sources in parallel (workflow + vault documents)
+    const [
+        facultyList, submissions, wfTasks, vaultDocuments, documents, research,
+        teaching, advisory, adminRoles, activities, engagement, accomplishments
+    ] = await Promise.all([
+        safeSelect('faculty', 'id, department, status, full_name, first_name, last_name, created_at'),
+        safeSelect('wf_submissions', 'id, task_id, faculty_id, status, submitted_at, reviewed_at'),
+        safeSelect('wf_tasks', 'id, title, status, category, due_date, created_at'),
         safeSelect('documents', '*'),
-        safeSelect('faculty_documents', '*'),
-        safeSelect('faculty_research_projects', '*'),
-        safeSelect('faculty_teaching_loads', '*'),
-        safeSelect('faculty_advisory_loads', '*'),
-        safeSelect('faculty_admin_role_loads', '*'),
-        safeSelect('system_activity_logs', '*'),
-        safeSelect('engagement_logs', '*')
+        safeSelect('faculty_documents', 'id, faculty_id, title, document_name, status, category, uploaded_at'),
+        safeSelect('faculty_research_projects', 'id, faculty_id, title, status, start_date, end_date, created_at'),
+        safeSelect('faculty_teaching_loads', 'id, faculty_id, units, status, academic_year, semester, created_at'),
+        safeSelect('faculty_advisory_loads', 'id, faculty_id, units, status, created_at'),
+        safeSelect('faculty_admin_role_loads', 'id, faculty_id, units, role_title, status, created_at'),
+        safeSelect('wf_activity_log', 'id, actor_name, action, target, details, created_at'),
+        safeSelect('engagement_logs', 'id, faculty_id, faculty_name, department, activity_type, activity_title, description, created_at'),
+        safeSelect('faculty_accomplishments', 'id, faculty_id, title, accomplishment_type, date_achieved, created_at')
     ]);
 
+    // Build department lookup map
+    const deptMap = buildFacultyDeptMap(facultyList);
+
+    // Filter faculty by department
+    const filteredFaculty = department
+        ? facultyList.filter(f => f.department === department)
+        : facultyList;
+    const activeFaculty = filteredFaculty.filter(f =>
+        !['Inactive', 'Archived'].includes(f.status)
+    );
+
+    // Get faculty IDs for this department
+    const deptFacultyIds = new Set(filteredFaculty.map(f => f.id));
+
+    // Filter all child tables by department via faculty_id
+    const filteredSubmissions = department
+        ? submissions.filter(s => deptFacultyIds.has(s.faculty_id))
+        : submissions;
+    const filteredDocs = department
+        ? documents.filter(d => deptFacultyIds.has(d.faculty_id))
+        : documents;
+    const filteredResearch = department
+        ? research.filter(r => deptFacultyIds.has(r.faculty_id))
+        : research;
+    const filteredTeaching = department
+        ? teaching.filter(t => deptFacultyIds.has(t.faculty_id))
+        : teaching;
+    const filteredAdvisory = department
+        ? advisory.filter(a => deptFacultyIds.has(a.faculty_id))
+        : advisory;
+    const filteredAdminRoles = department
+        ? adminRoles.filter(a => deptFacultyIds.has(a.faculty_id))
+        : adminRoles;
+    const filteredEngagement = department
+        ? engagement.filter(e => e.department === department || deptFacultyIds.has(e.faculty_id))
+        : engagement;
+    const filteredAccomplishments = department
+        ? accomplishments.filter(a => deptFacultyIds.has(a.faculty_id))
+        : accomplishments;
     const filteredVaultDocs = department
         ? vaultDocuments.filter(row => row.department === department || !row.department)
         : vaultDocuments;
-    const filteredDocs = department ? documents.filter(row => row.department === department || !row.department) : documents;
-    const filteredResearch = department ? research.filter(row => row.department === department || !row.department) : research;
-    const filteredTeaching = department ? teaching.filter(row => row.department === department || !row.department) : teaching;
-    const filteredAdvisory = department ? advisory.filter(row => row.department === department || !row.department) : advisory;
-    const filteredAdminRoles = department ? adminRoles.filter(row => row.department === department || !row.department) : adminRoles;
-    const filteredEngagement = department ? engagement.filter(row => row.department === department || !row.department) : engagement;
 
-    const totalDocs = safeCount(filteredVaultDocs);
-    const approvedDocs = filteredDocs.filter(row => ['approved', 'completed'].includes(String(row.status || '').toLowerCase())).length;
-    const pendingDocs = filteredDocs.filter(row => ['submitted', 'pending', 'pending review', 'for review'].includes(String(row.status || '').toLowerCase())).length;
+    // ─── Metric Card Calculations ───
 
-    const activeTeaching = filteredTeaching.filter(row => String(row.status || 'Active').toLowerCase() !== 'archived');
-    const activeAdvisory = filteredAdvisory.filter(row => String(row.status || 'Active').toLowerCase() !== 'archived');
-    const activeAdminRoles = filteredAdminRoles.filter(row => String(row.status || 'Active').toLowerCase() !== 'archived');
+    // Total Submissions = workflow submissions + faculty documents + vault documents
+    const totalSubmissions = safeCount(filteredSubmissions) + safeCount(filteredDocs) + safeCount(filteredVaultDocs);
+
+    // Approved = wf_submissions with status 'Approved' + faculty_documents with status 'approved'/'completed'
+    const approvedSubmissions = filteredSubmissions.filter(s =>
+        String(s.status || '').toLowerCase() === 'approved'
+    ).length;
+    const approvedDocs = filteredDocs.filter(d =>
+        ['approved', 'completed'].includes(String(d.status || '').toLowerCase())
+    ).length;
+    const totalApproved = approvedSubmissions + approvedDocs;
+
+    // Pending = wf_submissions with pending statuses + faculty_documents with pending statuses
+    const pendingSubmissions = filteredSubmissions.filter(s =>
+        ['pending review', 'under review'].includes(String(s.status || '').toLowerCase())
+    ).length;
+    const pendingDocs = filteredDocs.filter(d =>
+        ['submitted', 'pending', 'pending review', 'for review'].includes(String(d.status || '').toLowerCase())
+    ).length;
+    const totalPending = pendingSubmissions + pendingDocs;
+
+    // Rejected count for comprehensive tracking
+    const rejectedSubmissions = filteredSubmissions.filter(s =>
+        ['rejected', 'revisions requested'].includes(String(s.status || '').toLowerCase())
+    ).length;
+
+    // ─── Update Metric Cards ───
+    document.getElementById('activeFacultyCount').textContent = activeFaculty.length;
+    const onLeave = activeFaculty.filter(f => String(f.status || '').toLowerCase().includes('leave')).length;
+    document.getElementById('activeFacultyTrend').textContent = onLeave > 0
+        ? `${activeFaculty.length} active, ${onLeave} on leave`
+        : `${activeFaculty.length} active faculty member${activeFaculty.length === 1 ? '' : 's'}`;
+
+    document.getElementById('totalDocuments').textContent = totalSubmissions;
+    document.getElementById('totalDocumentsTrend').textContent = totalSubmissions > 0
+        ? `${safeCount(filteredSubmissions)} workflow + ${safeCount(filteredDocs) + safeCount(filteredVaultDocs)} documents`
+        : documentTrendLabel(filteredVaultDocs);
+
+    document.getElementById('approvedDocuments').textContent = totalApproved;
+    document.getElementById('approvedTrend').textContent = totalSubmissions > 0
+        ? `${percent(totalApproved, totalSubmissions)}% approval rate`
+        : 'No approved records';
+
+    document.getElementById('pendingDocuments').textContent = totalPending;
+    document.getElementById('pendingTrend').textContent = totalPending > 0
+        ? `${totalPending} awaiting review`
+        : 'No pending reviews';
+
+    // ─── Workload Calculations ───
+    const activeTeaching = filteredTeaching.filter(r => String(r.status || 'Active').toLowerCase() !== 'archived');
+    const activeAdvisory = filteredAdvisory.filter(r => String(r.status || 'Active').toLowerCase() !== 'archived');
+    const activeAdminRoles = filteredAdminRoles.filter(r => String(r.status || 'Active').toLowerCase() !== 'archived');
     const workloadTotal = sumUnits(activeTeaching) + sumUnits(activeAdvisory) + sumUnits(activeAdminRoles);
 
-    const completedResearch = filteredResearch.filter(row => String(row.status || '').toLowerCase() === 'completed').length;
-    const extensionServices = filteredEngagement.filter(row => String(row.activity_type || '').toLowerCase().includes('community') || String(row.activity_title || '').toLowerCase().includes('extension')).length;
-    const administrativeTasks = activeAdminRoles.length || activities.filter(row => String(row.module || '').toLowerCase().includes('admin')).length;
+    // ─── Research Metrics ───
+    const completedResearch = filteredResearch.filter(r =>
+        ['completed', 'completed but not published', 'completed and published', 'published', 'patented'].includes(String(r.status || '').toLowerCase())
+    ).length;
+    const ongoingResearch = filteredResearch.filter(r => String(r.status || '').toLowerCase() === 'ongoing').length;
 
-    document.getElementById('totalDocuments').textContent = totalDocs;
-    document.getElementById('approvedDocuments').textContent = approvedDocs;
-    document.getElementById('pendingDocuments').textContent = pendingDocs;
-    document.getElementById('totalDocumentsTrend').textContent = documentTrendLabel(filteredVaultDocs);
-    document.getElementById('approvedTrend').textContent = `${percent(approvedDocs, Math.max(totalDocs, 1))}% approval share`;
-    document.getElementById('pendingTrend').textContent = `${pendingDocs} pending review`;
+    // ─── Extension / Engagement count ───
+    const extensionServices = filteredEngagement.length + filteredAccomplishments.length;
 
-    const approvalScore = percent(approvedDocs, Math.max(totalDocs, 1));
-    const workloadScore = clamp(percent(workloadTotal, Math.max(workloadTotal, 40)));
+    // ─── Administrative tasks ───
+    const administrativeTasks = activeAdminRoles.length;
+
+    // ─── Performance Score ───
+    const approvalScore = percent(totalApproved, Math.max(totalSubmissions, 1));
     const researchScore = clamp(percent(completedResearch, Math.max(filteredResearch.length, 1)));
-    const performance = clamp((approvalScore * 0.45) + (workloadScore * 0.35) + (researchScore * 0.20));
+    const submissionRate = totalSubmissions > 0
+        ? clamp(percent(totalApproved + totalPending, totalSubmissions))
+        : 0;
+    // Weighted performance: 40% approval, 30% submission activity, 30% research completion
+    const performance = clamp(
+        (approvalScore * 0.40) + (submissionRate * 0.30) + (researchScore * 0.30)
+    );
 
     document.getElementById('approvalStat').textContent = `${approvalScore}%`;
     document.getElementById('researchStat').textContent = `${researchScore}%`;
+    document.getElementById('submissionStat').textContent = `${submissionRate}%`;
 
+    // ─── Update Charts & Sections ───
     updatePerformanceChart(performance);
+    const ts = document.getElementById('trendsSkeleton'); if(ts) ts.style.display = 'none';
+    const ds = document.getElementById('donutSkeleton'); if(ds) ds.style.display = 'none';
     updateActivityOverview({
         administrativeTasks,
-        researchOutput: completedResearch,
+        researchOutput: filteredResearch.length,
         extensionServices,
         teachingLoad: workloadTotal
     });
-    updateTrendsChart({ totalDocs, approvedDocs, pendingDocs, workloadTotal, completedResearch, mode });
-    renderRecentActivities(activities, filteredEngagement, filteredVaultDocs);
+    updateTrendsChart({
+        submissions: filteredSubmissions,
+        documents: filteredDocs,
+        research: filteredResearch,
+        teaching: filteredTeaching,
+        mode
+    });
+    renderRecentActivities(activities, filteredEngagement, filteredSubmissions, filteredDocs, wfTasks, filteredVaultDocs);
 }
 
+/* ═══════════════════════════════════════════════════
+   PERFORMANCE DONUT CHART
+   ═══════════════════════════════════════════════════ */
 function updatePerformanceChart(value) {
     document.getElementById('performancePercent').textContent = `${value}%`;
     const ctx = document.getElementById('performanceDonut');
     if (performanceChart) performanceChart.destroy();
+
+    // Dynamic color based on performance level
+    let color = '#ef4444'; // red for low
+    if (value >= 70) color = '#22c55e'; // green
+    else if (value >= 40) color = '#fb923c'; // orange
+
     performanceChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
             datasets: [{
                 data: [value, Math.max(0, 100 - value)],
-                backgroundColor: ['#fb923c', '#f1f5f9'],
+                backgroundColor: [color, '#f1f5f9'],
                 borderWidth: 0,
                 cutout: '74%'
             }]
@@ -485,72 +718,194 @@ function updatePerformanceChart(value) {
     });
 }
 
+/* ═══════════════════════════════════════════════════
+   FACULTY ACTIVITIES PROGRESS BARS
+   ═══════════════════════════════════════════════════ */
 function updateActivityOverview(values) {
     const max = Math.max(values.administrativeTasks, values.researchOutput, values.extensionServices, values.teachingLoad, 1);
     const rows = [
         ['adminTasks', values.administrativeTasks],
         ['researchOutput', values.researchOutput],
         ['extensionServices', values.extensionServices],
-        ['teachingLoad', values.teachingLoad]
     ];
     rows.forEach(([id, value]) => {
         document.getElementById(`${id}Label`).textContent = value;
         document.getElementById(`${id}Bar`).style.width = `${percent(value, max)}%`;
     });
+    // Teaching load uses unit display
+    document.getElementById('teachingLoadLabel').textContent = `${values.teachingLoad} units`;
+    // For teaching load bar, use a sensible max (e.g., 27 units × faculty count, or just relative)
+    const maxUnits = Math.max(values.teachingLoad, 27);
+    document.getElementById('teachingLoadBar').style.width = `${percent(values.teachingLoad, maxUnits)}%`;
 }
 
-function updateTrendsChart(values) {
+/* ═══════════════════════════════════════════════════
+   MONTHLY TRENDS LINE CHART
+   ═══════════════════════════════════════════════════ */
+function updateTrendsChart(data) {
     const ctx = document.getElementById('trendsChart');
     if (trendsChart) trendsChart.destroy();
 
-    const labels = ['Documents', 'Approved', 'Pending', 'Research'];
-    const numbers = [values.totalDocs, values.approvedDocs, values.pendingDocs, values.completedResearch];
+    const months = getLast6Months();
+    const labels = months.map(m => m.label);
 
-    const useDocumentsPalette = values.mode === 'documents';
-    const useWorkloadPalette = values.mode === 'workload';
-    const lineColor = useDocumentsPalette ? '#f97316' : useWorkloadPalette ? '#8b5cf6' : '#475569';
-    const pointColor = useDocumentsPalette ? '#fb923c' : useWorkloadPalette ? '#a78bfa' : '#f59e0b';
+    let datasets = [];
+
+    if (data.mode === 'submissions') {
+        // Submissions-focused view
+        const submittedByMonth = countByMonth(data.submissions, 'submitted_at', months);
+        const approvedByMonth = months.map(m => {
+            return data.submissions.filter(s => {
+                if (!s.reviewed_at) return false;
+                const d = new Date(s.reviewed_at);
+                return d.getFullYear() === m.year && d.getMonth() === m.month &&
+                    String(s.status || '').toLowerCase() === 'approved';
+            }).length;
+        });
+        const docsByMonth = countByMonth(data.documents, 'uploaded_at', months);
+
+        datasets = [
+            {
+                label: 'Workflow Submissions',
+                data: submittedByMonth,
+                borderColor: '#f97316',
+                backgroundColor: 'rgba(249,115,22,0.08)',
+                pointBackgroundColor: '#fb923c',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                borderWidth: 2.5, tension: 0.4, fill: true
+            },
+            {
+                label: 'Approved',
+                data: approvedByMonth,
+                borderColor: '#22c55e',
+                backgroundColor: 'rgba(34,197,94,0.06)',
+                pointBackgroundColor: '#4ade80',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                borderWidth: 2.5, tension: 0.4, fill: true
+            },
+            {
+                label: 'Documents Uploaded',
+                data: docsByMonth,
+                borderColor: '#8b5cf6',
+                backgroundColor: 'rgba(139,92,246,0.06)',
+                pointBackgroundColor: '#a78bfa',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                borderWidth: 2.5, tension: 0.4, fill: false
+            }
+        ];
+    } else if (data.mode === 'workload') {
+        // Workload-focused: teaching loads created per month
+        const teachingByMonth = countByMonth(data.teaching, 'created_at', months);
+        const researchByMonth = countByMonth(data.research, 'created_at', months);
+
+        datasets = [
+            {
+                label: 'Teaching Loads',
+                data: teachingByMonth,
+                borderColor: '#f59e0b',
+                backgroundColor: 'rgba(245,158,11,0.08)',
+                pointBackgroundColor: '#fbbf24',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                borderWidth: 2.5, tension: 0.4, fill: true
+            },
+            {
+                label: 'Research Projects',
+                data: researchByMonth,
+                borderColor: '#06b6d4',
+                backgroundColor: 'rgba(6,182,212,0.06)',
+                pointBackgroundColor: '#22d3ee',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                borderWidth: 2.5, tension: 0.4, fill: true
+            }
+        ];
+    } else {
+        // Overview: submissions + documents + research
+        const submittedByMonth = countByMonth(data.submissions, 'submitted_at', months);
+        const docsByMonth = countByMonth(data.documents, 'uploaded_at', months);
+        const researchByMonth = countByMonth(data.research, 'created_at', months);
+
+        datasets = [
+            {
+                label: 'Submissions',
+                data: submittedByMonth,
+                borderColor: '#475569',
+                backgroundColor: 'rgba(71,85,105,0.06)',
+                pointBackgroundColor: '#64748b',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                borderWidth: 2.5, tension: 0.4, fill: true
+            },
+            {
+                label: 'Documents',
+                data: docsByMonth,
+                borderColor: '#f97316',
+                backgroundColor: 'rgba(249,115,22,0.06)',
+                pointBackgroundColor: '#fb923c',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                borderWidth: 2.5, tension: 0.4, fill: false
+            },
+            {
+                label: 'Research',
+                data: researchByMonth,
+                borderColor: '#06b6d4',
+                backgroundColor: 'rgba(6,182,212,0.06)',
+                pointBackgroundColor: '#22d3ee',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                borderWidth: 2.5, tension: 0.4, fill: false
+            }
+        ];
+    }
 
     trendsChart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels,
-            datasets: [{
-                label: 'Overview',
-                data: numbers,
-                borderColor: lineColor,
-                backgroundColor: 'rgba(249,115,22,0.08)',
-                pointBackgroundColor: pointColor,
-                pointBorderColor: '#ffffff',
-                pointBorderWidth: 3,
-                pointRadius: 6,
-                pointHoverRadius: 7,
-                borderWidth: 3,
-                tension: 0.42,
-                fill: true
-            }]
-        },
+        data: { labels, datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { display: false },
+                legend: {
+                    display: true,
+                    position: 'top',
+                    align: 'end',
+                    labels: {
+                        boxWidth: 12,
+                        boxHeight: 12,
+                        borderRadius: 3,
+                        useBorderRadius: true,
+                        font: { size: 11, weight: '600' },
+                        color: '#64748b',
+                        padding: 16
+                    }
+                },
                 tooltip: {
                     backgroundColor: '#0f172a',
                     padding: 12,
-                    displayColors: false
+                    titleFont: { weight: '700' },
+                    bodyFont: { size: 13 }
                 }
             },
             scales: {
                 y: {
                     beginAtZero: true,
                     grid: { color: '#eef2f7' },
-                    ticks: { color: '#94a3b8' },
+                    ticks: {
+                        color: '#94a3b8',
+                        stepSize: 1,
+                        callback: function(value) { return Number.isInteger(value) ? value : ''; }
+                    },
                     border: { display: false }
                 },
                 x: {
                     grid: { display: false },
-                    ticks: { color: '#64748b' },
+                    ticks: { color: '#64748b', font: { weight: '600' } },
                     border: { display: false }
                 }
             }
@@ -558,33 +913,91 @@ function updateTrendsChart(values) {
     });
 }
 
-function renderRecentActivities(activities, engagement, documents) {
+/* ═══════════════════════════════════════════════════
+   RECENT ACTIVITY FEED
+   ═══════════════════════════════════════════════════ */
+function renderRecentActivities(activities, engagement, submissions, documents, wfTasks, vaultDocuments = []) {
+    // Build task lookup for submission context
+    const taskMap = {};
+    for (const t of (wfTasks || [])) taskMap[t.id] = t;
+
     const combined = [
-        ...activities.map(item => ({ title: item.action || 'System Activity', meta: item.details_text || item.module || 'Activity recorded', time: item.created_at })),
-        ...engagement.map(item => ({ title: item.activity_title || item.activity_type || 'Engagement Activity', meta: item.description || item.source_module || 'Engagement recorded', time: item.created_at || item.activity_at })),
-        ...documents.map(item => ({ title: item.name || item.document_name || item.title || 'Document submitted', meta: item.status || item.document_type || item.mime_type || 'Document record', time: item.uploaded_at || item.created_at }))
-    ].filter(item => item.title).sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0)).slice(0, 6);
+        ...activities.map(item => ({
+            title: item.action || 'System Activity',
+            meta: item.details || item.details_text || item.target || item.module || 'Activity recorded',
+            time: item.created_at,
+            icon: 'fa-bolt',
+            color: 'text-violet-600 bg-violet-50 border-violet-200'
+        })),
+        ...engagement.map(item => ({
+            title: item.activity_title || item.activity_type || 'Engagement Activity',
+            meta: `${item.faculty_name || 'Faculty'} — ${item.description || item.source_module || item.activity_type || 'Engagement'}`,
+            time: item.created_at || item.activity_at,
+            icon: 'fa-star',
+            color: 'text-amber-600 bg-amber-50 border-amber-200'
+        })),
+        ...submissions.map(item => {
+            const task = taskMap[item.task_id];
+            const statusLower = String(item.status || '').toLowerCase();
+            let icon = 'fa-file-arrow-up';
+            let color = 'text-blue-600 bg-blue-50 border-blue-200';
+            if (statusLower === 'approved') { icon = 'fa-circle-check'; color = 'text-emerald-600 bg-emerald-50 border-emerald-200'; }
+            else if (statusLower === 'rejected') { icon = 'fa-circle-xmark'; color = 'text-red-600 bg-red-50 border-red-200'; }
+            else if (statusLower.includes('revision')) { icon = 'fa-pen-to-square'; color = 'text-orange-600 bg-orange-50 border-orange-200'; }
+            return {
+                title: task ? `Submission: ${task.title}` : 'Workflow Submission',
+                meta: `Status: ${item.status || 'Submitted'}`,
+                time: item.submitted_at || item.reviewed_at,
+                icon,
+                color
+            };
+        }),
+        ...documents.map(item => ({
+            title: item.document_name || item.title || item.name || 'Document uploaded',
+            meta: `${item.category || item.document_type || item.mime_type || 'Document'} — ${item.status || 'Submitted'}`,
+            time: item.uploaded_at || item.created_at,
+            icon: 'fa-folder-open',
+            color: 'text-slate-600 bg-slate-50 border-slate-200'
+        })),
+        ...vaultDocuments.map(item => ({
+            title: item.name || item.document_name || item.title || 'Document submitted',
+            meta: item.status || item.document_type || item.mime_type || 'Vault document',
+            time: item.uploaded_at || item.created_at,
+            icon: 'fa-box-archive',
+            color: 'text-slate-600 bg-slate-50 border-slate-200'
+        }))
+    ].filter(item => item.title && item.time).sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 8);
 
     const list = document.getElementById('recentActivityList');
     if (!combined.length) {
-        list.innerHTML = '<div class="text-sm text-slate-500">No recent activity found.</div>';
+        list.innerHTML = `
+            <div class="text-center py-8">
+                <div class="w-14 h-14 rounded-full bg-slate-100 mx-auto flex items-center justify-center mb-3">
+                    <i class="fas fa-inbox text-slate-400 text-xl"></i>
+                </div>
+                <p class="text-sm text-slate-500 font-medium">No recent activity found</p>
+                <p class="text-xs text-slate-400 mt-1">Activity will appear here as faculty interact with the system</p>
+            </div>`;
         return;
     }
 
     list.innerHTML = combined.map(item => `
-        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex gap-3">
-            <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 text-slate-600 flex items-center justify-center flex-shrink-0">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3.5 flex gap-3 hover:bg-white hover:border-slate-300 transition-all cursor-default">
+            <div class="w-9 h-9 rounded-xl ${item.color} border flex items-center justify-center flex-shrink-0">
+                <i class="fas ${item.icon} text-sm"></i>
             </div>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
                 <div class="text-sm font-semibold text-slate-900 truncate">${esc(item.title)}</div>
-                <div class="text-xs text-slate-500 mt-1 line-clamp-2">${esc(item.meta)}</div>
-                <div class="text-xs text-slate-400 mt-2">${formatDate(item.time)}</div>
+                <div class="text-xs text-slate-500 mt-0.5 line-clamp-1">${esc(item.meta)}</div>
+                <div class="text-[11px] text-slate-400 mt-1.5">${formatDate(item.time)}</div>
             </div>
         </div>
     `).join('');
 }
 
+/* ═══════════════════════════════════════════════════
+   QUICK ACTIONS
+   ═══════════════════════════════════════════════════ */
 function quickAction(action) {
     const routes = {
         document: 'document-vault.html',
@@ -595,23 +1008,29 @@ function quickAction(action) {
     window.location.href = routes[action] || 'dashboard.html';
 }
 
+/* ═══════════════════════════════════════════════════
+   ADMIN PROFILE LOADER
+   ═══════════════════════════════════════════════════ */
 function renderProfile(profile, user) {
     const fullName = formatFullName(profile.first_name, profile.last_name, user?.email);
     const role = profile.role || 'Administrator';
     const avatarUrl = profile.avatar_url || '';
-    document.getElementById('profileName').textContent = fullName;
-    document.getElementById('profileRole').textContent = role;
-    document.getElementById('welcomeMessage').textContent = `Welcome back, ${profile.first_name || fullName}. Monitor total documents, approvals, and submission status in one place.`;
+    const profileNameEl = document.getElementById('profileName');
+    const profileRoleEl = document.getElementById('profileRole');
+    if (profileNameEl) profileNameEl.textContent = fullName;
+    if (profileRoleEl) profileRoleEl.textContent = role;
+    const welcomeEl = document.getElementById('welcomeMessage');
+    if (welcomeEl) welcomeEl.textContent = `Welcome back, ${profile.first_name || fullName}. Monitor total documents, approvals, and submission status in one place.`;
     const sidebarAvatar = document.getElementById('sidebarAvatar');
     const sidebarAvatarFallback = document.getElementById('sidebarAvatarFallback');
-    if (avatarUrl) {
+    if (sidebarAvatar && avatarUrl) {
         sidebarAvatar.src = avatarUrl;
         sidebarAvatar.classList.remove('hidden');
-        sidebarAvatarFallback.classList.add('hidden');
-    } else {
+        if (sidebarAvatarFallback) sidebarAvatarFallback.classList.add('hidden');
+    } else if (sidebarAvatar) {
         sidebarAvatar.src = '';
         sidebarAvatar.classList.add('hidden');
-        sidebarAvatarFallback.classList.remove('hidden');
+        if (sidebarAvatarFallback) sidebarAvatarFallback.classList.remove('hidden');
     }
 }
 
@@ -619,8 +1038,10 @@ async function loadAdminProfile() {
     const { data: authData } = await supabaseClient.auth.getUser();
     currentUser = authData?.user || null;
     if (!currentUser) {
-        document.getElementById('profileName').textContent = 'Administrator';
-        document.getElementById('profileRole').textContent = 'Administrator';
+        const profileNameEl = document.getElementById('profileName');
+        const profileRoleEl = document.getElementById('profileRole');
+        if (profileNameEl) profileNameEl.textContent = 'Administrator';
+        if (profileRoleEl) profileRoleEl.textContent = 'Administrator';
         return;
     }
     let profile = {
@@ -640,19 +1061,28 @@ async function loadAdminProfile() {
     renderProfile(profile, currentUser);
 }
 
+/* ═══════════════════════════════════════════════════
+   REALTIME SUBSCRIPTIONS
+   ═══════════════════════════════════════════════════ */
 function subscribeRealtime() {
     supabaseClient.channel('dashboard-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_research_projects' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_teaching_loads' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_advisory_loads' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_admin_role_loads' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'system_activity_logs' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, loadDashboardData)
         .subscribe();
 }
 
+/* ═══════════════════════════════════════════════════
+   BOOT
+   ═══════════════════════════════════════════════════ */
 window.addEventListener('load', async () => {
     try { await loadSidebar(); } catch (error) { console.warn('Dashboard navigation load skipped:', error); }
     try { await loadAdminProfile(); } catch (error) { console.warn('Dashboard profile load skipped:', error); }

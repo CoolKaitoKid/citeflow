@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth.js"></script>
@@ -419,6 +420,14 @@
         return new Promise((resolve) => { confirmResolver = resolve; });
     }
 
+    function closeConfirmModal(result) {
+        const modal = document.getElementById('confirmModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (confirmResolver) confirmResolver(result);
+        confirmResolver = null;
+    }
+
     async function loadAccount() {
         const sb = window.supabaseClient;
         const { data } = await sb.auth.getUser();
@@ -473,18 +482,8 @@
     document.getElementById('editBtn').addEventListener('click', () => { takeSnapshot(); setEditing(true); });
     document.getElementById('cancelBtn').addEventListener('click', () => { restoreSnapshot(); setEditing(false); });
     document.getElementById('saveBtn').addEventListener('click', saveAll);
-    document.getElementById('confirmYes').addEventListener('click', () => {
-        document.getElementById('confirmModal').classList.add('hidden');
-        document.getElementById('confirmModal').classList.remove('flex');
-        if (confirmResolver) confirmResolver(true);
-        confirmResolver = null;
-    });
-    document.getElementById('confirmNo').addEventListener('click', () => {
-        document.getElementById('confirmModal').classList.add('hidden');
-        document.getElementById('confirmModal').classList.remove('flex');
-        if (confirmResolver) confirmResolver(false);
-        confirmResolver = null;
-    });
+    document.getElementById('confirmYes').addEventListener('click', () => closeConfirmModal(true));
+    document.getElementById('confirmNo').addEventListener('click', () => closeConfirmModal(false));
 
     window.addEventListener('DOMContentLoaded', async () => {
         if (typeof loadSidebar === 'function') await loadSidebar();

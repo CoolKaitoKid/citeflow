@@ -6,7 +6,10 @@
     <title>Document Vault - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js"></script>
     <script src="../shared/workflow.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
     <style>
@@ -187,7 +190,37 @@
                         </button>
                     </div>
                 </div>
-                <div id="folders-grid"></div>
+                <div id="folders-grid">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <section id="folder-view" class="hidden max-w-7xl mx-auto">
@@ -233,7 +266,37 @@
                         <button onclick="deleteSelectedDocuments()" class="px-3 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs sm:text-sm font-bold">Delete</button>
                     </div>
                 </div>
-                <div id="folder-documents-container"></div>
+                <div id="folder-documents-container">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
         </div>
     </main>
@@ -418,41 +481,9 @@
 <div id="documentToast" class="document-toast"><i class="fa-solid fa-circle-check"></i><span id="documentToastText">Done</span></div>
 
 <script>
-const DEFAULT_SUPABASE_URL = 'https://uforealazougjckepggc.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-
-function getSupabaseCredentials(){
-    const win = window || {};
-    const savedUrl = localStorage.getItem('citeflow.supabase.url') || localStorage.getItem('SUPABASE_URL');
-    const savedKey = localStorage.getItem('citeflow.supabase.anonKey') || localStorage.getItem('SUPABASE_ANON_KEY');
-    return {
-        url: win.SUPABASE_URL || savedUrl || DEFAULT_SUPABASE_URL,
-        anonKey: win.SUPABASE_ANON_KEY || savedKey || DEFAULT_SUPABASE_ANON_KEY
-    };
-}
-
-function saveSupabaseAnonKey(value){
-    if(!value) return;
-    localStorage.setItem('citeflow.supabase.anonKey', value.trim());
-}
-
 const STORAGE_BUCKET = 'documents';
-
-let supabaseClient = null;
-let supabaseConfig = getSupabaseCredentials();
+const supabaseClient = window.supabaseClient;
 let hasPromptedForApiKey = false;
-
-if (window.supabase && typeof window.supabase.createClient === 'function') {
-    supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey, {
-        auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: false
-        }
-    });
-} else {
-    alert('Supabase library failed to load. Please refresh the page.');
-}
 let folders = [];
 let documents = [];
 let allDocuments = [];
@@ -894,7 +925,7 @@ async function downloadDocument(id){
 }
 async function downloadCurrentPreviewDocument(){ if(currentPreviewDocument) await downloadDocument(currentPreviewDocument.id); }
 
-function setupDropZone(){ const dz=document.getElementById('main-drop-zone'); if(!dz) return; ['dragenter','dragover'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.add('drag-over'); })); ['dragleave','drop'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.remove('drag-over'); })); dz.addEventListener('drop',e=>{ document.getElementById('main-file-input').files=e.dataTransfer.files; }); }
+function setupDropZone(){ const dz=document.getElementById('main-drop-zone'); if(!dz) return; ['dragenter','dragover'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.add('drag-over'); })); ['dragleave','drop'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.remove('drag-over'); })); dz.addEventListener('drop',e=>{ const input = document.getElementById('main-file-input'); if(input) input.files=e.dataTransfer.files; }); }
 document.addEventListener('keydown',e=>{
     if(e.key!=='Escape') return;
     const preview=document.getElementById('documentPreviewModal');
@@ -904,7 +935,7 @@ document.addEventListener('keydown',e=>{
     hideSimpleUploadModal();
     hideMoveDocsModal();
 });
-window.onload=async()=>{ setupDropZone(); await loadSidebar(); await refreshVault(); setFolderView(currentFolderView,false); };
+window.addEventListener('load', async () => { setupDropZone(); await loadSidebar(); await refreshVault(); setFolderView(currentFolderView,false); });
 </script>
 <script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>

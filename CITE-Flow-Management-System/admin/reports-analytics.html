@@ -7,7 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -17,20 +20,21 @@
         * { font-family: 'Inter', sans-serif; }
         .app-surface { background: linear-gradient(135deg, #f8fafc 0%, #f9fafb 50%, #f7f7fb 100%); }
         .panel { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 18px 45px rgba(15, 23, 42, .06); }
-        .soft-card { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 10px 28px rgba(15, 23, 42, .045); }
+        .soft-card { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 10px 28px rgba(15, 23, 42, .045); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .soft-card:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(15, 23, 42, .08); }
         .field { width: 100%; border: 1px solid #dbe1ea; border-radius: 14px; padding: 10px 12px; font-size: 13px; outline: none; background: #fff; color: #0f172a; }
         .field:focus { border-color: #621708; box-shadow: 0 0 0 4px rgba(98, 23, 8, .08); }
         .btn-primary { background: #621708; color: white; border-radius: 14px; padding: 9px 16px; font-size: 13px; font-weight: 700; transition: all 0.15s ease; }
         .btn-primary:hover { background: #8c2a10; }
         .btn-secondary { background: #fff; color: #334155; border: 1px solid #dbe1ea; border-radius: 14px; padding: 9px 16px; font-size: 13px; font-weight: 700; transition: all 0.15s ease; }
         .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
-        .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+        .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
         .action-approved { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
-        .action-requested-edit { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-        .action-rejected { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
-        .action-created { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .action-requested-edit, .action-revision { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+        .action-rejected, .action-declined { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .action-created, .action-submitted { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
         .action-updated { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
-        .action-download { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+        .action-download, .action-exported { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
         .action-other { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
         .table-row:hover { background: #f8fafc; }
     </style>
@@ -60,7 +64,56 @@
                 </div>
             </header>
 
-            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 mb-6" id="summary-cards"></section>
+            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 mb-6" id="summary-cards">
+                <div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-xs sm:text-sm text-slate-500 font-medium">Total Activities</div>
+                            <div id="card-total" class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2"><div class="skeleton-text xl" style="width:60px"></div></div>
+                        </div>
+                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center shrink-0">
+                            <i class="fas fa-chart-line text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">Recorded system activities</div>
+                </div>
+                <div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-xs sm:text-sm text-slate-500 font-medium">Today's Activity</div>
+                            <div id="card-today" class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2"><div class="skeleton-text xl" style="width:60px"></div></div>
+                        </div>
+                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center shrink-0">
+                            <i class="fas fa-calendar-day text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">Activities recorded today</div>
+                </div>
+                <div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-xs sm:text-sm text-slate-500 font-medium">Active Modules</div>
+                            <div id="card-modules" class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2"><div class="skeleton-text xl" style="width:60px"></div></div>
+                        </div>
+                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-indigo-500/10 text-indigo-700 flex items-center justify-center shrink-0">
+                            <i class="fas fa-cubes text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">Active system modules</div>
+                </div>
+                <div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-xs sm:text-sm text-slate-500 font-medium">Approvals & Reviews</div>
+                            <div id="card-approvals" class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2"><div class="skeleton-text xl" style="width:60px"></div></div>
+                        </div>
+                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-500/10 text-amber-700 flex items-center justify-center shrink-0">
+                            <i class="fas fa-check-double text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">Workflow reviews completed</div>
+                </div>
+            </section>
 
             <section class="panel rounded-2xl sm:rounded-[2rem] p-4 sm:p-6 mb-6">
                 <div class="flex flex-col lg:flex-row lg:items-end gap-4">
@@ -100,7 +153,13 @@
                         </div>
                         <span id="action-total" class="badge action-other">0 actions</span>
                     </div>
-                    <div class="h-[260px] sm:h-[300px] flex items-center justify-center">
+                    <div class="h-[260px] sm:h-[300px] flex items-center justify-center relative">
+                        <div id="actionChartSkeleton" class="skeleton-chart absolute inset-0 flex items-center justify-center">
+                            <div class="text-center w-full">
+                                <div class="skeleton-circle mx-auto" style="width:40px;height:40px;margin-bottom:12px"></div>
+                                <div class="skeleton-text mx-auto" style="width:120px"></div>
+                            </div>
+                        </div>
                         <canvas id="actionChart"></canvas>
                     </div>
                 </div>
@@ -112,7 +171,13 @@
                         </div>
                         <span id="module-total" class="badge action-other">0 modules</span>
                     </div>
-                    <div class="h-[260px] sm:h-[300px]">
+                    <div class="h-[260px] sm:h-[300px] relative">
+                        <div id="moduleChartSkeleton" class="skeleton-chart absolute inset-0 flex items-center justify-center">
+                            <div class="text-center w-full">
+                                <div class="skeleton-circle mx-auto" style="width:40px;height:40px;margin-bottom:12px"></div>
+                                <div class="skeleton-text mx-auto" style="width:120px"></div>
+                            </div>
+                        </div>
                         <canvas id="moduleChart"></canvas>
                     </div>
                 </div>
@@ -140,7 +205,30 @@
                                 <th class="px-4 sm:px-6 py-3.5 text-left">Details</th>
                             </tr>
                         </thead>
-                        <tbody id="activity-table" class="divide-y divide-slate-100 bg-white"></tbody>
+                        <tbody id="activity-table" class="divide-y divide-slate-100 bg-white">
+                            <tr>
+                                <td colspan="5">
+                                    <div class="skeleton-row">
+                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                                        <div class="skeleton-text" style="width:80px"></div>
+                                        <div class="skeleton-text" style="width:60px"></div>
+                                    </div>
+                                    <div class="skeleton-row">
+                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                                        <div class="skeleton-text" style="width:80px"></div>
+                                        <div class="skeleton-text" style="width:60px"></div>
+                                    </div>
+                                    <div class="skeleton-row">
+                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                                        <div class="skeleton-text" style="width:80px"></div>
+                                        <div class="skeleton-text" style="width:60px"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
                 <div id="empty-state" class="hidden px-6 py-16 text-center">
@@ -156,112 +244,482 @@
 </div>
 
 <script>
-const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-const { createClient } = supabase;
-const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-window.supabaseClient = supabaseClient;
+const supabaseClient = window.supabaseClient;
 
 let currentUser = null, currentProfile = null, actionChart = null, moduleChart = null;
 let allLogs = [], filteredLogs = [];
-const modules = ['Workload Tracker','Document Vault','Capstone','Engagement Logs','Calendar','Feedback Summary','User Management','System Settings','Reports and Analytics'];
-const actionColors = ['#621708','#0f766e','#b45309','#991b1b','#4338ca','#7c3aed','#475569','#15803d'];
+const defaultModules = [
+    'Workflow Approval', 'Document Vault', 'Workload Tracker',
+    'Engagement Logs', 'Faculty Profiles', 'Calendar & Events',
+    'Seminar Feedback', 'User Management', 'Reports and Analytics'
+];
+const actionColors = ['#621708', '#059669', '#d97706', '#dc2626', '#2563eb', '#7c3aed', '#475569', '#0891b2', '#db2777'];
 
-function esc(v){ return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
-function formatDate(v){ return v ? new Date(v).toLocaleString([], {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '—'; }
-function actionClass(action){ const a=String(action||'').toLowerCase().replace(/\s+/g,'-'); if(['approved','requested-edit','rejected','created','updated','download'].includes(a)) return 'action-'+a; return 'action-other'; }
-function status(text){ const el=document.getElementById('realtime-status'); if(el) el.textContent=text; }
-function normalize(row){ return { id: row.id, created_at: row.created_at || row.activity_at || new Date().toISOString(), user_name: row.user_name || row.created_by_name || 'System', user_role: row.user_role || '', module: row.module || row.source_module || 'System', action: row.action || row.activity_type || 'Recorded', details: row.details_text || row.description || '', metadata: row.metadata || {} }; }
+function esc(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function formatDate(v) { return v ? new Date(v).toLocaleString([], {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '—'; }
 
-async function loadReports(){
-    const { data, error } = await supabaseClient.from('system_activity_logs').select('*').order('created_at', { ascending:false }).limit(500);
-    if(error){ console.error(error); status('Table not ready. Run the SQL first.'); allLogs=[]; }
-    else { allLogs=(data||[]).map(normalize); status('Realtime reports connected.'); }
-    populateModuleFilter(); applyFilters();
+function actionClass(action) {
+    const a = String(action || '').toLowerCase().replace(/\s+/g, '-');
+    if (a.includes('approv') || a === 'completed') return 'action-approved';
+    if (a.includes('revis') || a.includes('request')) return 'action-requested-edit';
+    if (a.includes('reject') || a.includes('declin')) return 'action-rejected';
+    if (a.includes('submit') || a.includes('creat') || a.includes('upload') || a.includes('add')) return 'action-created';
+    if (a.includes('updat') || a.includes('edit')) return 'action-updated';
+    if (a.includes('export') || a.includes('download')) return 'action-download';
+    return 'action-other';
 }
-function refreshReports(){ loadReports(); }
-function populateModuleFilter(){
-    const select=document.getElementById('module-filter'); const current=select.value;
-    const names=[...new Set([...modules, ...allLogs.map(l=>l.module).filter(Boolean)])].sort();
-    select.innerHTML='<option value="">All Modules</option>'+names.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
-    select.value=current;
+
+function normalizeAction(action) {
+    const a = String(action || '').trim();
+    if (!a) return 'Activity Recorded';
+    const lower = a.toLowerCase();
+    if (lower.includes('chairperson approval') || lower.includes('final approval') || lower === 'approved') return 'Approved';
+    if (lower.includes('revision') || lower.includes('returned')) return 'Revision Requested';
+    if (lower.includes('reject') || lower.includes('decline')) return 'Rejected';
+    if (lower.includes('submit')) return 'Submitted';
+    if (lower.includes('upload')) return 'Uploaded';
+    if (lower.includes('export')) return 'Exported';
+    if (lower.includes('create') || lower.includes('add')) return 'Created';
+    if (lower.includes('update') || lower.includes('edit')) return 'Updated';
+    return a.charAt(0).toUpperCase() + a.slice(1);
 }
-function applyFilters(){
-    const module=document.getElementById('module-filter').value;
-    const from=document.getElementById('from-date').value;
-    const to=document.getElementById('to-date').value;
-    const q=document.getElementById('search-reports').value.toLowerCase().trim();
-    filteredLogs=allLogs.filter(log=>{
-        const d=new Date(log.created_at);
-        const matchesModule=!module || log.module===module;
-        const matchesFrom=!from || d>=new Date(from+'T00:00:00');
-        const matchesTo=!to || d<=new Date(to+'T23:59:59');
-        const hay=[log.user_name, log.user_role, log.module, log.action, log.details].join(' ').toLowerCase();
-        const matchesQ=!q || hay.includes(q);
+
+async function safeFetch(table, query = '*') {
+    try {
+        const { data, error } = await supabaseClient.from(table).select(query).limit(500);
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.warn(`Fetch ${table} skipped:`, e.message);
+        return [];
+    }
+}
+
+async function loadReports() {
+    const [sysLogs, wfLogs, engagementLogs, facultyList, wfTasks, wfSubmissions, docList] = await Promise.all([
+        safeFetch('system_activity_logs', '*'),
+        safeFetch('wf_activity_log', '*'),
+        safeFetch('engagement_logs', '*'),
+        safeFetch('faculty', 'id, full_name, first_name, last_name, email, department, role, created_at'),
+        safeFetch('wf_tasks', 'id, title, category, created_by_name, created_at'),
+        safeFetch('wf_submissions', 'id, task_id, faculty_id, status, submitted_at, reviewed_at, reviewed_by_name, review_remarks'),
+        safeFetch('faculty_documents', 'id, faculty_id, title, document_name, category, status, uploaded_at')
+    ]);
+
+    const facultyMap = {};
+    for (const f of facultyList) {
+        facultyMap[f.id] = f.full_name || [f.first_name, f.last_name].filter(Boolean).join(' ') || f.email || 'Faculty Member';
+    }
+
+    const taskMap = {};
+    for (const t of wfTasks) {
+        taskMap[t.id] = t.title || 'Task';
+    }
+
+    const aggregated = [];
+
+    for (const row of sysLogs) {
+        aggregated.push({
+            id: 'sys_' + row.id,
+            created_at: row.created_at || new Date().toISOString(),
+            user_name: row.user_name || 'System',
+            user_role: row.user_role || 'Administrator',
+            module: row.module || 'System',
+            action: normalizeAction(row.action),
+            details: row.details_text || row.details || 'System log recorded'
+        });
+    }
+
+    for (const row of wfLogs) {
+        aggregated.push({
+            id: 'wf_' + row.id,
+            created_at: row.created_at || new Date().toISOString(),
+            user_name: row.actor_name || 'Administrator',
+            user_role: 'Administrator',
+            module: 'Workflow Approval',
+            action: normalizeAction(row.action),
+            details: `${row.target || 'Workflow item'}${row.details ? ' — ' + row.details : ''}`
+        });
+    }
+
+    for (const row of engagementLogs) {
+        aggregated.push({
+            id: 'eng_' + row.id,
+            created_at: row.created_at || row.activity_at || new Date().toISOString(),
+            user_name: row.faculty_name || row.created_by_name || 'Faculty Member',
+            user_role: 'Faculty',
+            module: 'Engagement Logs',
+            action: normalizeAction(row.activity_type || 'Activity Recorded'),
+            details: `${row.activity_title || 'Engagement'} (${row.department || 'CITE'}) — ${row.description || 'Record saved'}`
+        });
+    }
+
+    for (const row of wfSubmissions) {
+        if (row.submitted_at) {
+            const fName = facultyMap[row.faculty_id] || 'Faculty Member';
+            const tTitle = taskMap[row.task_id] || 'Task';
+            aggregated.push({
+                id: 'sub_' + row.id,
+                created_at: row.submitted_at,
+                user_name: fName,
+                user_role: 'Faculty',
+                module: 'Workflow Approval',
+                action: 'Submitted',
+                details: `Submitted task: ${tTitle} (Status: ${row.status || 'Pending Review'})`
+            });
+        }
+        if (row.reviewed_at && row.status) {
+            const fName = facultyMap[row.faculty_id] || 'Faculty Member';
+            const tTitle = taskMap[row.task_id] || 'Task';
+            aggregated.push({
+                id: 'rev_' + row.id,
+                created_at: row.reviewed_at,
+                user_name: row.reviewed_by_name || 'Reviewer',
+                user_role: 'Administrator',
+                module: 'Workflow Approval',
+                action: normalizeAction(row.status),
+                details: `Reviewed submission for ${fName} on "${tTitle}"${row.review_remarks ? ' — Notes: ' + row.review_remarks : ''}`
+            });
+        }
+    }
+
+    for (const row of docList) {
+        const fName = facultyMap[row.faculty_id] || 'Faculty Member';
+        aggregated.push({
+            id: 'doc_' + row.id,
+            created_at: row.uploaded_at || new Date().toISOString(),
+            user_name: fName,
+            user_role: 'Faculty',
+            module: 'Document Vault',
+            action: 'Uploaded',
+            details: `Uploaded document: ${row.title || row.document_name || 'File'} (${row.category || 'Extension'})`
+        });
+    }
+
+    allLogs = aggregated.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    populateModuleFilter();
+    applyFilters();
+}
+
+function refreshReports() {
+    loadReports();
+}
+
+function populateModuleFilter() {
+    const select = document.getElementById('module-filter');
+    const current = select.value;
+    const names = [...new Set([...defaultModules, ...allLogs.map(l => l.module).filter(Boolean)])].sort();
+    select.innerHTML = '<option value="">All Modules</option>' + names.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    select.value = current;
+}
+
+function applyFilters() {
+    const module = document.getElementById('module-filter').value;
+    const from = document.getElementById('from-date').value;
+    const to = document.getElementById('to-date').value;
+    const q = document.getElementById('search-reports').value.toLowerCase().trim();
+
+    filteredLogs = allLogs.filter(log => {
+        const d = new Date(log.created_at);
+        const matchesModule = !module || log.module === module;
+        const matchesFrom = !from || d >= new Date(from + 'T00:00:00');
+        const matchesTo = !to || d <= new Date(to + 'T23:59:59');
+        const hay = [log.user_name, log.user_role, log.module, log.action, log.details].join(' ').toLowerCase();
+        const matchesQ = !q || hay.includes(q);
         return matchesModule && matchesFrom && matchesTo && matchesQ;
     });
+
     renderAll();
 }
-function resetFilters(){ document.getElementById('module-filter').value=''; document.getElementById('from-date').value=''; document.getElementById('to-date').value=''; document.getElementById('search-reports').value=''; applyFilters(); }
-function countBy(list, key){ return list.reduce((acc,item)=>{ const k=item[key]||'Unknown'; acc[k]=(acc[k]||0)+1; return acc; },{}); }
-function renderAll(){ renderSummary(); renderTable(); renderCharts(); }
-function renderSummary(){
-    const todayKey=new Date().toISOString().slice(0,10);
-    const total=filteredLogs.length;
-    const today=filteredLogs.filter(l=>String(l.created_at).slice(0,10)===todayKey).length;
-    const activeModules=Object.keys(countBy(filteredLogs,'module')).length;
-    const exports=filteredLogs.filter(l=>String(l.action).toLowerCase().includes('export')).length;
-    const cards=[
-        {label:'Total Activities', value:total, sub:'Filtered realtime logs', icon:'M3 3v18h18M7 15l4-4 3 3 5-7'},
-        {label:'Today', value:today, sub:'Activities recorded today', icon:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2'},
-        {label:'Active Modules', value:activeModules, sub:'Modules with activity', icon:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'},
-        {label:'Export Actions', value:exports, sub:'Report export records', icon:'M12 3v12m0 0 4-4m-4 4-4-4M4 21h16'}
-    ];
-    document.getElementById('summary-cards').innerHTML=cards.map(c=>`<div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5"><div class="flex items-start justify-between"><div><div class="text-xs sm:text-sm text-slate-500 font-medium">${c.label}</div><div class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2">${c.value}</div></div><div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center shrink-0"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="${c.icon}"/></svg></div></div><div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">${c.sub}</div></div>`).join('');
+
+function resetFilters() {
+    document.getElementById('module-filter').value = '';
+    document.getElementById('from-date').value = '';
+    document.getElementById('to-date').value = '';
+    document.getElementById('search-reports').value = '';
+    applyFilters();
 }
-function renderTable(){
-    const body=document.getElementById('activity-table'); const empty=document.getElementById('empty-state');
-    document.getElementById('log-count-label').textContent=`${filteredLogs.length} record${filteredLogs.length===1?'':'s'}`;
-    if(!filteredLogs.length){ body.innerHTML=''; empty.classList.remove('hidden'); return; }
+
+function countBy(list, key) {
+    return list.reduce((acc, item) => {
+        const k = item[key] || 'Unknown';
+        acc[k] = (acc[k] || 0) + 1;
+        return acc;
+    }, {});
+}
+
+function renderAll() {
+    renderSummary();
+    renderTable();
+    renderCharts();
+}
+
+function renderSummary() {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const total = filteredLogs.length;
+    const today = filteredLogs.filter(l => String(l.created_at).slice(0, 10) === todayKey).length;
+    const activeModules = Object.keys(countBy(filteredLogs, 'module')).length;
+    const approvals = filteredLogs.filter(l => {
+        const a = String(l.action).toLowerCase();
+        return a.includes('approv') || a.includes('revis') || a.includes('reject');
+    }).length;
+
+    const totalEl = document.getElementById('card-total');
+    const todayEl = document.getElementById('card-today');
+    const modulesEl = document.getElementById('card-modules');
+    const approvalsEl = document.getElementById('card-approvals');
+
+    if (totalEl) totalEl.textContent = total;
+    if (todayEl) todayEl.textContent = today;
+    if (modulesEl) modulesEl.textContent = activeModules;
+    if (approvalsEl) approvalsEl.textContent = approvals;
+}
+
+function renderTable() {
+    const body = document.getElementById('activity-table');
+    const empty = document.getElementById('empty-state');
+    const countLabel = document.getElementById('log-count-label');
+
+    if (countLabel) countLabel.textContent = `${filteredLogs.length} record${filteredLogs.length === 1 ? '' : 's'}`;
+
+    if (!filteredLogs.length) {
+        body.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+    }
+
     empty.classList.add('hidden');
-    body.innerHTML=filteredLogs.map(log=>`<tr class="table-row"><td class="px-4 sm:px-6 py-3.5 whitespace-nowrap text-slate-600 font-medium">${formatDate(log.created_at)}</td><td class="px-4 sm:px-6 py-3.5"><div class="font-bold text-slate-900">${esc(log.user_name)}</div><div class="text-[11px] text-slate-400">${esc(log.user_role || 'User')}</div></td><td class="px-4 sm:px-6 py-3.5"><span class="badge action-other">${esc(log.module)}</span></td><td class="px-4 sm:px-6 py-3.5"><span class="badge ${actionClass(log.action)}">${esc(log.action)}</span></td><td class="px-4 sm:px-6 py-3.5 min-w-[240px]"><div class="text-slate-700 leading-relaxed">${esc(log.details)}</div></td></tr>`).join('');
+    body.innerHTML = filteredLogs.map(log => `
+        <tr class="table-row">
+            <td class="px-4 sm:px-6 py-3.5 whitespace-nowrap text-slate-600 font-medium">${formatDate(log.created_at)}</td>
+            <td class="px-4 sm:px-6 py-3.5">
+                <div class="font-bold text-slate-900">${esc(log.user_name)}</div>
+                <div class="text-[11px] text-slate-400">${esc(log.user_role || 'User')}</div>
+            </td>
+            <td class="px-4 sm:px-6 py-3.5">
+                <span class="badge action-other font-semibold">${esc(log.module)}</span>
+            </td>
+            <td class="px-4 sm:px-6 py-3.5">
+                <span class="badge ${actionClass(log.action)}">${esc(log.action)}</span>
+            </td>
+            <td class="px-4 sm:px-6 py-3.5 min-w-[240px]">
+                <div class="text-slate-700 leading-relaxed">${esc(log.details)}</div>
+            </td>
+        </tr>
+    `).join('');
 }
-function renderCharts(){
-    const actionCounts=countBy(filteredLogs,'action'); const moduleCounts=countBy(filteredLogs,'module');
-    const actionLabels=Object.keys(actionCounts); const moduleLabels=Object.keys(moduleCounts);
+
+function renderCharts() {
+    const actionCounts = countBy(filteredLogs, 'action');
+    const moduleCounts = countBy(filteredLogs, 'module');
+
+    const actionLabels = Object.keys(actionCounts);
+    const moduleLabels = Object.keys(moduleCounts);
+
     const actionTotalEl = document.getElementById('action-total');
     const moduleTotalEl = document.getElementById('module-total');
-    if (actionTotalEl) actionTotalEl.textContent=`${filteredLogs.length} actions`;
-    if (moduleTotalEl) moduleTotalEl.textContent=`${moduleLabels.length} modules`;
-    if(actionChart) actionChart.destroy(); if(moduleChart) moduleChart.destroy();
-    actionChart=new Chart(document.getElementById('actionChart'),{type:'pie',data:{labels:actionLabels.length?actionLabels:['No Data'],datasets:[{data:actionLabels.length?Object.values(actionCounts):[1],backgroundColor:actionLabels.length?actionColors:['#e5e7eb'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,usePointStyle:true,font:{size:11}}}}}});
-    moduleChart=new Chart(document.getElementById('moduleChart'),{type:'bar',data:{labels:moduleLabels.length?moduleLabels:['No Data'],datasets:[{label:'Activities',data:moduleLabels.length?Object.values(moduleCounts):[0],backgroundColor:'#621708',borderRadius:8}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:11}}},y:{beginAtZero:true,ticks:{precision:0},grid:{color:'#eef2f7'}}}}});
+
+    if (actionTotalEl) actionTotalEl.textContent = `${filteredLogs.length} actions`;
+    if (moduleTotalEl) moduleTotalEl.textContent = `${moduleLabels.length} modules`;
+
+    if (actionChart) actionChart.destroy();
+    if (moduleChart) moduleChart.destroy();
+
+    const actionCtx = document.getElementById('actionChart');
+    const moduleCtx = document.getElementById('moduleChart');
+
+    if (actionCtx) {
+        actionChart = new Chart(actionCtx, {
+            type: 'doughnut',
+            data: {
+                labels: actionLabels.length ? actionLabels : ['No Data'],
+                datasets: [{
+                    data: actionLabels.length ? Object.values(actionCounts) : [1],
+                    backgroundColor: actionLabels.length ? actionColors.slice(0, actionLabels.length) : ['#e5e7eb'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 10, usePointStyle: true, font: { size: 11, weight: '600' }, padding: 12 }
+                    }
+                }
+            }
+        });
+    }
+
+    if (moduleCtx) {
+        moduleChart = new Chart(moduleCtx, {
+            type: 'bar',
+            data: {
+                labels: moduleLabels.length ? moduleLabels : ['No Data'],
+                datasets: [{
+                    label: 'Activities',
+                    data: moduleLabels.length ? Object.values(moduleCounts) : [0],
+                    backgroundColor: '#621708',
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 11, weight: '600' }, color: '#64748b' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0, color: '#94a3b8' },
+                        grid: { color: '#eef2f7' }
+                    }
+                }
+            }
+        });
+    }
+
+    const asc = document.getElementById('actionChartSkeleton'); if(asc) asc.style.display = 'none';
+    const msc = document.getElementById('moduleChartSkeleton'); if(msc) msc.style.display = 'none';
 }
-function exportRows(){ return filteredLogs.map(l=>({'Date and Time':formatDate(l.created_at),'User':l.user_name,'Role':l.user_role,'Module':l.module,'Action':l.action,'Details':l.details})); }
-function downloadBlob(content, filename, type){ const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
-async function recordExport(format, count){ try{ await supabaseClient.from('system_activity_logs').insert({user_name: currentProfile ? formatFullName(currentProfile.first_name,currentProfile.last_name,currentUser?.email) : 'Administrator', user_role:'Administrator', module:'Reports and Analytics', action:'Exported', details_text:`Exported ${count} filtered report record(s) as ${format.toUpperCase()}.`, metadata:{format, count}}); }catch(e){ console.warn(e); } }
-async function exportReport(format){
-    const rows=exportRows(); if(!rows.length) return alert('No filtered activity logs available to export.');
-    const stamp=new Date().toISOString().slice(0,10);
-    if(format==='excel'){
-        const ws=XLSX.utils.json_to_sheet(rows); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Activity Logs'); XLSX.writeFile(wb,`reports-analytics-${stamp}.xlsx`); await recordExport(format, rows.length); return;
-    }
-    if(format==='pdf'){
-        const doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'}); doc.setFontSize(16); doc.text('Reports and Analytics - System Activity Logs',40,40); doc.setFontSize(9); doc.text(`Generated: ${new Date().toLocaleString()} | Records: ${rows.length}`,40,58); doc.autoTable({startY:76,head:[['Date and Time','User','Module','Action','Details']],body:rows.map(r=>[r['Date and Time'],r.User,r.Module,r.Action,r.Details]),styles:{fontSize:8,cellPadding:4,overflow:'linebreak'},headStyles:{fillColor:[98,23,8]},columnStyles:{4:{cellWidth:260}}}); doc.save(`reports-analytics-${stamp}.pdf`); await recordExport(format, rows.length); return;
-    }
-    if(format==='word'){
-        const trs=rows.map(r=>`<tr><td>${esc(r['Date and Time'])}</td><td>${esc(r.User)}</td><td>${esc(r.Module)}</td><td>${esc(r.Action)}</td><td>${esc(r.Details)}</td></tr>`).join('');
-        const html=`<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#111827}h1{font-size:22px}table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top;font-size:12px}th{background:#f3f4f6}</style></head><body><h1>Reports and Analytics - System Activity Logs</h1><p>Generated: ${new Date().toLocaleString()}<br>Records: ${rows.length}</p><table><thead><tr><th>Date and Time</th><th>User</th><th>Module</th><th>Action</th><th>Details</th></tr></thead><tbody>${trs}</tbody></table></body></html>`;
-        downloadBlob('\ufeff'+html,`reports-analytics-${stamp}.doc`,'application/msword'); await recordExport(format, rows.length); return;
+
+function exportRows() {
+    return filteredLogs.map(l => ({
+        'Date and Time': formatDate(l.created_at),
+        'User': l.user_name,
+        'Role': l.user_role,
+        'Module': l.module,
+        'Action': l.action,
+        'Details': l.details
+    }));
+}
+
+function downloadBlob(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+async function recordExport(format, count) {
+    try {
+        await supabaseClient.from('system_activity_logs').insert({
+            user_name: currentProfile ? formatFullName(currentProfile.first_name, currentProfile.last_name, currentUser?.email) : 'Administrator',
+            user_role: 'Administrator',
+            module: 'Reports and Analytics',
+            action: 'Exported',
+            details_text: `Exported ${count} filtered report record(s) as ${format.toUpperCase()}.`,
+            metadata: { format, count }
+        });
+    } catch (e) {
+        console.warn('Record export log skipped:', e.message);
     }
 }
-function subscribeReports(){ supabaseClient.channel('reports-analytics-realtime').on('postgres_changes',{event:'*',schema:'public',table:'system_activity_logs'},loadReports).subscribe(s=>{ if(s==='SUBSCRIBED') status('Realtime reports connected.'); }); }
-function formatFullName(firstName,lastName,fallback){ return [firstName,lastName].filter(Boolean).join(' ').trim() || fallback || 'Unknown User'; }
-function getProfileFromAuthMetadata(user){ const m=user?.user_metadata||{}; return {first_name:m.first_name||'',last_name:m.last_name||'',email:user?.email||'',role:m.role||'Administrator',avatar_url:m.avatar_url||''}; }
-function isAdminProfilesMissingError(error){ if(!error)return false; const code=String(error.code||'').toUpperCase(); const message=String(error.message||'').toLowerCase(); return code==='42P01'||code==='PGRST205'||(message.includes('admin_profiles')&&(message.includes('does not exist')||message.includes('relation'))); }
-function renderProfile(profile,user){ document.getElementById('profileName').textContent=formatFullName(profile.first_name,profile.last_name,user?.email); document.getElementById('profileRole').textContent=profile.role||'Administrator'; }
-async function loadAdminProfile(){ const {data:authData,error:authError}=await supabaseClient.auth.getUser(); if(authError||!authData?.user)return; currentUser=authData.user; let profile=getProfileFromAuthMetadata(currentUser); const {data:dbProfile,error:dbError}=await supabaseClient.from('admin_profiles').select('*').eq('id',currentUser.id).maybeSingle(); if(dbError){ if(!isAdminProfilesMissingError(dbError)) console.error('Error fetching admin profile:',dbError); } else if(dbProfile){ profile={first_name:dbProfile.first_name||profile.first_name,last_name:dbProfile.last_name||profile.last_name,email:dbProfile.email||profile.email,role:dbProfile.role||profile.role,avatar_url:dbProfile.avatar_url||profile.avatar_url}; } currentProfile=profile; renderProfile(profile,currentUser); }
-window.addEventListener('load', async()=>{ await loadSidebar(); await loadAdminProfile(); await loadReports(); subscribeReports(); });
+
+async function exportReport(format) {
+    const rows = exportRows();
+    if (!rows.length) return alert('No filtered activity logs available to export.');
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    if (format === 'excel') {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Activity Logs');
+        XLSX.writeFile(wb, `citeflow-reports-analytics-${stamp}.xlsx`);
+        await recordExport(format, rows.length);
+        return;
+    }
+
+    if (format === 'pdf') {
+        const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+        doc.setFontSize(16);
+        doc.setTextColor(98, 23, 8);
+        doc.text('CITE-Flow Management System — Reports and Analytics', 40, 40);
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Generated: ${new Date().toLocaleString()} | Total Records: ${rows.length}`, 40, 58);
+        doc.autoTable({
+            startY: 74,
+            head: [['Date and Time', 'User', 'Role', 'Module', 'Action', 'Details']],
+            body: rows.map(r => [r['Date and Time'], r.User, r.Role, r.Module, r.Action, r.Details]),
+            styles: { fontSize: 8, cellPadding: 5, overflow: 'linebreak' },
+            headStyles: { fillColor: [98, 23, 8], textColor: [255, 255, 255], fontStyle: 'bold' },
+            columnStyles: { 5: { cellWidth: 260 } }
+        });
+        doc.save(`citeflow-reports-analytics-${stamp}.pdf`);
+        await recordExport(format, rows.length);
+        return;
+    }
+
+    if (format === 'word') {
+        const trs = rows.map(r => `<tr><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r['Date and Time'])}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.User)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.Role)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.Module)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.Action)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.Details)}</td></tr>`).join('');
+        const docContent = '\ufeff<div style="font-family:Arial,sans-serif;padding:24px;"><h1 style="font-size:18px;color:#621708;">CITE-Flow — System Activity Reports</h1><p style="font-size:11px;color:#6b7280;">Generated: ' + new Date().toLocaleString() + ' | Total Records: ' + rows.length + '</p><table style="border-collapse:collapse;width:100%;margin-top:14px;"><thead><tr style="background:#f3f4f6;"><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Date and Time</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">User</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Role</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Module</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Action</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Details</th></tr></thead><tbody>' + trs + '</tbody></table></div>';
+        downloadBlob(docContent, `citeflow-reports-analytics-${stamp}.doc`, 'application/msword');
+        await recordExport(format, rows.length);
+        return;
+    }
+}
+
+function subscribeReports() {
+    supabaseClient.channel('reports-analytics-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'system_activity_logs' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadReports)
+        .subscribe();
+}
+
+function formatFullName(firstName, lastName, fallback) {
+    return [firstName, lastName].filter(Boolean).join(' ').trim() || fallback || 'Administrator';
+}
+
+function renderProfile(profile, user) {
+    const nameEl = document.getElementById('profileName');
+    const roleEl = document.getElementById('profileRole');
+    if (nameEl) nameEl.textContent = formatFullName(profile.first_name, profile.last_name, user?.email);
+    if (roleEl) roleEl.textContent = profile.role || 'Administrator';
+}
+
+async function loadAdminProfile() {
+    try {
+        const { data: authData } = await supabaseClient.auth.getUser();
+        if (!authData?.user) return;
+        currentUser = authData.user;
+        const m = currentUser.user_metadata || {};
+        let profile = {
+            first_name: m.first_name || '',
+            last_name: m.last_name || '',
+            email: currentUser.email || '',
+            role: m.role || 'Administrator'
+        };
+        const { data: dbProfile } = await supabaseClient.from('admin_profiles').select('*').eq('id', currentUser.id).maybeSingle();
+        if (dbProfile) {
+            profile = { ...profile, ...dbProfile };
+        }
+        currentProfile = profile;
+        renderProfile(profile, currentUser);
+    } catch (e) {
+        console.warn('loadAdminProfile skipped:', e.message);
+    }
+}
+
+window.addEventListener('load', async () => {
+    if (typeof loadSidebar === 'function') await loadSidebar();
+    await loadAdminProfile();
+    await loadReports();
+    subscribeReports();
+});
 </script>
 <script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
