@@ -1884,6 +1884,24 @@ async function saveDocumentUpload() {
         clearDocumentUploadForm();
         await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
         await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.');
+
+        if (typeof window.EngagementLogger !== 'undefined') {
+            const activityType = type === 'Extension Document' ? 'Extension'
+                : type === 'Research Document' ? 'Research'
+                : 'Document Action';
+            window.EngagementLogger.logActivity({
+                facultyId: currentFaculty.id,
+                facultyName: currentFaculty.full_name || currentFaculty.name,
+                department: currentFaculty.department,
+                activityType,
+                activityTitle: title,
+                description: description || `Uploaded ${type}: ${title}`,
+                sourceModule: 'Faculty Profile',
+                status: 'Submitted',
+                details: { Type: type, Title: title }
+            });
+        }
+
         alert('Document uploaded successfully.');
     } catch (error) {
         alert('Unable to upload document: ' + error.message);
@@ -2267,6 +2285,6 @@ window.addEventListener('load', async () => {
 <script src="../shared/system-ui.js"></script>
 <script src="../shared/cite-settings.js"></script>
 <script src="../admin/engagement-logger.js"></script>
-<script src="faculty-nav.js"></script>
+<script src="faculty-nav.js?v=chair-sidebar-only"></script>
 </body>
 </html>

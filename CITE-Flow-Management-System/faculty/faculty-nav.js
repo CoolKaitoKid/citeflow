@@ -19,10 +19,13 @@ function getFacultyCurrentPageFile() {
 
 function normalizeFacultyPageKey(pageFile) {
     if (!pageFile) return "";
-    return pageFile
+    const key = pageFile
         .replace(/^\.\.\//, "")
         .replace(/^faculty\//, "")
+        .replace(/^chairperson\//, "")
         .replace(/\.html$/, "");
+    if (key === "workflow-approval") return "submissions";
+    return key;
 }
 
 function facultyPageMap(pageName) {
@@ -37,7 +40,9 @@ function facultyPageMap(pageName) {
         "document-vault": "document.html",
         calendar: "calendar.html",
         "system-settings": "system-settings.html",
-        settings: "system-settings.html"
+        settings: "system-settings.html",
+        "workflow-approval": "submissions.html#chair-review",
+        "chairperson-workflow-approval": "submissions.html#chair-review"
     }[key] || `${key}.html`;
 }
 
@@ -77,7 +82,17 @@ function navigateToFacultyPage(pageFile) {
     if (typeof toggleFacultyMobileSidebar === "function") {
         toggleFacultyMobileSidebar(true);
     }
+    const raw = String(pageFile || '');
+    if (raw.includes('workflow-approval') || raw.includes('chairperson/')) {
+        window.location.href = 'submissions.html#chair-review';
+        return;
+    }
     const mapped = facultyPageMap(pageFile);
+    const inChairperson = window.location.pathname.toLowerCase().includes('/chairperson/');
+    if (inChairperson && !mapped.startsWith('../') && !mapped.startsWith('/')) {
+        window.location.href = `../faculty/${mapped}`;
+        return;
+    }
     window.location.href = mapped;
 }
 
@@ -295,7 +310,13 @@ window.updateFacultyNavProfile = updateFacultyNavProfile;
 
 async function loadFacultyNavigation() {
     try {
-        const candidateUrls = ["faculty-nav.html", "/faculty/faculty-nav.html", "faculty/faculty-nav.html", "../faculty-nav.html"];
+        const candidateUrls = [
+            "faculty-nav.html?v=chair-review-1",
+            "/faculty/faculty-nav.html?v=chair-review-1",
+            "faculty/faculty-nav.html?v=chair-review-1",
+            "../faculty-nav.html?v=chair-review-1",
+            "../faculty/faculty-nav.html?v=chair-review-1"
+        ];
         let response = null;
         for (const url of candidateUrls) {
             try {
@@ -322,6 +343,7 @@ async function loadFacultyNavigation() {
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         updateFacultyNavProfile();
         loadFacultyNavNotifications();
+        removeFacultyChairWorkflowNavItem();
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
@@ -365,6 +387,12 @@ window.loadSidebar = loadFacultyNavigation;
 window.loadFacultyNavigation = loadFacultyNavigation;
 window.toggleFacultyProfileModal = toggleFacultyProfileModal;
 window.facultyLogout = facultyLogout;
+
+function removeFacultyChairWorkflowNavItem() {
+    document.getElementById('facultyChairWorkflowNav')?.remove();
+    document.getElementById('chairWorkflowDashCard')?.remove();
+    document.getElementById('chairWorkflowPageBanner')?.remove();
+}
 
 let facultyNavNotifications = [];
 
@@ -523,4 +551,5 @@ window.addEventListener("load", async () => {
         loadFacultyNavNotifications();
         window.CiteFlowMessenger?.init();
     }
+    removeFacultyChairWorkflowNavItem();
 });

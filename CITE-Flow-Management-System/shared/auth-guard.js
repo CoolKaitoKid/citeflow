@@ -51,11 +51,12 @@
             currentPath === '/faculty' ||
             ['dashboard', 'faculty-profile', 'calendar', 'document', 'status-tracking', 'submissions', 'system-settings'].some(p => currentPath === `/faculty/${p}` || currentPath === `/faculty/${p}.html`);
 
+        const isChairpersonArea = currentPath.includes('/chairperson/');
         const isOnboardingArea = currentPath.includes('onboarding');
 
-        if (!isAdminArea && !isFacultyArea && !isOnboardingArea) return;
+        if (!isAdminArea && !isFacultyArea && !isOnboardingArea && !isChairpersonArea) return;
 
-        const isInsideSubfolder = currentPath.includes('/admin/') || currentPath.includes('/faculty/');
+        const isInsideSubfolder = currentPath.includes('/admin/') || currentPath.includes('/faculty/') || currentPath.includes('/chairperson/');
         const prefix = isInsideSubfolder ? '../' : '';
 
         const sb = getClient();
@@ -108,9 +109,8 @@
 
             const facultyLookup = await sb
                 .from('faculty')
-                .select('id, role, position, admin_access, profile_completed, must_change_password, first_login_completed_at, department')
-                .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`)
-                .maybeSingle();
+                .select('id, role, position, admin_access, profile_completed, must_change_password, first_login_completed_at, department, full_name, email, auth_user_id')
+                .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`);
 
             const facultyAuthFailed = facultyLookup.error && (
                 facultyLookup.status === 401
@@ -122,7 +122,13 @@
                 return;
             }
 
-            const facultyRecord = facultyLookup.data;
+            const facultyRows = Array.isArray(facultyLookup.data)
+                ? facultyLookup.data
+                : (facultyLookup.data ? [facultyLookup.data] : []);
+            const facultyRecord = facultyRows.find((row) => /chair/i.test(String(row.role || row.position || '')))
+                || facultyRows.find((row) => String(row.auth_user_id || '') === String(user.id))
+                || facultyRows[0]
+                || null;
             const adminProfileRole = String(adminProfile?.role || '').toLowerCase();
             const facultyRole = String(facultyRecord?.role || facultyRecord?.position || role || '').toLowerCase();
             const isChair = facultyRole.includes('chair');
@@ -141,7 +147,10 @@
 
             // Sync validated encrypted session token with anti-tamper metadata
             if (window.CiteFlowAuth?.cacheUserInfo) {
-                window.CiteFlowAuth.cacheUserInfo(user, isAdminRole ? 'Admin' : (facultyRecord?.role || 'Faculty'), facultyRecord);
+                const cachedRole = isChair
+                    ? (facultyRecord?.role || facultyRecord?.position || 'Chairperson')
+                    : (isAdminRole ? 'Admin' : (facultyRecord?.role || 'Faculty'));
+                window.CiteFlowAuth.cacheUserInfo(user, cachedRole, facultyRecord);
             }
 
             if (isOnboardingArea) {
@@ -154,8 +163,24 @@
                 return;
             }
 
+            if (isChairpersonArea) {
+                window.location.href = `${prefix}faculty/submissions.html#chair-review`;
+                return;
+            }
+
             if (isAdminArea) {
-                if (isWorkflowApprovalPage) {
+                const chairOnly = isChair && !isAdminRole && !isDean && !isSecretary && !hasAdminAccess;
+                if (chairOnly) {
+                    if (isWorkflowApprovalPage) {
+                        const granted = await chairHasActiveGrant(sb, facultyRecord, user);
+                        window.location.href = granted
+                            ? `${prefix}faculty/submissions.html#chair-review`
+                            : `${prefix}faculty/dashboard.html`;
+                        return;
+                    }
+                    window.location.href = `${prefix}faculty/dashboard.html`;
+                    return;
+                } else if (isWorkflowApprovalPage) {
                     const canWorkflow = isAdminRole || isDean || isSecretary || isChair || hasAdminAccess;
                     if (!canWorkflow) {
                         window.location.href = isInsideSubfolder ? 'dashboard.html' : `${prefix}admin/dashboard.html`;
@@ -191,6 +216,50 @@
             }
         } catch (err) {
             console.error("Auth Guard check encountered error:", err);
+        }
+    }
+
+    function namesMatch(a, b) {
+        return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+            && String(a || '').trim() !== '';
+    }
+
+    async function chairHasActiveGrant(sb, facultyRecord, user) {
+        if (!facultyRecord || !sb) return false;
+        if (window.CiteFlowWorkflow?.currentUserHasChairpersonGrant) {
+            try {
+                return await window.CiteFlowWorkflow.currentUserHasChairpersonGrant(sb, facultyRecord);
+            } catch (_) {}
+        }
+        if (window.CiteFlowWorkflow?.hasChairpersonWorkflowAccess) {
+            try {
+                const { data, error } = await sb.from('wf_delegated_access').select('*').eq('is_active', true);
+                if (error) return false;
+                return window.CiteFlowWorkflow.hasChairpersonWorkflowAccess(facultyRecord, data || []);
+            } catch (_) {
+                return false;
+            }
+        }
+        try {
+            const { data, error } = await sb
+                .from('wf_delegated_access')
+                .select('id, is_active, grantee_faculty_id, grantee_auth_user_id, grantee_name, grantee_email, email')
+                .eq('is_active', true);
+            if (error || !Array.isArray(data) || !data.length) return false;
+            const facultyId = facultyRecord.id != null ? String(facultyRecord.id) : '';
+            const authId = String(facultyRecord.auth_user_id || user?.id || '');
+            const facultyName = facultyRecord.full_name || facultyRecord.name || '';
+            const facultyEmail = facultyRecord.email || user?.email || '';
+            return data.some((grant) => {
+                if (grant?.is_active === false) return false;
+                if (facultyId && grant.grantee_faculty_id != null && String(grant.grantee_faculty_id) === facultyId) return true;
+                if (authId && grant.grantee_auth_user_id != null && String(grant.grantee_auth_user_id) === authId) return true;
+                if (namesMatch(grant.grantee_name, facultyName)) return true;
+                if (namesMatch(grant.grantee_email || grant.email, facultyEmail)) return true;
+                return false;
+            });
+        } catch (_) {
+            return false;
         }
     }
 

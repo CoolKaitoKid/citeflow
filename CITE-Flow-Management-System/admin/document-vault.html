@@ -907,6 +907,13 @@ async function downloadDocument(id){
         if(blob){
             saveBlobAsFile(blob,doc.name||'document');
             showDocumentToast('Download started.');
+            if (window.EngagementLogger?.logDownload) {
+                window.EngagementLogger.logDownload({
+                    fileName: doc.name,
+                    sourceModule: 'Document Vault',
+                    description: 'Downloaded ' + (doc.name || 'a document') + ' from the Document Vault.'
+                });
+            }
             return;
         }
         const access=await resolveDocumentAccessUrl(doc,300,true);
@@ -918,6 +925,13 @@ async function downloadDocument(id){
             window.open(access.url,'_blank');
         }
         showDocumentToast('Download started.');
+        if (window.EngagementLogger?.logDownload) {
+            window.EngagementLogger.logDownload({
+                fileName: doc.name,
+                sourceModule: 'Document Vault',
+                description: 'Downloaded ' + (doc.name || 'a document') + ' from the Document Vault.'
+            });
+        }
     }catch(err){
         console.error(err);
         alert('Unable to download this document.');
@@ -938,6 +952,7 @@ document.addEventListener('keydown',e=>{
 window.addEventListener('load', async () => { setupDropZone(); await loadSidebar(); await refreshVault(); setFolderView(currentFolderView,false); });
 </script>
 <script src="../shared/system-ui.js"></script>
+<script src="engagement-logger.js"></script>
 <div id="message-container"></div>
 <script src="../nav.js"></script>
 </body>

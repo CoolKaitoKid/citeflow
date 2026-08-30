@@ -324,7 +324,7 @@ const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined' ? window._
 const db = window.supabaseClient || (typeof supabase !== 'undefined' ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON) : null);
 window.supabaseClient = db;
 
-const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [], taskFiles: [], approvalHistory: [] };
+const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [], taskFiles: [], approvalHistory: [], reportConfigs: [] };
 let currentFaculty = null;
 let currentUser = null;
 let activeFilter = 'all';
@@ -639,7 +639,8 @@ function renderPreview(file) {
 function renderTimeline(row) {
     let steps = [];
     if (window.CiteFlowWorkflow) {
-        steps = CiteFlowWorkflow.buildTimelineSteps(row.submission, row.task, row.assignment, state.approvalHistory);
+        const config = (state.reportConfigs || []).find(c => String(c.id) === String(row.task?.report_config_id)) || null;
+        steps = CiteFlowWorkflow.buildTimelineSteps(row.submission, row.task, row.assignment, state.approvalHistory, config);
     } else {
         const status = row.status;
         steps = [
@@ -835,12 +836,13 @@ async function fetchAllData() {
             taskRows = (tasks.data || []).filter(t => assignmentTaskIds.has(String(t.id)));
         }
 
-        const [submissions, files, notifications, taskFiles, approvalHistory] = await Promise.all([
+        const [submissions, files, notifications, taskFiles, approvalHistory, reportConfigs] = await Promise.all([
             db.from('wf_submissions').select('*').eq('faculty_id', facultyId),
             db.from('wf_submission_files').select('*'),
             db.from('wf_notifications').select('*').or(`faculty_id.eq.${facultyId},faculty_id.is.null`).order('created_at', { ascending: false }).limit(100),
             db.from('wf_task_files').select('*'),
-            db.from('wf_approval_history').select('*').eq('faculty_id', facultyId).order('created_at', { ascending: false })
+            db.from('wf_approval_history').select('*').eq('faculty_id', facultyId).order('created_at', { ascending: false }),
+            db.from('wf_report_configs').select('*')
         ]);
 
         if (submissions.error) {
@@ -867,6 +869,7 @@ async function fetchAllData() {
         }
         state.taskFiles = taskFiles.error ? [] : (taskFiles.data || []);
         state.approvalHistory = approvalHistory.error ? [] : (approvalHistory.data || []);
+        state.reportConfigs = reportConfigs?.error ? [] : (reportConfigs.data || []);
         renderRows();
         refreshNavNotifications();
     } finally {
@@ -907,6 +910,6 @@ window.onload = async () => {
 </script>
 <script src="../shared/system-ui.js"></script>
 <script src="../shared/cite-settings.js"></script>
-<script src="faculty-nav.js"></script>
+<script src="faculty-nav.js?v=chair-sidebar-only"></script>
 </body>
 </html>

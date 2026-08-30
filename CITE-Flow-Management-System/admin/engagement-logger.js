@@ -11,7 +11,12 @@
         feedback: 'Feedback Summary',
         profile: 'Profile Update',
         document: 'Document Action',
-        system: 'System Event'
+        system: 'System Event',
+        research: 'Research',
+        extension: 'Extension',
+        workshop: 'Workshop',
+        seminar: 'Seminar',
+        meeting: 'Meeting'
     };
 
     function getClient() {
@@ -233,10 +238,60 @@
         logActivity(payload);
     });
 
+    function logExtension({
+        facultyName,
+        facultyId,
+        department,
+        title,
+        sourceModule = 'Faculty Profile',
+        description,
+        details
+    }) {
+        return logActivity({
+            facultyId,
+            facultyName,
+            department,
+            activityType: DEFAULT_TYPES.extension,
+            activityTitle: title || 'Recorded an extension activity',
+            description:
+                description ||
+                (title ? 'Recorded extension activity: ' + title + '.' : 'Recorded an extension activity.'),
+            sourceModule,
+            details: details || { Title: title || 'Not specified' }
+        });
+    }
+
+    function logResearch({
+        facultyName,
+        facultyId,
+        department,
+        title,
+        status,
+        sourceModule = 'Faculty Profile',
+        description,
+        details
+    }) {
+        return logActivity({
+            facultyId,
+            facultyName,
+            department,
+            activityType: DEFAULT_TYPES.research,
+            activityTitle: title ? 'Added research: ' + title : 'Recorded a research activity',
+            description:
+                description ||
+                (title ? 'Recorded research project "' + title + '"' + (status ? ' with status: ' + status : '') + '.' : 'Recorded a research activity.'),
+            sourceModule,
+            status: status || 'Completed',
+            details: details || { Title: title || 'Not specified', Status: status || 'Completed' }
+        });
+    }
+
     window.EngagementLogger = {
         logActivity,
         logDownload,
         logFeedbackSummary,
-        logProfileUpdate
+        logProfileUpdate,
+        logExtension,
+        logResearch
     };
 })();

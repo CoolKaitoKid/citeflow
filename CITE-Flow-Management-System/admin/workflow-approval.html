@@ -486,6 +486,77 @@
     margin-bottom: 10px !important;
 }
 
+.chair-workbench {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.chair-section {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.chair-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.chair-section-head h2 {
+    font-size: 16px;
+    font-weight: 650;
+    color: #111827;
+    margin: 0;
+}
+
+.chair-section-head p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.chair-count {
+    min-width: 36px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 650;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chair-section-body {
+    padding: 0;
+}
+
+.chair-section-body .data-table th,
+.chair-section-body .data-table td {
+    padding: 12px 16px;
+}
+
+.chair-monitor {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.chair-monitor strong {
+    color: #334155;
+    font-weight: 600;
+}
+
 </style>
 </head>
 <body class="bg-[#f3f4f7] text-gray-900 cite-page">
@@ -505,9 +576,9 @@
             <!-- Page Header -->
             <div class="flex items-start justify-between mb-6">
                 <div>
-                    <p class="cite-kicker">Workflow</p>
+                    <p id="workflowPageKicker" class="cite-kicker">Workflow</p>
                     <div class="flex items-center flex-wrap gap-2.5 mb-1">
-                        <h1 class="cite-title">Document Submissions</h1>
+                        <h1 id="workflowPageTitle" class="cite-title">Document Submissions</h1>
                         <div class="cite-live">
                             <div class="rt-dot w-2 h-2 rounded-full bg-emerald-500"></div>
                             Live
@@ -515,7 +586,7 @@
                     </div>
                     <p class="cite-subtitle">Review submissions, track progress, and manage assigned faculty tasks.</p>
                 </div>
-                <div class="flex items-center gap-2.5">
+                <div class="wf-admin-only flex items-center gap-2.5">
                     <button onclick="openAccessModal()" class="btn btn-ghost">
                         <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -530,12 +601,71 @@
                 </div>
             </div>
 
+            <div id="chairpersonWorkbench" class="chair-workbench hidden mb-6">
+                <div class="relative">
+                    <svg style="width:15px;height:15px;position:absolute;left:14px;top:50%;transform:translateY(-50%);stroke:#9ca3af;stroke-width:2;fill:none;" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input id="chairSearchInput" type="text" placeholder="Search by faculty, task, or status..."
+                           oninput="renderChairpersonWorkbench()"
+                           class="field-input pl-10">
+                </div>
+                <div class="chair-section">
+                    <div class="chair-section-head">
+                        <div>
+                            <h2>Pending My Approval</h2>
+                            <p>Submissions in your department that require a Chairperson decision.</p>
+                        </div>
+                        <span id="chairPendingCount" class="chair-count">0</span>
+                    </div>
+                    <div class="chair-section-body">
+                        <table class="data-table w-full">
+                            <thead>
+                                <tr>
+                                    <th class="text-left">Faculty</th>
+                                    <th class="text-left">Task</th>
+                                    <th class="text-left">Submitted</th>
+                                    <th class="text-left">Status</th>
+                                    <th class="text-left">Files</th>
+                                    <th class="text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="chairPendingTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="chair-section">
+                    <div class="chair-section-head">
+                        <div>
+                            <h2>Department Submissions</h2>
+                            <p id="chairDepartmentHint">All authorized submissions in your department. Viewing does not grant approval.</p>
+                        </div>
+                        <span id="chairDepartmentCount" class="chair-count">0</span>
+                    </div>
+                    <div class="chair-section-body">
+                        <table class="data-table w-full">
+                            <thead>
+                                <tr>
+                                    <th class="text-left">Faculty</th>
+                                    <th class="text-left">Task</th>
+                                    <th class="text-left">Submitted</th>
+                                    <th class="text-left">Stage / Status</th>
+                                    <th class="text-left">Decision history</th>
+                                    <th class="text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="chairDepartmentTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
 
             <!-- =========================================================
                  RECURRING REPORT CONFIGURATION
                  ========================================================= -->
-            <p class="wf-section-label">Recurring reports</p>
-            <div class="main-surface p-5 mb-6">
+            <p class="wf-section-label wf-admin-only">Recurring reports</p>
+            <div class="main-surface p-5 mb-6 wf-admin-only">
                 <div class="flex items-start justify-between gap-4 mb-4">
                     <div>
                         <h2 class="text-[15px] font-semibold text-slate-900">Mandatory Report Configuration</h2>
@@ -556,9 +686,9 @@
                 </div>
             </div>
 
-            <p class="wf-section-label">Overview</p>
+            <p class="wf-section-label wf-admin-only">Overview</p>
             <!-- Stats row -->
-            <div class="grid grid-cols-4 gap-3 mb-6">
+            <div class="grid grid-cols-4 gap-3 mb-6 wf-admin-only">
                 <div class="stat-card cite-stat-pending p-5">
                     <div class="flex items-start justify-between mb-3">
                         <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pending Review</div>
@@ -613,9 +743,9 @@
                 </div>
             </div>
 
-            <p class="wf-section-label">Assigned tasks</p>
+            <p class="wf-section-label wf-admin-only">Assigned tasks</p>
             <!-- Filter bar -->
-            <div class="wf-toolbar">
+            <div class="wf-toolbar wf-admin-only">
                 <div class="relative flex-1 min-w-0">
                     <svg style="width:15px;height:15px;position:absolute;left:14px;top:50%;transform:translateY(-50%);stroke:#9ca3af;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -651,7 +781,7 @@
             </div>
 
             <!-- Submissions Table -->
-            <div id="taskTableSurface" class="main-surface overflow-visible">
+            <div id="taskTableSurface" class="main-surface overflow-visible wf-admin-only">
                 <table class="data-table w-full">
                     <thead>
                         <tr>
@@ -676,7 +806,7 @@
                 </table>
             </div>
 
-            <div id="taskCardContainer" class="task-card-grid hidden"></div>
+            <div id="taskCardContainer" class="task-card-grid hidden wf-admin-only"></div>
 
         </div>
 
@@ -697,7 +827,7 @@
                 <div class="flex items-center gap-2.5">
                     <button onclick="openActivityLogModal()" class="btn btn-ghost btn-sm">Activity Log</button>
                     <button id="detailTaskManageBtn" type="button" class="btn btn-ghost btn-sm hidden"></button>
-                    <button onclick="openAssignModal()" class="btn btn-primary btn-sm">Assign New Task</button>
+                    <button onclick="openAssignModal()" class="btn btn-primary btn-sm wf-admin-only">Assign New Task</button>
                 </div>
             </div>
 
@@ -1513,6 +1643,9 @@ function recomputeSubmissionMatrix() {
    RENDER FUNCTIONS
    ═══════════════════════════════════════════════════════════════ */
 function renderAll() {
+    if (typeof syncChairpersonWorkbenchChrome === 'function') {
+        syncChairpersonWorkbenchChrome();
+    }
     recomputeSubmissionMatrix();
     updateStats();
     updateProgress();
@@ -1587,6 +1720,7 @@ function isGeneratedRecurringTask(task) {
 }
 
 function canEditDeleteWorkflowTask(task) {
+    if (typeof isChairpersonQueueActor === 'function' && isChairpersonQueueActor()) return false;
     return !isGeneratedRecurringTask(task);
 }
 
@@ -1810,7 +1944,18 @@ function renderTaskCardContainer(taskRows) {
     const container = document.getElementById('taskCardContainer');
     if (!container) return;
     if (!taskRows.length) {
-        container.innerHTML = `<div class="main-surface p-10 cite-empty" style="grid-column:1/-1;"><div class="cite-empty-icon"><i class="fa-solid fa-folder-open"></i></div><div class="cite-empty-title">No tasks found</div><p class="cite-empty-text">Try a different search or filter.</p></div>`;
+        const chairQueue = typeof isChairpersonQueueActor === 'function' && isChairpersonQueueActor();
+        const granted = !!(window.CiteFlowWorkflow && currentActorFaculty &&
+            CiteFlowWorkflow.hasChairpersonWorkflowAccess(currentActorFaculty, getActorDelegatedAccess()));
+        const title = chairQueue && !granted
+            ? 'No authorized Chairperson tasks'
+            : (chairQueue ? 'No Chairperson approval tasks' : 'No tasks found');
+        const text = chairQueue && !granted
+            ? 'An administrator must grant you Chairperson workflow access first.'
+            : (chairQueue
+                ? 'There are no pending submissions that require Chairperson review in your authorized department.'
+                : 'Try a different search or filter.');
+        container.innerHTML = `<div class="main-surface p-10 cite-empty" style="grid-column:1/-1;"><div class="cite-empty-icon"><i class="fa-solid fa-folder-open"></i></div><div class="cite-empty-title">${escapeHtml(title)}</div><p class="cite-empty-text">${escapeHtml(text)}</p></div>`;
         return;
     }
     container.innerHTML = taskRows.map(r => {
@@ -2037,6 +2182,10 @@ function downloadFile(url, fileName) {
 }
 
 function openTaskDetailsPage(taskId, options = {}) {
+    if (isChairpersonQueueActor() && !taskVisibleToChairperson(getTaskById(taskId))) {
+        showToast('This task is outside your authorized Chairperson scope.', 'warn');
+        return;
+    }
     const task = getTaskById(taskId);
     if (!task) {
         showToast('Task not found or not loaded yet.', 'error');
@@ -2088,7 +2237,10 @@ function renderTaskDetailPage(taskId, options = {}) {
 
     const manageBtn = document.getElementById('detailTaskManageBtn');
     if (manageBtn) {
-        if (canEditDeleteWorkflowTask(task)) {
+        if (typeof isChairpersonQueueActor === 'function' && isChairpersonQueueActor()) {
+            manageBtn.classList.add('hidden');
+            manageBtn.onclick = null;
+        } else if (canEditDeleteWorkflowTask(task)) {
             manageBtn.classList.remove('hidden');
             manageBtn.textContent = 'Edit Task';
             manageBtn.onclick = () => openEditTaskModal(task.id);
@@ -2149,12 +2301,6 @@ function renderDetailSubmissionList(rows) {
         ` : `
             <button disabled class="btn btn-ghost btn-sm opacity-60 cursor-not-allowed">Waiting for Submission</button>
         `;
-        const reviewRecord = s.reviewed_at ? `
-            <div class="mt-3 text-xs text-gray-500">
-                Reviewed by ${escapeHtml(s.reviewed_by_name || ADMIN_NAME)} on ${formatDateTime(s.reviewed_at)}
-                ${s.review_remarks ? `<div class="mt-1 text-gray-700">${escapeHtml(s.review_remarks)}</div>` : ''}
-            </div>
-        ` : '';
         return `
             <div id="submission-card-${s.faculty_id}" class="submission-card ${submissionCardTone(s.status)}">
                 <div class="flex items-start justify-between gap-4 mb-3">
@@ -2167,7 +2313,7 @@ function renderDetailSubmissionList(rows) {
                 <div class="space-y-2 mb-4">${filesHtml}</div>
                 ${filesUpdatedHtml ? `<div class="mb-4">${filesUpdatedHtml}</div>` : ''}
                 <div class="flex flex-wrap gap-2">${reviewButtons}</div>
-                ${reviewRecord}
+                ${renderSubmissionMonitoring(s)}
             </div>
         `;
     }).join('');
@@ -2459,7 +2605,8 @@ async function upsertTaskRealtime({ title, instructions, dueAt, assigned, files,
         message: `New task "${title}" assigned to you`,
         is_read: false,
         task_id: task.id,
-        faculty_id: f.id
+        faculty_id: f.id,
+        recipient_auth_user_id: f.auth_user_id || null
     }));
     if (notifRows.length) {
         const { error: notifError } = await db.from('wf_notifications').insert(notifRows);
@@ -3125,13 +3272,15 @@ function renderSpecificUsers() {
 function normalizeWorkflowFaculty(row) {
     return {
         id: row.id,
+        auth_user_id: row.auth_user_id || null,
         full_name: row.full_name || row.name || row.email || 'Unnamed Faculty',
         department_code: row.department_code || row.department || 'N/A',
         email: row.email || row.existing_email || '',
         status: row.status || 'Active',
         employment_status: row.employment_status || row.employment_type || row.faculty_status || '',
         role: row.role || row.user_role || '',
-        position: row.position || row.academic_rank || ''
+        position: row.position || row.academic_rank || '',
+        admin_access: row.admin_access === true
     };
 }
 
@@ -3172,19 +3321,7 @@ async function fetchAllData() {
 }
 
 function initRealtime() {
-    if (realtimeChannel) db.removeChannel(realtimeChannel);
-    realtimeChannel = db
-        .channel('wf-admin-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submission_files' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_comments' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_delegated_access' }, fetchAllData)
-        .subscribe();
+    startWorkflowRealtime();
 }
 
 async function init() {
@@ -3432,13 +3569,17 @@ async function notifyRecurringDeadlineChange(task, fields) {
     const deadline = fields.deadline_at || fields.due_at || task.deadline_at || task.due_at;
     const message = `Deadline updated for "${title}": due ${formatDateTime(deadline)}`;
     if (assigned.length) {
-        await db.from('wf_notifications').insert(assigned.map(row => ({
-            type: 'task',
-            faculty_id: row.faculty_id,
-            task_id: task.id,
-            message,
-            is_read: false
-        })));
+        await db.from('wf_notifications').insert(assigned.map(row => {
+            const assignee = getFacultyById(row.faculty_id);
+            return {
+                type: 'task',
+                faculty_id: row.faculty_id,
+                recipient_auth_user_id: assignee?.auth_user_id || null,
+                task_id: task.id,
+                message,
+                is_read: false
+            };
+        }));
     } else {
         await createNotification({
             type: 'task',
@@ -3992,27 +4133,62 @@ function computeEffectiveStatus(task, sub) {
 
 function recomputeSubmissionMatrix() {
     allSubmissions = [];
+    const seen = new Set();
     (workflowState.assignments || []).forEach(assign => {
         const faculty = getFacultyById(assign.faculty_id);
         const task = getTaskById(assign.task_id);
-        if (!faculty || !task) return;
         const sub = getSubmission(assign.task_id, assign.faculty_id);
+        if (!task && !sub) return;
         const effectiveStatus = computeEffectiveStatus(task, sub);
+        const rowId = `${assign.task_id}|${assign.faculty_id}`;
+        seen.add(rowId);
         allSubmissions.push({
-            id: `${assign.task_id}|${assign.faculty_id}`,
+            id: rowId,
             task_id: assign.task_id,
             faculty_id: assign.faculty_id,
-            faculty_name: faculty.full_name,
-            department_code: faculty.department_code,
+            faculty_name: faculty?.full_name || 'Faculty',
+            department_code: faculty?.department_code || faculty?.department || '',
             submitted_at: sub?.submitted_at || null,
             status: effectiveStatus,
             timing: getSubmissionTiming(sub, task),
-            approval_stage: sub?.approval_stage || 'chairperson',
+            approval_stage: sub?.approval_stage || null,
             review_remarks: sub?.review_remarks || '',
             reviewed_by_name: sub?.reviewed_by_name || null,
             reviewed_at: sub?.reviewed_at || null,
+            last_reviewed_by_role: sub?.last_reviewed_by_role || null,
+            final_approved_at: sub?.final_approved_at || null,
+            final_approved_by_name: sub?.final_approved_by_name || null,
+            final_approval_remarks: sub?.final_approval_remarks || null,
+            raw_status: sub?.status || null,
             files: sub ? getSubmissionFiles(sub.id) : [],
             submission_id: sub?.id || null
+        });
+    });
+    (workflowState.submissions || []).forEach((sub) => {
+        const rowId = `${sub.task_id}|${sub.faculty_id}`;
+        if (seen.has(rowId)) return;
+        const faculty = getFacultyById(sub.faculty_id);
+        const task = getTaskById(sub.task_id);
+        allSubmissions.push({
+            id: rowId,
+            task_id: sub.task_id,
+            faculty_id: sub.faculty_id,
+            faculty_name: faculty?.full_name || 'Faculty',
+            department_code: faculty?.department_code || faculty?.department || '',
+            submitted_at: sub.submitted_at || null,
+            status: computeEffectiveStatus(task, sub),
+            timing: getSubmissionTiming(sub, task),
+            approval_stage: sub.approval_stage || null,
+            review_remarks: sub.review_remarks || '',
+            reviewed_by_name: sub.reviewed_by_name || null,
+            reviewed_at: sub.reviewed_at || null,
+            last_reviewed_by_role: sub.last_reviewed_by_role || null,
+            final_approved_at: sub.final_approved_at || null,
+            final_approved_by_name: sub.final_approved_by_name || null,
+            final_approval_remarks: sub.final_approval_remarks || null,
+            raw_status: sub.status || null,
+            files: getSubmissionFiles(sub.id),
+            submission_id: sub.id
         });
     });
 }
@@ -4078,12 +4254,23 @@ function grantAccess() {
 }
 
 async function grantAccessRealtime(faculty) {
-    const { error } = await db.from('wf_delegated_access').insert({
+    const payload = {
         grantee_name: faculty.full_name,
         department_codes: [faculty.department_code].filter(Boolean),
         granted_by_name: ADMIN_NAME,
-        is_active: true
-    });
+        is_active: true,
+        grantee_faculty_id: faculty.id,
+        grantee_auth_user_id: faculty.auth_user_id || null
+    };
+    let { error } = await db.from('wf_delegated_access').insert(payload);
+    if (error && /column|schema|cache/i.test(error.message || '')) {
+        ({ error } = await db.from('wf_delegated_access').insert({
+            grantee_name: faculty.full_name,
+            department_codes: [faculty.department_code].filter(Boolean),
+            granted_by_name: ADMIN_NAME,
+            is_active: true
+        }));
+    }
     if (error) {
         showToast(error.message || 'Failed to grant access.', 'error');
         return;
@@ -4095,6 +4282,13 @@ async function grantAccessRealtime(faculty) {
         log_type: 'access'
     });
     showToast(`Chairperson access granted to ${faculty.full_name}.`);
+    await createNotification({
+        type: 'system',
+        message: `You were granted Chairperson workflow access for ${(faculty.department_code || 'your department')}.`,
+        is_read: false,
+        faculty_id: faculty.id,
+        recipient_auth_user_id: faculty.auth_user_id || null
+    });
     await fetchAllData();
 }
 
@@ -4495,7 +4689,7 @@ async function fetchAllData(isRetry) {
         db.from('wf_approval_history').select('*').order('created_at', { ascending: false })
     ]);
 
-    const required = { faculty, tasks, assignments, submissions, files, activity, comments, delegates, reportConfigs, reportTargets, approvalHistory };
+    const required = { faculty, tasks, assignments, submissions, files, delegates, reportConfigs };
     const hardError = Object.entries(required).find(([, r]) => r.error);
     if (hardError) {
         if (!isRetry && isExpiredJwtResult(hardError[1])) {
@@ -4527,12 +4721,17 @@ async function fetchAllData(isRetry) {
     workflowState.reportTargets = reportTargets.data || [];
     workflowState.approvalHistory = approvalHistory.data || [];
 
+    await loadWorkflowActor();
+    syncChairpersonWorkbenchChrome();
+
     renderAll();
-    await generateNextReportingTasks();
+    if (!isChairpersonQueueActor()) {
+        await generateNextReportingTasks();
+    }
 
     // Refresh local data once after generation so the newly generated task
     // appears immediately.
-    if ((workflowState.reportConfigs || []).length) {
+    if (!isChairpersonQueueActor() && (workflowState.reportConfigs || []).length) {
         const { data: freshTasks } = await db.from('wf_tasks').select('*').order('created_at', { ascending: false });
         if (freshTasks) workflowState.tasks = freshTasks;
     }
@@ -4541,23 +4740,21 @@ async function fetchAllData(isRetry) {
     refreshOpenReviewModalFiles();
 }
 
-/* ---------- Realtime includes new workflow tables ---------- */
+function startWorkflowRealtime() {
+    if (realtimeChannel && db) {
+        db.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+    }
+    if (!window.CiteFlowWorkflow) return;
+    realtimeChannel = CiteFlowWorkflow.subscribeWorkflow(() => fetchAllData(), [
+        'wf_submissions', 'wf_approval_history', 'wf_notifications', 'wf_task_assignments',
+        'wf_tasks', 'wf_submission_files', 'wf_activity_log', 'wf_comments',
+        'wf_delegated_access', 'wf_report_configs', 'wf_report_targets', 'faculty'
+    ]);
+}
+
 function initRealtime() {
-    if (realtimeChannel) db.removeChannel(realtimeChannel);
-    realtimeChannel = db
-        .channel('wf-admin-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_task_assignments' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submission_files' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_comments' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_delegated_access' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_report_configs' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_report_targets' }, fetchAllData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_approval_history' }, fetchAllData)
-        .subscribe();
+    startWorkflowRealtime();
 }
 
 /* ---------- Page-level notifications are intentionally disabled.
@@ -4596,6 +4793,11 @@ async function init() {
 
 
 function filterSubmissions() {
+    if (typeof isChairpersonQueueActor === 'function' && isChairpersonQueueActor()) {
+        renderChairpersonWorkbench();
+        return;
+    }
+
     const searchEl = document.getElementById('searchInput');
     const statusEl = document.getElementById('statusFilter');
     const deptEl = document.getElementById('deptFilter');
@@ -4618,7 +4820,9 @@ function filterSubmissions() {
         return { task, assignees, submittedCount, totalAssigned, summary, assignedLabel: deriveAssignedLabel(task.id) };
     });
 
-    const filtered = taskRows.filter(r => {
+    const scopedRows = taskRows;
+
+    const filtered = scopedRows.filter(r => {
         const task = r.task;
         const matchSearch = !search ||
             normalizeText(task.title).includes(search) ||
@@ -4652,7 +4856,19 @@ function filterSubmissions() {
 
     const tbody = document.getElementById('submissionsTableBody');
     if (!filtered.length) {
-        tbody.innerHTML = emptyTasksRow('No tasks found', 'Try a different search or filter.');
+        const chairQueue = isChairpersonQueueActor();
+        const granted = !!(window.CiteFlowWorkflow &&
+            CiteFlowWorkflow.hasChairpersonWorkflowAccess(currentActorFaculty, getActorDelegatedAccess()));
+        tbody.innerHTML = emptyTasksRow(
+            chairQueue && !granted
+                ? 'No authorized Chairperson tasks'
+                : (chairQueue ? 'No Chairperson approval tasks' : 'No tasks found'),
+            chairQueue && !granted
+                ? 'An administrator must grant you Chairperson workflow access first.'
+                : (chairQueue
+                    ? 'There are no pending submissions that require Chairperson review in your authorized department.'
+                    : 'Try a different search or filter.')
+        );
         return;
     }
 
@@ -4699,28 +4915,363 @@ async function loadWorkflowActor() {
     }
 }
 
+function getActorDelegatedAccess() {
+    return workflowState.delegatedAccess || [];
+}
+
+function getTaskReportConfig(task) {
+    if (!task?.report_config_id) return null;
+    return (workflowState.reportConfigs || []).find(c => String(c.id) === String(task.report_config_id)) || null;
+}
+
+function isChairpersonQueueActor() {
+    return !!(window.CiteFlowWorkflow && currentActorFaculty &&
+        CiteFlowWorkflow.isChairperson(currentActorFaculty) &&
+        !CiteFlowWorkflow.isWorkflowAdmin(currentActorFaculty) &&
+        !CiteFlowWorkflow.isFinalApprover(currentActorFaculty));
+}
+
+function chairpersonReviewContext(task, config) {
+    return {
+        delegatedAccess: getActorDelegatedAccess(),
+        config: config || getTaskReportConfig(task),
+        task
+    };
+}
+
+function chairpersonHasGrant() {
+    return !!(window.CiteFlowWorkflow && currentActorFaculty &&
+        CiteFlowWorkflow.hasChairpersonWorkflowAccess(currentActorFaculty, getActorDelegatedAccess()));
+}
+
+function chairpersonTargetFaculty(sub) {
+    return getFacultyById(sub?.faculty_id) || {
+        id: sub?.faculty_id,
+        department_code: sub?.department_code,
+        department: sub?.department_code || sub?.department,
+        full_name: sub?.faculty_name
+    };
+}
+
+function submissionBrowsableByChair(sub) {
+    const wf = window.CiteFlowWorkflow;
+    if (!wf || !currentActorFaculty || !sub) return false;
+    return wf.canBrowseAsChairperson(currentActorFaculty, chairpersonTargetFaculty(sub), getActorDelegatedAccess());
+}
+
+function submissionActionableByChair(sub) {
+    const wf = window.CiteFlowWorkflow;
+    if (!wf || !currentActorFaculty || !sub) return false;
+    const task = getTaskById(sub.task_id);
+    const raw = workflowState.submissions.find(s => String(s.id) === String(sub.submission_id || sub.id)) || sub;
+    return wf.canReviewAsChairperson(raw, currentActorFaculty, chairpersonTargetFaculty(sub), chairpersonReviewContext(task));
+}
+
 function submissionVisibleToActor(sub) {
     if (!currentActorFaculty || !sub) return true;
-    const role = CiteFlowWorkflow.normalizeRole(currentActorFaculty).role;
-    if (role === 'admin' || role === 'dean' || role === 'college_secretary') return true;
-    if (currentActorFaculty.admin_access) return true;
-    if (CiteFlowWorkflow.isChairperson(currentActorFaculty)) {
-        const target = getFacultyById(sub.faculty_id);
-        if (!target) return false;
-        const stage = CiteFlowWorkflow.getApprovalStage(
-            workflowState.submissions.find(s => String(s.id) === String(sub.submission_id)) || { approval_stage: sub.approval_stage }
-        );
-        return CiteFlowWorkflow.sameDepartment(currentActorFaculty, target) &&
-            (stage === CiteFlowWorkflow.APPROVAL_STAGES.CHAIRPERSON || ['submitted', 'late', 'underreview'].includes(String(sub.status)));
+    const wf = window.CiteFlowWorkflow;
+    if (!wf) return true;
+    if (wf.isWorkflowAdmin(currentActorFaculty) || wf.isFinalApprover(currentActorFaculty)) return true;
+    if (!wf.isChairperson(currentActorFaculty)) return true;
+    return submissionBrowsableByChair(sub);
+}
+
+function taskVisibleToChairperson(task) {
+    if (!isChairpersonQueueActor()) return true;
+    if (!chairpersonHasGrant()) return false;
+    const assigns = (workflowState.assignments || []).filter(a => String(a.task_id) === String(task.id));
+    return assigns.some(a => {
+        const faculty = getFacultyById(a.faculty_id);
+        if (faculty && window.CiteFlowWorkflow?.canBrowseAsChairperson) {
+            return CiteFlowWorkflow.canBrowseAsChairperson(currentActorFaculty, faculty, getActorDelegatedAccess());
+        }
+        const sub = getSubmission(task.id, a.faculty_id);
+        if (!sub) return false;
+        return submissionVisibleToActor({
+            ...sub,
+            faculty_id: a.faculty_id,
+            faculty_name: faculty?.full_name,
+            department_code: faculty?.department_code,
+            task_id: task.id,
+            submission_id: sub.id
+        });
+    });
+}
+
+function getApprovalHistoryForSubmission(submissionId) {
+    if (!submissionId) return [];
+    return (workflowState.approvalHistory || []).filter(h => String(h.submission_id) === String(submissionId));
+}
+
+function findHistoryAction(submissionId, matcher) {
+    return getApprovalHistoryForSubmission(submissionId).find(h => matcher(String(h.action || ''), String(h.actor_role || '')));
+}
+
+function chairDecisionFromHistory(submissionId, raw) {
+    const entry = findHistoryAction(submissionId, (action, role) =>
+        /chairperson/i.test(action) || /chairperson/i.test(role));
+    return {
+        name: entry?.actor_name || raw?.reviewed_by_name || '',
+        action: entry?.action || '',
+        remarks: entry?.comment || raw?.review_remarks || '',
+        at: entry?.created_at || raw?.reviewed_at || null
+    };
+}
+
+function finalDecisionFromHistory(submissionId, raw) {
+    const entry = findHistoryAction(submissionId, (action) => /final_/i.test(action));
+    return {
+        name: raw?.final_approved_by_name || entry?.actor_name || '',
+        action: entry?.action || '',
+        remarks: raw?.final_approval_remarks || entry?.comment || '',
+        at: raw?.final_approved_at || entry?.created_at || null
+    };
+}
+
+function formatApprovalStage(stage) {
+    const value = String(stage || '').toLowerCase();
+    if (value === 'chairperson') return 'Pending Chairperson Review';
+    if (value === 'final_approver' || value === 'final') return 'Pending Final Admin Approval';
+    if (value === 'approved') return 'Approved';
+    if (value === 'revision') return 'Revision';
+    return stage ? String(stage) : '—';
+}
+
+function renderSubmissionMonitoring(s) {
+    const raw = workflowState.submissions.find(row => String(row.id) === String(s.submission_id || s.id)) || s;
+    if (!s.submission_id && !raw?.id) return '';
+    const chair = chairDecisionFromHistory(s.submission_id || raw.id, raw);
+    const finalDecision = finalDecisionFromHistory(s.submission_id || raw.id, raw);
+    const stage = raw.approval_stage || s.approval_stage || '';
+    return `
+        <div class="chair-monitor mt-3">
+            <div>Current stage: <strong>${escapeHtml(formatApprovalStage(stage))}</strong></div>
+            <div>Current status: <strong>${escapeHtml(CiteFlowWorkflow?.formatWorkflowStatus?.(raw, getTaskById(s.task_id)) || s.status || '—')}</strong></div>
+            ${chair.at ? `<div>Chairperson: <strong>${escapeHtml(chair.name || '—')}</strong> · ${escapeHtml(chair.action || 'decision')} · ${formatDateTime(chair.at)}</div>` : '<div>Chairperson decision: <strong>None yet</strong></div>'}
+            ${chair.remarks ? `<div>Chairperson remarks: ${escapeHtml(chair.remarks)}</div>` : ''}
+            ${finalDecision.at ? `<div>Final Admin: <strong>${escapeHtml(finalDecision.name || '—')}</strong> · ${formatDateTime(finalDecision.at)}</div>` : '<div>Final Admin decision: <strong>Pending</strong></div>'}
+            ${finalDecision.remarks ? `<div>Final remarks: ${escapeHtml(finalDecision.remarks)}</div>` : ''}
+        </div>
+    `;
+}
+
+function collectChairpersonBrowsableRows() {
+    if (!chairpersonHasGrant()) return [];
+    const byKey = new Map();
+    const adopt = (row) => {
+        if (!row?.submission_id) return;
+        if (row.department_code && !submissionBrowsableByChair(row)) return;
+        byKey.set(String(row.submission_id), row);
+    };
+
+    (allSubmissions || []).forEach(adopt);
+
+    (workflowState.submissions || []).forEach((raw) => {
+        if (byKey.has(String(raw.id))) return;
+        const faculty = getFacultyById(raw.faculty_id);
+        const task = getTaskById(raw.task_id);
+        adopt({
+            id: `${raw.task_id}|${raw.faculty_id}`,
+            task_id: raw.task_id,
+            faculty_id: raw.faculty_id,
+            faculty_name: faculty?.full_name || 'Faculty',
+            department_code: faculty?.department_code || faculty?.department || '',
+            submitted_at: raw.submitted_at || null,
+            status: raw.status,
+            approval_stage: raw.approval_stage || null,
+            review_remarks: raw.review_remarks || '',
+            reviewed_by_name: raw.reviewed_by_name || null,
+            reviewed_at: raw.reviewed_at || null,
+            last_reviewed_by_role: raw.last_reviewed_by_role || null,
+            final_approved_at: raw.final_approved_at || null,
+            final_approved_by_name: raw.final_approved_by_name || null,
+            final_approval_remarks: raw.final_approval_remarks || null,
+            files: getSubmissionFiles(raw.id),
+            submission_id: raw.id,
+            task_title: task?.title || 'Submission'
+        });
+    });
+
+    return [...byKey.values()].sort((a, b) => {
+        const aTime = new Date(a.submitted_at || 0).getTime();
+        const bTime = new Date(b.submitted_at || 0).getTime();
+        return bTime - aTime;
+    });
+}
+
+function chairSubmissionMatchesSearch(row, search) {
+    if (!search) return true;
+    const task = getTaskById(row.task_id);
+    const hay = [
+        row.faculty_name,
+        row.department_code,
+        task?.title,
+        formatTaskCategoryLabel(task),
+        row.status,
+        row.approval_stage
+    ].join(' ').toLowerCase();
+    return hay.includes(search);
+}
+
+function renderChairpersonSubmissionRow(row, { actionable, section }) {
+    const task = getTaskById(row.task_id);
+    const title = task?.title || row.task_title || 'Submission';
+    const raw = workflowState.submissions.find(s => String(s.id) === String(row.submission_id)) || row;
+    const statusLabel = window.CiteFlowWorkflow?.formatWorkflowStatus?.(raw, task) || row.status || '—';
+    const filesHtml = renderFileList(row.files, 'No files');
+    const actionLabel = actionable ? 'Review' : 'View';
+    const extraCell = section === 'department'
+        ? `<td class="text-xs">${renderSubmissionMonitoring(row)}</td>`
+        : `<td>${filesHtml}</td>`;
+    return `
+        <tr>
+            <td>
+                <div class="font-medium text-gray-900 text-sm">${escapeHtml(row.faculty_name)}</div>
+                <div class="text-xs text-gray-500">${escapeHtml(row.department_code || '')}</div>
+            </td>
+            <td>
+                <div class="text-sm text-gray-800">${escapeHtml(title)}</div>
+                <div class="text-xs text-gray-400">${escapeHtml(formatTaskCategoryLabel(task) || '')}</div>
+            </td>
+            <td class="text-xs text-gray-500">${row.submitted_at ? formatDateTime(row.submitted_at) : '—'}</td>
+            <td>
+                <div class="text-sm">${statusBadge(row.status)}</div>
+                <div class="text-xs text-gray-500 mt-1">${escapeHtml(formatApprovalStage(raw.approval_stage || row.approval_stage))}</div>
+                <div class="text-xs text-gray-400 mt-0.5">${escapeHtml(statusLabel)}</div>
+            </td>
+            ${extraCell}
+            <td class="text-right">
+                <button type="button" class="btn ${actionable ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="openReviewModal('${row.task_id}', '${row.faculty_id}')">${actionLabel}</button>
+            </td>
+        </tr>
+    `;
+}
+
+function renderChairpersonEmptyRow(colspan, title, text) {
+    return `<tr><td colspan="${colspan}"><div class="cite-empty"><div class="cite-empty-icon"><i class="fa-solid fa-folder-open"></i></div><div class="cite-empty-title">${escapeHtml(title)}</div><p class="cite-empty-text">${escapeHtml(text)}</p></div></td></tr>`;
+}
+
+function renderChairpersonWorkbench() {
+    const workbench = document.getElementById('chairpersonWorkbench');
+    const pendingBody = document.getElementById('chairPendingTableBody');
+    const deptBody = document.getElementById('chairDepartmentTableBody');
+    if (!workbench || !pendingBody || !deptBody) return;
+
+    document.querySelectorAll('.wf-admin-only').forEach(el => el.classList.add('hidden'));
+    workbench.classList.remove('hidden');
+
+    const search = (document.getElementById('chairSearchInput')?.value || document.getElementById('searchInput')?.value || '').toLowerCase();
+    const granted = chairpersonHasGrant();
+    const deptCode = window.CiteFlowWorkflow?.facultyDepartmentCode?.(currentActorFaculty)
+        || currentActorFaculty?.department_code
+        || currentActorFaculty?.department
+        || '';
+
+    const hint = document.getElementById('chairDepartmentHint');
+    if (hint) {
+        hint.textContent = granted
+            ? `All authorized ${deptCode ? deptCode + ' ' : ''}submissions. Viewing does not grant approval.`
+            : 'An administrator must grant you Chairperson workflow access first.';
     }
-    return true;
+
+    if (!granted) {
+        pendingBody.innerHTML = renderChairpersonEmptyRow(6, 'No Chairperson access', 'Ask an administrator to open Workflow Approval → Manage Access and grant this Chairperson account.');
+        deptBody.innerHTML = renderChairpersonEmptyRow(6, 'No Chairperson access', 'Department submissions stay hidden until Admin grants access to this account.');
+        const pendingCount = document.getElementById('chairPendingCount');
+        const deptCount = document.getElementById('chairDepartmentCount');
+        if (pendingCount) pendingCount.textContent = '0';
+        if (deptCount) deptCount.textContent = '0';
+        return;
+    }
+
+    const browsable = collectChairpersonBrowsableRows().filter(row => chairSubmissionMatchesSearch(row, search));
+    const pending = browsable.filter(submissionActionableByChair);
+
+    const pendingCount = document.getElementById('chairPendingCount');
+    const deptCount = document.getElementById('chairDepartmentCount');
+    if (pendingCount) pendingCount.textContent = String(pending.length);
+    if (deptCount) deptCount.textContent = String(browsable.length);
+
+    const loadedCount = (workflowState.submissions || []).length;
+    pendingBody.innerHTML = pending.length
+        ? pending.map(row => renderChairpersonSubmissionRow(row, { actionable: true, section: 'pending' })).join('')
+        : renderChairpersonEmptyRow(6, 'No pending Chairperson approvals', loadedCount
+            ? `Your ${deptCode || 'department'} queue has submissions to browse, but none are waiting for a Chairperson decision right now.`
+            : `No ${deptCode || 'department'} submissions were returned. Confirm this account has Admin-granted access and that faculty submitted through Workflow, not only Document Vault.`);
+
+    deptBody.innerHTML = browsable.length
+        ? browsable.map(row => renderChairpersonSubmissionRow(row, { actionable: submissionActionableByChair(row), section: 'department' })).join('')
+        : renderChairpersonEmptyRow(6, 'No department submissions yet', loadedCount
+            ? 'Submissions loaded but none matched your current department profile.'
+            : `No authorized ${deptCode || 'department'} submissions were returned for this Chairperson account.`);
+}
+
+function applyChairpersonSidebar() {
+    const menu = document.querySelector('#sidebar-container .sidebar-menu, .sidebar .sidebar-menu');
+    if (!menu) return;
+
+    menu.querySelectorAll('.nav-item').forEach((item) => {
+        const page = item.getAttribute('data-page') || '';
+        if (item.id === 'chairFacultyPortalNav') return;
+        if (page.includes('workflow-approval')) {
+            if (!item.dataset.chairLabeled) {
+                const icon = item.querySelector('i');
+                item.textContent = '';
+                if (icon) item.appendChild(icon);
+                item.append(' Chairperson Approval');
+                item.dataset.chairLabeled = '1';
+            }
+            item.classList.remove('hidden');
+        } else {
+            item.classList.add('hidden');
+        }
+    });
+
+    if (!document.getElementById('chairFacultyPortalNav')) {
+        const portal = document.createElement('div');
+        portal.id = 'chairFacultyPortalNav';
+        portal.className = 'nav-item';
+        portal.innerHTML = '<i class="fa-solid fa-arrow-left"></i> Faculty Portal';
+        portal.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.location.href = '../faculty/dashboard.html';
+        });
+        menu.insertBefore(portal, menu.firstChild);
+    }
+}
+
+function syncChairpersonWorkbenchChrome() {
+    const chairQueue = isChairpersonQueueActor();
+    const granted = chairpersonHasGrant();
+    const workbench = document.getElementById('chairpersonWorkbench');
+    const titleEl = document.getElementById('workflowPageTitle');
+    const kickerEl = document.getElementById('workflowPageKicker');
+    const subtitle = document.querySelector('#workflowMainView .cite-subtitle');
+
+    document.querySelectorAll('.wf-admin-only').forEach(el => el.classList.toggle('hidden', chairQueue));
+    if (workbench) workbench.classList.toggle('hidden', !chairQueue);
+
+    if (titleEl) titleEl.textContent = chairQueue ? 'Chairperson Workflow Approval' : 'Document Submissions';
+    if (kickerEl) kickerEl.textContent = chairQueue ? 'Chairperson' : 'Workflow';
+    document.title = chairQueue ? 'Chairperson Workflow Approval - CITE-Flow' : 'Workflow Approval - CITE-Flow';
+
+    if (subtitle) {
+        subtitle.textContent = chairQueue
+            ? (granted
+                ? 'Approve only the submissions that require Chairperson review. Everything else in your department is view-only.'
+                : 'You do not have Chairperson workflow access. Ask an administrator to grant access.')
+            : 'Review submissions, track progress, and manage assigned faculty tasks.';
+    }
+
+    if (chairQueue) applyChairpersonSidebar();
 }
 
 const _wfOriginalRecompute = typeof recomputeSubmissionMatrix === 'function' ? recomputeSubmissionMatrix : null;
 if (_wfOriginalRecompute) {
     recomputeSubmissionMatrix = function patchedRecomputeSubmissionMatrix() {
         _wfOriginalRecompute();
-        if (currentActorFaculty && CiteFlowWorkflow.isChairperson(currentActorFaculty) && !currentActorFaculty.admin_access) {
+        if (isChairpersonQueueActor()) {
             allSubmissions = allSubmissions.filter(submissionVisibleToActor);
         }
     };
@@ -4749,7 +5300,8 @@ applyReviewRealtime = async function unifiedApplyReviewRealtime(submissionId, ne
         actorUser: currentActorUser,
         targetFaculty,
         task,
-        config
+        config,
+        delegatedAccess: getActorDelegatedAccess()
     });
 
     if (!result.ok) {
@@ -4775,8 +5327,23 @@ applyReviewRealtime = async function unifiedApplyReviewRealtime(submissionId, ne
 
 openReviewModal = async function unifiedOpenReviewModal(taskId, facultyRef) {
     await loadWorkflowActor();
-    const rows = getTaskSubmissionRows(taskId);
-    const sub = rows.find(r => String(r.faculty_id) === String(facultyRef));
+    let sub = getTaskSubmissionRows(taskId).find(r => String(r.faculty_id) === String(facultyRef));
+    if (!sub || !sub.submission_id) {
+        const rawFallback = (workflowState.submissions || []).find(s =>
+            String(s.task_id) === String(taskId) && String(s.faculty_id) === String(facultyRef));
+        if (rawFallback) {
+            const faculty = getFacultyById(rawFallback.faculty_id);
+            sub = {
+                task_id: rawFallback.task_id,
+                faculty_id: rawFallback.faculty_id,
+                faculty_name: faculty?.full_name || 'Faculty',
+                department_code: faculty?.department_code || faculty?.department || '',
+                submitted_at: rawFallback.submitted_at,
+                submission_id: rawFallback.id,
+                files: getSubmissionFiles(rawFallback.id)
+            };
+        }
+    }
     if (!sub || !sub.submission_id) {
         showToast('No submission found for this faculty member.', 'warn');
         return;
@@ -4820,8 +5387,30 @@ openReviewModal = async function unifiedOpenReviewModal(taskId, facultyRef) {
     const revisionBtn = document.querySelector('#reviewModal button[onclick="requestRevision()"]');
     const declineBtn = document.querySelector('#reviewModal button[onclick="declineSubmission()"]');
 
-    const canChair = CiteFlowWorkflow.canReviewAsChairperson(raw || sub, currentActorFaculty, targetFaculty);
-    const canFinal = CiteFlowWorkflow.canReviewAsFinalApprover(raw || sub, currentActorFaculty);
+    const canBrowse = !isChairpersonQueueActor() || submissionBrowsableByChair({
+        ...sub,
+        faculty_id: sub.faculty_id,
+        faculty_name: sub.faculty_name,
+        department_code: sub.department_code,
+        task_id: taskId,
+        submission_id: sub.submission_id
+    });
+    if (isChairpersonQueueActor() && !canBrowse) {
+        showToast('This submission is outside your department or Chairperson access was revoked.', 'error');
+        return;
+    }
+
+    const canChair = CiteFlowWorkflow.canReviewAsChairperson(
+        raw || sub,
+        currentActorFaculty,
+        targetFaculty,
+        chairpersonReviewContext(task)
+    );
+    const canFinal = CiteFlowWorkflow.canReviewAsFinalApprover(
+        raw || sub,
+        currentActorFaculty,
+        chairpersonReviewContext(task)
+    );
     const isComplete = stage === CiteFlowWorkflow.APPROVAL_STAGES.APPROVED || raw?.status === 'approved';
 
     [approveBtn, revisionBtn, declineBtn].forEach(b => {
@@ -4829,34 +5418,27 @@ openReviewModal = async function unifiedOpenReviewModal(taskId, facultyRef) {
         b.disabled = true;
         b.title = '';
     });
+    if (declineBtn) declineBtn.classList.toggle('hidden', isChairpersonQueueActor());
 
     if (isComplete) {
         if (approveBtn) approveBtn.title = 'Already fully approved';
     } else if (canChair) {
-        [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.disabled = false; });
+        [approveBtn, revisionBtn].forEach(b => { if (b) b.disabled = false; });
+        if (!isChairpersonQueueActor() && declineBtn) declineBtn.disabled = false;
         if (approveBtn) approveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Approve (Chairperson)';
     } else if (canFinal) {
         [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.disabled = false; });
         if (approveBtn) approveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Final Approve';
     } else {
-        const waiting = stage === CiteFlowWorkflow.APPROVAL_STAGES.CHAIRPERSON
-            ? 'Waiting for Chairperson review'
-            : 'Waiting for final approval';
+        const waiting = isChairpersonQueueActor()
+            ? 'View and download only. Approval is not available for this submission.'
+            : (stage === CiteFlowWorkflow.APPROVAL_STAGES.CHAIRPERSON
+                ? 'Waiting for Chairperson review'
+                : 'Waiting for final approval');
         [approveBtn, revisionBtn, declineBtn].forEach(b => { if (b) b.title = waiting; });
-        showToast(`This submission is in ${statusLabel}. You cannot perform this action.`, 'warn');
     }
 
     document.getElementById('reviewModal').classList.add('open');
-};
-
-initRealtime = function unifiedInitRealtime() {
-    if (window.CiteFlowWorkflow) {
-        CiteFlowWorkflow.subscribeWorkflow(() => fetchAllData(), [
-            'wf_submissions', 'wf_approval_history', 'wf_notifications', 'wf_task_assignments',
-            'wf_tasks', 'wf_submission_files', 'wf_activity_log', 'wf_comments',
-            'wf_delegated_access', 'wf_report_configs', 'wf_report_targets', 'faculty'
-        ]);
-    }
 };
 
 const _wfOriginalInit = init;

@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Engagement Logs - CITE-Flow</title>
-    
+    <title>Engagement Log - CITE-Flow</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -13,10 +13,10 @@
     <script src="../shared/auth-guard.js"></script>
     <link rel="stylesheet" href="../nav.css">
     <link rel="stylesheet" href="../shared/skeleton.css">
-    
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        
+
         * { font-family: 'Inter', sans-serif; }
         body { background: #f1f5f9; }
 
@@ -62,6 +62,21 @@
             border: 3px solid white;
             box-shadow: 0 2px 6px rgba(0,0,0,0.1);
         }
+
+        .view-btn.active {
+            background: #621708;
+            color: #fff;
+            border-color: #621708;
+        }
+
+        .log-table th {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #64748b;
+            background: #f8fafc;
+        }
     </style>
 </head>
 <body class="bg-slate-50 overflow-x-hidden min-h-screen">
@@ -73,25 +88,24 @@
         <div id="navbar-container"></div>
 
         <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
-            <!-- Header -->
             <section class="bg-white border border-slate-200 rounded-2xl sm:rounded-[2rem] p-5 sm:p-7 mb-6 sm:mb-8">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
                         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#621708]/10 text-[#621708] text-[11px] sm:text-xs font-semibold uppercase tracking-widest">
                             <i class="fas fa-chart-line"></i>
-                            Engagement Module
+                            Academic & Faculty Activity
                         </div>
-                        <h1 class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1.5 sm:mt-2">Engagement Logs</h1>
+                        <h1 class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1.5 sm:mt-2">Engagement Log</h1>
                         <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl">
-                            Track faculty activities, workshops, seminars, document actions, and system events in real-time.
+                            Monitor faculty participation in workshops, seminars, research, extension, document access, and institutional activities for evaluation, reporting, and accreditation.
                         </p>
                     </div>
                     <div class="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                        <button onclick="exportLogs()" 
+                        <button onclick="exportLogs()"
                                 class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs sm:text-sm transition-all shadow-sm">
-                            <i class="fas fa-download"></i> Export CSV
+                            <i class="fas fa-download"></i> Export
                         </button>
-                        <button onclick="openLogModal()" 
+                        <button onclick="openLogModal()"
                                 class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-2xl font-semibold text-xs sm:text-sm transition-all shadow-sm">
                             <i class="fas fa-plus"></i> Add Log Entry
                         </button>
@@ -99,81 +113,121 @@
                 </div>
             </section>
 
-            <!-- Summary Cards -->
-            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                <div class="card p-5 sm:p-6">
+            <section class="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-5">
+                <div class="card p-4 sm:p-6">
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs sm:text-sm text-slate-500 font-medium">Total Activities</p>
                             <p id="totalActivities" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                         </div>
-                        <div class="w-11 h-11 sm:w-12 sm:h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 text-lg sm:text-xl shrink-0">
+                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 text-lg shrink-0">
                             <i class="fas fa-list-ul"></i>
                         </div>
                     </div>
                 </div>
-                <div class="card p-5 sm:p-6">
+                <div class="card p-4 sm:p-6">
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs sm:text-sm text-slate-500 font-medium">This Month</p>
                             <p id="thisMonthActivities" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                         </div>
-                        <div class="w-11 h-11 sm:w-12 sm:h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 text-lg sm:text-xl shrink-0">
+                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 text-lg shrink-0">
                             <i class="fas fa-calendar"></i>
                         </div>
                     </div>
                 </div>
-                <div class="card p-5 sm:p-6">
+                <div class="card p-4 sm:p-6">
                     <div class="flex justify-between items-start">
                         <div>
-                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Workshops</p>
-                            <p id="workshopActivities" class="text-2xl sm:text-4xl font-bold text-purple-600 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Faculty Involved</p>
+                            <p id="facultyInvolved" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                         </div>
-                        <div class="w-11 h-11 sm:w-12 sm:h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 text-lg sm:text-xl shrink-0">
-                            <i class="fas fa-chalkboard-teacher"></i>
+                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-violet-50 rounded-2xl flex items-center justify-center text-violet-600 text-lg shrink-0">
+                            <i class="fas fa-user-check"></i>
                         </div>
                     </div>
                 </div>
-                <div class="card p-5 sm:p-6">
+                <div class="card p-4 sm:p-6">
                     <div class="flex justify-between items-start">
                         <div>
-                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Seminars</p>
-                            <p id="seminarActivities" class="text-2xl sm:text-4xl font-bold text-emerald-600 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Departments</p>
+                            <p id="departmentCount" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                         </div>
-                        <div class="w-11 h-11 sm:w-12 sm:h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 text-lg sm:text-xl shrink-0">
-                            <i class="fas fa-users"></i>
+                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 text-lg shrink-0">
+                            <i class="fas fa-building-columns"></i>
                         </div>
                     </div>
                 </div>
             </section>
 
+            <section class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
+                <button type="button" onclick="filterByCategory('workshop')" class="card p-4 text-left hover:border-purple-200 transition">
+                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Workshops</p>
+                    <p id="workshopActivities" class="text-xl sm:text-3xl font-bold text-purple-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                </button>
+                <button type="button" onclick="filterByCategory('seminar')" class="card p-4 text-left hover:border-emerald-200 transition">
+                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Seminars</p>
+                    <p id="seminarActivities" class="text-xl sm:text-3xl font-bold text-emerald-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                </button>
+                <button type="button" onclick="filterByCategory('download')" class="card p-4 text-left hover:border-sky-200 transition">
+                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Downloads</p>
+                    <p id="downloadActivities" class="text-xl sm:text-3xl font-bold text-sky-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                </button>
+                <button type="button" onclick="filterByCategory('extension')" class="card p-4 text-left hover:border-orange-200 transition">
+                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Extension</p>
+                    <p id="extensionActivities" class="text-xl sm:text-3xl font-bold text-orange-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                </button>
+                <button type="button" onclick="filterByCategory('research')" class="card p-4 text-left hover:border-cyan-200 transition">
+                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Research</p>
+                    <p id="researchActivities" class="text-xl sm:text-3xl font-bold text-cyan-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                </button>
+                <button type="button" onclick="filterByCategory('institutional')" class="card p-4 text-left hover:border-slate-300 transition">
+                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Institutional</p>
+                    <p id="institutionalActivities" class="text-xl sm:text-3xl font-bold text-slate-700 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                </button>
+            </section>
+
+            <div class="card p-4 sm:p-5 mb-6 sm:mb-8">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
+                    <div class="relative xl:col-span-2">
+                        <input id="logSearch" oninput="applyLogFilters()" type="text" placeholder="Search faculty, title, or details..."
+                               class="field pl-9 text-xs sm:text-sm py-2.5">
+                        <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    </div>
+                    <select id="facultyFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                        <option value="all">All Faculty</option>
+                    </select>
+                    <select id="departmentFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                        <option value="all">All Departments</option>
+                    </select>
+                    <select id="categoryFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                        <option value="all">All Categories</option>
+                        <option value="workshop">Workshops</option>
+                        <option value="seminar">Seminars</option>
+                        <option value="download">Downloads</option>
+                        <option value="extension">Extension</option>
+                        <option value="research">Research</option>
+                        <option value="institutional">Institutional</option>
+                        <option value="other">Other</option>
+                    </select>
+                    <select id="typeFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                        <option value="all">All Types</option>
+                    </select>
+                    <input id="dateFrom" type="date" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5" title="From date">
+                    <input id="dateTo" type="date" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5" title="To date">
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 sm:gap-7">
-                <!-- Timeline -->
                 <section class="xl:col-span-8 card p-5 sm:p-7">
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3 sm:gap-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-5 gap-3">
                         <div>
-                            <h2 class="text-lg sm:text-xl font-semibold text-slate-900">Activity Timeline</h2>
-                            <p class="text-xs sm:text-sm text-slate-500">Latest faculty and system engagement records</p>
+                            <h2 class="text-lg sm:text-xl font-semibold text-slate-900">Faculty Activity Records</h2>
+                            <p id="resultCount" class="text-xs sm:text-sm text-slate-500">Latest participation and engagement records</p>
                         </div>
-                        <div class="flex flex-col sm:flex-row gap-2.5 sm:gap-3 w-full sm:w-auto">
-                            <div class="relative flex-1 sm:w-60 lg:w-64">
-                                <input id="logSearch" oninput="applyLogFilters()" 
-                                       type="text" placeholder="Search logs..." 
-                                       class="field pl-9 sm:pl-10 w-full text-xs sm:text-sm py-2 sm:py-2.5">
-                                <i class="fas fa-search absolute left-3 sm:left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs sm:text-sm"></i>
-                            </div>
-                            <select id="typeFilter" onchange="applyLogFilters()" class="field w-full sm:w-44 text-xs sm:text-sm py-2 sm:py-2.5">
-                                <option value="all">All Types</option>
-                                <option value="Workshop">Workshop</option>
-                                <option value="Seminar">Seminar</option>
-                                <option value="Download">Download</option>
-                                <option value="Feedback Summary">Feedback Summary</option>
-                                <option value="Profile Update">Profile Update</option>
-                                <option value="Meeting">Meeting</option>
-                                <option value="Community Service">Community Service</option>
-                                <option value="Document Action">Document Action</option>
-                                <option value="System Event">System Event</option>
-                            </select>
+                        <div class="inline-flex rounded-xl border border-slate-200 overflow-hidden">
+                            <button type="button" id="viewTimelineBtn" onclick="setViewMode('timeline')" class="view-btn active px-3 py-2 text-xs font-bold border-r border-slate-200">Timeline</button>
+                            <button type="button" id="viewTableBtn" onclick="setViewMode('table')" class="view-btn px-3 py-2 text-xs font-bold">Table</button>
                         </div>
                     </div>
 
@@ -181,36 +235,28 @@
                         <div class="skeleton-row">
                             <div class="skeleton-circle" style="width:36px;height:36px"></div>
                             <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                            <div class="skeleton-text" style="width:80px"></div>
-                            <div class="skeleton-text" style="width:60px"></div>
                         </div>
                         <div class="skeleton-row">
                             <div class="skeleton-circle" style="width:36px;height:36px"></div>
-                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                            <div class="skeleton-text" style="width:80px"></div>
-                            <div class="skeleton-text" style="width:60px"></div>
-                        </div>
-                        <div class="skeleton-row">
-                            <div class="skeleton-circle" style="width:36px;height:36px"></div>
-                            <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                            <div class="skeleton-text" style="width:80px"></div>
-                            <div class="skeleton-text" style="width:60px"></div>
+                            <div class="flex-1"><div class="skeleton-text" style="width:70%"></div></div>
                         </div>
                     </div>
+                    <div id="tableContainer" class="hidden overflow-x-auto min-h-[300px]"></div>
                 </section>
 
-                <!-- Right Sidebar -->
                 <aside class="xl:col-span-4 space-y-5 sm:space-y-6">
                     <div class="card p-5 sm:p-6">
                         <h3 class="font-semibold text-sm sm:text-base mb-3 sm:mb-4 flex items-center gap-2">
-                            <i class="fas fa-tags text-[#621708]"></i> Log Categories
+                            <i class="fas fa-tags text-[#621708]"></i> Category Breakdown
                         </h3>
                         <div id="categoryCounts" class="space-y-2 sm:space-y-2.5"></div>
                     </div>
 
                     <div class="card p-5 sm:p-6">
-                        <h3 class="font-semibold text-sm sm:text-base mb-3 sm:mb-4">Recent System Events</h3>
-                        <div id="recentEvents" class="space-y-3 sm:space-y-4"></div>
+                        <h3 class="font-semibold text-sm sm:text-base mb-3 sm:mb-4 flex items-center gap-2">
+                            <i class="fas fa-users text-[#621708]"></i> Faculty Participation
+                        </h3>
+                        <div id="facultyParticipation" class="space-y-3"></div>
                     </div>
                 </aside>
             </div>
@@ -218,13 +264,12 @@
     </main>
 </div>
 
-<!-- Add Log Modal -->
 <div id="logModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[2500] flex items-center justify-center p-3 sm:p-5 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-6 py-4 sm:px-8 sm:py-6 border-b flex justify-between items-start bg-slate-50/50">
             <div>
                 <h2 class="text-lg sm:text-2xl font-semibold text-slate-900">Add Engagement Log</h2>
-                <p class="text-slate-500 text-xs sm:text-sm mt-0.5">Record a new activity or event</p>
+                <p class="text-slate-500 text-xs sm:text-sm mt-0.5">Record a faculty activity or institutional event</p>
             </div>
             <button onclick="closeLogModal()" class="w-8 h-8 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center text-2xl leading-none">&times;</button>
         </div>
@@ -232,12 +277,14 @@
         <form id="logEntryForm" onsubmit="saveLogEntry(event)" class="p-5 sm:p-8 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-xs sm:text-sm font-semibold text-slate-600 mb-1.5">Faculty Name</label>
-                    <input name="faculty_name" required class="field">
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-600 mb-1.5">Faculty</label>
+                    <select name="faculty_id" id="logFacultySelect" onchange="fillFacultyDepartment()" class="field">
+                        <option value="">Select faculty</option>
+                    </select>
                 </div>
                 <div>
                     <label class="block text-xs sm:text-sm font-semibold text-slate-600 mb-1.5">Department</label>
-                    <input name="department" class="field">
+                    <input name="department" id="logDepartment" class="field">
                 </div>
             </div>
 
@@ -247,11 +294,14 @@
                     <select name="activity_type" required class="field">
                         <option value="Workshop">Workshop</option>
                         <option value="Seminar">Seminar</option>
+                        <option value="Training">Training</option>
                         <option value="Download">Download</option>
+                        <option value="Extension">Extension</option>
+                        <option value="Community Service">Community Service</option>
+                        <option value="Research">Research</option>
+                        <option value="Meeting">Meeting</option>
                         <option value="Feedback Summary">Feedback Summary</option>
                         <option value="Profile Update">Profile Update</option>
-                        <option value="Meeting">Meeting</option>
-                        <option value="Community Service">Community Service</option>
                         <option value="Document Action">Document Action</option>
                         <option value="System Event">System Event</option>
                     </select>
@@ -263,6 +313,7 @@
                         <option value="Faculty Profiles">Faculty Profiles</option>
                         <option value="Workload Tracker">Workload Tracker</option>
                         <option value="Document Vault">Document Vault</option>
+                        <option value="Calendar">Calendar</option>
                     </select>
                 </div>
             </div>
@@ -290,6 +341,7 @@
                     <label class="block text-xs sm:text-sm font-semibold text-slate-600 mb-1.5">Status</label>
                     <select name="status" class="field">
                         <option value="Completed">Completed</option>
+                        <option value="Ongoing">Ongoing</option>
                         <option value="Pending">Pending</option>
                         <option value="For Review">For Review</option>
                     </select>
@@ -297,9 +349,9 @@
             </div>
 
             <div class="flex justify-end gap-3 pt-3">
-                <button type="button" onclick="closeLogModal()" 
+                <button type="button" onclick="closeLogModal()"
                         class="px-5 py-2.5 border border-slate-200 rounded-xl hover:bg-slate-50 text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
-                <button type="submit" id="saveLogButton" 
+                <button type="submit" id="saveLogButton"
                         class="px-5 py-2.5 bg-[#621708] text-white rounded-xl hover:bg-[#8c2a10] text-xs sm:text-sm font-bold shadow-sm">Save Log Entry</button>
             </div>
         </form>
@@ -307,104 +359,520 @@
 </div>
 
 <script>
-// Supabase
 const supabaseClient = window.supabaseClient;
 
-let engagementLogs = [];
+const REALTIME_TABLES = [
+    'engagement_logs',
+    'faculty',
+    'faculty_accomplishments',
+    'faculty_research_projects',
+    'faculty_documents',
+    'calendar_event_feedback',
+    'calendar_events',
+    'documents'
+];
 
-// Utilities
+let sourceData = {
+    logs: [],
+    faculty: [],
+    accomplishments: [],
+    research: [],
+    documents: [],
+    vaultDocuments: [],
+    feedback: [],
+    events: []
+};
+let unifiedRecords = [];
+let facultyList = [];
+let viewMode = 'timeline';
+let realtimeChannel = null;
+let refreshTimer = null;
+let isRefreshing = false;
+let pendingRefresh = false;
+
+const CATEGORY_META = {
+    workshop: { label: 'Workshops', types: ['workshop', 'training'] },
+    seminar: { label: 'Seminars', types: ['seminar', 'conference', 'feedback summary'] },
+    download: { label: 'Downloads', types: ['download'] },
+    extension: { label: 'Extension', types: ['extension', 'community service', 'extension document'] },
+    research: { label: 'Research', types: ['research', 'research document'] },
+    institutional: { label: 'Institutional', types: ['meeting', 'system event', 'institutional', 'school event', 'exam', 'deadline'] },
+    other: { label: 'Other', types: [] }
+};
+
 function esc(v) { return String(v || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function formatDate(d) { return d ? new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric'}).format(new Date(d)) : '—'; }
 function formatTime(d) { return d ? new Intl.DateTimeFormat('en-US',{hour:'2-digit',minute:'2-digit'}).format(new Date(d)) : '—'; }
+function facultyLabel(row) { return row?.full_name || row?.name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || 'Faculty'; }
 
-// Load Logs
-async function loadEngagementLogs() {
-    const { data, error } = await supabaseClient
-        .from('engagement_logs')
-        .select('*')
-        .order('activity_at', { ascending: false });
+function facultyById(id) {
+    if (id == null || id === '') return null;
+    const key = String(id);
+    return facultyList.find(f => String(f.id) === key) || null;
+}
 
-    if (error) console.error(error);
-    else engagementLogs = data || [];
+function resolveFaculty(row) {
+    if (!row) return null;
+    return facultyById(row.faculty_id)
+        || facultyList.find(f => f.auth_user_id && String(f.auth_user_id) === String(row.faculty_id || row.faculty_user_id || row.uploaded_by || ''))
+        || facultyList.find(f => row.faculty_email && f.email && String(f.email).toLowerCase() === String(row.faculty_email).toLowerCase())
+        || null;
+}
 
+function liveFacultyName(row, fallback) {
+    const faculty = resolveFaculty(row);
+    if (faculty) return facultyLabel(faculty);
+    return row?.faculty_name || fallback || 'Faculty';
+}
+
+function liveDepartment(row, fallback) {
+    const faculty = resolveFaculty(row);
+    if (faculty?.department) return faculty.department;
+    return row?.department || fallback || '';
+}
+
+function categorize(type) {
+    const key = String(type || '').trim().toLowerCase();
+    for (const [category, meta] of Object.entries(CATEGORY_META)) {
+        if (category === 'other') continue;
+        if (meta.types.includes(key) || key.includes(category)) return category;
+    }
+    if (key.includes('workshop') || key.includes('training')) return 'workshop';
+    if (key.includes('seminar') || key.includes('conference') || key.includes('feedback')) return 'seminar';
+    if (key.includes('download')) return 'download';
+    if (key.includes('extension') || key.includes('community') || key.includes('outreach')) return 'extension';
+    if (key.includes('research')) return 'research';
+    if (key.includes('meeting') || key.includes('institutional') || key.includes('system')) return 'institutional';
+    return 'other';
+}
+
+function recordKey(record) {
+    const day = String(record.activity_at || '').slice(0, 10);
+    const who = String(record.faculty_id || record.faculty_name || '').toLowerCase();
+    const title = String(record.activity_title || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    return `${who}::${title}::${day}`;
+}
+
+async function safeSelect(table, query = '*') {
+    try {
+        const { data, error } = await supabaseClient.from(table).select(query);
+        if (error) throw error;
+        return data || [];
+    } catch (error) {
+        console.warn(`${table} unavailable:`, error.message);
+        return [];
+    }
+}
+
+function asRecord(partial) {
+    const facultyId = resolveFaculty(partial)?.id || partial.faculty_id || null;
+    return {
+        id: partial.id,
+        faculty_id: facultyId,
+        faculty_name: liveFacultyName(partial, partial.faculty_name),
+        department: liveDepartment(partial, partial.department) || '—',
+        activity_type: partial.activity_type || 'Activity',
+        activity_title: partial.activity_title || 'Recorded activity',
+        description: partial.description || '',
+        source_module: partial.source_module || 'CITE-Flow',
+        activity_at: partial.activity_at || partial.created_at || null,
+        status: partial.status || 'Completed',
+        details: partial.details || {},
+        category: categorize(partial.activity_type),
+        persisted: partial.persisted !== false
+    };
+}
+
+async function refreshEngagementData() {
+    if (isRefreshing) {
+        pendingRefresh = true;
+        return;
+    }
+    isRefreshing = true;
+    try {
+        const [
+            logs,
+            faculty,
+            accomplishments,
+            research,
+            documents,
+            vaultDocuments,
+            feedback,
+            events
+        ] = await Promise.all([
+            safeSelect('engagement_logs', '*'),
+            safeSelect('faculty', 'id, auth_user_id, full_name, name, first_name, last_name, email, department, status'),
+            safeSelect('faculty_accomplishments', '*'),
+            safeSelect('faculty_research_projects', 'id, faculty_id, title, description, status, start_date, created_at'),
+            safeSelect('faculty_documents', 'id, faculty_id, title, document_name, document_type, category, description, status, uploaded_at, created_at'),
+            safeSelect('documents', 'id, name, uploaded_by, uploaded_at, created_at'),
+            safeSelect('calendar_event_feedback', '*'),
+            safeSelect('calendar_events', 'id, title, event_type, location, start_at')
+        ]);
+
+        sourceData = { logs, faculty, accomplishments, research, documents, vaultDocuments, feedback, events };
+        facultyList = faculty;
+        rebuildUnifiedRecords();
+        populateFilterOptions();
+        populateFacultySelect();
+        renderAll();
+    } finally {
+        isRefreshing = false;
+        if (pendingRefresh) {
+            pendingRefresh = false;
+            scheduleRefresh();
+        }
+    }
+}
+
+function rebuildUnifiedRecords() {
+    unifiedRecords = mergeEngagementRecords(sourceData);
+}
+
+function mergeEngagementRecords({ logs, accomplishments, research, documents, vaultDocuments, feedback, events }) {
+    const records = (logs || []).map(log => asRecord({
+        ...log,
+        persisted: true
+    }));
+    const seen = new Set(records.map(recordKey));
+    const eventMap = Object.fromEntries((events || []).map(event => [String(event.id), event]));
+
+    function pushDerived(record) {
+        const next = asRecord({ ...record, persisted: false });
+        const key = recordKey(next);
+        if (seen.has(key)) return;
+        seen.add(key);
+        records.push(next);
+    }
+
+    (accomplishments || []).forEach(row => {
+        pushDerived({
+            id: 'acc-' + row.id,
+            faculty_id: row.faculty_id,
+            faculty_name: liveFacultyName(row),
+            department: liveDepartment(row),
+            activity_type: row.accomplishment_type || 'Other',
+            activity_title: row.title,
+            description: row.description || `Recorded ${row.accomplishment_type || 'accomplishment'}: ${row.title}`,
+            source_module: 'Faculty Profile',
+            activity_at: row.date_achieved || row.created_at,
+            status: 'Completed'
+        });
+    });
+
+    (research || []).forEach(row => {
+        pushDerived({
+            id: 'res-' + row.id,
+            faculty_id: row.faculty_id,
+            faculty_name: liveFacultyName(row),
+            department: liveDepartment(row),
+            activity_type: 'Research',
+            activity_title: row.title,
+            description: row.description || `Research project recorded with status ${row.status || 'Ongoing'}.`,
+            source_module: 'Faculty Profile',
+            activity_at: row.start_date || row.created_at,
+            status: row.status || 'Ongoing'
+        });
+    });
+
+    (documents || []).forEach(row => {
+        const type = row.document_type || row.category || 'Document Action';
+        pushDerived({
+            id: 'doc-' + row.id,
+            faculty_id: row.faculty_id,
+            faculty_name: liveFacultyName(row),
+            department: liveDepartment(row),
+            activity_type: type === 'Extension Document' ? 'Extension' : type === 'Research Document' ? 'Research' : 'Document Action',
+            activity_title: row.title || row.document_name || 'Faculty document',
+            description: row.description || `Uploaded ${type} to the faculty profile.`,
+            source_module: 'Faculty Profile',
+            activity_at: row.uploaded_at || row.created_at,
+            status: row.status || 'Submitted'
+        });
+    });
+
+    (vaultDocuments || []).forEach(row => {
+        const faculty = facultyList.find(f => f.auth_user_id && String(f.auth_user_id) === String(row.uploaded_by || ''));
+        if (!faculty) return;
+        pushDerived({
+            id: 'vault-' + row.id,
+            faculty_id: faculty.id,
+            faculty_name: facultyLabel(faculty),
+            department: faculty.department,
+            activity_type: 'Document Action',
+            activity_title: row.name,
+            description: `Uploaded ${row.name} to the Document Vault.`,
+            source_module: 'Document Vault',
+            activity_at: row.uploaded_at || row.created_at,
+            status: 'Completed'
+        });
+    });
+
+    (feedback || []).forEach(row => {
+        const event = eventMap[String(row.event_id)] || {};
+        const eventType = String(event.event_type || '').toLowerCase();
+        const activityType = eventType === 'workshop' ? 'Workshop' : eventType === 'meeting' ? 'Meeting' : 'Seminar';
+        const faculty = resolveFaculty(row);
+        pushDerived({
+            id: 'fb-' + row.id,
+            faculty_id: faculty?.id || row.faculty_id,
+            faculty_email: row.faculty_email,
+            faculty_name: liveFacultyName(row, row.faculty_name),
+            department: liveDepartment(row),
+            activity_type: activityType,
+            activity_title: event.title ? `Participated: ${event.title}` : 'Event participation',
+            description: row.feedback_summary || row.feedback_text || `Submitted feedback for ${event.title || 'a calendar event'}.`,
+            source_module: 'Calendar',
+            activity_at: row.submitted_at || event.start_at,
+            status: row.attendance_status || 'Completed',
+            details: { Rating: row.overall_rating || row.rating, Location: event.location || 'TBA' }
+        });
+    });
+
+    return records.sort((a, b) => new Date(b.activity_at || 0) - new Date(a.activity_at || 0));
+}
+
+function fillSelect(select, placeholder, values, current) {
+    select.innerHTML = '';
+    const first = document.createElement('option');
+    first.value = placeholder.value;
+    first.textContent = placeholder.label;
+    select.appendChild(first);
+    values.forEach((value) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+    });
+    select.value = [...select.options].some(o => o.value === current) ? current : placeholder.value;
+}
+
+function addOption(select, value, label) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
+}
+
+function populateFilterOptions() {
+    const facultySelect = document.getElementById('facultyFilter');
+    const deptSelect = document.getElementById('departmentFilter');
+    const typeSelect = document.getElementById('typeFilter');
+    const currentFaculty = facultySelect.value;
+    const currentDept = deptSelect.value;
+    const currentType = typeSelect.value;
+
+    facultySelect.innerHTML = '';
+    addOption(facultySelect, 'all', 'All Faculty');
+    facultyList
+        .slice()
+        .sort((a, b) => facultyLabel(a).localeCompare(facultyLabel(b)))
+        .forEach((f) => addOption(facultySelect, String(f.id), facultyLabel(f)));
+    unifiedRecords.forEach((record) => {
+        const exists = [...facultySelect.options].some((option) => option.value === String(record.faculty_id) || option.textContent === record.faculty_name);
+        if (!exists && record.faculty_name && record.faculty_name !== 'Faculty' && record.faculty_name !== 'System') {
+            addOption(facultySelect, record.faculty_id ? String(record.faculty_id) : record.faculty_name, record.faculty_name);
+        }
+    });
+    facultySelect.value = [...facultySelect.options].some((option) => option.value === currentFaculty) ? currentFaculty : 'all';
+
+    const depts = [...new Set(facultyList.map(f => f.department).filter(Boolean))].sort();
+    fillSelect(deptSelect, { value: 'all', label: 'All Departments' }, depts, currentDept);
+
+    const types = [...new Set(unifiedRecords.map(r => r.activity_type).filter(Boolean))].sort();
+    fillSelect(typeSelect, { value: 'all', label: 'All Types' }, types, currentType);
+}
+
+function populateFacultySelect() {
+    const select = document.getElementById('logFacultySelect');
+    const current = select.value;
+    select.innerHTML = '';
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'Select faculty';
+    select.appendChild(empty);
+    facultyList.filter(f => !['Inactive', 'Archived'].includes(f.status)).forEach((f) => {
+        const option = document.createElement('option');
+        option.value = f.id;
+        option.textContent = facultyLabel(f);
+        option.dataset.department = f.department || '';
+        select.appendChild(option);
+    });
+    if ([...select.options].some(o => o.value === current)) select.value = current;
+}
+
+function fillFacultyDepartment() {
+    const select = document.getElementById('logFacultySelect');
+    const option = select.selectedOptions[0];
+    document.getElementById('logDepartment').value = option?.dataset.department || '';
+}
+
+function getFilteredLogs() {
+    const search = (document.getElementById('logSearch')?.value || '').toLowerCase().trim();
+    const faculty = document.getElementById('facultyFilter')?.value || 'all';
+    const department = document.getElementById('departmentFilter')?.value || 'all';
+    const category = document.getElementById('categoryFilter')?.value || 'all';
+    const type = document.getElementById('typeFilter')?.value || 'all';
+    const dateFrom = document.getElementById('dateFrom')?.value || '';
+    const dateTo = document.getElementById('dateTo')?.value || '';
+
+    return unifiedRecords.filter(log => {
+        const matchFaculty = faculty === 'all'
+            || String(log.faculty_id) === faculty
+            || log.faculty_name === faculty;
+        const matchDept = department === 'all' || log.department === department;
+        const matchCategory = category === 'all' || log.category === category;
+        const matchType = type === 'all' || log.activity_type === type;
+        const matchSearch = !search || `${log.activity_title} ${log.faculty_name} ${log.description} ${log.department} ${log.activity_type}`.toLowerCase().includes(search);
+        const time = log.activity_at ? new Date(log.activity_at) : null;
+        const matchFrom = !dateFrom || (time && time >= new Date(`${dateFrom}T00:00:00`));
+        const matchTo = !dateTo || (time && time <= new Date(`${dateTo}T23:59:59`));
+        return matchFaculty && matchDept && matchCategory && matchType && matchSearch && matchFrom && matchTo;
+    });
+}
+
+function applyLogFilters() {
     renderAll();
+}
+
+function filterByCategory(category) {
+    const select = document.getElementById('categoryFilter');
+    select.value = select.value === category ? 'all' : category;
+    applyLogFilters();
+}
+
+function setViewMode(mode) {
+    viewMode = mode;
+    document.getElementById('viewTimelineBtn').classList.toggle('active', mode === 'timeline');
+    document.getElementById('viewTableBtn').classList.toggle('active', mode === 'table');
+    document.getElementById('timelineContainer').classList.toggle('hidden', mode !== 'timeline');
+    document.getElementById('tableContainer').classList.toggle('hidden', mode !== 'table');
+    renderRecords();
 }
 
 function renderAll() {
     renderSummary();
     renderCategoryCounts();
-    renderRecentEvents();
-    renderTimeline();
+    renderFacultyParticipation();
+    renderRecords();
 }
 
 function renderSummary() {
-    const total = engagementLogs.length;
-    const thisMonth = engagementLogs.filter(log => {
+    const filtered = getFilteredLogs();
+    const now = new Date();
+    const thisMonth = filtered.filter(log => {
         const date = new Date(log.activity_at);
-        return date.getMonth() === new Date().getMonth() && date.getFullYear() === new Date().getFullYear();
+        return !Number.isNaN(date.getTime()) && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
     }).length;
+    const facultyNames = new Set(filtered.map(l => l.faculty_name).filter(name => name && name !== 'Faculty' && name !== 'System'));
+    const departments = new Set(filtered.map(l => l.department).filter(dept => dept && dept !== '—'));
 
-    document.getElementById('totalActivities').textContent = total;
+    document.getElementById('totalActivities').textContent = filtered.length;
     document.getElementById('thisMonthActivities').textContent = thisMonth;
-    document.getElementById('workshopActivities').textContent = engagementLogs.filter(l => l.activity_type === 'Workshop').length;
-    document.getElementById('seminarActivities').textContent = engagementLogs.filter(l => l.activity_type === 'Seminar').length;
+    document.getElementById('facultyInvolved').textContent = facultyNames.size;
+    document.getElementById('departmentCount').textContent = departments.size;
+    document.getElementById('workshopActivities').textContent = filtered.filter(l => l.category === 'workshop').length;
+    document.getElementById('seminarActivities').textContent = filtered.filter(l => l.category === 'seminar').length;
+    document.getElementById('downloadActivities').textContent = filtered.filter(l => l.category === 'download').length;
+    document.getElementById('extensionActivities').textContent = filtered.filter(l => l.category === 'extension').length;
+    document.getElementById('researchActivities').textContent = filtered.filter(l => l.category === 'research').length;
+    document.getElementById('institutionalActivities').textContent = filtered.filter(l => l.category === 'institutional').length;
+    document.getElementById('resultCount').textContent = `${filtered.length} record${filtered.length === 1 ? '' : 's'} matching the current filters`;
 }
 
 function renderCategoryCounts() {
-    const types = ['Workshop','Seminar','Download','Feedback Summary','Profile Update','Meeting','Community Service','Document Action','System Event'];
-    const container = document.getElementById('categoryCounts');
-    container.innerHTML = types.map(type => `
-        <div class="flex justify-between items-center bg-slate-50 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm">
-            <span class="font-medium text-slate-700">${type}</span>
-            <span class="font-bold text-slate-900">${engagementLogs.filter(l => l.activity_type === type).length}</span>
-        </div>
+    const filtered = getFilteredLogs();
+    const rows = Object.entries(CATEGORY_META).map(([key, meta]) => ({
+        key,
+        label: meta.label,
+        count: filtered.filter(l => l.category === key).length
+    })).filter(row => row.key !== 'other' || row.count > 0);
+
+    document.getElementById('categoryCounts').innerHTML = rows.map(row => `
+        <button type="button" onclick="filterByCategory('${row.key}')" class="w-full flex justify-between items-center bg-slate-50 hover:bg-slate-100 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm">
+            <span class="font-medium text-slate-700">${esc(row.label)}</span>
+            <span class="font-bold text-slate-900">${row.count}</span>
+        </button>
     `).join('');
 }
 
-function renderRecentEvents() {
-    const container = document.getElementById('recentEvents');
-    const recent = engagementLogs.slice(0, 4);
-    container.innerHTML = recent.length ? recent.map(log => `
-        <div class="flex gap-3 items-start">
-            <div class="w-8 h-8 bg-slate-100 rounded-xl flex items-center justify-center text-xs font-bold text-slate-700 shrink-0 mt-0.5">${log.activity_type?.substring(0,1) || 'E'}</div>
-            <div class="flex-1 min-w-0">
-                <p class="text-xs sm:text-sm font-semibold text-slate-900 truncate">${esc(log.activity_title)}</p>
-                <p class="text-[11px] text-slate-500">${formatDate(log.activity_at)}</p>
+function renderFacultyParticipation() {
+    const filtered = getFilteredLogs();
+    const counts = {};
+    filtered.forEach(log => {
+        const name = log.faculty_name || 'Faculty';
+        if (name === 'System') return;
+        counts[name] = counts[name] || { name, department: log.department, count: 0 };
+        counts[name].count += 1;
+    });
+    const ranked = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 8);
+    const container = document.getElementById('facultyParticipation');
+    container.innerHTML = ranked.length ? ranked.map(row => `
+        <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+                <p class="text-sm font-semibold text-slate-900 truncate">${esc(row.name)}</p>
+                <p class="text-[11px] text-slate-500 truncate">${esc(row.department || '—')}</p>
             </div>
+            <span class="status-badge bg-slate-100 text-slate-700">${row.count}</span>
         </div>
-    `).join('') : '<p class="text-xs sm:text-sm text-slate-500">No recent events.</p>';
+    `).join('') : '<p class="text-xs sm:text-sm text-slate-500">No faculty participation in the current filters.</p>';
 }
 
-function renderTimeline() {
-    const container = document.getElementById('timelineContainer');
-    const filtered = getFilteredLogs();
+function categoryStyle(category) {
+    return {
+        workshop: { border: 'border-purple-500', text: 'text-purple-500', badge: 'bg-purple-100 text-purple-700' },
+        seminar: { border: 'border-emerald-500', text: 'text-emerald-500', badge: 'bg-emerald-100 text-emerald-700' },
+        download: { border: 'border-sky-500', text: 'text-sky-500', badge: 'bg-sky-100 text-sky-700' },
+        extension: { border: 'border-orange-500', text: 'text-orange-500', badge: 'bg-orange-100 text-orange-700' },
+        research: { border: 'border-cyan-500', text: 'text-cyan-500', badge: 'bg-cyan-100 text-cyan-700' },
+        institutional: { border: 'border-slate-500', text: 'text-slate-500', badge: 'bg-slate-100 text-slate-700' },
+        other: { border: 'border-slate-400', text: 'text-slate-400', badge: 'bg-slate-100 text-slate-600' }
+    }[category] || { border: 'border-slate-400', text: 'text-slate-400', badge: 'bg-slate-100 text-slate-600' };
+}
 
+function statusClass(status) {
+    const value = String(status || '').toLowerCase();
+    if (value.includes('complete') || value.includes('approved') || value.includes('published')) return 'bg-emerald-50 text-emerald-700';
+    if (value.includes('pending') || value.includes('review') || value.includes('proposed')) return 'bg-amber-50 text-amber-700';
+    if (value.includes('ongoing') || value.includes('progress')) return 'bg-sky-50 text-sky-700';
+    return 'bg-slate-100 text-slate-600';
+}
+
+function renderRecords() {
+    const filtered = getFilteredLogs();
+    if (viewMode === 'table') renderTable(filtered);
+    else renderTimeline(filtered);
+}
+
+function renderTimeline(filtered) {
+    const container = document.getElementById('timelineContainer');
     if (!filtered.length) {
-        container.innerHTML = `<div class="text-center py-12 text-xs sm:text-sm text-slate-500">No matching logs found.</div>`;
+        container.innerHTML = `<div class="text-center py-12 text-xs sm:text-sm text-slate-500">No matching engagement records found.</div>`;
         return;
     }
 
-    const colorMap = {
-        purple: { border: 'border-purple-500', text500: 'text-purple-500', bg: 'bg-purple-100', text700: 'text-purple-700' },
-        emerald: { border: 'border-emerald-500', text500: 'text-emerald-500', bg: 'bg-emerald-100', text700: 'text-emerald-700' },
-        slate: { border: 'border-slate-500', text500: 'text-slate-500', bg: 'bg-slate-100', text700: 'text-slate-700' }
-    };
-
     container.innerHTML = filtered.map(log => {
-        const color = log.activity_type === 'Workshop' ? 'purple' : 
-                      log.activity_type === 'Seminar' ? 'emerald' : 'slate';
-        const classes = colorMap[color] || colorMap['slate'];
+        const style = categoryStyle(log.category);
         return `
             <div class="relative pl-7 sm:pl-9">
-                <div class="timeline-dot bg-white border-2 ${classes.border}">
-                    <i class="fas fa-circle text-[8px] ${classes.text500}"></i>
+                <div class="timeline-dot bg-white border-2 ${style.border}">
+                    <i class="fas fa-circle text-[8px] ${style.text}"></i>
                 </div>
                 <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                         <div class="min-w-0 pr-2">
-                            <span class="status-badge ${classes.bg} ${classes.text700}">${esc(log.activity_type)}</span>
-                            <h4 class="font-semibold text-sm sm:text-base text-slate-900 mt-1.5 truncate">${esc(log.activity_title)}</h4>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="status-badge ${style.badge}">${esc(log.activity_type)}</span>
+                                <span class="status-badge ${statusClass(log.status)}">${esc(log.status)}</span>
+                            </div>
+                            <h4 class="font-semibold text-sm sm:text-base text-slate-900 mt-1.5">${esc(log.activity_title)}</h4>
                             <p class="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">${esc(log.description || '')}</p>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-2">
+                                <i class="fas fa-user mr-1"></i>${esc(log.faculty_name)}
+                                <span class="mx-1.5">•</span>
+                                <i class="fas fa-building-columns mr-1"></i>${esc(log.department)}
+                                <span class="mx-1.5">•</span>${esc(log.source_module || 'CITE-Flow')}
+                            </p>
                         </div>
                         <div class="text-left sm:text-right text-[11px] sm:text-xs text-slate-400 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                             ${formatDate(log.activity_at)} • ${formatTime(log.activity_at)}
@@ -416,26 +884,48 @@ function renderTimeline() {
     }).join('');
 }
 
-function getFilteredLogs() {
-    const search = (document.getElementById('logSearch')?.value || '').toLowerCase().trim();
-    const type = document.getElementById('typeFilter')?.value || 'all';
+function renderTable(filtered) {
+    const container = document.getElementById('tableContainer');
+    if (!filtered.length) {
+        container.innerHTML = `<div class="text-center py-12 text-xs sm:text-sm text-slate-500">No matching engagement records found.</div>`;
+        return;
+    }
 
-    return engagementLogs.filter(log => {
-        const matchType = type === 'all' || log.activity_type === type;
-        const matchSearch = !search || 
-            `${log.activity_title} ${log.faculty_name} ${log.description}`.toLowerCase().includes(search);
-        return matchType && matchSearch;
-    });
+    container.innerHTML = `
+        <table class="w-full min-w-[860px] text-xs sm:text-sm log-table">
+            <thead>
+                <tr class="border-b border-slate-200">
+                    <th class="text-left py-3 px-3">Date & Time</th>
+                    <th class="text-left py-3 px-3">Faculty</th>
+                    <th class="text-left py-3 px-3">Department</th>
+                    <th class="text-left py-3 px-3">Type</th>
+                    <th class="text-left py-3 px-3">Activity</th>
+                    <th class="text-left py-3 px-3">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                ${filtered.map(log => `
+                    <tr class="align-top">
+                        <td class="py-3 px-3 text-slate-500 whitespace-nowrap">${formatDate(log.activity_at)}<div class="text-[11px]">${formatTime(log.activity_at)}</div></td>
+                        <td class="py-3 px-3 font-semibold text-slate-900">${esc(log.faculty_name)}</td>
+                        <td class="py-3 px-3 text-slate-600">${esc(log.department)}</td>
+                        <td class="py-3 px-3"><span class="status-badge ${categoryStyle(log.category).badge}">${esc(log.activity_type)}</span></td>
+                        <td class="py-3 px-3">
+                            <div class="font-semibold text-slate-900">${esc(log.activity_title)}</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5 line-clamp-2">${esc(log.description || '')}</div>
+                        </td>
+                        <td class="py-3 px-3"><span class="status-badge ${statusClass(log.status)}">${esc(log.status)}</span></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
 }
 
-function applyLogFilters() {
-    renderTimeline();
-}
-
-// Modal Controls
 function openLogModal() {
     document.getElementById('logModal').classList.remove('hidden');
     document.getElementById('logEntryForm').reset();
+    populateFacultySelect();
 }
 
 function closeLogModal() {
@@ -444,11 +934,14 @@ function closeLogModal() {
 
 async function saveLogEntry(e) {
     e.preventDefault();
-    
+
     const formData = new FormData(e.target);
+    const facultyId = formData.get('faculty_id');
+    const faculty = facultyById(facultyId);
     const logData = {
-        faculty_name: formData.get('faculty_name'),
-        department: formData.get('department'),
+        faculty_id: facultyId || null,
+        faculty_name: faculty ? facultyLabel(faculty) : 'Faculty',
+        department: formData.get('department') || faculty?.department || null,
         activity_type: formData.get('activity_type'),
         source_module: formData.get('source_module'),
         activity_title: formData.get('activity_title'),
@@ -457,10 +950,7 @@ async function saveLogEntry(e) {
         status: formData.get('status')
     };
 
-    const { error } = await supabaseClient
-        .from('engagement_logs')
-        .insert([logData]);
-
+    const { error } = await supabaseClient.from('engagement_logs').insert([logData]);
     if (error) {
         console.error(error);
         alert('Failed to save log entry');
@@ -468,24 +958,67 @@ async function saveLogEntry(e) {
     }
 
     closeLogModal();
-    await loadEngagementLogs();
+    await refreshEngagementData();
 }
 
 function exportLogs() {
     if (!window.XLSX) {
-        alert("XLSX library not loaded");
+        alert('XLSX library not loaded');
         return;
     }
-    const ws = XLSX.utils.json_to_sheet(engagementLogs);
+    const rows = getFilteredLogs().map(log => ({
+        Date: formatDate(log.activity_at),
+        Time: formatTime(log.activity_at),
+        Faculty: log.faculty_name,
+        Department: log.department,
+        Category: CATEGORY_META[log.category]?.label || 'Other',
+        Type: log.activity_type,
+        Title: log.activity_title,
+        Description: log.description,
+        Status: log.status,
+        Source: log.source_module
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Engagement Logs");
-    XLSX.writeFile(wb, "engagement_logs.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, 'Engagement Log');
+    XLSX.writeFile(wb, 'engagement_logs.xlsx');
 }
 
-// Initialize
+function scheduleRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+        refreshEngagementData();
+    }, 400);
+}
+
+function subscribeRealtime() {
+    if (!supabaseClient?.channel || realtimeChannel) return;
+
+    let channel = supabaseClient.channel('engagement-log-live');
+    REALTIME_TABLES.forEach((table) => {
+        channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh);
+    });
+    realtimeChannel = channel.subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+            console.warn('Engagement Log realtime unavailable; the page still loads current database records.');
+        }
+    });
+}
+
+function cleanupRealtime() {
+    clearTimeout(refreshTimer);
+    if (realtimeChannel && supabaseClient) {
+        supabaseClient.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+    }
+}
+
+window.addEventListener('beforeunload', cleanupRealtime);
+
 window.onload = async () => {
     await loadSidebar();
-    await loadEngagementLogs();
+    await refreshEngagementData();
+    subscribeRealtime();
 };
 </script>
 
