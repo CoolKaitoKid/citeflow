@@ -82,13 +82,13 @@ function toggleMobileSidebar(forceClose = false) {
     const isOpen = sidebar.classList.contains("open");
 
     if (forceClose || isOpen) {
-        sidebar.classList.remove("open");   
+        sidebar.classList.remove("open");
         backdrop.classList.remove("show");
-        document.body.style.overflow = ""; 
+        document.body.style.overflow = "";
     } else {
         sidebar.classList.add("open");
         backdrop.classList.add("show");
-        document.body.style.overflow = "hidden"; 
+        document.body.style.overflow = "hidden";
     }
 }
 window.toggleMobileSidebar = toggleMobileSidebar;
@@ -146,7 +146,7 @@ function updateActiveMenu(fileName) {
 
 function navigateTo(pageFile) {
     if (typeof toggleMobileSidebar === "function") {
-        toggleMobileSidebar(true); 
+        toggleMobileSidebar(true);
     }
     const pageKey = normalizePageKey(pageFile);
     if (isSpa()) {
@@ -275,6 +275,206 @@ function mountNavPart(sourceNode, containerId, appendToBody) {
     }
 }
 
+function injectAdminNotifCss() {
+    let style = document.getElementById("cite-admin-bell-css");
+    if (!style) {
+        style = document.createElement("style");
+        style.id = "cite-admin-bell-css";
+        document.head.appendChild(style);
+    }
+    style.textContent = `
+      nav.navbar, .navbar, .nav-actions, #navbar-container { overflow: visible !important; }
+      .nav-notif-wrap { position: relative; display: inline-flex; align-items: center; }
+      .nav-notif-badge {
+        position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px;
+        padding: 0 4px; border-radius: 999px; background: #dc2626; color: #fff;
+        font-size: 10px; font-weight: 700; display: none; align-items: center;
+        justify-content: center; border: 2px solid var(--cite-theme, #621708); z-index: 2;
+      }
+      #adminNavNotifDropdown.nav-notif-dropdown {
+        position: absolute !important; top: calc(100% + 10px) !important; right: 0 !important;
+        width: 340px; max-width: calc(100vw - 24px); background: #fff !important;
+        border: 1px solid #e5e7eb; border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(15, 23, 42, 0.14);
+        display: none !important; z-index: 99999 !important; overflow: hidden;
+      }
+      #adminNavNotifDropdown.nav-notif-dropdown.open { display: block !important; }
+      #adminNavNotifDropdown .nav-notif-header {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        padding: 12px 16px; border-bottom: 1px solid #eee; color: #111;
+        font-size: 14px; font-weight: 700;
+      }
+      #adminNavNotifDropdown .nav-notif-header button {
+        border: 0; background: transparent; color: #621708; font-size: 12px;
+        font-weight: 700; cursor: pointer;
+      }
+      #adminNavNotifDropdown .nav-notif-list {
+        max-height: 380px; overflow-y: auto; padding: 4px 0;
+      }
+      #adminNavNotifDropdown .nav-notif-item {
+        display: block; width: 100%; text-align: left; padding: 12px 16px;
+        border: 0; border-radius: 0; background: transparent; color: #374151;
+        font-size: 13px; line-height: 1.45; font-weight: 400; cursor: pointer;
+      }
+      #adminNavNotifDropdown .nav-notif-item.unread { background: #eff6ff; }
+      #adminNavNotifDropdown .nav-notif-item small,
+      #adminNavNotifDropdown .nav-notif-date {
+        display: block; margin-top: 6px; color: #9ca3af; font-size: 12px; font-weight: 400;
+      }
+      #adminNavNotifDropdown .nav-notif-empty {
+        padding: 24px 16px; text-align: center; color: #9ca3af; font-size: 13px; margin: 0;
+      }
+    `;
+}
+
+function findAdminBellButton() {
+    if (document.getElementById("facultyNavNotifBtn")) return null;
+    const wired = document.getElementById("adminNavNotifBtn");
+    if (wired) return wired;
+    const roots = [
+        document.querySelector("nav.navbar"),
+        document.querySelector(".navbar"),
+        document.getElementById("navbar-container")
+    ].filter(Boolean);
+    for (const root of roots) {
+        const icon = root.querySelector(".fa-bell, i[class*='fa-bell']");
+        if (!icon) continue;
+        const btn = icon.closest(".nav-btn, button, [onclick]");
+        if (btn && !btn.querySelector(".fa-circle-user, .fa-user")) return btn;
+    }
+    return null;
+}
+
+function setAdminNotifOpen(open) {
+    const panel = document.getElementById("adminNavNotifDropdown");
+    if (!panel) return;
+    panel.classList.toggle("open", open);
+    panel.style.display = open ? "block" : "none";
+}
+
+function wireAdminNavbarBell() {
+    if (document.getElementById("facultyNavNotifBtn")) return true;
+    const btn = findAdminBellButton();
+    if (!btn) return false;
+    if (btn.dataset.citeWired === "5") return true;
+
+    injectAdminNotifCss();
+
+    let wrap = btn.closest(".nav-notif-wrap") || document.getElementById("adminNavNotifWrap");
+    if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.id = "adminNavNotifWrap";
+        wrap.className = "nav-notif-wrap";
+        btn.parentNode.insertBefore(wrap, btn);
+        wrap.appendChild(btn);
+    }
+
+    const fresh = btn.cloneNode(true);
+    fresh.removeAttribute("onclick");
+    fresh.onclick = null;
+    fresh.id = "adminNavNotifBtn";
+    fresh.dataset.citeWired = "5";
+    fresh.setAttribute("title", "Notifications");
+    fresh.setAttribute("role", "button");
+    btn.replaceWith(fresh);
+
+    if (!wrap.querySelector("#adminNavNotifBadge")) {
+        const badge = document.createElement("span");
+        badge.id = "adminNavNotifBadge";
+        badge.className = "nav-notif-badge";
+        badge.setAttribute("data-notif-badge", "");
+        badge.textContent = "0";
+        badge.style.display = "none";
+        wrap.appendChild(badge);
+    }
+
+    if (!wrap.querySelector("#adminNavNotifDropdown")) {
+        wrap.insertAdjacentHTML("beforeend", `
+          <div id="adminNavNotifDropdown" class="nav-notif-dropdown">
+            <div class="nav-notif-header">
+              <span>Notifications</span>
+              <button type="button" id="cite-mark-all-read">Mark all read</button>
+            </div>
+            <div id="adminNavNotifList" class="nav-notif-list">
+              <p class="nav-notif-empty">No notifications yet</p>
+            </div>
+          </div>
+        `);
+    }
+
+    fresh.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const panel = document.getElementById("adminNavNotifDropdown");
+        const willOpen = !(panel && panel.classList.contains("open"));
+        setAdminNotifOpen(willOpen);
+        if (willOpen && window.CalendarNotifications && typeof window.CalendarNotifications.refreshAdmin === "function") {
+            window.CalendarNotifications.refreshAdmin();
+        }
+    });
+
+    if (!document.documentElement.dataset.citeAdminBellOutside) {
+        document.documentElement.dataset.citeAdminBellOutside = "1";
+        document.addEventListener("click", (event) => {
+            const wrapEl = document.getElementById("adminNavNotifWrap");
+            const panel = document.getElementById("adminNavNotifDropdown");
+            if (!panel || !panel.classList.contains("open")) return;
+            if (wrapEl && wrapEl.contains(event.target)) return;
+            setAdminNotifOpen(false);
+        });
+    }
+
+    const markAll = document.getElementById("cite-mark-all-read");
+    if (markAll && !markAll.dataset.bound) {
+        markAll.dataset.bound = "1";
+        markAll.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (window.CalendarNotifications && typeof window.CalendarNotifications.markAllRead === "function") {
+                window.CalendarNotifications.markAllRead();
+            }
+        });
+    }
+
+    return true;
+}
+
+function watchAdminNavbarBell() {
+    if (wireAdminNavbarBell()) return;
+    if (document.documentElement.dataset.citeAdminBellWatch) return;
+    document.documentElement.dataset.citeAdminBellWatch = "1";
+    const obs = new MutationObserver(() => {
+        if (wireAdminNavbarBell()) obs.disconnect();
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+    [120, 400, 1000, 2000, 4000].forEach((ms) => {
+        window.setTimeout(() => wireAdminNavbarBell(), ms);
+    });
+}
+
+function ensureCalendarNotifications() {
+    watchAdminNavbarBell();
+    const start = () => {
+        wireAdminNavbarBell();
+        if (window.CalendarNotifications && typeof window.CalendarNotifications.startAdminListener === "function") {
+            window.CalendarNotifications.startAdminListener();
+        }
+    };
+    if (window.CalendarNotifications) {
+        start();
+        return;
+    }
+    const existing = document.querySelector('script[src*="calendar-notifications.js"]');
+    if (existing) {
+        window.setTimeout(start, 200);
+        return;
+    }
+    const script = document.createElement("script");
+    script.src = isInAdminFolder() ? "../shared/calendar-notifications.js" : "shared/calendar-notifications.js";
+    script.onload = start;
+    document.head.appendChild(script);
+}
+
 async function loadAdminNavigation() {
     try {
         const candidateUrls = ["/nav.html", "../nav.html", "nav.html"];
@@ -333,6 +533,7 @@ async function loadAdminNavigation() {
         attachNavEvents();
         updateActiveMenu(getCurrentPageFile());
         loadNavbarProfileModal();
+        ensureCalendarNotifications();
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
@@ -375,7 +576,11 @@ window.addEventListener("load", async () => {
     attachNavEvents();
     updateActiveMenu(getCurrentPageFile());
     loadNavbarProfileModal();
+    ensureCalendarNotifications();
+    watchAdminNavbarBell();
 });
+
+watchAdminNavbarBell();
 
 async function adminLogout() {
     try {

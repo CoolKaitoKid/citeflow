@@ -6,10 +6,12 @@
     <title>Calendar - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
-    <link rel="stylesheet" href="../nav.css">`n    <link rel="stylesheet" href="../shared/skeleton.css">
+    <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth-guard.js"></script>
+    <script src="../shared/calendar-notifications.js?v=9"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
@@ -48,7 +50,7 @@
         .modal-field:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}
     </style>
 </head>
-<body class="bg-gray-50 overflow-x-hidden min-h-screen">
+<body class="bg-gray-50 overflow-x-hidden min-h-screen" data-portal="admin">
 
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
@@ -120,9 +122,7 @@
                         <div id="selected-events" class="space-y-2.5"></div>
                     </section>
 
-                    <!-- SEPARATED UPCOMING CONTAINERS -->
                     <div class="space-y-4">
-                        <!-- 1. Schedules Container -->
                         <div class="panel rounded-2xl p-4 bg-white border border-indigo-100 shadow-sm">
                             <div class="flex items-center justify-between mb-3 pb-2 border-b border-indigo-50">
                                 <div class="flex items-center gap-2">
@@ -136,7 +136,6 @@
                             <div id="list-schedules" class="space-y-2 max-h-[150px] overflow-y-auto pr-1"></div>
                         </div>
 
-                        <!-- 2. Upcoming Events Container -->
                         <div class="panel rounded-2xl p-4 bg-white border border-sky-100 shadow-sm">
                             <div class="flex items-center justify-between mb-3 pb-2 border-b border-sky-50">
                                 <div class="flex items-center gap-2">
@@ -150,7 +149,6 @@
                             <div id="list-upcoming" class="space-y-2 max-h-[150px] overflow-y-auto pr-1"></div>
                         </div>
 
-                        <!-- 3. Faculty Leaves Container -->
                         <div class="panel rounded-2xl p-4 bg-white border border-amber-100 shadow-sm">
                             <div class="flex items-center justify-between mb-3 pb-2 border-b border-amber-50">
                                 <div class="flex items-center gap-2">
@@ -170,13 +168,12 @@
     </main>
 </div>
 
-<!-- ADD/EDIT MODAL -->
 <div id="add-event-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div>
                 <h2 class="text-base sm:text-lg font-bold text-slate-950" id="modal-title">Create Schedule</h2>
-                <p class="text-xs text-slate-500 mt-0.5">Add schedule details for the realtime calendar.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Add schedule details for the realtime calendar. Matching faculty will be notified.</p>
             </div>
             <button onclick="closeAddEventModal()" class="icon-btn">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -277,7 +274,6 @@
     </div>
 </div>
 
-<!-- DETAILS MODAL -->
 <div id="event-detail-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-start gap-3 bg-slate-50/50">
@@ -335,7 +331,8 @@
 
             <div class="flex gap-2.5 pt-2" id="detail-actions-box">
                 <button onclick="editCurrentEvent()" id="edit-event-btn" class="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-sm">Edit Event</button>
-               <button onclick="removeCurrentEvent()" style="background: var(--cite-theme, #621708) !important;" class="flex-1 py-2.5 hover:opacity-90 text-white font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-sm">Delete Entry</button>          </div>
+                <button onclick="removeCurrentEvent()" style="background: var(--cite-theme, #621708) !important;" class="flex-1 py-2.5 hover:opacity-90 text-white font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-sm">Delete Entry</button>
+            </div>
         </div>
     </div>
 </div>
@@ -349,20 +346,65 @@ function addH(d,h){d=new Date(d);d.setHours(d.getHours()+h);return d}
 function time(d){return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(d))}
 function longDate(k){let [y,m,d]=k.split('-').map(Number);return new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d))}
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','deadline','event','other'].includes(t)?t:'other')}
+function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','deadline','event','leave','other'].includes(t)?t:'other')}
 function visibilityLabel(v){return ({all_faculty:'All Faculty',bsit:'BSIT Faculty',bsie:'BSIE Faculty',bit:'BIT Faculty',department_chairs:'Department Chairpersons',admin_only:'Only Me'}[v]||v||'All Faculty')}
 
 function normalize(r){
     let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addH(s,1);
     return {
         id:r.id, title:r.title, date:key(s), startAt:r.start_at, endAt:r.end_at,
-        time:r.all_day?'All Day':`${time(s)} - ${time(e)}`, type:r.event_type||'other', 
-        location:r.location||'TBA', priority:r.priority||'Normal', notes:r.notes||'', 
-        repeat:r.repeat_rule||'Never', visibility:r.visibility_scope||r.visibility||'all_faculty', 
-        allDay:!!r.all_day, requiresFeedback:!!r.requires_feedback, 
+        time:r.all_day?'All Day':`${time(s)} - ${time(e)}`, type:r.event_type||'other',
+        location:r.location||'TBA', priority:r.priority||'Normal', notes:r.notes||'',
+        repeat:r.repeat_rule||'Never', visibility:r.visibility_scope||r.visibility||'all_faculty',
+        allDay:!!r.all_day, requiresFeedback:!!r.requires_feedback,
         feedbackInstructions:r.feedback_instructions||''
     }
 }
+
+async function notifyFaculty(row, action){
+    if(!row || !window.CalendarNotifications) return;
+    try {
+        const result = await CalendarNotifications.notifyCalendarEvent(row, action);
+        if(result && result.ok && !result.skipped){
+            const verb = action === 'update' ? 'updated' : action === 'delete' ? 'cancelled' : 'created';
+            console.log(`Faculty notified: schedule ${verb}.`);
+        }
+    } catch (err) {
+        console.warn('Faculty notification failed', err);
+    }
+}
+
+function openPendingCalendarNotification(){
+    const hash = String(location.hash || '').replace(/^#/, '');
+    let id = '';
+    if (hash.startsWith('open=')) id = decodeURIComponent(hash.slice(5));
+    if (!id) {
+        try { id = sessionStorage.getItem('citeOpenNotif') || ''; } catch (_) { id = ''; }
+    }
+    if (!id) return false;
+    const found = events.find(x =>
+        String(x.id) === String(id) ||
+        String(x.realId) === String(id) ||
+        String(x.id) === 'event-' + id ||
+        String(x.id) === 'leave-' + id ||
+        String(x.id).replace(/^event-|^leave-/, '') === String(id).replace(/^event-|^leave-/, '')
+    );
+    if (!found) return false;
+    try { sessionStorage.removeItem('citeOpenNotif'); } catch (_) {}
+    if (found.date) {
+        const d = new Date(found.date + 'T00:00:00');
+        if (!Number.isNaN(d.getTime())) {
+            currentMonth = d.getMonth();
+            currentYear = d.getFullYear();
+            selectedDate = found.date;
+            renderCalendar();
+        }
+    }
+    showEventDetails(found.id);
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    return true;
+}
+window.openPendingCalendarNotification = openPendingCalendarNotification;
 
 async function loadAllAdminData(){
     let [calRes, leaveRes] = await Promise.all([
@@ -378,7 +420,8 @@ async function loadAllAdminData(){
                 id: 'event-' + r.id, realId: r.id, title: norm.title, date: norm.date, startAt: norm.startAt, endAt: norm.endAt,
                 time: norm.time, type: norm.type, category: 'schedule', location: norm.location, priority: norm.priority,
                 notes: norm.notes, repeat: norm.repeat, visibility: norm.visibility, allDay: norm.allDay,
-                requiresFeedback: norm.requiresFeedback, attachmentUrl: '', isLeave: false
+                requiresFeedback: norm.requiresFeedback, feedbackInstructions: norm.feedbackInstructions,
+                attachmentUrl: '', isLeave: false
             };
         }));
     }
@@ -395,6 +438,7 @@ async function loadAllAdminData(){
     events = combined.sort((a,b) => new Date(a.startAt) - new Date(b.startAt));
     document.getElementById('realtime-status').textContent = 'Realtime connected.';
     renderCalendar();
+    openPendingCalendarNotification();
 }
 
 function status(t){let el=document.getElementById('realtime-status');if(el)el.textContent=t}
@@ -446,7 +490,7 @@ function card(e,showDate=false){
 
 function renderSeparatedUpcoming(){
     let future=events.filter(e=>new Date(e.startAt)>=new Date(new Date().setHours(0,0,0,0))).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
-    
+
     let schoolEvents = future.filter(e => e.category === 'schedule' && e.type === 'event');
     let schedules = future.filter(e => e.category === 'schedule' && e.type !== 'event');
     let leaves = future.filter(e => e.category === 'leave');
@@ -501,10 +545,10 @@ function toggleModalAllDay(){let a=document.getElementById('modal-all-day').chec
 async function saveEventFromModal(){
     let title = document.getElementById('modal-event-title').value.trim();
     if(!title) return alert('Please enter an event title.');
-    
+
     let all = document.getElementById('modal-all-day').checked;
     let start, end;
-    
+
     if(all){
         let d = document.getElementById('modal-all-day-date').value;
         if(!d) return alert('Please select a date.');
@@ -519,6 +563,7 @@ async function saveEventFromModal(){
         end = new Date(e).toISOString();
     }
 
+    let visibilityScope = document.getElementById('modal-visibility').value;
     let payload = {
         title,
         event_type: document.getElementById('modal-event-type').value,
@@ -528,8 +573,8 @@ async function saveEventFromModal(){
         all_day: all,
         repeat_rule: document.getElementById('modal-repeat').value,
         priority: document.getElementById('modal-priority').value,
-        visibility: visibilityLabel(document.getElementById('modal-visibility').value),
-        visibility_scope: document.getElementById('modal-visibility').value,
+        visibility: visibilityLabel(visibilityScope),
+        visibility_scope: visibilityScope,
         notes: document.getElementById('modal-notes').value.trim(),
         requires_feedback: document.getElementById('modal-requires-feedback').checked,
         feedback_instructions: document.getElementById('modal-feedback-instructions').value.trim(),
@@ -538,9 +583,11 @@ async function saveEventFromModal(){
     };
 
     let res;
+    let action = 'create';
     if(isEditing && currentDetailEventId) {
         let realUUID = String(currentDetailEventId).replace('event-', '');
         res = await supabaseClient.from('calendar_events').update(payload).eq('id', realUUID).select().single();
+        action = 'update';
     } else {
         res = await supabaseClient.from('calendar_events').insert(payload).select().single();
     }
@@ -550,14 +597,27 @@ async function saveEventFromModal(){
         return alert('Unable to save event: ' + res.error.message);
     }
 
+    await notifyFaculty(res.data, action);
     closeAddEventModal();
     closeDetailModal();
     await loadAllAdminData();
+
+    if(visibilityScope === 'admin_only'){
+        alert(action === 'update' ? 'Schedule updated.' : 'Schedule created.');
+    } else {
+        alert(action === 'update'
+            ? 'Schedule updated. Faculty were notified.'
+            : 'Schedule created. Faculty were notified.');
+    }
 }
 
 async function showEventDetails(id){
     currentDetailEventId=id;
-    let e=events.find(x=>String(x.id)===String(id));
+    let e=events.find(x=>String(x.id)===String(id)
+        || String(x.realId)===String(id)
+        || String(x.id)==='event-'+id
+        || String(x.id)==='leave-'+id
+        || String(x.id).replace(/^event-|^leave-/,'')===String(id).replace(/^event-|^leave-/,''));
     if(!e)return;
     document.getElementById('detail-title').textContent=e.title;
     document.getElementById('detail-type').textContent=(e.type||'Event').toUpperCase();
@@ -582,33 +642,35 @@ async function showEventDetails(id){
 
     let fbSection = document.getElementById('admin-feedbacks-section');
     let fbList = document.getElementById('admin-feedbacks-list');
+    document.getElementById('event-detail-modal').classList.remove('hidden');
+
     if(!e.isLeave) {
         fbSection.classList.remove('hidden');
         fbList.innerHTML = '<div class="text-[11px] text-slate-400 italic">Loading feedback...</div>';
-        
-        let { data: fbs, error } = await supabaseClient.from('calendar_event_feedback').select('*').eq('event_id', e.realId);
-        if(!error && fbs && fbs.length > 0) {
-            fbList.innerHTML = fbs.map(f => `
-                <div class="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-xs">
-                    <div class="flex justify-between font-bold text-slate-800">
-                        <span>${esc(f.faculty_name)}</span>
-                        <span class="text-amber-600">★ ${f.overall_rating}/5</span>
+        supabaseClient.from('calendar_event_feedback').select('*').eq('event_id', e.realId).then(({ data: fbs, error }) => {
+            if (document.getElementById('event-detail-modal').classList.contains('hidden')) return;
+            if (String(currentDetailEventId) !== String(e.id) && String(currentDetailEventId) !== String(id)) return;
+            if(!error && fbs && fbs.length > 0) {
+                fbList.innerHTML = fbs.map(f => `
+                    <div class="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-xs">
+                        <div class="flex justify-between font-bold text-slate-800">
+                            <span>${esc(f.faculty_name)}</span>
+                            <span class="text-amber-600">★ ${f.overall_rating}/5</span>
+                        </div>
+                        <div class="text-[11px] text-slate-500 mt-0.5">Status: <b>${esc(f.attendance_status)}</b></div>
+                        <div class="text-slate-700 mt-1">"${esc(f.feedback_summary)}"</div>
+                        ${f.content_quality ? `<div class="text-[11px] text-slate-500 mt-1">Content: ${esc(f.content_quality)}</div>` : ''}
+                        ${f.speaker_quality ? `<div class="text-[11px] text-slate-500 mt-1">Speaker: ${esc(f.speaker_quality)}</div>` : ''}
+                        ${f.suggestions ? `<div class="text-[11px] text-slate-500 mt-1 italic">Suggestion: ${esc(f.suggestions)}</div>` : ''}
                     </div>
-                    <div class="text-[11px] text-slate-500 mt-0.5">Status: <b>${esc(f.attendance_status)}</b></div>
-                    <div class="text-slate-700 mt-1">"${esc(f.feedback_summary)}"</div>
-                    ${f.content_quality ? `<div class="text-[11px] text-slate-500 mt-1">Content: ${esc(f.content_quality)}</div>` : ''}
-                    ${f.speaker_quality ? `<div class="text-[11px] text-slate-500 mt-1">Speaker: ${esc(f.speaker_quality)}</div>` : ''}
-                    ${f.suggestions ? `<div class="text-[11px] text-slate-500 mt-1 italic">Suggestion: ${esc(f.suggestions)}</div>` : ''}
-                </div>
-            `).join('');
-        } else {
-            fbList.innerHTML = '<div class="text-[11px] text-slate-400 italic">No feedback submitted yet.</div>';
-        }
+                `).join('');
+            } else {
+                fbList.innerHTML = '<div class="text-[11px] text-slate-400 italic">No feedback submitted yet.</div>';
+            }
+        });
     } else {
         fbSection.classList.add('hidden');
     }
-
-    document.getElementById('event-detail-modal').classList.remove('hidden');
 }
 
 function closeDetailModal(){document.getElementById('event-detail-modal').classList.add('hidden')}
@@ -620,7 +682,7 @@ function editCurrentEvent(){
         supabaseClient.from('calendar_events').select('*').eq('id', e.realId).single().then(res => {
             if(res.data) {
                 openAddEventModal(normalize(res.data), null);
-                currentDetailEventId = 'event-' + e.realId; 
+                currentDetailEventId = 'event-' + e.realId;
                 isEditing = true;
             }
         });
@@ -633,6 +695,16 @@ async function removeCurrentEvent(){
     let tableName=e.isLeave?'faculty_leaves':'calendar_events';
     let {error}=await supabaseClient.from(tableName).delete().eq('id',e.realId);
     if(error){console.error(error);return alert('Unable to delete entry.')}
+    if(!e.isLeave){
+        await notifyFaculty({
+            id: e.realId,
+            title: e.title,
+            event_type: e.type,
+            visibility_scope: e.visibility,
+            start_at: e.startAt,
+            location: e.location
+        }, 'delete');
+    }
     closeDetailModal();await loadAllAdminData();
 }
 
@@ -659,12 +731,12 @@ function exportCalendarPDF() {
 
 function formatFullName(f,l,fb){return [f,l].filter(Boolean).join(' ').trim()||fb||'Unknown User'}
 function renderProfile(p,u){ const nameEl = document.getElementById('profileName'); const roleEl = document.getElementById('profileRole'); if (nameEl) nameEl.textContent = formatFullName(p.first_name,p.last_name,u?.email); if (roleEl) roleEl.textContent = p.role||'Administrator'; }
-async function loadAdminProfile(){let {data,error}=await supabaseClient.auth.getUser();if(error||!data?.user)return;currentUser=data.user;let meta=currentUser.user_metadata||{},profile={first_name:meta.first_name||'',last_name:meta.last_name||'',email:currentUser.email||'',role:meta.role||'Administrator'};let res=await supabaseClient.from('admin_profiles').select('*').eq('id',currentUser.id).maybeSingle();if(res.data)profile={...profile,...res.data};currentProfile=profile;renderProfile(profile,currentUser)}
+async function loadAdminProfile(){let {data,error}=await supabaseClient.auth.getUser();if(error||!data?.user)return;currentUser=data.user;let meta=currentUser.user_metadata||{},profile={first_name:meta.first_name||'',last_name:meta.last_name||'',email:currentUser.email||'',role:meta.role||'Administrator'};let res=await supabaseClient.from('admin_profiles').select('*').eq('id',currentUser.id).maybeSingle();if(res.data)profile={...profile,...res.data};currentProfile=profile;renderProfile(profile,currentUser);if(window.CalendarNotifications){await CalendarNotifications.startAdminListener({profile:currentProfile});}}
 
-window.addEventListener('load',async()=>{populateControls();await loadSidebar();await loadAdminProfile();await loadAllAdminData();subscribe()});
+window.addEventListener('load',async()=>{populateControls();if(typeof loadSidebar==='function')await loadSidebar();await loadAdminProfile();await loadAllAdminData();subscribe();openPendingCalendarNotification();});
 </script>
 <script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
-<script src="../nav.js"></script>
+<script src="../nav.js?v=9"></script>
 </body>
 </html>

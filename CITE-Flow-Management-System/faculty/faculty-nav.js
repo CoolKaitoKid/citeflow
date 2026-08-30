@@ -87,13 +87,32 @@ function navigateToFacultyPage(pageFile) {
         window.location.href = 'submissions.html#chair-review';
         return;
     }
-    const mapped = facultyPageMap(pageFile);
-    const inChairperson = window.location.pathname.toLowerCase().includes('/chairperson/');
-    if (inChairperson && !mapped.startsWith('../') && !mapped.startsWith('/')) {
-        window.location.href = `../faculty/${mapped}`;
+    const hashIndex = raw.indexOf('#');
+    const hash = hashIndex >= 0 ? raw.slice(hashIndex) : '';
+    const filePart = hashIndex >= 0 ? raw.slice(0, hashIndex) : raw;
+    const mapped = facultyPageMap(filePart);
+    const mappedFile = String(mapped).split('#')[0];
+    const mappedHash = hash || (String(mapped).includes('#') ? '#' + String(mapped).split('#')[1] : '');
+    const dest = mappedFile + mappedHash;
+    const currentFile = getFacultyCurrentPageFile();
+    const samePage = normalizeFacultyPageKey(currentFile) === normalizeFacultyPageKey(mappedFile);
+    if (samePage) {
+        if (mappedHash && location.hash !== mappedHash) {
+            location.hash = mappedHash;
+        }
+        if (typeof window.resetPendingFacultyNotification === 'function') {
+            window.setTimeout(() => window.resetPendingFacultyNotification(), 0);
+        } else if (typeof window.openPendingFacultyNotification === 'function') {
+            window.setTimeout(() => window.openPendingFacultyNotification(), 0);
+        }
         return;
     }
-    window.location.href = mapped;
+    const inChairperson = window.location.pathname.toLowerCase().includes('/chairperson/');
+    if (inChairperson && !dest.startsWith('../') && !dest.startsWith('/')) {
+        window.location.href = `../faculty/${dest}`;
+        return;
+    }
+    window.location.href = dest;
 }
 
 function toggleFacultyProfileModal() {
@@ -255,8 +274,8 @@ function updateFacultyNavProfile(profileData) {
 
     const setEl = (idOrSel, val) => {
         if (!val) return;
-        const el = idOrSel.startsWith('#') || idOrSel.startsWith('.') 
-            ? document.querySelector(idOrSel) 
+        const el = idOrSel.startsWith('#') || idOrSel.startsWith('.')
+            ? document.querySelector(idOrSel)
             : document.getElementById(idOrSel);
         if (el) el.textContent = val;
     };
@@ -285,7 +304,7 @@ function updateFacultyNavProfile(profileData) {
     if (photoUrl) {
         const modalImg = document.getElementById('modalProfileImg');
         const modalIcon = document.getElementById('modalProfileIcon');
-        
+
         if (modalImg) {
             modalImg.src = photoUrl;
             modalImg.style.display = 'block';
@@ -311,10 +330,12 @@ window.updateFacultyNavProfile = updateFacultyNavProfile;
 async function loadFacultyNavigation() {
     try {
         const candidateUrls = [
+            "faculty-nav.html",
+            "/faculty/faculty-nav.html",
+            "faculty/faculty-nav.html",
+            "../faculty-nav.html",
+            "../faculty/faculty-nav.html",
             "faculty-nav.html?v=chair-review-1",
-            "/faculty/faculty-nav.html?v=chair-review-1",
-            "faculty/faculty-nav.html?v=chair-review-1",
-            "../faculty-nav.html?v=chair-review-1",
             "../faculty/faculty-nav.html?v=chair-review-1"
         ];
         let response = null;
@@ -343,6 +364,7 @@ async function loadFacultyNavigation() {
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         updateFacultyNavProfile();
         loadFacultyNavNotifications();
+        subscribeFacultyNavNotifications();
         removeFacultyChairWorkflowNavItem();
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
@@ -407,6 +429,95 @@ function formatFacultyNavDate(iso) {
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function isFacultyCalendarNotification(notification) {
+    const type = String(notification?.type || '').toLowerCase();
+    const link = String(notification?.link || notification?.url || '').toLowerCase();
+    const message = String(notification?.message || '').toLowerCase();
+    return type === 'calendar' || type === 'event' || type === 'schedule'
+        || link.includes('calendar.html')
+        || /calendar schedule|faculty calendar|was posted|was updated/.test(message);
+}
+
+function extractFacultyNotifTitle(notification) {
+    const msg = String(notification?.message || '');
+    const quoted = msg.match(/"([^"]+)"/);
+    return quoted ? quoted[1] : '';
+}
+
+function facultyNotifTarget(notification) {
+    const stored = String(
+        notification?.link
+        || notification?.url
+        || notification?.href
+        || notification?.page
+        || ''
+    ).trim();
+    if (stored) return stored;
+
+    const type = String(notification?.type || notification?.notif_type || notification?.kind || '').toLowerCase();
+    const msg = String(notification?.message || '').toLowerCase();
+    const title = extractFacultyNotifTitle(notification);
+    const recordId = notification?.task_id || notification?.document_id || notification?.workflow_item_id || notification?.event_id || '';
+
+    if (isFacultyCalendarNotification(notification)) {
+        return recordId ? `calendar.html#open=${recordId}` : 'calendar.html';
+    }
+
+    if (/document vault|official template|browse folder/.test(msg)) {
+        return title ? `document.html#task=${encodeURIComponent(title)}` : 'document.html';
+    }
+
+    if (type === 'task' || type === 'assignment' || type === 'reminder' || type === 'deadline'
+        || /new task|assigned to you|reminder:|is due/.test(msg)) {
+        return recordId
+            ? `status-tracking.html#open=${recordId}`
+            : (title ? `status-tracking.html#task=${encodeURIComponent(title)}` : 'status-tracking.html');
+    }
+
+    return title ? `status-tracking.html#task=${encodeURIComponent(title)}` : 'status-tracking.html';
+}
+
+async function markOneFacultyNotificationRead(id) {
+    if (!id) return;
+    facultyNavNotifications = facultyNavNotifications.map((item) => (
+        String(item.id) === String(id) ? { ...item, is_read: true } : item
+    ));
+    const row = document.querySelector('#facultyNavNotifList [data-notif-id="' + String(id).replace(/"/g, '') + '"]');
+    if (row) row.classList.remove('unread');
+    const badge = document.getElementById('facultyNavNotifBadge');
+    const unread = facultyNavNotifications.filter((item) => !item.is_read).length;
+    if (badge) {
+        if (unread > 0) {
+            badge.style.display = 'flex';
+            badge.textContent = unread > 99 ? '99+' : String(unread);
+        } else {
+            badge.style.display = 'none';
+            badge.textContent = '0';
+        }
+    }
+    const sb = window.supabaseClient;
+    if (!sb) return;
+    const { error } = await sb.from('wf_notifications').update({ is_read: true }).eq('id', id);
+    if (error) console.warn('Could not mark faculty notification read:', error);
+}
+
+async function openFacultyNavNotification(notification) {
+    await markOneFacultyNotificationRead(notification?.id);
+    const target = facultyNotifTarget(notification);
+    if (!target) return;
+    const hashMatch = String(target).match(/#(?:open|task)=([^&]+)/i);
+    if (hashMatch) {
+        try { sessionStorage.setItem('citeOpenNotif', decodeURIComponent(hashMatch[1])); } catch (_) {}
+    }
+    const title = extractFacultyNotifTitle(notification);
+    if (title) {
+        try { sessionStorage.setItem('citeOpenTask', title); } catch (_) {}
+    }
+    const dropdown = document.getElementById('facultyNavNotifDropdown');
+    if (dropdown) dropdown.classList.remove('open');
+    navigateToFacultyPage(target);
+}
+
 function filterFacultyNavNotifications(items, facultyId) {
     const scoped = (items || []).filter((notification) => {
         if (facultyId != null && notification.faculty_id != null) {
@@ -414,10 +525,34 @@ function filterFacultyNavNotifications(items, facultyId) {
         }
         return notification.faculty_id == null;
     });
-    if (window.CiteFlowSettings?.filterNotifications) {
-        return window.CiteFlowSettings.filterNotifications(scoped, 'faculty');
+    if (!window.CiteFlowSettings?.filterNotifications) {
+        return scoped;
     }
-    return scoped;
+    const filtered = window.CiteFlowSettings.filterNotifications(scoped, 'faculty');
+    const kept = new Set((filtered || []).map((item) => item.id));
+    const extras = scoped.filter((item) => !kept.has(item.id) && isFacultyCalendarNotification(item));
+    return extras.concat(filtered || []);
+}
+
+function bindFacultyNavNotifClicks() {
+    const list = document.getElementById('facultyNavNotifList');
+    if (!list || list.dataset.citeClickBound === '1') return;
+    list.dataset.citeClickBound = '1';
+    list.addEventListener('click', async (event) => {
+        if (event.button != null && event.button !== 0) return;
+        const row = event.target.closest('.nav-notif-item');
+        if (!row) return;
+        const id = row.getAttribute('data-notif-id');
+        const notification = facultyNavNotifications.find((item) => String(item.id) === String(id)) || {
+            id,
+            link: row.getAttribute('data-link'),
+            type: row.getAttribute('data-type'),
+            message: row.textContent
+        };
+        event.preventDefault();
+        event.stopPropagation();
+        await openFacultyNavNotification(notification);
+    });
 }
 
 function renderFacultyNavNotifications(items) {
@@ -434,13 +569,15 @@ function renderFacultyNavNotifications(items) {
     }
 
     list.innerHTML = facultyNavNotifications.map((notification) => `
-        <div class="nav-notif-item ${notification.is_read ? '' : 'unread'}">
+        <div class="nav-notif-item ${notification.is_read ? '' : 'unread'}" data-notif-id="${escapeFacultyNavHtml(notification.id)}" data-link="${escapeFacultyNavHtml(notification.link || notification.url || '')}" data-type="${escapeFacultyNavHtml(notification.type || '')}" role="button" style="cursor:pointer;">
             <div class="flex-1">
                 <div>${escapeFacultyNavHtml(notification.message)}</div>
                 <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${formatFacultyNavDate(notification.created_at)}</div>
             </div>
         </div>
     `).join('');
+
+    bindFacultyNavNotifClicks();
 
     const unread = facultyNavNotifications.filter((notification) => !notification.is_read).length;
     if (unread > 0) {
@@ -496,6 +633,17 @@ async function loadFacultyNavNotifications() {
     renderFacultyNavNotifications(filterFacultyNavNotifications(data || [], facultyId));
 }
 
+function subscribeFacultyNavNotifications() {
+    const sb = window.supabaseClient;
+    if (!sb || window.__facultyWfNotifChannel) return;
+    window.__facultyWfNotifChannel = sb
+        .channel('faculty-wf-notifications-bell')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, () => {
+            loadFacultyNavNotifications();
+        })
+        .subscribe();
+}
+
 function refreshFacultyNavNotifications(items) {
     if (Array.isArray(items)) {
         renderFacultyNavNotifications(items);
@@ -508,7 +656,7 @@ function toggleFacultyNotifications() {
     const dropdown = document.getElementById('facultyNavNotifDropdown');
     if (!dropdown) return;
     dropdown.classList.toggle('open');
-    if (dropdown.classList.contains('open') && !facultyNavNotifications.length) {
+    if (dropdown.classList.contains('open')) {
         loadFacultyNavNotifications();
     }
 }
@@ -549,7 +697,140 @@ window.addEventListener("load", async () => {
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         updateFacultyNavProfile();
         loadFacultyNavNotifications();
+        subscribeFacultyNavNotifications();
         window.CiteFlowMessenger?.init();
     }
     removeFacultyChairWorkflowNavItem();
 });
+
+(function bindFacultyNotificationDeepLink(global) {
+    let opened = false;
+
+    function wantedValue() {
+        const hash = String(location.hash || '').replace(/^#/, '');
+        let value = '';
+        if (hash.startsWith('task=')) value = decodeURIComponent(hash.slice(5));
+        else if (hash.startsWith('folder=')) value = decodeURIComponent(hash.slice(7));
+        else if (hash.startsWith('open=')) value = decodeURIComponent(hash.slice(5));
+        try {
+            if (!value) value = sessionStorage.getItem('citeOpenTask') || sessionStorage.getItem('citeOpenNotif') || '';
+        } catch (_) {}
+        return String(value || '').trim();
+    }
+
+    function clearWanted() {
+        opened = true;
+        try {
+            sessionStorage.removeItem('citeOpenTask');
+            sessionStorage.removeItem('citeOpenNotif');
+        } catch (_) {}
+        if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    }
+
+    function matchesText(value, needle) {
+        const text = String(value || '').toLowerCase().trim();
+        const want = String(needle || '').toLowerCase().trim();
+        if (!text || !want) return false;
+        return text === want || text.includes(want) || want.includes(text);
+    }
+
+    function openStatusTask() {
+        if (typeof computeRows !== 'function' || typeof selectRow !== 'function') return false;
+        const wanted = wantedValue();
+        if (!wanted) return false;
+        const rows = computeRows();
+        if (!rows.length) return false;
+        const match = rows.find((row) =>
+            String(row.task?.id) === wanted
+            || String(row.assignment?.task_id) === wanted
+            || String(row.key) === wanted
+            || matchesText(row.task?.title, wanted)
+        );
+        if (!match) return false;
+
+        clearWanted();
+        if (typeof filterStatus === 'function') filterStatus('all');
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) searchInput.value = '';
+        try { searchTerm = ''; } catch (_) {}
+        selectRow(match.key);
+        window.setTimeout(() => {
+            document.querySelector('#statusList .task-row.active')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }, 60);
+        return true;
+    }
+
+    async function openVaultFolder() {
+        const list = (typeof folders !== 'undefined' && Array.isArray(folders)) ? folders : [];
+        if (typeof openFolder !== 'function' || !list.length) return false;
+        const wanted = wantedValue();
+        if (!wanted) return false;
+        const formatName = typeof formatVaultFolderName === 'function' ? formatVaultFolderName : (name) => name;
+        const folder = list.find((item) =>
+            String(item.id) === wanted
+            || matchesText(item.name, wanted)
+            || matchesText(formatName(item.name), wanted)
+        );
+        if (!folder) return false;
+
+        clearWanted();
+        const category = document.getElementById('vault-category-filter');
+        if (category) {
+            const option = Array.from(category.options).find((opt) =>
+                String(opt.value).toLowerCase() === wanted.toLowerCase()
+                || String(opt.text).toLowerCase().includes(wanted.toLowerCase())
+            );
+            if (option) category.value = option.value;
+        }
+        await openFolder(folder.id);
+        return true;
+    }
+
+    async function run() {
+        if (opened) return true;
+        if (!wantedValue()) return false;
+        if (openStatusTask()) return true;
+        if (await openVaultFolder()) return true;
+        return false;
+    }
+
+    function wrapAfter(name) {
+        const original = global[name];
+        if (typeof original !== 'function' || original.__citeNotifWrapped) return;
+        const wrapped = async function () {
+            const result = await original.apply(this, arguments);
+            window.setTimeout(() => { run(); }, 40);
+            return result;
+        };
+        wrapped.__citeNotifWrapped = true;
+        global[name] = wrapped;
+    }
+
+    function tryWrap() {
+        ['fetchAllData', 'loadFolders', 'renderFolders', 'renderRows'].forEach(wrapAfter);
+    }
+
+    global.openPendingFacultyNotification = run;
+    global.resetPendingFacultyNotification = function () {
+        opened = false;
+        return run();
+    };
+
+    window.addEventListener('hashchange', () => {
+        opened = false;
+        run();
+    });
+
+    function boot() {
+        tryWrap();
+        [200, 600, 1200, 2200, 4000, 7000].forEach((ms) => {
+            window.setTimeout(() => {
+                tryWrap();
+                run();
+            }, ms);
+        });
+    }
+
+    if (document.readyState === 'complete') boot();
+    else window.addEventListener('load', boot);
+})(window);

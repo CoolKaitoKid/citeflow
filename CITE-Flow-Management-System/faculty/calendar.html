@@ -9,14 +9,18 @@
     <link rel="stylesheet" href="faculty-nav.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/calendar-notifications.js?v=9"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
-
-        /* Para ma-style ang Choose File button sa tanang browser */
-#leave-file-input::file-selector-button {
-    background: var(--cite-theme, #621708) !important;
-    color: white !important;
+#leave-file-input {
+    background: #ffffff !important;
+    color: #334155 !important;
+}
+#leave-file-input::file-selector-button,
+#leave-file-input::-webkit-file-upload-button {
+    background: var(--cite-theme) !important;
+    color: #ffffff !important;
     padding: 8px 16px;
     border-radius: 12px;
     border: none;
@@ -24,47 +28,43 @@
     cursor: pointer;
     margin-right: 12px;
 }
-
-#leave-file-input::file-selector-button:hover {
-    opacity: 0.9;
-}
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        * { font-family: 'Inter', sans-serif; }
-        .card-shadow { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); }
-        .nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.25; }
-        .calendar-day { min-height: 110px; transition: all 0.2s; padding: 8px; }
-        .calendar-day:hover { background-color: #f8f8f8; }
-        .calendar-day.today { background-color: #fff1f2; border: 2px solid #9f1239; font-weight: 700; color: #9f1239; }
-        .event-block { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}
-        .panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}
-        .icon-btn{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:12px;background:#fff;color:#334155;transition:all 0.15s ease}
-        .icon-btn:hover{background:#f8fafc;border-color:#cbd5e1}
-        .day-cell{min-height:115px;border-right:1px solid #eef2f7;border-bottom:1px solid #eef2f7;transition:.18s}
-        .day-cell:hover{background:#f9fafb}
-        .day-cell.selected{background:#fff7ed;box-shadow:inset 0 0 0 1px #c2410c}
-        .day-num{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-size:11.5px;font-weight:700;color:#334155}
-        .day-num.today{background: var(--cite-theme, #621708);color:#fff}
-        .mini-day{position:relative;width:30px;height:30px;border-radius:999px;font-size:11.5px;font-weight:700;color:#475569}
-        .mini-day:hover{background:#f1f5f9}
-        .mini-day.active{background: var(--cite-theme, #621708);;color:#fff}
-        .mini-day.has:after{content:'';position:absolute;bottom:3px;left:50%;width:4px;height:4px;background:#b45309;border-radius:999px;transform:translateX(-50%)}
-        .pill{display:block;width:100%;border-radius:10px;padding:5px 7px;margin-top:4px;font-size:10.5px;line-height:1.2;text-align:left;border:1px solid transparent;cursor:pointer}
-        .pill:hover{filter:brightness(.98)}
-        .event-meeting{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
-        .event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
-        .event-exam{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
-        .event-workshop{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}
-        .event-event{background:#e0f2fe;color:#0369a1;border-color:#bae6fd}
-        .event-announcement{background:#fdf2f8;color:#be185d;border-color:#fbcfe8}
-        .event-deadline{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
-        .event-leave{background:#fffbeb;color:#b45309;border-color:#fde68a}
-        .event-other{background:#f8fafc;color:#334155;border-color:#e2e8f0}
-        .modal-field{width:100%;border:1px solid #d1d5db;border-radius:14px;padding:10px 12px;font-size:13px;outline:none;background:white}
-        .modal-field:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+* { font-family: 'Inter', sans-serif; }
+.card-shadow { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); }
+.nav-icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.25; }
+.calendar-day { min-height: 110px; transition: all 0.2s; padding: 8px; }
+.calendar-day:hover { background-color: #f8f8f8; }
+.calendar-day.today { background-color: #fff1f2; border: 2px solid #9f1239; font-weight: 700; color: #9f1239; }
+.event-block { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)}
+.panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}
+.icon-btn{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:12px;background:#fff;color:#334155;transition:all 0.15s ease}
+.icon-btn:hover{background:#f8fafc;border-color:#cbd5e1}
+.day-cell{min-height:115px;border-right:1px solid #eef2f7;border-bottom:1px solid #eef2f7;transition:.18s}
+.day-cell:hover{background:#f9fafb}
+.day-cell.selected{background:#fff7ed;box-shadow:inset 0 0 0 1px #c2410c}
+.day-num{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-size:11.5px;font-weight:700;color:#334155}
+.day-num.today{background: var(--cite-theme, #621708);color:#fff}
+.mini-day{position:relative;width:30px;height:30px;border-radius:999px;font-size:11.5px;font-weight:700;color:#475569}
+.mini-day:hover{background:#f1f5f9}
+.mini-day.active{background: var(--cite-theme, #621708);color:#fff}
+.mini-day.has:after{content:'';position:absolute;bottom:3px;left:50%;width:4px;height:4px;background:#b45309;border-radius:999px;transform:translateX(-50%)}
+.pill{display:block;width:100%;border-radius:10px;padding:5px 7px;margin-top:4px;font-size:10.5px;line-height:1.2;text-align:left;border:1px solid transparent;cursor:pointer}
+.pill:hover{filter:brightness(.98)}
+.event-meeting{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
+.event-exam{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+.event-workshop{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}
+.event-event{background:#e0f2fe;color:#0369a1;border-color:#bae6fd}
+.event-announcement{background:#fdf2f8;color:#be185d;border-color:#fbcfe8}
+.event-deadline{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
+.event-leave{background:#fffbeb;color:#b45309;border-color:#fde68a}
+.event-other{background:#f8fafc;color:#334155;border-color:#e2e8f0}
+.modal-field{width:100%;border:1px solid #d1d5db;border-radius:14px;padding:10px 12px;font-size:13px;outline:none;background:white}
+.modal-field:focus{border-color:#621708;box-shadow:0 0 0 4px rgba(98,23,8,.08)}
     </style>
 </head>
-<body class="bg-gray-50 overflow-x-hidden min-h-screen">
+<body class="bg-gray-50 overflow-x-hidden min-h-screen" data-portal="faculty">
 
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
@@ -82,8 +82,8 @@
                     <button onclick="prevMonth()" class="icon-btn" aria-label="Previous Month"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
                     <button onclick="nextMonth()" class="icon-btn" aria-label="Next Month"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
                     <button onclick="openFileLeaveModal()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-sm">
-    <i class="fa-solid fa-file-lines text-xs"></i> File Leave Request
-</button>
+                        <i class="fa-solid fa-file-lines text-xs"></i> File Leave Request
+                    </button>
                     <button onclick="exportCalendarPDF()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-sm">
                         <i class="fa-solid fa-download text-xs"></i> Export PDF
                     </button>
@@ -132,7 +132,6 @@
                         <div id="selected-events" class="space-y-2.5"></div>
                     </section>
 
-                    <!-- SEPARATED UPCOMING CONTAINERS FOR FACULTY -->
                     <div class="space-y-4">
                         <div class="panel rounded-2xl p-4 bg-white border border-indigo-100 shadow-sm">
                             <div class="flex items-center justify-between mb-3 pb-2 border-b border-indigo-50">
@@ -166,7 +165,6 @@
     </main>
 </div>
 
-<!-- FILE LEAVE MODAL -->
 <div id="leave-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -215,12 +213,11 @@
         </div>
         <div class="border-t border-slate-100 px-6 py-4 flex justify-end gap-2.5 bg-slate-50">
             <button onclick="closeLeaveModal()" class="px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-           <button onclick="submitLeaveFiling()" id="leave-submit-btn" style="background: var(--cite-theme, #621708);" class="px-5 py-2.5 hover:opacity-90 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm">Submit Leave</button>
+            <button onclick="submitLeaveFiling()" id="leave-submit-btn" style="background: var(--cite-theme, #621708);" class="px-5 py-2.5 hover:opacity-90 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm">Submit Leave</button>
         </div>
     </div>
 </div>
 
-<!-- DETAILS & FEEDBACK MODAL -->
 <div id="event-detail-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-start gap-3 bg-slate-50/50">
@@ -256,10 +253,10 @@
                 <div id="detail-notes" class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-xl p-3.5"></div>
             </div>
 
-            <!-- FEEDBACK FORM SECTION (Dynamic 10-Hour Window Control) -->
             <div id="feedback-container-wrapper" class="border-t border-slate-100 pt-4 mt-2 space-y-3">
                 <h3 class="text-xs font-bold text-slate-900"><i class="fa-solid fa-comment-dots text-[#621708] mr-1"></i> Submit Event Feedback</h3>
-                
+                <p id="fb-instructions" class="hidden text-[11px] text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-2.5"></p>
+
                 <div id="feedback-active-content" class="space-y-3">
                     <div class="grid grid-cols-2 gap-3">
                         <div>
@@ -316,7 +313,7 @@
 
 <script>
 const supabaseClient = window.supabaseClient;
-const months=['January','February','March','April','May','June','July','August','September','October','November','December'];let now=new Date(),currentMonth=now.getMonth(),currentYear=now.getFullYear(),selectedDate=key(now),events=[],currentDetailEventId=null,currentFacultyUser=null;
+const months=['January','February','March','April','May','June','July','August','September','October','November','December'];let now=new Date(),currentMonth=now.getMonth(),currentYear=now.getFullYear(),selectedDate=key(now),events=[],currentDetailEventId=null,currentFacultyUser=null,currentFacultyProfile=null;
 
 function key(d){d=new Date(d);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 function addH(d,h){d=new Date(d);d.setHours(d.getHours()+h);return d}
@@ -325,11 +322,16 @@ function longDate(k){let [y,m,d]=k.split('-').map(Number);return new Intl.DateTi
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','announcement','deadline','event','other'].includes(t)?t:'other')}
 
+function facultyCanSee(row){
+    if(!window.CalendarNotifications) return true;
+    return CalendarNotifications.facultySeesEvent(row, currentFacultyProfile);
+}
+
 async function loadCalendarEvents(){
     let {data,error}=await supabaseClient.from('calendar_events').select('*').order('start_at',{ascending:true});
     if(error){console.error(error);status('Calendar table not ready.');events=[]}
     else{
-        events=(data||[]).map(r=>{
+        events=(data||[]).filter(facultyCanSee).map(r=>{
             let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addH(s,1);
             let t=r.event_type||'other';
             return{
@@ -343,13 +345,47 @@ async function loadCalendarEvents(){
                 location:r.location||'TBA',
                 priority:r.priority||'Normal',
                 notes:r.notes||'',
-                allDay:!!r.all_day
+                allDay:!!r.all_day,
+                visibility:r.visibility_scope||r.visibility||'all_faculty',
+                requiresFeedback: r.requires_feedback !== false,
+                feedbackInstructions: r.feedback_instructions || ''
             };
         });
         status('Realtime calendar connected.');
     }
     renderCalendar();
+    openPendingCalendarNotification();
 }
+
+function openPendingCalendarNotification(){
+    const hash = String(location.hash || '').replace(/^#/, '');
+    let id = '';
+    if (hash.startsWith('open=')) id = decodeURIComponent(hash.slice(5));
+    if (!id) {
+        try { id = sessionStorage.getItem('citeOpenNotif') || ''; } catch (_) { id = ''; }
+    }
+    if (!id) return false;
+    const found = events.find(x =>
+        String(x.id) === String(id) ||
+        String(x.id) === String(id).replace(/^event-/, '') ||
+        'event-' + x.id === String(id)
+    );
+    if (!found) return false;
+    try { sessionStorage.removeItem('citeOpenNotif'); } catch (_) {}
+    if (found.date) {
+        const d = new Date(found.date + 'T00:00:00');
+        if (!Number.isNaN(d.getTime())) {
+            currentMonth = d.getMonth();
+            currentYear = d.getFullYear();
+            selectedDate = found.date;
+            renderCalendar();
+        }
+    }
+    showEventDetails(found.id);
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    return true;
+}
+window.openPendingCalendarNotification = openPendingCalendarNotification;
 
 function status(t){let el=document.getElementById('realtime-status');if(el)el.textContent=t}
 function subscribe(){
@@ -405,7 +441,7 @@ function renderSelected(){
 
 function renderSeparatedUpcoming(){
     let future=events.filter(e=>new Date(e.startAt)>=new Date(new Date().setHours(0,0,0,0))).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
-    
+
     let schoolEvents = future.filter(e => e.type === 'event');
     let schedules = future.filter(e => e.type !== 'event');
 
@@ -424,7 +460,7 @@ function nextMonth(){currentMonth++;if(currentMonth>11){currentMonth=0;currentYe
 function goToday(){now=new Date();currentMonth=now.getMonth();currentYear=now.getFullYear();selectedDate=key(now);renderCalendar()}
 
 function openFileLeaveModal(){
-    document.getElementById('leave-faculty-name').value='';
+    document.getElementById('leave-faculty-name').value=currentFacultyProfile ? [currentFacultyProfile.first_name, currentFacultyProfile.last_name].filter(Boolean).join(' ') : '';
     document.getElementById('leave-reason').value='';
     document.getElementById('leave-file-input').value='';
     document.getElementById('leave-start-date').value=selectedDate;
@@ -453,19 +489,22 @@ async function submitLeaveFiling(){
         let { error: upErr } = await supabaseClient.storage.from('leave-attachments').upload(filePath, file);
         if(!upErr){let { data: pub } = supabaseClient.storage.from('leave-attachments').getPublicUrl(filePath);attachmentUrl=pub?.publicUrl||'';}
     }
-    
-    let { error } = await supabaseClient.from('faculty_leaves').insert({
+
+    let { data: savedLeave, error } = await supabaseClient.from('faculty_leaves').insert({
         faculty_name: name, leave_type: type, start_date: startD, end_date: endD, notes: reason, attachment_url: attachmentUrl, status: 'Approved'
-    });
-    
+    }).select().single();
+
     submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave';
     if(error)return alert('Error saving leave.');
-    closeLeaveModal(); alert('Leave successfully filed and sent to Admin!');
+    if(window.CalendarNotifications){
+        await CalendarNotifications.notifyLeaveFiling(savedLeave || { faculty_name:name, leave_type:type, start_date:startD, end_date:endD });
+    }
+    closeLeaveModal(); alert('Leave successfully filed. Admin has been notified.');
 }
 
 function showEventDetails(id){
     currentDetailEventId=id;
-    let e=events.find(x=>String(x.id)===String(id));
+    let e=events.find(x=>String(x.id)===String(id) || String(x.id)===String(id).replace('event-',''));
     if(!e)return;
     document.getElementById('detail-title').textContent=e.title;
     document.getElementById('detail-type').textContent=e.type.toUpperCase();
@@ -473,35 +512,45 @@ function showEventDetails(id){
     document.getElementById('detail-time').textContent=`${longDate(e.date)} • ${e.time}`;
     document.getElementById('detail-location').textContent=e.location;
     document.getElementById('detail-notes').textContent=e.notes||'No description provided.';
-    
+
     document.getElementById('fb-summary').value='';
     document.getElementById('fb-suggestions').value='';
     document.getElementById('fb-content-quality').value='';
     document.getElementById('fb-speaker-quality').value='';
 
-    // 10-HOUR FEEDBACK WINDOW CHECK
-    let nowTime = new Date().getTime();
-    let eventEndTime = new Date(e.endAt || e.startAt).getTime();
-    let deadlineTime = eventEndTime + (10 * 60 * 60 * 1000); // 10 hours allowance
-
+    let wrapper = document.getElementById('feedback-container-wrapper');
     let activeContent = document.getElementById('feedback-active-content');
     let lockedNotice = document.getElementById('feedback-locked-notice');
     let lockTitle = document.getElementById('feedback-lock-title');
     let lockMsg = document.getElementById('feedback-lock-msg');
+    let instructionBox = document.getElementById('fb-instructions');
+    if(instructionBox){
+        instructionBox.textContent = e.feedbackInstructions || '';
+        instructionBox.classList.toggle('hidden', !e.feedbackInstructions);
+    }
 
-    if (nowTime < eventEndTime) {
-        activeContent.classList.add('hidden');
-        lockedNotice.classList.remove('hidden');
-        lockTitle.textContent = "Feedback not yet available.";
-        lockMsg.textContent = "You can submit feedback only after the event has concluded (up to 10 hours after).";
-    } else if (nowTime > deadlineTime) {
-        activeContent.classList.add('hidden');
-        lockedNotice.classList.remove('hidden');
-        lockTitle.textContent = "Feedback period has closed.";
-        lockMsg.textContent = "The 10-hour window to submit feedback for this event has already passed.";
+    if(e.requiresFeedback === false){
+        wrapper.classList.add('hidden');
     } else {
-        activeContent.classList.remove('hidden');
-        lockedNotice.classList.add('hidden');
+        wrapper.classList.remove('hidden');
+        let nowTime = new Date().getTime();
+        let eventEndTime = new Date(e.endAt || e.startAt).getTime();
+        let deadlineTime = eventEndTime + (10 * 60 * 60 * 1000);
+
+        if (nowTime < eventEndTime) {
+            activeContent.classList.add('hidden');
+            lockedNotice.classList.remove('hidden');
+            lockTitle.textContent = "Feedback not yet available.";
+            lockMsg.textContent = "You can submit feedback only after the event has concluded (up to 10 hours after).";
+        } else if (nowTime > deadlineTime) {
+            activeContent.classList.add('hidden');
+            lockedNotice.classList.remove('hidden');
+            lockTitle.textContent = "Feedback period has closed.";
+            lockMsg.textContent = "The 10-hour window to submit feedback for this event has already passed.";
+        } else {
+            activeContent.classList.remove('hidden');
+            lockedNotice.classList.add('hidden');
+        }
     }
 
     document.getElementById('event-detail-modal').classList.remove('hidden');
@@ -520,10 +569,13 @@ async function submitFacultyFeedback(){
 
     let cleanEventId = currentDetailEventId ? String(currentDetailEventId).replace('event-', '') : null;
 
+    let facultyName = [currentFacultyProfile?.first_name, currentFacultyProfile?.last_name].filter(Boolean).join(' ').trim() || currentFacultyUser?.email || 'Faculty Member';
+    let currentEvent = events.find(x => String(x.id) === String(currentDetailEventId) || String(x.id) === String(cleanEventId));
+
     let { error } = await supabaseClient.from('calendar_event_feedback').insert({
         event_id: cleanEventId,
         faculty_id: currentFacultyUser?.id || null,
-        faculty_name: currentFacultyUser?.email || 'Faculty Member',
+        faculty_name: facultyName,
         faculty_email: currentFacultyUser?.email || '',
         attendance_status: attendance,
         overall_rating: rating,
@@ -539,7 +591,15 @@ async function submitFacultyFeedback(){
         return alert('Unable to submit feedback: ' + error.message);
     }
 
-    alert('Feedback successfully submitted to the admin!');
+    if(window.CalendarNotifications){
+        await CalendarNotifications.notifyEventFeedback({
+            faculty_name: facultyName,
+            overall_rating: rating,
+            event_id: cleanEventId
+        }, currentEvent);
+    }
+
+    alert('Feedback successfully submitted. Admin has been notified.');
     document.getElementById('fb-summary').value='';
     document.getElementById('fb-suggestions').value='';
     document.getElementById('fb-content-quality').value='';
@@ -570,15 +630,28 @@ function exportCalendarPDF() {
 
 async function loadAuthUser(){
     let {data}=await supabaseClient.auth.getUser();
-    if(data?.user) currentFacultyUser=data.user;
+    if(data?.user) {
+        currentFacultyUser=data.user;
+        if(window.CalendarNotifications){
+            currentFacultyProfile = await CalendarNotifications.loadFacultyProfile(currentFacultyUser);
+            await CalendarNotifications.startFacultyListener({ profile: currentFacultyProfile });
+        }
+    }
 }
 
-window.addEventListener('load',async()=>{populateControls();await loadSidebar();await loadAuthUser();await loadCalendarEvents();subscribe()});
+window.addEventListener('load',async()=>{
+    populateControls();
+    if(typeof loadSidebar==='function') await loadSidebar();
+    await loadAuthUser();
+    await loadCalendarEvents();
+    subscribe();
+    openPendingCalendarNotification();
+});
 </script>
 <script src="../shared/workflow.js"></script>
 <script src="../shared/system-ui.js"></script>
 <script src="../shared/cite-settings.js"></script>
 <div id="message-container"></div>
-<script src="faculty-nav.js?v=chair-sidebar-only"></script>
+<script src="faculty-nav.js?v=calendar-wf-bell"></script>
 </body>
 </html>
