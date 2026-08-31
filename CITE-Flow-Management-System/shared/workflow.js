@@ -13,7 +13,8 @@
         CHAIRPERSON: 'chairperson',
         FINAL: 'final_approver',
         APPROVED: 'approved',
-        REVISION: 'revision'
+        REVISION: 'revision',
+        DECLINED: 'declined'
     };
 
     let workflowChannel = null;
@@ -266,29 +267,34 @@
         return grants.find((grant) => grantMatchesChairperson(grant, faculty)) || null;
     }
 
+    function matchingChairpersonGrants(faculty, delegatedAccess) {
+        const grants = Array.isArray(delegatedAccess) ? delegatedAccess : [];
+        return grants.filter((grant) => grantMatchesChairperson(grant, faculty));
+    }
+
     function hasChairpersonWorkflowAccess(faculty, delegatedAccess) {
         if (!faculty) return false;
-        const looksChair = isChairperson(faculty)
-            || /chair/i.test(String(faculty.role || ''))
-            || /chair/i.test(String(faculty.position || faculty.raw_role || ''));
-        if (!looksChair) return false;
-        const grants = Array.isArray(delegatedAccess) ? delegatedAccess : [];
-        if (getChairpersonGrant(faculty, grants)) return true;
-        return grants.some((grant) => grantIsActive(grant));
+        return matchingChairpersonGrants(faculty, delegatedAccess).length > 0;
     }
 
     function chairpersonAuthorizedDepartments(faculty, delegatedAccess) {
         if (!hasChairpersonWorkflowAccess(faculty, delegatedAccess)) return [];
+        const fromGrants = matchingChairpersonGrants(faculty, delegatedAccess)
+            .flatMap((grant) => parseDepartmentCodes(grant.department_codes))
+            .filter(Boolean);
+        const unique = [...new Set(fromGrants)];
+        if (unique.length) return unique;
         const own = facultyDepartmentCode(faculty);
-        return own ? [own] : [];
+        return own && own !== 'n/a' ? [own] : [];
     }
 
     function isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess) {
         if (!hasChairpersonWorkflowAccess(actorFaculty, delegatedAccess)) return false;
         if (!targetFaculty) return true;
         const targetDept = facultyDepartmentCode(targetFaculty);
-        if (!targetDept || targetDept === 'n/a') return true;
-        return sameDepartment(actorFaculty, targetFaculty);
+        if (!targetDept) return true;
+        const authorized = chairpersonAuthorizedDepartments(actorFaculty, delegatedAccess);
+        return authorized.includes(targetDept);
     }
 
     function canBrowseAsChairperson(actorFaculty, targetFaculty, delegatedAccess) {
@@ -354,12 +360,12 @@
         return 'submitted';
     }
 
-    function getWorkflowStage(submission, task) {
+    function getWorkflowStage(submission, task, config) {
         const status = sanitizeDbStatus(submission?.status);
-        const stage = getApprovalStage(submission);
+        const stage = getApprovalStage(submission, config, task);
 
         if (status === 'approved' && stage === APPROVAL_STAGES.APPROVED) return 'completed';
-        if (status === 'rejected') return 'rejected';
+        if (status === 'rejected' || stage === APPROVAL_STAGES.DECLINED) return 'rejected';
         if (status === 'revision' || stage === APPROVAL_STAGES.REVISION) return 'revision_required';
         if (!submission?.submitted_at && (status === 'notsubmitted' || !submission)) {
             const due = task?.deadline_at || task?.due_at;
@@ -375,16 +381,31 @@
         return 'submitted';
     }
 
-    function isFinallyApproved(submission, task) {
-        return getWorkflowStage(submission, task) === 'completed';
+    function isFinallyApproved(submission, task, config) {
+        if (!submission) return false;
+        return getWorkflowStage(submission, task, config) === 'completed';
     }
 
-    function canFacultyManageSubmissionFiles(submission, task) {
+    function canFacultyManageSubmissionFiles(submission, task, config) {
         if (!submission) return true;
-        if (isFinallyApproved(submission, task)) return false;
+        if (isFinallyApproved(submission, task, config)) return false;
         const status = sanitizeDbStatus(submission.status);
-        const stage = getApprovalStage(submission);
+        if (status === 'rejected') return false;
+        const stage = getApprovalStage(submission, config, task);
         if (status === 'approved' && stage === APPROVAL_STAGES.APPROVED) return false;
+        if (stage === APPROVAL_STAGES.FINAL && requiresChairpersonReview(config, task)) return false;
+        return true;
+    }
+
+    function canFacultyUnsubmit(submission, task, config) {
+        if (!submission) return false;
+        if (isFinallyApproved(submission, task, config)) return false;
+        const status = sanitizeDbStatus(submission.status);
+        if (!['submitted', 'late', 'underreview', 'revision'].includes(status)) return false;
+        if (status === 'rejected') return false;
+        const stage = getApprovalStage(submission, config, task);
+        if (stage === APPROVAL_STAGES.APPROVED || stage === APPROVAL_STAGES.DECLINED) return false;
+        if (stage === APPROVAL_STAGES.FINAL && requiresChairpersonReview(config, task)) return false;
         return true;
     }
 
@@ -582,24 +603,27 @@
         return reminderInFlight;
     }
 
-    function formatWorkflowStatus(submission, task) {
-        const stage = getWorkflowStage(submission, task);
+    function formatWorkflowStatus(submission, task, config) {
+        const stage = getWorkflowStage(submission, task, config);
+        if (stage === 'rejected') {
+            const role = normalizeText(submission?.last_reviewed_by_role || submission?.actor_role || '');
+            if (role.includes('chair')) return 'Chairperson Declined';
+            if (role.includes('final') || role.includes('admin') || role.includes('dean') || role.includes('secret')) {
+                return 'Admin Declined';
+            }
+            return 'Declined';
+        }
         const map = {
             assigned: 'Not Submitted',
             late_pending: 'Overdue — Not Submitted',
             submitted: 'Submitted',
             chairperson_review: 'Pending Chairperson Review',
-            final_approval: 'Pending Final Approval',
+            final_approval: 'Pending Admin Final Approval',
             completed: 'Completed',
-            revision_required: 'Revision Required',
-            rejected: 'Rejected'
+            revision_required: 'Revision Requested',
+            rejected: 'Declined'
         };
         return map[stage] || 'Unknown';
-    }
-
-    function isFinallyApproved(submission, task) {
-        if (!submission) return false;
-        return getApprovalStage(submission) === APPROVAL_STAGES.APPROVED || sanitizeDbStatus(submission.status) === 'approved';
     }
 
     function isFacultySubmitter(faculty, submission) {
@@ -624,7 +648,6 @@
 
     function canReviewAsChairperson(submission, actorFaculty, targetFaculty, context) {
         if (!submission || !actorFaculty) return false;
-        if (!isChairperson(actorFaculty)) return false;
         const { delegatedAccess, config, task } = resolveReviewContext(context);
         if (!hasChairpersonWorkflowAccess(actorFaculty, delegatedAccess)) return false;
         if (targetFaculty && !isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess)) return false;
@@ -647,8 +670,6 @@
     function canAccessWorkflowApproval(faculty, delegatedAccess) {
         if (!faculty) return false;
         if (isFinalApprover(faculty) || isWorkflowAdmin(faculty)) return true;
-        if (!isChairperson(faculty)) return false;
-        if (delegatedAccess == null) return true;
         return hasChairpersonWorkflowAccess(faculty, delegatedAccess);
     }
 
@@ -938,7 +959,7 @@
             shouldShow: false
         };
 
-        if (!faculty || !isChair || !client) {
+        if (!faculty || !client) {
             debug.shouldShow = false;
             console.info('[Chairperson Access Debug]', debug);
             return false;
@@ -968,11 +989,11 @@
             }))
             || null;
 
-        debug.grantFound = !!matched || grants.length > 0;
-        debug.grantId = matched?.id || grants[0]?.id || null;
-        debug.grantActive = !!(matched || grants[0]) && grantIsActive(matched || grants[0]);
+        debug.grantFound = !!matched;
+        debug.grantId = matched?.id || null;
+        debug.grantActive = !!(matched && grantIsActive(matched));
 
-        if (matched || (grants.length > 0 && hasChairpersonWorkflowAccess(faculty, grants))) {
+        if (matched) {
             debug.shouldShow = true;
             console.info('[Chairperson Access Debug]', debug);
             return true;
@@ -999,9 +1020,11 @@
     function formatApprovalStage(stage) {
         const map = {
             chairperson: 'Pending Chairperson Review',
-            final_approver: 'Pending Admin Approval',
-            approved: 'Approved',
-            revision: 'Revision Required'
+            final_approver: 'Pending Admin Final Approval',
+            approved: 'Admin Approved',
+            revision: 'Revision Requested',
+            declined: 'Declined',
+            rejected: 'Declined'
         };
         return map[normalizeText(stage)] || (stage ? String(stage) : '—');
     }
@@ -1034,7 +1057,6 @@
     function authorizedChairpersonsForSubmission(submitter, facultyList, grants, config, task) {
         if (!submitter || !requiresChairpersonReview(config, task)) return [];
         return (facultyList || []).filter((chair) => {
-            if (!isChairperson(chair)) return false;
             if (!hasChairpersonWorkflowAccess(chair, grants)) return false;
             return isInChairpersonScope(chair, submitter, grants);
         });
@@ -1103,9 +1125,9 @@
             nextStatus = 'revision';
             historyAction = stage === APPROVAL_STAGES.FINAL ? 'final_revision' : 'chairperson_revision';
         } else if (action === 'rejected') {
-            nextStage = APPROVAL_STAGES.REVISION;
+            nextStage = APPROVAL_STAGES.DECLINED;
             nextStatus = 'rejected';
-            historyAction = 'rejected';
+            historyAction = stage === APPROVAL_STAGES.FINAL ? 'final_declined' : 'chairperson_declined';
         }
 
         return { nextStage, nextStatus, historyAction, actorRoleLabel };
@@ -1233,6 +1255,66 @@
         });
 
         return { ok: true, transition, update };
+    }
+
+    async function unsubmitSubmission(sb, options) {
+        const {
+            submissionId,
+            submission,
+            actorFaculty,
+            actorUser,
+            task,
+            config
+        } = options || {};
+
+        if (!submission || !actorFaculty) {
+            return { ok: false, error: 'Submission could not be unsubmitted.' };
+        }
+        if (String(actorFaculty.id) !== String(submission.faculty_id)) {
+            return { ok: false, error: 'You can only unsubmit your own work.' };
+        }
+        if (!canFacultyUnsubmit(submission, task, config)) {
+            return { ok: false, error: 'This submission can no longer be unsubmitted.' };
+        }
+
+        const actorName = getActorDisplayName(actorFaculty, actorUser);
+        const update = {
+            status: 'notsubmitted',
+            submitted_at: null,
+            is_late: false,
+            submitted_status: null,
+            approval_stage: resolveInitialApprovalStage(config, task),
+            reviewed_by_name: null,
+            reviewed_at: null
+        };
+
+        const { error } = await sb.from('wf_submissions').update(update).eq('id', submissionId);
+        if (error) {
+            console.error('CiteFlowWorkflow.unsubmitSubmission:', error);
+            return { ok: false, error: error.message || 'Failed to unsubmit.' };
+        }
+
+        await recordApprovalHistory(sb, {
+            submission_id: submissionId,
+            task_id: submission.task_id,
+            faculty_id: submission.faculty_id,
+            actor_name: actorName,
+            actor_role: 'FACULTY',
+            action: 'unsubmitted',
+            status: 'notsubmitted',
+            comment: 'Faculty unsubmitted this work before the next approval stage.'
+        });
+
+        await logActivity(sb, {
+            action: 'Unsubmitted task',
+            actor_name: actorName,
+            target: task?.title || 'Submission',
+            log_type: 'submission',
+            task_id: submission.task_id,
+            submission_id: submissionId
+        });
+
+        return { ok: true, update };
     }
 
     async function recordSubmissionEvent(sb, { faculty, task, taskId, submissionId, isResubmit }) {
@@ -1512,6 +1594,7 @@
         getWorkflowStage,
         isFinallyApproved,
         canFacultyManageSubmissionFiles,
+        canFacultyUnsubmit,
         facultyFilesWereUpdatedAfterReview,
         buildFacultyFileChangeUpdate,
         getTaskDeadline,
@@ -1523,6 +1606,7 @@
         computeReviewTransition,
         buildReviewUpdate,
         applySubmissionReview,
+        unsubmitSubmission,
         recordSubmissionEvent,
         recordFacultyFileChange,
         recordApprovalHistory,

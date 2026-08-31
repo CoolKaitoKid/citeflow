@@ -21,7 +21,10 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         tasks: [],
         faculty: [],
         configs: [],
-        revisionId: null
+        visibility: null,
+        sqlVersion: null,
+        revisionId: null,
+        actionMode: 'revision'
     };
 
     function wf() {
@@ -118,8 +121,14 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             };
         }).filter((row) => {
             if (!review.access) return false;
+            const helper = wf();
             const target = targetFaculty(row);
-            if (helper?.canBrowseAsChairperson?.(global.currentFaculty, target, effectiveGrants())) return true;
+            if (helper?.canBrowseAsChairperson) {
+                return helper.canBrowseAsChairperson(global.currentFaculty, target, effectiveGrants());
+            }
+            const authorized = helper?.chairpersonAuthorizedDepartments?.(global.currentFaculty, effectiveGrants()) || [];
+            const dept = helper?.facultyDepartmentCode?.(target) || String(target?.department || '').trim().toLowerCase();
+            if (authorized.length) return authorized.includes(dept);
             return sameDept(target);
         });
     }
@@ -130,14 +139,19 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         if (helper.canReviewAsChairperson(row, global.currentFaculty, targetFaculty(row), reviewContext(row.task))) {
             return true;
         }
-        return sameDept(targetFaculty(row))
-            && helper.isPendingChairpersonReview(row, row.config, row.task);
+        const target = targetFaculty(row);
+        const authorized = helper.chairpersonAuthorizedDepartments?.(global.currentFaculty, effectiveGrants()) || [];
+        const dept = helper.facultyDepartmentCode?.(target) || '';
+        const inDept = authorized.length ? authorized.includes(dept) : sameDept(target);
+        return inDept && helper.isPendingChairpersonReview(row, row.config, row.task);
     }
 
     function isApproved(row) {
         const helper = wf();
-        const stage = String(row.approval_stage || '').toLowerCase();
         const status = String(row.status || '').toLowerCase();
+        if (status === 'rejected' || status === 'revision') return false;
+        const stage = String(row.approval_stage || '').toLowerCase();
+        if (stage === 'declined' || stage === 'revision') return false;
         const required = helper?.requiresChairpersonReview?.(row.config, row.task);
         if (required === false) return false;
         return stage === 'final_approver' || stage === 'approved' || status === 'approved';
@@ -147,6 +161,12 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const stage = String(row.approval_stage || '').toLowerCase();
         const status = String(row.status || '').toLowerCase();
         return status === 'revision' || stage === 'revision';
+    }
+
+    function isDeclined(row) {
+        const stage = String(row.approval_stage || '').toLowerCase();
+        const status = String(row.status || '').toLowerCase();
+        return status === 'rejected' || stage === 'declined';
     }
 
     function filteredRows() {
@@ -160,6 +180,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             : rows;
         if (review.tab === 'approved') return searched.filter(isApproved);
         if (review.tab === 'revision') return searched.filter(isRevision);
+        if (review.tab === 'declined') return searched.filter(isDeclined);
         if (review.tab === 'department') return searched;
         return searched.filter(isPending);
     }
@@ -304,7 +325,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
     }
 
     function setTab(tab) {
-        review.tab = ['pending', 'approved', 'revision', 'department'].includes(tab) ? tab : 'pending';
+        review.tab = ['pending', 'approved', 'revision', 'declined', 'department'].includes(tab) ? tab : 'pending';
         render();
     }
 
@@ -319,6 +340,75 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 <div class="text-slate-300 text-3xl mb-3"><i class="fa-solid fa-folder-open"></i></div>
                 <div class="font-bold text-slate-800">${esc(title)}</div>
                 <p class="text-sm text-slate-500 mt-1">${esc(text)}</p>
+            </div>`;
+    }
+
+    function parseRpcJson(raw) {
+        let value = raw;
+        for (let i = 0; i < 5; i += 1) {
+            if (value == null) return null;
+            if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (!trimmed) return null;
+                try { value = JSON.parse(trimmed); } catch (_) { return null; }
+                continue;
+            }
+            if (Array.isArray(value)) {
+                value = value[0];
+                continue;
+            }
+            if (typeof value === 'object') {
+                if (value.sql_patch_version || value.empty_reason || Object.prototype.hasOwnProperty.call(value, 'has_grant')) {
+                    return value;
+                }
+                if (value.wf_debug_chairperson_visibility) {
+                    value = value.wf_debug_chairperson_visibility;
+                    continue;
+                }
+                if (value.wf_debug_chairperson_queue) {
+                    value = value.wf_debug_chairperson_queue;
+                    continue;
+                }
+                return value;
+            }
+            return null;
+        }
+        return value && typeof value === 'object' ? value : null;
+    }
+
+    function queueBlockerBanner() {
+        const v = review.visibility;
+        if (!v || (review.submissions || []).length) return '';
+
+        const version = String(v.sql_patch_version || review.sqlVersion || '').trim();
+        const patched = version === '011-chair-queue' || v.matching_grant_count != null || v.empty_reason != null;
+        const grantBlocked = v.has_grant === false;
+        const reason = String(v.empty_reason || '');
+        const grantCount = review.grants?.length || 0;
+
+        let title = 'Chairperson Review cannot load department submissions.';
+        let text = 'New faculty submissions that need Chairperson review will appear here after the live database rules match your grant.';
+
+        if (!patched) {
+            title = 'This page is not reading the SQL you ran yet.';
+            text = 'Confirm the SQL Editor project is uforealazougjckepggc (Cite-Flow), run the latest admin/FIX-chairperson-queue-NOW.sql, then hard-refresh with Ctrl+F5. A success message in another Supabase project will not update this app.';
+        } else if (grantBlocked || reason === 'no_matching_grant') {
+            title = 'Postgres still has no matching Chairperson grant.';
+            text = grantCount
+                ? 'The page can see a grant row, but the database helper is not matching it. Re-grant Ella (faculty id 90) in Workflow Approval → Manage Access for BSIT, run the SQL again, then refresh.'
+                : 'Ask Admin to grant you access in Workflow Approval → Manage Access for BSIT, using faculty id 90, then refresh.';
+        } else if (reason === 'no_submissions_in_table' || reason === 'no_in_scope_chair_required_submissions' || reason === 'in_scope_join_returned_zero') {
+            title = 'No department submissions are visible yet.';
+            text = 'The SQL patch is active. If Admin can see BSIT submissions, those rows are still outside Chairperson scope (department join or Chairperson-review flag).';
+        }
+
+        const debugLine = `patch=${version || 'missing'}; has_grant=${String(v.has_grant)}; is_chair_role=${String(v.is_chair_role)}; grants=${v.matching_grant_count ?? grantCount}; reason=${reason || 'n/a'}`;
+
+        return `
+            <div class="rounded-[16px] border border-amber-200 bg-amber-50 p-4 mb-4 text-sm text-amber-950">
+                <p class="font-bold">${esc(title)}</p>
+                <p class="mt-1">${esc(text)}</p>
+                <p class="mt-2 text-xs font-mono text-amber-800/80">${esc(debugLine)}</p>
             </div>`;
     }
 
@@ -353,14 +443,17 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
     function renderCard(row) {
         const helper = wf();
         const actionable = isPending(row);
-        const stage = helper?.formatApprovalStage
-            ? helper.formatApprovalStage(row.approval_stage)
-            : (row.approval_stage === 'chairperson' ? 'Pending Chairperson Review' : (row.approval_stage || row.status));
+        const stage = helper?.formatWorkflowStatus
+            ? helper.formatWorkflowStatus(row, row.task, row.config)
+            : (helper?.formatApprovalStage
+                ? helper.formatApprovalStage(row.approval_stage)
+                : (row.approval_stage === 'chairperson' ? 'Pending Chairperson Review' : (row.approval_stage || row.status)));
         const actions = actionable
             ? `
                 <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openView('${row.id}')">View Submission</button>
                 <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.approve('${row.id}')">Approve</button>
                 <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.openRevision('${row.id}')">Request Revision</button>
+                <button type="button" class="chair-btn-decline" onclick="CiteFlowChairReview.openDecline('${row.id}')">Decline</button>
             `
             : `<button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openView('${row.id}')">View Submission</button>`;
         return `
@@ -392,11 +485,13 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const pending = rows.filter(isPending);
         const approved = rows.filter(isApproved);
         const revision = rows.filter(isRevision);
+        const declined = rows.filter(isDeclined);
         const visible = filteredRows();
         const tabLabel = {
             pending: 'Pending Approval',
             approved: 'Approved',
-            revision: 'Revision',
+            revision: 'Revision Requested',
+            declined: 'Declined',
             department: 'Department Submissions'
         }[review.tab];
 
@@ -411,7 +506,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                     <p class="cite-subtitle">${esc(dept)} Department. Review faculty submissions that require your approval.</p>
                 </header>
 
-                <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <div class="cite-stat cite-stat-pending rounded-[16px] p-5">
                         <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Pending</p>
                         <div class="text-3xl font-extrabold mt-3 tracking-tight">${pending.length}</div>
@@ -424,12 +519,17 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                         <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Revision</p>
                         <div class="text-3xl font-extrabold mt-3 tracking-tight">${revision.length}</div>
                     </div>
+                    <div class="cite-stat cite-stat-urgent rounded-[16px] p-5">
+                        <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Declined</p>
+                        <div class="text-3xl font-extrabold mt-3 tracking-tight">${declined.length}</div>
+                    </div>
                 </section>
 
                 <div class="flex flex-wrap items-center gap-2 mb-4">
                     <button type="button" class="chair-subtab ${review.tab === 'pending' ? 'active' : ''}" onclick="CiteFlowChairReview.setTab('pending')">Pending Approval</button>
                     <button type="button" class="chair-subtab ${review.tab === 'approved' ? 'active' : ''}" onclick="CiteFlowChairReview.setTab('approved')">Approved</button>
                     <button type="button" class="chair-subtab ${review.tab === 'revision' ? 'active' : ''}" onclick="CiteFlowChairReview.setTab('revision')">Revision</button>
+                    <button type="button" class="chair-subtab ${review.tab === 'declined' ? 'active' : ''}" onclick="CiteFlowChairReview.setTab('declined')">Declined</button>
                     <button type="button" class="chair-subtab ${review.tab === 'department' ? 'active' : ''}" onclick="CiteFlowChairReview.setTab('department')">Department Submissions</button>
                 </div>
 
@@ -442,6 +542,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                         <input type="search" value="${esc(review.search)}" oninput="CiteFlowChairReview.setSearch(this.value)" placeholder="Search faculty or submission..." class="w-full lg:w-80 px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm focus:outline-none focus:ring-4 focus:ring-[#8c2a10]/10 focus:border-[#8c2a10]">
                     </div>
                     <div class="space-y-4">
+                        ${queueBlockerBanner()}
                         ${visible.length
                             ? visible.map(renderCard).join('')
                             : emptyState(
@@ -490,22 +591,6 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             syncTabs();
             return false;
         }
-        if (!looksChair(faculty)) {
-            console.info('[Chairperson Access Debug]', {
-                authUserId: user?.id || null,
-                facultyId: faculty.id,
-                role: faculty.role,
-                position: faculty.position,
-                rawRole: faculty.raw_role,
-                isChairperson: false,
-                grantFound: false,
-                shouldShow: false
-            });
-            review.access = false;
-            if (review.mode === 'chair') review.mode = 'mine';
-            syncTabs();
-            return false;
-        }
 
         review.access = await helper.currentUserHasChairpersonGrant(db(), faculty, user);
         if (!review.access && review.mode === 'chair') {
@@ -528,20 +613,23 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             review.faculty = [];
             review.grants = [];
             review.configs = [];
+            review.visibility = null;
+            review.sqlVersion = null;
             syncTabs();
             return;
         }
 
         const client = db();
         const [
-            facultyRes, tasksRes, submissionsRes, grantsRes, configsRes
+            facultyRes, tasksRes, grantsRes, configsRes
         ] = await Promise.all([
             client.from('faculty').select('id, full_name, name, department, role, position, auth_user_id, email, status'),
             client.from('wf_tasks').select('id, title, report_config_id, due_at, deadline_at'),
-            client.from('wf_submissions').select('*'),
             client.from('wf_delegated_access').select('*'),
             client.from('wf_report_configs').select('id, report_name, requires_chairperson_review, requires_final_approval')
         ]);
+
+        let submissionsRes = await client.from('wf_submissions').select('*');
 
         const failed = [facultyRes, tasksRes, submissionsRes, grantsRes, configsRes].find((result) => result.error);
         if (failed?.error) {
@@ -573,16 +661,30 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             console.warn('[Chairperson File Debug] RPC submissions:', listed.data);
             console.warn('[Chairperson File Debug] RPC submissions error:', listed.error);
             if (listed.error) {
-                console.warn('[Chairperson File Debug] Run admin/workflow-chairperson-files-rls.sql if this RPC is missing.');
+                console.warn('[Chairperson File Debug] Run admin/FIX-chairperson-queue-NOW.sql if this RPC is missing or still returns [].');
             }
             if (!listed.error && Array.isArray(listed.data) && listed.data.length) {
                 submissionsRes = listed;
             }
         }
 
-        const visibility = await client.rpc('wf_debug_chairperson_visibility');
-        console.warn('[Chairperson File Debug] visibility:', JSON.stringify(visibility.data, null, 2));
-        console.warn('[Chairperson File Debug] visibility error:', visibility.error);
+        const versionRes = await client.rpc('wf_chairperson_sql_version');
+        review.sqlVersion = typeof versionRes.data === 'string'
+            ? versionRes.data
+            : (Array.isArray(versionRes.data) ? versionRes.data[0] : null);
+        console.warn('[Chairperson File Debug] sql_version:', review.sqlVersion, versionRes.error || null);
+
+        const visibility = await client.rpc('wf_debug_chairperson_queue');
+        const visibilityFallback = visibility.error
+            ? await client.rpc('wf_debug_chairperson_visibility')
+            : visibility;
+        const visData = parseRpcJson(visibilityFallback.data);
+        review.visibility = visData || parseRpcJson(visibilityFallback.data) || (typeof visibilityFallback.data === 'object' ? visibilityFallback.data : null);
+        if (review.visibility && review.sqlVersion && !review.visibility.sql_patch_version) {
+            review.visibility.sql_patch_version = review.sqlVersion;
+        }
+        console.warn('[Chairperson File Debug] visibility:', JSON.stringify(review.visibility, null, 2));
+        console.warn('[Chairperson File Debug] visibility error:', visibilityFallback.error);
 
         review.submissions = submissionsRes.data || [];
 
@@ -653,8 +755,30 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
 
     function openRevision(submissionId) {
         review.revisionId = submissionId;
+        review.actionMode = 'revision';
         const modal = document.getElementById('chairRevisionModal');
+        const title = document.getElementById('chairRevisionTitle');
+        const hint = document.getElementById('chairRevisionHint');
         const field = document.getElementById('chairRevisionRemarks');
+        const submit = document.getElementById('chairRevisionSubmit');
+        if (title) title.textContent = 'Request Revision';
+        if (hint) hint.textContent = 'Remarks are required so the faculty member knows what to change.';
+        if (submit) submit.textContent = 'Send Revision Request';
+        if (field) field.value = '';
+        modal?.classList.add('open');
+    }
+
+    function openDecline(submissionId) {
+        review.revisionId = submissionId;
+        review.actionMode = 'decline';
+        const modal = document.getElementById('chairRevisionModal');
+        const title = document.getElementById('chairRevisionTitle');
+        const hint = document.getElementById('chairRevisionHint');
+        const field = document.getElementById('chairRevisionRemarks');
+        const submit = document.getElementById('chairRevisionSubmit');
+        if (title) title.textContent = 'Decline Submission';
+        if (hint) hint.textContent = 'Please provide a reason. The submission stays visible to Faculty and Admin with this decision.';
+        if (submit) submit.textContent = 'Decline Submission';
         if (field) field.value = '';
         modal?.classList.add('open');
     }
@@ -668,14 +792,17 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const row = review.submissions.find((item) => String(item.id) === String(review.revisionId));
         const comment = String(document.getElementById('chairRevisionRemarks')?.value || '').trim();
         if (!row) return;
+        const action = review.actionMode === 'decline' ? 'rejected' : 'revision';
         if (!comment) {
-            toast('Please provide remarks before requesting a revision.', 'warn');
+            toast(action === 'rejected'
+                ? 'Please provide a reason before declining this submission.'
+                : 'Please provide remarks before requesting a revision.', 'warn');
             return;
         }
         const result = await wf().applySubmissionReview(db(), {
             submissionId: row.id,
             submission: row,
-            action: 'revision',
+            action,
             comment,
             actorFaculty: global.currentFaculty,
             actorUser: global.currentUser,
@@ -689,7 +816,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             return;
         }
         closeRevision();
-        toast('Revision requested. Faculty must revise and resubmit.', 'warn');
+        toast(action === 'rejected'
+            ? 'Submission declined. Faculty and Admin can still see this decision.'
+            : 'Revision requested. Faculty must revise and resubmit.', action === 'rejected' ? 'error' : 'warn');
         if (typeof global.fetchAllData === 'function') await global.fetchAllData();
     }
 
@@ -711,6 +840,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             ${isPending(row) ? `<div class="flex flex-wrap gap-2 mt-5">
                 <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.closeView(); CiteFlowChairReview.approve('${row.id}')">Approve</button>
                 <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.closeView(); CiteFlowChairReview.openRevision('${row.id}')">Request Revision</button>
+                <button type="button" class="chair-btn-decline" onclick="CiteFlowChairReview.closeView(); CiteFlowChairReview.openDecline('${row.id}')">Decline</button>
             </div>` : '<p class="text-xs text-slate-500 mt-4">View only. Approval is available only while this submission is waiting for Chairperson review.</p>'}`;
         modal.classList.add('open');
     }
@@ -736,6 +866,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         setSearch,
         approve,
         openRevision,
+        openDecline,
         closeRevision,
         submitRevision,
         openView,
@@ -745,4 +876,14 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         closeFilePreview,
         afterDataRefresh
     };
+
+    window.addEventListener('hashchange', () => {
+        const hash = String(location.hash || '').toLowerCase();
+        if (hash === '#chair-review' || hash === '#chairperson-review') {
+            setMode('chair');
+        }
+        if (typeof window.updateFacultyActiveMenu === 'function') {
+            window.updateFacultyActiveMenu();
+        }
+    });
 })(window);

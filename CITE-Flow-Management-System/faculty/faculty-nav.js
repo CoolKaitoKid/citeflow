@@ -138,11 +138,18 @@ function mountFacultyNavPart(sourceNode, containerId, appendToBody) {
 
 function updateFacultyActiveMenu(fileName) {
     const current = normalizeFacultyPageKey(fileName || getFacultyCurrentPageFile());
+    const hash = String(location.hash || '').toLowerCase();
+    const chairHash = hash === '#chair-review' || hash === '#chairperson-review';
     document.querySelectorAll(".sidebar .nav-item, .logo-area[data-page]").forEach((item) => {
         const dataPage = item.getAttribute("data-page");
         if (!dataPage) return;
         const target = normalizeFacultyPageKey(dataPage);
-        const isActive = target === current;
+        let isActive = target === current;
+        if (item.id === 'facultyChairWorkflowNav') {
+            isActive = current === 'submissions' && chairHash;
+        } else if (target === 'submissions' && chairHash) {
+            isActive = false;
+        }
         item.classList.toggle("active", isActive);
     });
 }
@@ -335,8 +342,8 @@ async function loadFacultyNavigation() {
             "faculty/faculty-nav.html",
             "../faculty-nav.html",
             "../faculty/faculty-nav.html",
-            "faculty-nav.html?v=chair-review-1",
-            "../faculty/faculty-nav.html?v=chair-review-1"
+            "faculty-nav.html?v=chair-review-8",
+            "../faculty/faculty-nav.html?v=chair-review-8"
         ];
         let response = null;
         for (const url of candidateUrls) {
@@ -365,7 +372,7 @@ async function loadFacultyNavigation() {
         updateFacultyNavProfile();
         loadFacultyNavNotifications();
         subscribeFacultyNavNotifications();
-        removeFacultyChairWorkflowNavItem();
+        refreshFacultyChairReviewNav();
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
@@ -407,13 +414,43 @@ function openFacultyMessages() {
 window.openFacultyMessages = openFacultyMessages;
 window.loadSidebar = loadFacultyNavigation;
 window.loadFacultyNavigation = loadFacultyNavigation;
+window.refreshFacultyChairReviewNav = refreshFacultyChairReviewNav;
+window.updateFacultyActiveMenu = updateFacultyActiveMenu;
 window.toggleFacultyProfileModal = toggleFacultyProfileModal;
 window.facultyLogout = facultyLogout;
 
-function removeFacultyChairWorkflowNavItem() {
-    document.getElementById('facultyChairWorkflowNav')?.remove();
-    document.getElementById('chairWorkflowDashCard')?.remove();
-    document.getElementById('chairWorkflowPageBanner')?.remove();
+function syncFacultyChairReviewNav(show) {
+    const item = document.getElementById('facultyChairWorkflowNav');
+    if (!item) return;
+    const visible = show === true;
+    item.classList.toggle('hidden', !visible);
+    item.style.display = visible ? '' : 'none';
+}
+
+async function refreshFacultyChairReviewNav() {
+    const item = document.getElementById('facultyChairWorkflowNav');
+    if (!item) return;
+    let show = false;
+    try {
+        const wf = window.CiteFlowWorkflow;
+        const sb = window.supabaseClient || window.db;
+        if (wf?.currentUserHasChairpersonGrant && sb) {
+            const session = await sb.auth.getSession();
+            const user = session?.data?.session?.user || null;
+            const faculty = wf.getCurrentFaculty
+                ? await wf.getCurrentFaculty(user)
+                : window.currentFaculty;
+            show = await wf.currentUserHasChairpersonGrant(sb, faculty, user);
+        } else if (window.CiteFlowChairReview?.access) {
+            show = true;
+        } else if (sb?.rpc) {
+            const rpc = await sb.rpc('wf_current_user_has_chairperson_grant');
+            show = rpc.data === true;
+        }
+    } catch (_) {
+        show = false;
+    }
+    syncFacultyChairReviewNav(show);
 }
 
 let facultyNavNotifications = [];
@@ -700,7 +737,7 @@ window.addEventListener("load", async () => {
         subscribeFacultyNavNotifications();
         window.CiteFlowMessenger?.init();
     }
-    removeFacultyChairWorkflowNavItem();
+    refreshFacultyChairReviewNav();
 });
 
 (function bindFacultyNotificationDeepLink(global) {

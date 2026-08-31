@@ -9,8 +9,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
-    <script src="../shared/workflow.js"></script>
-    <script src="../shared/auth-guard.js"></script>
+    <script src="../shared/workflow.js?v=chair-review-8"></script>
+    <script src="../shared/auth-guard.js?v=chair-review-8"></script>
     <script src="../shared/cite-settings.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
@@ -1336,8 +1336,8 @@
         <div class="modal-header">
             <div class="flex items-center justify-between">
                 <div>
-                    <h2 class="text-base font-semibold text-gray-900">Manage Chairperson Access</h2>
-                    <p class="text-xs text-gray-500 mt-0.5">Only faculty whose role is CHAIRPERSON can receive workflow review access.</p>
+                    <h2 class="text-base font-semibold text-gray-900">Manage Chairperson / OIC Access</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Grant review access without changing the user's permanent role. Temporary OIC access can be revoked at any time.</p>
                 </div>
                 <button onclick="closeAccessModal()" class="text-gray-400 hover:text-gray-600 transition-colors p-1">
                     <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
@@ -1358,12 +1358,18 @@
             <hr class="section-divider">
 
             <div>
-                <p class="field-label mb-3">Grant Chairperson Access</p>
+                <p class="field-label mb-3">Grant Chairperson / OIC Access</p>
                 <select id="accessUserSelect" class="field-input">
-                    <option value="">Select a CHAIRPERSON...</option>
+                    <option value="">Select a faculty member...</option>
                 </select>
+                <p class="field-label mt-4 mb-2">Authorized departments</p>
+                <div class="flex flex-wrap gap-3 text-sm text-gray-700">
+                    <label class="inline-flex items-center gap-2"><input id="deptBSIT" type="checkbox" class="accent-[#621708]"> BSIT</label>
+                    <label class="inline-flex items-center gap-2"><input id="deptBSIE" type="checkbox" class="accent-[#621708]"> BSIE</label>
+                    <label class="inline-flex items-center gap-2"><input id="deptBIT" type="checkbox" class="accent-[#621708]"> BIT</label>
+                </div>
                 <p class="text-xs text-gray-400 mt-1.5">
-                    Department access is automatically based on the chairperson's department.
+                    Choose the department(s) this person may review. Use this for the regular Chairperson and for a temporary OIC covering another department.
                 </p>
 
                 <button onclick="grantAccess()" class="btn btn-primary w-full justify-center mt-4">
@@ -1372,7 +1378,7 @@
                         <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
                         <line x1="12" y1="15" x2="12" y2="18"/>
                     </svg>
-                    Grant Chairperson Access
+                    Grant Access
                 </button>
             </div>
         </div>
@@ -1807,7 +1813,7 @@ function statusBadge(status) {
         pending:      ['badge-pending',      'Pending Review'],
         approved:     ['badge-approved',     'Approved'],
         revision:     ['badge-revision',     'Revision'],
-        rejected:     ['badge-rejected',     'Rejected'],
+        rejected:     ['badge-rejected',     'Declined'],
     };
     const [cls, label] = map[status] || map.notsubmitted;
     return `<span class="badge ${cls}"><span class="badge-dot"></span>${label}</span>`;
@@ -4212,35 +4218,61 @@ function renderDelegates() {
     if (!el) return;
     const delegates = workflowState.delegatedAccess || [];
     if (!delegates.length) {
-        el.innerHTML = '<p class="text-sm text-gray-400">No chairperson access configured.</p>';
+        el.innerHTML = '<p class="text-sm text-gray-400">No chairperson or OIC access configured.</p>';
         return;
     }
     el.innerHTML = delegates.map((d, i) => {
-        const f = findFacultyByName(d.grantee_name);
-        const dept = f?.department_code || (d.department_codes || []).join(', ') || '—';
+        const f = getFacultyById(d.grantee_faculty_id) || findFacultyByName(d.grantee_name);
+        const depts = (d.department_codes || []).join(', ') || f?.department_code || '—';
+        const isChair = /chair/i.test(String(f?.role || f?.position || ''));
+        const label = isChair ? 'CHAIRPERSON' : 'OIC / delegated reviewer';
         return `
             <div class="delegate-row">
                 <div>
                     <div class="text-sm font-medium text-gray-800">${escapeHtml(d.grantee_name)}</div>
-                    <div class="text-xs text-gray-500">${escapeHtml(dept)} &middot; CHAIRPERSON</div>
+                    <div class="text-xs text-gray-500">${escapeHtml(depts)} &middot; ${label}</div>
                 </div>
                 <button onclick="removeAccess(${i})" class="btn btn-danger btn-sm">
-                    <i class="fa-solid fa-user-minus"></i> Remove
+                    <i class="fa-solid fa-user-minus"></i> Revoke
                 </button>
             </div>`;
     }).join('');
 }
 
+function selectedGrantDepartments() {
+    const depts = [];
+    if (document.getElementById('deptBSIT')?.checked) depts.push('BSIT');
+    if (document.getElementById('deptBSIE')?.checked) depts.push('BSIE');
+    if (document.getElementById('deptBIT')?.checked) depts.push('BIT');
+    return depts;
+}
+
+function prefillGrantDepartments(faculty) {
+    const code = String(faculty?.department_code || faculty?.department || '').toUpperCase();
+    const bsit = document.getElementById('deptBSIT');
+    const bsie = document.getElementById('deptBSIE');
+    const bit = document.getElementById('deptBIT');
+    if (bsit) bsit.checked = code === 'BSIT';
+    if (bsie) bsie.checked = code === 'BSIE';
+    if (bit) bit.checked = code === 'BIT';
+}
+
 function openAccessModal() {
     const select = document.getElementById('accessUserSelect');
     if (!select) return;
-    const granted = new Set((workflowState.delegatedAccess || []).map(d => normalizeText(d.grantee_name)));
-    const chairs = (workflowState.faculty || []).filter(f =>
-        normalizeText(f.role) === 'chairperson' &&
-        !granted.has(normalizeText(f.full_name))
+    const grantedIds = new Set((workflowState.delegatedAccess || []).map(d => String(d.grantee_faculty_id || '')));
+    const grantedNames = new Set((workflowState.delegatedAccess || []).map(d => normalizeText(d.grantee_name)));
+    const people = (workflowState.faculty || []).filter(f =>
+        !grantedIds.has(String(f.id)) && !grantedNames.has(normalizeText(f.full_name))
     );
-    select.innerHTML = `<option value="">Select a CHAIRPERSON...</option>` +
-        chairs.map(f => `<option value="${escapeHtml(f.id)}">${escapeHtml(f.full_name)} (${escapeHtml(f.department_code)})</option>`).join('');
+    select.innerHTML = `<option value="">Select a faculty member...</option>` +
+        people.map(f => {
+            const isChair = /chair/i.test(String(f.role || f.position || ''));
+            const tag = isChair ? 'Chairperson' : 'OIC candidate';
+            return `<option value="${escapeHtml(f.id)}">${escapeHtml(f.full_name)} (${escapeHtml(f.department_code || '—')} · ${tag})</option>`;
+        }).join('');
+    select.onchange = () => prefillGrantDepartments(getFacultyById(select.value));
+    prefillGrantDepartments(getFacultyById(select.value));
     renderDelegates();
     document.getElementById('accessModal').classList.add('open');
 }
@@ -4248,27 +4280,43 @@ function openAccessModal() {
 function grantAccess() {
     const facultyId = document.getElementById('accessUserSelect')?.value;
     const faculty = getFacultyById(facultyId);
-    if (!faculty) return showToast('Please select a valid CHAIRPERSON.', 'error');
-    if (normalizeText(faculty.role) !== 'chairperson') return showToast('Only CHAIRPERSON faculty can receive this access.', 'error');
-    grantAccessRealtime(faculty);
+    if (!faculty) return showToast('Please select a faculty member.', 'error');
+    const depts = selectedGrantDepartments();
+    if (!depts.length) {
+        const home = String(faculty.department_code || '').toUpperCase();
+        if (['BSIT', 'BSIE', 'BIT'].includes(home)) depts.push(home);
+    }
+    if (!depts.length) return showToast('Select at least one department this reviewer may access.', 'error');
+    grantAccessRealtime(faculty, depts);
 }
 
-async function grantAccessRealtime(faculty) {
+async function grantAccessRealtime(faculty, depts) {
+    const departments = Array.isArray(depts) && depts.length
+        ? depts
+        : selectedGrantDepartments();
     const payload = {
         grantee_name: faculty.full_name,
-        department_codes: [faculty.department_code].filter(Boolean),
+        department_codes: departments,
         granted_by_name: ADMIN_NAME,
         is_active: true,
         grantee_faculty_id: faculty.id,
-        grantee_auth_user_id: faculty.auth_user_id || null
+        grantee_auth_user_id: faculty.auth_user_id || null,
+        grantee_email: faculty.email || null
     };
     let { error } = await db.from('wf_delegated_access').insert(payload);
     if (error && /column|schema|cache/i.test(error.message || '')) {
+        const fallback = { ...payload };
+        delete fallback.grantee_email;
+        ({ error } = await db.from('wf_delegated_access').insert(fallback));
+    }
+    if (error && /column|schema|cache/i.test(error.message || '')) {
         ({ error } = await db.from('wf_delegated_access').insert({
             grantee_name: faculty.full_name,
-            department_codes: [faculty.department_code].filter(Boolean),
+            department_codes: departments,
             granted_by_name: ADMIN_NAME,
-            is_active: true
+            is_active: true,
+            grantee_faculty_id: faculty.id,
+            grantee_auth_user_id: faculty.auth_user_id || null
         }));
     }
     if (error) {
@@ -4276,15 +4324,15 @@ async function grantAccessRealtime(faculty) {
         return;
     }
     await db.from('wf_activity_log').insert({
-        action: 'Chairperson workflow access granted',
+        action: 'Chairperson/OIC workflow access granted',
         actor_name: ADMIN_NAME,
-        target: `${faculty.full_name} (${faculty.department_code})`,
+        target: `${faculty.full_name} (${departments.join(', ')})`,
         log_type: 'access'
     });
-    showToast(`Chairperson access granted to ${faculty.full_name}.`);
+    showToast(`Review access granted to ${faculty.full_name} for ${departments.join(', ')}.`);
     await createNotification({
         type: 'system',
-        message: `You were granted Chairperson workflow access for ${(faculty.department_code || 'your department')}.`,
+        message: `You were granted Chairperson/OIC workflow access for ${departments.join(', ') || 'your department'}.`,
         is_read: false,
         faculty_id: faculty.id,
         recipient_auth_user_id: faculty.auth_user_id || null
@@ -4426,15 +4474,26 @@ function openAnalyticsModal(taskId) {
 /* ---------- Approval chain ---------- */
 function approvalStageLabel(stage) {
     return {
-        chairperson: 'Awaiting Chairperson Review',
-        final_approver: 'Awaiting Dean / Secretary',
-        revision: 'Faculty Revision Required',
-        approved: 'Fully Approved'
+        chairperson: 'Pending Chairperson Review',
+        final_approver: 'Pending Admin Final Approval',
+        revision: 'Revision Requested',
+        declined: 'Declined',
+        rejected: 'Declined',
+        approved: 'Admin Approved'
     }[stage] || 'Awaiting Review';
 }
 
 function getActiveApprovalStage(submission) {
-    return submission?.approval_stage || 'chairperson';
+    const raw = workflowState.submissions.find(s => String(s.id) === String(submission?.id || submission?.submission_id)) || submission;
+    const task = getTaskById(raw?.task_id || submission?.task_id);
+    const config = task?.report_config_id
+        ? (workflowState.reportConfigs || []).find(c => String(c.id) === String(task.report_config_id))
+        : null;
+    if (window.CiteFlowWorkflow?.getApprovalStage) {
+        return CiteFlowWorkflow.getApprovalStage(raw, config, task);
+    }
+    if (raw?.approval_stage) return raw.approval_stage;
+    return config && config.requires_chairperson_review === false ? 'final_approver' : 'chairperson';
 }
 
 async function recordApprovalHistory(submission, action, comment, actorRole, statusAfter) {
@@ -4475,7 +4534,7 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
     if (newStatus === 'approved') {
         if (stage === 'chairperson') {
             nextStage = config?.requires_final_approval === false ? 'approved' : 'final_approver';
-            nextStatus = nextStage === 'approved' ? 'approved' : 'pending';
+            nextStatus = nextStage === 'approved' ? 'approved' : 'underreview';
         } else if (stage === 'final_approver') {
             nextStage = 'approved';
             nextStatus = 'approved';
@@ -4484,7 +4543,7 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
         nextStage = 'revision';
         nextStatus = 'revision';
     } else if (newStatus === 'rejected') {
-        nextStage = 'revision';
+        nextStage = 'declined';
         nextStatus = 'rejected';
     }
 

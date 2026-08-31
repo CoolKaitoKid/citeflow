@@ -10,8 +10,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth.js"></script>
-    <script src="../shared/workflow.js?v=chair-review-3"></script>
-    <script src="../shared/auth-guard.js?v=chair-review-3"></script>
+    <script src="../shared/workflow.js?v=chair-review-8"></script>
+    <script src="../shared/auth-guard.js?v=chair-review-8"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
 
     <link
@@ -254,6 +254,7 @@
 
         .chair-btn-approve,
         .chair-btn-revision,
+        .chair-btn-decline,
         .chair-btn-secondary {
             padding: 8px 14px;
             font-size: 13px;
@@ -272,6 +273,12 @@
             background: #fff;
             color: #621708;
             border: 1px solid #621708;
+        }
+
+        .chair-btn-decline {
+            background: #fff;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
         }
 
         .chair-btn-secondary {
@@ -379,12 +386,12 @@
 
 <div id="chairRevisionModal" class="chair-modal">
     <div class="bg-white rounded-2xl w-full max-w-lg p-5">
-        <h3 class="text-lg font-bold text-slate-900">Request Revision</h3>
-        <p class="text-sm text-slate-500 mt-1">Remarks are required so the faculty member knows what to change.</p>
-        <textarea id="chairRevisionRemarks" class="mt-4 w-full border border-slate-200 rounded-xl p-3 text-sm min-h-[120px]" placeholder="Enter revision remarks..."></textarea>
+        <h3 id="chairRevisionTitle" class="text-lg font-bold text-slate-900">Request Revision</h3>
+        <p id="chairRevisionHint" class="text-sm text-slate-500 mt-1">Remarks are required so the faculty member knows what to change.</p>
+        <textarea id="chairRevisionRemarks" class="mt-4 w-full border border-slate-200 rounded-xl p-3 text-sm min-h-[120px]" placeholder="Enter remarks..."></textarea>
         <div class="flex justify-end gap-2 mt-4">
             <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeRevision()">Cancel</button>
-            <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.submitRevision()">Send Revision Request</button>
+            <button type="button" id="chairRevisionSubmit" class="chair-btn-approve" onclick="CiteFlowChairReview.submitRevision()">Send Revision Request</button>
         </div>
     </div>
 </div>
@@ -917,7 +924,11 @@ function getWorkflowStageSafe(submission, task) {
 function canManageSubmissionFiles(submission, task) {
 
     if (window.CiteFlowWorkflow?.canFacultyManageSubmissionFiles) {
-        return CiteFlowWorkflow.canFacultyManageSubmissionFiles(submission, task);
+        return CiteFlowWorkflow.canFacultyManageSubmissionFiles(
+            submission,
+            task,
+            getTaskReportConfig(task)
+        );
     }
 
     const status =
@@ -928,6 +939,19 @@ function canManageSubmissionFiles(submission, task) {
 
     return status !== 'approved';
 
+}
+
+
+function canUnsubmitSubmission(submission, task) {
+    if (window.CiteFlowWorkflow?.canFacultyUnsubmit) {
+        return CiteFlowWorkflow.canFacultyUnsubmit(
+            submission,
+            task,
+            getTaskReportConfig(task)
+        );
+    }
+    const status = String(submission?.status || '').toLowerCase();
+    return ['submitted', 'late', 'underreview', 'revision'].includes(status);
 }
 
 
@@ -4492,6 +4516,47 @@ function renderDetailPage() {
 
 
                     ${
+                        canUnsubmitSubmission(sub, task)
+
+                            ?
+
+                            `
+                    <button
+                        type="button"
+                        onclick="unsubmitTask('${escapeHtml(task.id)}')"
+                        class="
+                            button
+                            mt-3
+                            w-full
+                            bg-white
+                            hover:bg-slate-50
+                            text-slate-700
+                            py-3
+                            rounded-xl
+                            font-bold
+                            text-sm
+                            border
+                            border-slate-200
+                            flex
+                            items-center
+                            justify-center
+                            gap-2
+                        "
+                    >
+                        Unsubmit
+                    </button>
+                    <p class="text-xs text-gray-500 mt-2 text-center">
+                        Unsubmit returns this work to an editable draft. It will no longer appear in the review queue until you submit again.
+                    </p>
+                            `
+
+                            :
+
+                            ''
+                    }
+
+
+                    ${
                         filesLocked
 
                             ?
@@ -4525,7 +4590,7 @@ function renderDetailPage() {
                                             text-center
                                         "
                                     >
-                                        This task is awaiting review. You can still replace or delete files until final approval.
+                                        This task is awaiting review. You may unsubmit it while it is still in your current review stage.
                                     </p>
                                     `
 
@@ -5665,6 +5730,54 @@ async function addSavedSubmissionFiles(taskId, files) {
 
 
 /* =========================================================
+   UNSUBMIT TASK
+========================================================= */
+
+async function unsubmitTask(taskId) {
+    const faculty = resolveCurrentFaculty();
+    const task = getTaskById(taskId);
+    const submission = getSubmission(taskId, faculty?.id);
+    if (!faculty || !task || !submission) return;
+    if (!canUnsubmitSubmission(submission, task)) {
+        toastMessage('This submission can no longer be unsubmitted.', 'error');
+        return;
+    }
+    const confirmed = window.confirm(
+        'Unsubmit this work? It will return to an editable draft and will leave the review queue until you submit again. Previous review history is kept.'
+    );
+    if (!confirmed) return;
+
+    if (window.CiteFlowWorkflow?.unsubmitSubmission) {
+        const result = await CiteFlowWorkflow.unsubmitSubmission(db, {
+            submissionId: submission.id,
+            submission,
+            actorFaculty: faculty,
+            actorUser: currentUser,
+            task,
+            config: getTaskReportConfig(task)
+        });
+        if (!result.ok) {
+            toastMessage(result.error || 'Failed to unsubmit.', 'error');
+            return;
+        }
+    } else {
+        const { error } = await db.from('wf_submissions').update({
+            status: 'notsubmitted',
+            submitted_at: null,
+            approval_stage: initialApprovalStageForTask(task)
+        }).eq('id', submission.id);
+        if (error) {
+            toastMessage(error.message || 'Failed to unsubmit.', 'error');
+            return;
+        }
+    }
+
+    toastMessage('Submission returned to draft. Submit again when it is ready.', 'success');
+    await fetchAllData();
+}
+
+
+/* =========================================================
    SUBMIT TASK
 ========================================================= */
 
@@ -6235,6 +6348,9 @@ async function fetchAllData() {
             console.warn("[Submissions Debug] Calling CiteFlowChairReview.refreshAccess()");
             await window.CiteFlowChairReview.refreshAccess(currentFaculty, currentUser);
             console.warn("[Chairperson UI] shouldShow:", window.CiteFlowChairReview.access);
+            if (typeof window.refreshFacultyChairReviewNav === 'function') {
+                window.refreshFacultyChairReviewNav();
+            }
             console.warn("[Chairperson UI] review tab element:", document.getElementById('submissionsModeTabs'));
             if (document.getElementById('submissionsModeTabs')) {
                 console.warn("[Chairperson UI] tab computed display after access check:", window.getComputedStyle(document.getElementById('submissionsModeTabs')).display);
@@ -6613,8 +6729,8 @@ window.onload = async () => {
 
 <script src="../shared/system-ui.js"></script>
 <script src="../shared/cite-settings.js"></script>
-<script src="chairperson-review.js?v=chair-review-7"></script>
-<script src="faculty-nav.js?v=chair-review-3"></script>
+<script src="chairperson-review.js?v=chair-review-10"></script>
+<script src="faculty-nav.js?v=chair-review-8"></script>
 
 </body>
 </html>
