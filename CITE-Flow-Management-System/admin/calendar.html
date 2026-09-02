@@ -11,7 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth-guard.js"></script>
-    <script src="../shared/calendar-notifications.js?v=9"></script>
+    <script src="../shared/calendar-notifications.js?v=10"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
@@ -275,7 +275,7 @@
 </div>
 
 <div id="event-detail-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
-    <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
+    <div id="event-detail-card" class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-start gap-3 bg-slate-50/50">
             <div class="min-w-0">
                 <p id="detail-category-label" class="text-[10px] sm:text-xs font-semibold tracking-[0.18em] text-[#621708] uppercase">Schedule Details</p>
@@ -286,35 +286,100 @@
             </button>
         </div>
         <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
-            <div class="grid grid-cols-2 gap-3 text-xs sm:text-sm">
-                <div class="bg-slate-50 rounded-xl p-3">
-                    <div class="text-[11px] text-slate-400 font-medium">Type</div>
-                    <div id="detail-type" class="font-bold text-slate-900 mt-0.5"></div>
+            <div id="detail-schedule-fields" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3 text-xs sm:text-sm">
+                    <div class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">Type</div>
+                        <div id="detail-type" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">Priority</div>
+                        <div id="detail-priority" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-3 col-span-2">
+                        <div class="text-[11px] text-slate-400 font-medium">Date & Time</div>
+                        <div id="detail-time" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-3 col-span-2">
+                        <div class="text-[11px] text-slate-400 font-medium">Location</div>
+                        <div id="detail-location" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                    <div id="detail-repeat-box" class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">Repeat</div>
+                        <div id="detail-repeat" class="font-bold text-slate-900 mt-0.5">Never</div>
+                    </div>
+                    <div id="detail-invitees-box" class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">Visibility</div>
+                        <div id="detail-invitees" class="font-bold text-slate-900 mt-0.5">All Faculty</div>
+                    </div>
                 </div>
-                <div class="bg-slate-50 rounded-xl p-3">
-                    <div class="text-[11px] text-slate-400 font-medium">Priority</div>
-                    <div id="detail-priority" class="font-bold text-slate-900 mt-0.5"></div>
-                </div>
-                <div class="bg-slate-50 rounded-xl p-3 col-span-2">
-                    <div class="text-[11px] text-slate-400 font-medium">Date & Time</div>
-                    <div id="detail-time" class="font-bold text-slate-900 mt-0.5"></div>
-                </div>
-                <div class="bg-slate-50 rounded-xl p-3 col-span-2">
-                    <div class="text-[11px] text-slate-400 font-medium">Location</div>
-                    <div id="detail-location" class="font-bold text-slate-900 mt-0.5"></div>
-                </div>
-                <div id="detail-repeat-box" class="bg-slate-50 rounded-xl p-3">
-                    <div class="text-[11px] text-slate-400 font-medium">Repeat</div>
-                    <div id="detail-repeat" class="font-bold text-slate-900 mt-0.5">Never</div>
-                </div>
-                <div id="detail-invitees-box" class="bg-slate-50 rounded-xl p-3">
-                    <div class="text-[11px] text-slate-400 font-medium">Visibility</div>
-                    <div id="detail-invitees" class="font-bold text-slate-900 mt-0.5">All Faculty</div>
+                <div>
+                    <div class="text-xs font-medium text-slate-500 mb-1">Notes</div>
+                    <div id="detail-notes" class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-xl p-3.5 whitespace-pre-wrap"></div>
                 </div>
             </div>
-            <div>
-                <div class="text-xs font-medium text-slate-500 mb-1">Notes</div>
-                <div id="detail-notes" class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-white border border-slate-100 rounded-xl p-3.5"></div>
+
+            <div id="detail-leave-fields" class="hidden space-y-4 text-xs sm:text-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <span id="detail-leave-status" class="hidden inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-100"></span>
+                    <span id="detail-leave-duration" class="text-[11px] font-semibold text-slate-500"></span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">1. Office / Department</div>
+                        <div id="detail-leave-office" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">3. Date of Filing</div>
+                        <div id="detail-leave-filing" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-3">
+                    <div class="text-[11px] text-slate-400 font-medium">2. Name</div>
+                    <div class="grid grid-cols-3 gap-2 mt-2">
+                        <div>
+                            <div class="text-[10px] text-slate-400">Last</div>
+                            <div id="detail-leave-last" class="font-bold text-slate-900"></div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-slate-400">First</div>
+                            <div id="detail-leave-first" class="font-bold text-slate-900"></div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-slate-400">Middle</div>
+                            <div id="detail-leave-middle" class="font-bold text-slate-900"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">4. Position</div>
+                        <div id="detail-leave-position" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">5. Salary</div>
+                        <div id="detail-leave-salary" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-3">
+                    <div class="text-[11px] text-slate-400 font-medium">6.A Type of Leave</div>
+                    <div id="detail-leave-type" class="font-bold text-slate-900 mt-0.5"></div>
+                    <div id="detail-leave-details" class="text-[11px] text-slate-600 mt-1"></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">6.C Working Days Applied For</div>
+                        <div id="detail-leave-working-days" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 font-medium">Inclusive Dates</div>
+                        <div id="detail-leave-dates" class="font-bold text-slate-900 mt-0.5"></div>
+                    </div>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-3">
+                    <div class="text-[11px] text-slate-400 font-medium">6.D Commutation</div>
+                    <div id="detail-leave-commutation" class="font-bold text-slate-900 mt-0.5"></div>
+                </div>
             </div>
 
             <div id="detail-attachment-box" class="hidden pt-1">
@@ -331,15 +396,111 @@
 
             <div class="flex gap-2.5 pt-2" id="detail-actions-box">
                 <button onclick="editCurrentEvent()" id="edit-event-btn" class="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-sm">Edit Event</button>
-                <button onclick="removeCurrentEvent()" style="background: var(--cite-theme, #621708) !important;" class="flex-1 py-2.5 hover:opacity-90 text-white font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-sm">Delete Entry</button>
+                <button onclick="removeCurrentEvent()" id="delete-event-btn" style="background: var(--cite-theme, #621708) !important;" class="flex-1 py-2.5 hover:opacity-90 text-white font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-sm">Delete Entry</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<div id="edit-leave-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div>
+                <h2 class="text-base sm:text-lg font-bold text-slate-950">Edit Leave Filing</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Update the faculty leave request. This does not delete the filing.</p>
+            </div>
+            <button onclick="closeEditLeaveModal()" class="icon-btn" type="button" aria-label="Close">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto flex-1">
+            <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Last Name</label>
+                    <input id="edit-leave-last" class="modal-field" placeholder="Last name">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">First Name</label>
+                    <input id="edit-leave-first" class="modal-field" placeholder="First name">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Middle Name</label>
+                    <input id="edit-leave-middle" class="modal-field" placeholder="Middle name">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Leave Type</label>
+                <select id="edit-leave-type" class="modal-field">
+                    <option>Vacation Leave</option>
+                    <option>Mandatory/Forced Leave</option>
+                    <option>Sick Leave</option>
+                    <option>Maternity Leave</option>
+                    <option>Paternity Leave</option>
+                    <option>Special Privilege Leave</option>
+                    <option>Solo Parent Leave</option>
+                    <option>Study Leave</option>
+                    <option>10-Day VAWC Leave</option>
+                    <option>Rehabilitation Privilege</option>
+                    <option>Special Leave Benefits for Women</option>
+                    <option>Special Emergency (Calamity) Leave</option>
+                    <option>Adoption Leave</option>
+                    <option>Others</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Status</label>
+                <select id="edit-leave-status" class="modal-field">
+                    <option value="Pending">Filed</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Start Date</label>
+                <input id="edit-leave-start" type="date" class="modal-field" onchange="syncEditLeaveWorkingDays()">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">End Date</label>
+                <input id="edit-leave-end" type="date" class="modal-field" onchange="syncEditLeaveWorkingDays()">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Working Days</label>
+                <input id="edit-leave-working-days" class="modal-field" placeholder="e.g. 3">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Office / Department</label>
+                <input id="edit-leave-office" class="modal-field">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Position</label>
+                <input id="edit-leave-position" class="modal-field">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Salary</label>
+                <input id="edit-leave-salary" class="modal-field">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Commutation</label>
+                <select id="edit-leave-commutation" class="modal-field">
+                    <option>Not Requested</option>
+                    <option>Requested</option>
+                </select>
+            </div>
+            <div class="sm:col-span-2">
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Admin Remarks</label>
+                <textarea id="edit-leave-notes" rows="3" class="modal-field resize-none" placeholder="Optional remarks from admin. The original faculty filing is kept."></textarea>
+            </div>
+        </div>
+        <div class="border-t border-slate-100 px-6 py-4 flex justify-end gap-2.5 bg-slate-50">
+            <button onclick="closeEditLeaveModal()" class="px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button onclick="saveLeaveEdits()" id="save-leave-btn" class="px-5 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm">Save Leave</button>
         </div>
     </div>
 </div>
 
 <script>
 const supabaseClient = window.supabaseClient;
-const months=['January','February','March','April','May','June','July','August','September','October','November','December'];let now=new Date(),currentMonth=now.getMonth(),currentYear=now.getFullYear(),selectedDate=key(now),events=[],currentDetailEventId=null,isEditing=false,currentUser=null,currentProfile=null;
+const months=['January','February','March','April','May','June','July','August','September','October','November','December'];let now=new Date(),currentMonth=now.getMonth(),currentYear=now.getFullYear(),selectedDate=key(now),events=[],currentDetailEventId=null,isEditing=false,currentUser=null,currentProfile=null,currentLeaveId=null,currentLeaveRow=null;
 function key(d){d=new Date(d);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 function localDT(d){d=new Date(d);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
 function addH(d,h){d=new Date(d);d.setHours(d.getHours()+h);return d}
@@ -348,6 +509,75 @@ function longDate(k){let [y,m,d]=k.split('-').map(Number);return new Intl.DateTi
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','deadline','event','leave','other'].includes(t)?t:'other')}
 function visibilityLabel(v){return ({all_faculty:'All Faculty',bsit:'BSIT Faculty',bsie:'BSIE Faculty',bit:'BIT Faculty',department_chairs:'Department Chairpersons',admin_only:'Only Me'}[v]||v||'All Faculty')}
+
+function parseDateKey(value){
+    const text=String(value||'').slice(0,10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+}
+function eachDateKey(start,end){
+    const from=parseDateKey(start);
+    const to=parseDateKey(end)||from;
+    if(!from) return [];
+    const keys=[];
+    let d=new Date(from+'T00:00:00');
+    const last=new Date(to+'T00:00:00');
+    if(Number.isNaN(d.getTime())||Number.isNaN(last.getTime())||last<d) return [from];
+    while(d<=last){
+        keys.push(key(d));
+        d.setDate(d.getDate()+1);
+        if(keys.length>366) break;
+    }
+    return keys;
+}
+function countWorkingDays(start,end){
+    if(!start||!end) return 0;
+    let a=new Date(start+'T00:00:00'), b=new Date(end+'T00:00:00');
+    if(Number.isNaN(a.getTime())||Number.isNaN(b.getTime())||b<a) return 0;
+    let n=0, d=new Date(a);
+    while(d<=b){let day=d.getDay(); if(day!==0&&day!==6) n++; d.setDate(d.getDate()+1);}
+    return n;
+}
+function formatLeaveDuration(start,end,workingDaysValue){
+    const total=eachDateKey(start,end).length||1;
+    const working=Number(String(workingDaysValue||countWorkingDays(start,end)||'').replace(/[^\d.]/g,''))||0;
+    const dayLabel=total===1?'1 day':`${total} days`;
+    if(!working||working===total) return dayLabel;
+    const workLabel=working===1?'1 working day':`${working} working days`;
+    return `${dayLabel} (${workLabel})`;
+}
+function formatLeaveRangeLabel(start,end){
+    const from=parseDateKey(start);
+    const to=parseDateKey(end)||from;
+    if(!from) return '';
+    if(from===to) return longDate(from);
+    return `${longDate(from)} – ${longDate(to)}`;
+}
+function leaveCalendarEntries(leave){
+    const row=hydrateLeaveRow(leave);
+    const start=parseDateKey(row.start_date);
+    const end=parseDateKey(row.end_date)||start;
+    const duration=formatLeaveDuration(start,end,row.working_days);
+    const rangeLabel=formatLeaveRangeLabel(start,end);
+    return eachDateKey(start,end).map((date,index)=>({
+        id: index===0 ? `leave-${row.id}` : `leave-${row.id}-${date}`,
+        realId: row.id,
+        title: `Leave: ${row.faculty_name || [row.last_name, row.first_name].filter(Boolean).join(', ')} (${row.leave_type||'Leave'})`,
+        date,
+        startAt: `${start}T08:00:00`,
+        endAt: `${end||start}T17:00:00`,
+        time: duration,
+        detailTime: `${rangeLabel} • ${duration}`,
+        type: 'leave',
+        category: 'leave',
+        location: row.office_department || 'Faculty Leave Filing',
+        priority: row.status && !/^pending$/i.test(row.status) ? row.status : '',
+        notes: row.notes || 'No remarks provided.',
+        attachmentUrl: row.attachment_url || '',
+        isLeave: true,
+        leavePrimary: index===0,
+        leaveRecord: row
+    }));
+}
 
 function normalize(r){
     let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addH(s,1);
@@ -426,14 +656,9 @@ async function loadAllAdminData(){
         }));
     }
     if(leaveRes.data) {
-        combined = combined.concat(leaveRes.data.map(l => {
-            return {
-                id: 'leave-' + l.id, realId: l.id, title: `Leave: ${l.faculty_name} (${l.leave_type})`, date: l.start_date,
-                startAt: l.start_date + 'T08:00:00', endAt: l.end_date + 'T17:00:00', time: 'All Day Leave', type: 'leave', category: 'leave',
-                location: 'Faculty Leave Filing', priority: l.status || 'Approved', notes: l.notes || 'No remarks provided.',
-                attachmentUrl: l.attachment_url || '', isLeave: true
-            };
-        }));
+        leaveRes.data.forEach(l => {
+            combined = combined.concat(leaveCalendarEntries(l));
+        });
     }
     events = combined.sort((a,b) => new Date(a.startAt) - new Date(b.startAt));
     document.getElementById('realtime-status').textContent = 'Realtime connected.';
@@ -493,7 +718,7 @@ function renderSeparatedUpcoming(){
 
     let schoolEvents = future.filter(e => e.category === 'schedule' && e.type === 'event');
     let schedules = future.filter(e => e.category === 'schedule' && e.type !== 'event');
-    let leaves = future.filter(e => e.category === 'leave');
+    let leaves = future.filter(e => e.category === 'leave' && e.leavePrimary);
 
     document.getElementById('count-schedules').textContent=schedules.length;
     document.getElementById('list-schedules').innerHTML=schedules.length?schedules.map(e=>card(e,true)).join(''):'<div class="text-xs text-slate-400 italic">No upcoming schedules</div>';
@@ -611,6 +836,101 @@ async function saveEventFromModal(){
     }
 }
 
+function leaveDbId(value){
+    let id = String(value || '');
+    id = id.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    if (id.startsWith('leave-')) id = id.slice(6);
+    return id;
+}
+function parseFormData(value){
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try { return JSON.parse(value) || {}; } catch (_) { return {}; }
+}
+function hydrateLeaveRow(row){
+    const raw = row || {};
+    const form = parseFormData(raw.form_data);
+    const name = form.name || {};
+    const dates = form.inclusive_dates || {};
+    const last = String(raw.last_name || name.last || '').trim();
+    const first = String(raw.first_name || name.first || '').trim();
+    const middle = String(raw.middle_name || name.middle || '').trim();
+    return {
+        ...raw,
+        form_data: form,
+        last_name: last,
+        first_name: first,
+        middle_name: middle,
+        faculty_name: raw.faculty_name || [last, first, middle].filter(Boolean).join(', '),
+        office_department: raw.office_department || form.office_department || '',
+        position: raw.position || form.position || '',
+        salary: raw.salary || form.salary || '',
+        leave_type: raw.leave_type || form.leave_type || raw.others_specify || form.others_specify || '',
+        others_specify: raw.others_specify || form.others_specify || '',
+        start_date: parseDateKey(raw.start_date) || parseDateKey(dates.start),
+        end_date: parseDateKey(raw.end_date) || parseDateKey(dates.end) || parseDateKey(raw.start_date) || parseDateKey(dates.start),
+        working_days: raw.working_days || form.working_days || '',
+        commutation: raw.commutation || form.commutation || 'Not Requested',
+        date_of_filing: parseDateKey(raw.date_of_filing) || parseDateKey(form.date_of_filing),
+        status: raw.status || '',
+        vacation_detail: raw.vacation_detail || form.vacation_detail || '',
+        vacation_specify: raw.vacation_specify || form.vacation_specify || '',
+        sick_detail: raw.sick_detail || form.sick_detail || '',
+        sick_illness: raw.sick_illness || form.sick_illness || '',
+        women_illness: raw.women_illness || form.women_illness || '',
+        study_detail: raw.study_detail || form.study_detail || '',
+        study_specify: raw.study_specify || form.study_specify || '',
+        other_purpose: raw.other_purpose || form.other_purpose || '',
+        admin_remarks: form.admin_remarks || ''
+    };
+}
+async function fetchLeaveRow(id){
+    const leaveId = leaveDbId(id);
+    if (!leaveId) return null;
+    const { data, error } = await supabaseClient.from('faculty_leaves').select('*').eq('id', leaveId).maybeSingle();
+    if (error) throw error;
+    return data ? hydrateLeaveRow(data) : null;
+}
+async function updateFacultyLeave(id, payload){
+    let current = { ...payload };
+    for (let i = 0; i < 16; i++){
+        const { data, error } = await supabaseClient.from('faculty_leaves').update(current).eq('id', id).select().maybeSingle();
+        if (!error) return { data, error: null };
+        const msg = String(error.message || error.details || error.hint || '');
+        const match = msg.match(/Could not find the '([^']+)' column/i)
+            || msg.match(/column "([^"]+)" of relation "faculty_leaves"/i)
+            || msg.match(/column "([^"]+)"/i);
+        if (!match) return { data: null, error };
+        delete current[match[1]];
+    }
+    return { data: null, error: { message: 'Unable to update leave.' } };
+}
+
+function dash(value){
+    const text=String(value||'').trim();
+    return text || '—';
+}
+function leaveStatusClass(status){
+    const s=String(status||'Pending').toLowerCase();
+    if(s==='approved') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+    if(s==='rejected') return 'bg-red-50 text-red-700 border-red-100';
+    return 'bg-amber-50 text-amber-700 border-amber-100';
+}
+function leaveDetailsText(row){
+    if(!row) return '';
+    const form=row.form_data||{};
+    const parts=[
+        form.details_of_leave,
+        row.vacation_detail && (row.vacation_specify ? `${row.vacation_detail}: ${row.vacation_specify}` : row.vacation_detail),
+        row.sick_detail && (row.sick_illness ? `${row.sick_detail}: ${row.sick_illness}` : row.sick_detail),
+        row.women_illness ? `Special leave benefits for women: ${row.women_illness}` : '',
+        row.study_detail && (row.study_specify ? `${row.study_detail}: ${row.study_specify}` : row.study_detail),
+        row.other_purpose,
+        row.others_specify && row.leave_type==='Others' ? row.others_specify : ''
+    ].map(v=>String(v||'').trim()).filter(Boolean);
+    return [...new Set(parts)].join(' • ');
+}
+
 async function showEventDetails(id){
     currentDetailEventId=id;
     let e=events.find(x=>String(x.id)===String(id)
@@ -619,21 +939,70 @@ async function showEventDetails(id){
         || String(x.id)==='leave-'+id
         || String(x.id).replace(/^event-|^leave-/,'')===String(id).replace(/^event-|^leave-/,''));
     if(!e)return;
-    document.getElementById('detail-title').textContent=e.title;
+
+    const isLeave=!!e.isLeave;
+    const scheduleFields=document.getElementById('detail-schedule-fields');
+    const leaveFields=document.getElementById('detail-leave-fields');
+    const detailCard=document.getElementById('event-detail-card');
+    if(detailCard) detailCard.classList.toggle('max-w-2xl', isLeave);
+    if(detailCard) detailCard.classList.toggle('max-w-lg', !isLeave);
+    if(scheduleFields) scheduleFields.classList.toggle('hidden', isLeave);
+    if(leaveFields) leaveFields.classList.toggle('hidden', !isLeave);
+
+    document.getElementById('detail-category-label').textContent = isLeave ? 'CSC Form No. 6 — Leave Filing' : 'Schedule Details';
+    document.getElementById('detail-title').textContent = isLeave
+        ? (e.leaveRecord?.faculty_name || e.title.replace(/^Leave:\s*/, ''))
+        : e.title;
     document.getElementById('detail-type').textContent=(e.type||'Event').toUpperCase();
     document.getElementById('detail-location').textContent=e.location;
-    document.getElementById('detail-time').textContent=`${longDate(e.date)} • ${e.time}`;
-    document.getElementById('detail-priority').textContent=e.priority;
-    document.getElementById('detail-repeat').textContent=e.repeat;
+    document.getElementById('detail-time').textContent=e.detailTime || `${longDate(e.date)} • ${e.time}`;
+    document.getElementById('detail-priority').textContent = isLeave ? '' : e.priority;
+    document.getElementById('detail-repeat').textContent=e.repeat || 'Never';
     document.getElementById('detail-invitees').textContent=visibilityLabel(e.visibility);
     document.getElementById('detail-notes').textContent=e.notes||'No notes provided.';
 
-    document.getElementById('detail-repeat-box').style.display = e.isLeave ? 'none' : 'block';
-    document.getElementById('detail-invitees-box').style.display = e.isLeave ? 'none' : 'block';
-    document.getElementById('edit-event-btn').style.display = e.isLeave ? 'none' : 'inline-block';
+    document.getElementById('edit-event-btn').textContent = isLeave ? 'Edit Leave' : 'Edit Event';
+    document.getElementById('edit-event-btn').style.display = 'inline-block';
+    document.getElementById('delete-event-btn').style.display = isLeave ? 'none' : 'inline-block';
+
+    if(isLeave){
+        let row = e.leaveRecord ? hydrateLeaveRow(e.leaveRecord) : null;
+        if(!row && e.realId){
+            try { row = await fetchLeaveRow(e.realId); } catch (_) { row = null; }
+        }
+        row = row || hydrateLeaveRow({});
+        e.leaveRecord = row;
+        const start = parseDateKey(row.start_date) || e.date;
+        const end = parseDateKey(row.end_date) || start;
+        const duration = formatLeaveDuration(start, end, row.working_days);
+        const status = row.status || e.priority || '';
+        const statusEl = document.getElementById('detail-leave-status');
+        const showStatus = status && !/^pending$/i.test(String(status).trim());
+        statusEl.textContent = showStatus ? status : '';
+        statusEl.style.display = showStatus ? 'inline-flex' : 'none';
+        statusEl.className = 'inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ' + leaveStatusClass(status);
+        if (showStatus) statusEl.classList.remove('hidden');
+        else statusEl.classList.add('hidden');
+        document.getElementById('detail-leave-duration').textContent = duration;
+        document.getElementById('detail-leave-office').textContent = dash(row.office_department || e.location);
+        document.getElementById('detail-leave-filing').textContent = row.date_of_filing ? longDate(parseDateKey(row.date_of_filing)) : '—';
+        document.getElementById('detail-leave-last').textContent = dash(row.last_name);
+        document.getElementById('detail-leave-first').textContent = dash(row.first_name);
+        document.getElementById('detail-leave-middle').textContent = dash(row.middle_name);
+        document.getElementById('detail-leave-position').textContent = dash(row.position);
+        document.getElementById('detail-leave-salary').textContent = dash(row.salary);
+        document.getElementById('detail-leave-type').textContent = dash(row.leave_type || row.others_specify);
+        const details = leaveDetailsText(row);
+        const detailsEl = document.getElementById('detail-leave-details');
+        detailsEl.textContent = details;
+        detailsEl.classList.toggle('hidden', !details);
+        document.getElementById('detail-leave-working-days').textContent = dash(row.working_days || countWorkingDays(start, end));
+        document.getElementById('detail-leave-dates').textContent = formatLeaveRangeLabel(start, end) || '—';
+        document.getElementById('detail-leave-commutation').textContent = dash(row.commutation);
+    }
 
     let attBox=document.getElementById('detail-attachment-box'),attLink=document.getElementById('detail-attachment-link');
-    if(e.isLeave && e.attachmentUrl){
+    if(isLeave && e.attachmentUrl){
         attLink.href=e.attachmentUrl;
         attBox.classList.remove('hidden');
     }else{
@@ -644,7 +1013,7 @@ async function showEventDetails(id){
     let fbList = document.getElementById('admin-feedbacks-list');
     document.getElementById('event-detail-modal').classList.remove('hidden');
 
-    if(!e.isLeave) {
+    if(!isLeave) {
         fbSection.classList.remove('hidden');
         fbList.innerHTML = '<div class="text-[11px] text-slate-400 italic">Loading feedback...</div>';
         supabaseClient.from('calendar_event_feedback').select('*').eq('event_id', e.realId).then(({ data: fbs, error }) => {
@@ -675,37 +1044,169 @@ async function showEventDetails(id){
 
 function closeDetailModal(){document.getElementById('event-detail-modal').classList.add('hidden')}
 
-function editCurrentEvent(){
-    let e = events.find(x => String(x.id) === String(currentDetailEventId));
-    if(e && !e.isLeave){
+async function editCurrentEvent(){
+    let e = events.find(x =>
+        String(x.id) === String(currentDetailEventId) ||
+        String(x.realId) === String(currentDetailEventId) ||
+        String(x.id) === 'leave-' + currentDetailEventId ||
+        String(x.realId) === leaveDbId(currentDetailEventId)
+    );
+    if(!e) return;
+    if(e.isLeave){
         closeDetailModal();
-        supabaseClient.from('calendar_events').select('*').eq('id', e.realId).single().then(res => {
-            if(res.data) {
-                openAddEventModal(normalize(res.data), null);
-                currentDetailEventId = 'event-' + e.realId;
-                isEditing = true;
-            }
-        });
+        await openEditLeaveModal(e);
+        return;
     }
+    closeDetailModal();
+    supabaseClient.from('calendar_events').select('*').eq('id', e.realId).single().then(res => {
+        if(res.data) {
+            openAddEventModal(normalize(res.data), null);
+            currentDetailEventId = 'event-' + e.realId;
+            isEditing = true;
+        }
+    });
+}
+
+async function openEditLeaveModal(entry){
+    currentLeaveId = leaveDbId(entry?.realId || entry?.id);
+    if(!currentLeaveId) return alert('Unable to open this leave filing.');
+    let row = null;
+    try {
+        row = await fetchLeaveRow(currentLeaveId);
+    } catch (err) {
+        console.warn('Leave fetch failed', err);
+    }
+    if(!row && entry?.leaveRecord) row = hydrateLeaveRow(entry.leaveRecord);
+    if(!row) return alert('Unable to load this faculty leave filing.');
+    currentLeaveRow = row;
+    currentLeaveId = leaveDbId(row.id || currentLeaveId);
+
+    document.getElementById('edit-leave-last').value = row.last_name || '';
+    document.getElementById('edit-leave-first').value = row.first_name || '';
+    document.getElementById('edit-leave-middle').value = row.middle_name || '';
+
+    const typeEl = document.getElementById('edit-leave-type');
+    const typeVal = row.leave_type || 'Vacation Leave';
+    if (typeVal && ![...typeEl.options].some(opt => opt.value === typeVal || opt.textContent === typeVal)) {
+        const extra = document.createElement('option');
+        extra.value = typeVal;
+        extra.textContent = typeVal;
+        typeEl.appendChild(extra);
+    }
+    typeEl.value = typeVal;
+
+    const statusEl = document.getElementById('edit-leave-status');
+    const rawStatus = row.status || 'Pending';
+    if (rawStatus && ![...statusEl.options].some(opt => opt.value === rawStatus)) {
+        const extra = document.createElement('option');
+        extra.value = rawStatus;
+        extra.textContent = /^pending$/i.test(rawStatus) ? 'Filed' : rawStatus;
+        statusEl.appendChild(extra);
+    }
+    statusEl.value = /^pending$/i.test(rawStatus) || !rawStatus ? 'Pending' : rawStatus;
+
+    document.getElementById('edit-leave-start').value = row.start_date || '';
+    document.getElementById('edit-leave-end').value = row.end_date || row.start_date || '';
+    document.getElementById('edit-leave-working-days').value = row.working_days || countWorkingDays(row.start_date, row.end_date || row.start_date) || '';
+    document.getElementById('edit-leave-office').value = row.office_department || '';
+    document.getElementById('edit-leave-position').value = row.position || '';
+    document.getElementById('edit-leave-salary').value = row.salary || '';
+    document.getElementById('edit-leave-commutation').value = /requested/i.test(row.commutation || '') ? 'Requested' : 'Not Requested';
+    document.getElementById('edit-leave-notes').value = row.admin_remarks || '';
+    document.getElementById('edit-leave-modal').classList.remove('hidden');
+}
+function closeEditLeaveModal(){
+    document.getElementById('edit-leave-modal').classList.add('hidden');
+    currentLeaveId = null;
+    currentLeaveRow = null;
+}
+function syncEditLeaveWorkingDays(){
+    const start = document.getElementById('edit-leave-start').value;
+    const end = document.getElementById('edit-leave-end').value;
+    const days = countWorkingDays(start, end);
+    if (days) document.getElementById('edit-leave-working-days').value = days;
+}
+async function saveLeaveEdits(){
+    if(!currentLeaveId) return;
+    const last = document.getElementById('edit-leave-last').value.trim();
+    const first = document.getElementById('edit-leave-first').value.trim();
+    const middle = document.getElementById('edit-leave-middle').value.trim();
+    const start = document.getElementById('edit-leave-start').value;
+    const end = document.getElementById('edit-leave-end').value;
+    if(!last || !first) return alert('Please complete the faculty name.');
+    if(!start || !end) return alert('Please set the inclusive dates.');
+    if(end < start) return alert('End date cannot be earlier than the start date.');
+    const saveBtn = document.getElementById('save-leave-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    const original = currentLeaveRow || {};
+    const form = parseFormData(original.form_data);
+    const workingDays = document.getElementById('edit-leave-working-days').value.trim() || String(countWorkingDays(start, end) || '');
+    const office = document.getElementById('edit-leave-office').value.trim();
+    const position = document.getElementById('edit-leave-position').value.trim();
+    const salary = document.getElementById('edit-leave-salary').value.trim();
+    const leaveType = document.getElementById('edit-leave-type').value;
+    const commutation = document.getElementById('edit-leave-commutation').value;
+    const remarks = document.getElementById('edit-leave-notes').value.trim();
+    const facultyName = last && first
+        ? `${last}, ${first}${middle ? ' ' + middle : ''}`
+        : [first, middle, last].filter(Boolean).join(' ');
+
+    const payload = {
+        faculty_name: facultyName,
+        last_name: last,
+        first_name: first,
+        middle_name: middle,
+        leave_type: leaveType,
+        status: document.getElementById('edit-leave-status').value || 'Pending',
+        start_date: start,
+        end_date: end,
+        working_days: workingDays,
+        office_department: office,
+        position,
+        salary,
+        commutation,
+        form_data: {
+            ...form,
+            office_department: office,
+            name: { last, first, middle },
+            position,
+            salary,
+            leave_type: leaveType,
+            working_days: workingDays,
+            inclusive_dates: { start, end },
+            commutation,
+            admin_remarks: remarks
+        }
+    };
+
+    const { error } = await updateFacultyLeave(currentLeaveId, payload);
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Leave';
+    if(error) return alert('Unable to update leave: ' + (error.message || 'Please try again.'));
+    closeEditLeaveModal();
+    await loadAllAdminData();
+    alert('Leave filing updated.');
 }
 
 async function removeCurrentEvent(){
-    let e=events.find(x=>String(x.id)===String(currentDetailEventId));
-    if(!confirm(`Are you sure you want to delete this ${e.isLeave ? 'leave filing' : 'event'}?`))return;
-    let tableName=e.isLeave?'faculty_leaves':'calendar_events';
-    let {error}=await supabaseClient.from(tableName).delete().eq('id',e.realId);
+    let e=events.find(x=>String(x.id)===String(currentDetailEventId) || String(x.realId)===String(currentDetailEventId));
+    if(!e) return;
+    if(e.isLeave) return alert('Leave filings cannot be deleted from here. Edit the filing instead.');
+    if(!confirm('Are you sure you want to delete this event?')) return;
+    let {error}=await supabaseClient.from('calendar_events').delete().eq('id', e.realId);
     if(error){console.error(error);return alert('Unable to delete entry.')}
-    if(!e.isLeave){
-        await notifyFaculty({
-            id: e.realId,
-            title: e.title,
-            event_type: e.type,
-            visibility_scope: e.visibility,
-            start_at: e.startAt,
-            location: e.location
-        }, 'delete');
-    }
-    closeDetailModal();await loadAllAdminData();
+    await notifyFaculty({
+        id: e.realId,
+        title: e.title,
+        event_type: e.type,
+        visibility_scope: e.visibility,
+        start_at: e.startAt,
+        location: e.location
+    }, 'delete');
+    closeDetailModal();
+    await loadAllAdminData();
 }
 
 function exportCalendarPDF() {
@@ -737,6 +1238,6 @@ window.addEventListener('load',async()=>{populateControls();if(typeof loadSideba
 </script>
 <script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
-<script src="../nav.js?v=9"></script>
+<script src="../nav.js?v=10"></script>
 </body>
 </html>
