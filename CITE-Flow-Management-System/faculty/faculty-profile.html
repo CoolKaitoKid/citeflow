@@ -631,7 +631,8 @@
         <div class="p-7 grid grid-cols-1 md:grid-cols-2 gap-5 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
             <div>
                 <label class="field-label">Full Name</label>
-                <input id="editFullName" class="field" readonly style="background:#f8fafc; color:#475569; cursor:not-allowed;" title="Auto-generated from First, Middle, and Last Name">
+                <input id="editFullName" class="field" readonly style="background:#f8fafc; color:#475569; cursor:not-allowed;" title="Auto-generated from First, Middle, and Last Name. Uses middle initial only.">
+                <p class="text-xs text-slate-500 mt-1">This modal shows the middle initial only (example: Juan A. Dela Cruz).</p>
             </div>
 
             <div>
@@ -651,7 +652,8 @@
 
             <div>
                 <label class="field-label">Middle Name</label>
-                <input id="editMiddleName" class="field" placeholder="Santos" oninput="autoUpdateFullName()">
+                <input id="editMiddleName" class="field" placeholder="Alduhisa" oninput="autoUpdateFullName()">
+                <p class="text-xs text-slate-500 mt-1">The full middle name is saved and shown on the profile (example: Alduhisa).</p>
             </div>
 
             <div>
@@ -1113,9 +1115,24 @@ function calculateAge(value) {
     return age >= 0 ? `${age} year(s)` : '—';
 }
 
+function getMiddleInitial(middleName) {
+    const trimmed = String(middleName || '').trim();
+    if (!trimmed) return '';
+    const letter = trimmed.replace(/[^A-Za-z]/g, '').charAt(0);
+    return letter ? `${letter.toUpperCase()}.` : '';
+}
+
+function buildFormalFullName(firstName, middleName, lastName, fallback) {
+    const initial = getMiddleInitial(middleName);
+    return [firstName, initial, lastName].filter(Boolean).join(' ').trim() || fallback || '';
+}
+
+function buildDisplayFullName(firstName, middleName, lastName, fallback) {
+    return [firstName, middleName, lastName].filter(Boolean).join(' ').trim() || fallback || '';
+}
+
 function buildFullName(firstName, middleName, lastName, fallback) {
-    const middleInitial = middleName ? `${middleName.trim().charAt(0).toUpperCase()}.` : '';
-    return [firstName, middleInitial, lastName].filter(Boolean).join(' ').trim() || fallback || '';
+    return buildFormalFullName(firstName, middleName, lastName, fallback);
 }
 
 function autoUpdateFullName() {
@@ -1124,7 +1141,7 @@ function autoUpdateFullName() {
     const ln = (document.getElementById('editLastName')?.value || '').trim();
     const fullNameEl = document.getElementById('editFullName');
     if (fullNameEl) {
-        fullNameEl.value = buildFullName(fn, mn, ln, '');
+        fullNameEl.value = buildFormalFullName(fn, mn, ln, '');
     }
 }
 
@@ -1255,7 +1272,12 @@ async function loadFacultyProfile() {
 }
 
 function renderProfile() {
-    const name = currentFaculty.full_name || currentFaculty.name || currentFaculty.email || 'Faculty User';
+    const name = buildDisplayFullName(
+        currentFaculty.first_name,
+        currentFaculty.middle_name,
+        currentFaculty.last_name,
+        currentFaculty.full_name || currentFaculty.name || currentFaculty.email || 'Faculty User'
+    );
     const department = currentFaculty.department || 'N/A';
     const role = currentFaculty.role || currentFaculty.position || 'Faculty';
     const status = currentFaculty.status || 'Active';
@@ -1297,7 +1319,6 @@ function renderProfile() {
     statusBadge.textContent = status;
     statusBadge.className = 'badge ' + (leaveStatusColors[statusLower] || 'bg-red-50 text-red-700 border border-red-100');
 
-    // Leave information card
     const leaveInfoCard = document.getElementById('leaveInfoCard');
     const isOnLeave = statusLower.startsWith('on ');
     if (leaveInfoCard) {
@@ -1307,7 +1328,6 @@ function renderProfile() {
             document.getElementById('overviewLeaveStartDate').textContent = formatLongDate(currentFaculty.leave_start_date);
             document.getElementById('overviewLeaveEndDate').textContent = formatLongDate(currentFaculty.leave_end_date);
 
-            // Check for expired leave
             if (currentFaculty.leave_end_date) {
                 const endDate = new Date(currentFaculty.leave_end_date);
                 const today = new Date();
@@ -1318,7 +1338,6 @@ function renderProfile() {
                         ' <span class="badge bg-red-50 text-red-700 border border-red-100 ml-2">Expired</span>';
                     statusBadge.textContent = status + ' (Expired)';
                     statusBadge.className = 'badge bg-red-50 text-red-700 border border-red-100';
-                    // Silently revert to Active in DB — will reflect on next page load
                     supabaseClient.from('faculty').update({
                         status: 'Active',
                         leave_start_date: null,
@@ -1658,7 +1677,12 @@ async function uploadProfilePictureIfSelected() {
 function openEditProfileModal() {
     if (!currentFaculty) return;
 
-    document.getElementById('editFullName').value = currentFaculty.full_name || currentFaculty.name || '';
+    document.getElementById('editFullName').value = buildFormalFullName(
+        currentFaculty.first_name || '',
+        currentFaculty.middle_name || '',
+        currentFaculty.last_name || '',
+        currentFaculty.full_name || currentFaculty.name || ''
+    );
     document.getElementById('editPhone').value = currentFaculty.phone || '';
     document.getElementById('editLastName').value = currentFaculty.last_name || '';
     document.getElementById('editFirstName').value = currentFaculty.first_name || '';
@@ -1668,7 +1692,7 @@ function openEditProfileModal() {
     document.getElementById('editDepartment').value = currentFaculty.department || 'N/A';
     document.getElementById('editShift').value = currentFaculty.shift || 'Morning';
     document.getElementById('editAcademicRank').value = currentFaculty.academic_rank || currentFaculty.position || 'Part-time';
-    
+
     const currentPhotoUrl = currentFaculty.profile_photo_url || currentFaculty.avatar_url || currentFaculty.photo_url || '';
     document.getElementById('editPhotoUrl').value = currentPhotoUrl;
     setEditProfilePhotoPreview(currentPhotoUrl, currentFaculty.full_name || currentFaculty.name || currentFaculty.email || 'Faculty');
@@ -1680,7 +1704,6 @@ function openEditProfileModal() {
 
     autoUpdateFullName();
 
-    // Leave status fields
     const currentStatus = currentFaculty.status || 'Active';
     document.getElementById('editLeaveStatus').value = currentStatus;
     document.getElementById('editLeaveStartDate').value = currentFaculty.leave_start_date ? String(currentFaculty.leave_start_date).split('T')[0] : '';
@@ -1700,15 +1723,11 @@ async function saveProfileChanges() {
     if (!currentFaculty?.id) return;
 
     const firstName = document.getElementById('editFirstName').value.trim();
-    const rawMiddle = document.getElementById('editMiddleName').value.trim();
+    const middleName = document.getElementById('editMiddleName').value.trim();
     const lastName = document.getElementById('editLastName').value.trim();
-    
-    // Siguraduha nga middle initial lang ang masave ug ma-display (Pananglitan "Cruz" -> "C.")
-    const middleInitial = rawMiddle ? rawMiddle.charAt(0).toUpperCase() + '.' : '';
-    
-    // Formatted full name nga walay suffix ug naka-middle initial
-    const fullName = `${firstName} ${middleInitial ? middleInitial + ' ' : ''}${lastName}`.trim();
-    
+    const displayName = buildDisplayFullName(firstName, middleName, lastName, '');
+    const formalName = buildFormalFullName(firstName, middleName, lastName, '');
+
     let profilePhotoUrl = '';
 
     const leaveStatus = document.getElementById('editLeaveStatus').value;
@@ -1729,10 +1748,10 @@ async function saveProfileChanges() {
 
     const payload = {
         first_name: firstName,
-        middle_name: middleInitial,
+        middle_name: middleName,
         last_name: lastName,
-        full_name: fullName,
-        name: fullName,
+        full_name: displayName,
+        name: displayName,
         sex: document.getElementById('editSex').value,
         birthdate: document.getElementById('editBirthdate').value || null,
         phone: document.getElementById('editPhone').value.trim(),
@@ -1761,11 +1780,10 @@ async function saveProfileChanges() {
         return alert('Unable to update profile: ' + error.message);
     }
 
-    // --- IDUGANG KINI ARON MA-SYNC ANG NAV MODAL REALTIME ---
     try {
         const cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
-        cached.name = fullName;
-        cached.full_name = fullName;
+        cached.name = formalName;
+        cached.full_name = formalName;
         cached.department = payload.department;
         cached.profile_photo_url = payload.profile_photo_url;
         localStorage.setItem('citeflow_user', JSON.stringify(cached));
@@ -1773,8 +1791,8 @@ async function saveProfileChanges() {
 
     if (typeof window.updateFacultyNavProfile === 'function') {
         window.updateFacultyNavProfile({
-            name: fullName,
-            full_name: fullName,
+            name: formalName,
+            full_name: formalName,
             department: payload.department,
             role: payload.academic_rank,
             profile_photo_url: payload.profile_photo_url
@@ -1784,12 +1802,11 @@ async function saveProfileChanges() {
     closeEditProfileModal();
     await loadFacultyProfile();
 
-    // Log leave status change to engagement audit trail
     if (typeof window.EngagementLogger !== 'undefined') {
         const leaveVal = document.getElementById('editLeaveStatus')?.value || payload.status;
         window.EngagementLogger.logActivity({
             facultyId: currentFaculty.id,
-            facultyName: fullName,
+            facultyName: displayName,
             department: payload.department,
             activityType: 'Profile Update',
             activityTitle: 'Updated faculty profile',
@@ -1970,7 +1987,6 @@ async function saveResearchUpload() {
         clearResearchUploadForm();
         await loadResearch();
 
-        // Log to engagement audit trail
         if (typeof window.EngagementLogger !== 'undefined') {
             window.EngagementLogger.logActivity({
                 facultyId: currentFaculty.id,
@@ -2007,7 +2023,6 @@ function clearResearchUploadForm() {
     researchAuthors = [];
 }
 
-// ===================== RESEARCH AUTHORS =====================
 let researchAuthors = [];
 
 function addResearchAuthor() {
@@ -2038,7 +2053,6 @@ function onResearchStatusChange() {
     pubGroup.classList.toggle('hidden', status !== 'Completed and Published');
 }
 
-// ===================== LEAVE STATUS =====================
 function onEditLeaveStatusChange() {
     const status = document.getElementById('editLeaveStatus').value;
     const isLeave = status.startsWith('On ');
@@ -2046,7 +2060,6 @@ function onEditLeaveStatusChange() {
     document.getElementById('editLeaveEndGroup').classList.toggle('hidden', !isLeave);
 }
 
-// ===================== ACCOMPLISHMENTS =====================
 function openAccomplishmentModal() {
     document.getElementById('accomplishmentModal').classList.remove('hidden');
     document.getElementById('accomplishmentModal').classList.add('flex');
@@ -2158,7 +2171,6 @@ async function saveAccomplishment() {
         clearAccomplishmentForm();
         await loadAccomplishments();
 
-        // Log to engagement audit trail
         if (typeof window.EngagementLogger !== 'undefined') {
             window.EngagementLogger.logActivity({
                 facultyId: currentFaculty.id,
