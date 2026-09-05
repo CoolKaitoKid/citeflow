@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
-    <meta name="cite-cal-build" content="2026-09-04-pdf-instant">
+    <meta name="cite-cal-build" content="2026-09-05-leave-span-days">
     <title>Calendar - CITE-Flow</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,8 +21,6 @@
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth-guard.js"></script>
     <script src="../shared/calendar-notifications.js?v=10"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style id="cite-cal-design">
         :root { color-scheme: light only; }
         html { color-scheme: light; }
@@ -66,6 +64,10 @@
         .app-surface{background:linear-gradient(135deg,#f8fafc,#f7f7fb 48%,#f9fafb)!important}
         .panel{background:#fff;border:1px solid #e5e7eb;box-shadow:0 18px 45px rgba(15,23,42,.06)}
         .icon-btn{width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:12px;background:#fff;color:#334155;transition:all 0.15s ease}
+        .cite-cal-actions{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;align-content:center!important;gap:10px;flex-shrink:0;max-width:100%;overflow-x:auto}
+        .cite-cal-actions>button{display:inline-flex!important;align-items:center!important;justify-content:center!important;height:40px!important;margin:0!important;line-height:1!important;white-space:nowrap!important;vertical-align:middle!important;box-sizing:border-box!important;flex:0 0 auto}
+        .cite-cal-actions>button.icon-btn{width:40px!important;padding:0!important}
+        .cite-cal-actions>button svg,.cite-cal-actions>button i{display:block!important;width:14px;height:14px;line-height:1!important;flex-shrink:0}
         .icon-btn:hover{background:#f8fafc;border-color:#cbd5e1}
         .day-cell{min-height:105px;border-right:1px solid #eef2f7;border-bottom:1px solid #eef2f7;transition:.18s}
         .day-cell:hover{background:#f9fafb}
@@ -101,14 +103,36 @@
             color: #0f172a;
             cursor: pointer;
         }
+        .cite-select-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+        .cite-select-wrap > select {
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            background-color: #ffffff !important;
+            background-image: none !important;
+            padding-right: 34px !important;
+            cursor: pointer;
+        }
+        .cite-select-chevron {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            width: 14px;
+            height: 14px;
+            margin-top: -7px;
+            pointer-events: none;
+            color: #475569;
+            z-index: 2;
+            display: block;
+        }
         #month-select, #year-select {
             -webkit-appearance: none !important;
             appearance: none !important;
             background-color: #ffffff !important;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat !important;
-            background-position: right 10px center !important;
-            background-size: 14px !important;
+            background-image: none !important;
             padding-right: 34px !important;
             cursor: pointer;
         }
@@ -192,17 +216,26 @@
             min-height: 0 !important;
             height: 0 !important;
             overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: 0 !important;
+            background: transparent !important;
         }
-        [data-portal="admin"] #navbar-container + .cite-cal-page {
+        [data-portal="admin"] #navbar-container:empty + .cite-cal-page {
+            margin-top: 0 !important;
+        }
+        [data-portal="admin"] #navbar-container:not(:empty) + .cite-cal-page {
             margin-top: 3.5rem !important;
         }
         @media (min-width: 640px) {
-            [data-portal="admin"] #navbar-container + .cite-cal-page {
+            [data-portal="admin"] #navbar-container:not(:empty) + .cite-cal-page {
                 margin-top: 4rem !important;
             }
         }
         [data-portal="admin"] main.app-surface,
         [data-portal="admin"] main.app-surface.main-content {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
             margin-left: 0 !important;
             width: 100% !important;
             max-width: none !important;
@@ -227,17 +260,18 @@
                 <div>
                     <div class="text-[11px] sm:text-xs font-semibold tracking-[0.22em] text-[#621708] uppercase mb-1.5">Events & Faculty Leaves</div>
                     <h1 class="text-2xl sm:text-3xl font-bold text-slate-950 tracking-tight">Admin Calendar</h1>
-                    <p class="text-xs sm:text-sm text-slate-500 mt-1">Manage schedules, deadlines, and monitor submitted faculty leaves.</p>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">Manage schedules, deadlines, and monitor submitted faculty leaves in realtime.</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                    <button onclick="goToday()" class="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs sm:text-sm font-semibold hover:bg-slate-50 shadow-sm">Today</button>
-                    <button onclick="prevMonth()" class="icon-btn" aria-label="Previous Month"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
-                    <button onclick="nextMonth()" class="icon-btn" aria-label="Next Month"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
-                    <button onclick="exportCalendarPDF()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-sm">
-                        <i class="fa-solid fa-download text-xs"></i> Export PDF
+                <div class="cite-cal-actions">
+                    <button type="button" onclick="goToday()" class="px-4 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs sm:text-sm font-semibold hover:bg-slate-50 shadow-sm">Today</button>
+                    <button type="button" onclick="prevMonth()" class="icon-btn" aria-label="Previous Month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
+                    <button type="button" onclick="nextMonth()" class="icon-btn" aria-label="Next Month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
+                    <button type="button" onclick="exportCalendarPDF()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 rounded-xl text-xs sm:text-sm font-semibold gap-2 shadow-sm">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"/></svg>
+                        Export PDF
                     </button>
-                    <button onclick="openAddEventModal()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-sm">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>
+                    <button type="button" onclick="openAddEventModal()" class="bg-[#621708] hover:bg-[#8c2a10] text-white px-4 sm:px-5 rounded-xl text-xs sm:text-sm font-semibold gap-2 shadow-sm">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>
                         Create Schedule
                     </button>
                 </div>
@@ -247,8 +281,14 @@
                 <section class="panel rounded-2xl sm:rounded-[2rem] overflow-hidden">
                     <div class="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div class="flex items-center gap-2 sm:gap-3">
-                            <select id="month-select" onchange="changeMonthYear()" class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 focus:outline-none focus:border-[#621708]"></select>
-                            <select id="year-select" onchange="changeMonthYear()" class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 focus:outline-none focus:border-[#621708]"></select>
+                            <div class="cite-select-wrap">
+                                <select id="month-select" onchange="changeMonthYear()" class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 focus:outline-none focus:border-[#621708]"></select>
+                                <svg class="cite-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="cite-select-wrap">
+                                <select id="year-select" onchange="changeMonthYear()" class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 focus:outline-none focus:border-[#621708]"></select>
+                                <svg class="cite-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
                         </div>
                         <div class="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500">
                             <span class="w-2 h-2 rounded-full bg-[#621708]"></span>
@@ -337,7 +377,7 @@
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div>
                 <h2 class="text-base sm:text-lg font-bold text-slate-950" id="modal-title">Create Schedule</h2>
-                <p class="text-xs text-slate-500 mt-0.5">Add schedule details for the calendar. Matching faculty will be notified.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Add schedule details for the realtime calendar. Matching faculty will be notified.</p>
             </div>
             <button onclick="closeAddEventModal()" class="icon-btn">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -786,13 +826,23 @@ function countWorkingDays(start,end){
     while(d<=b){let day=d.getDay(); if(day!==0&&day!==6) n++; d.setDate(d.getDate()+1);}
     return n;
 }
-function formatLeaveDuration(start,end,workingDaysValue){
+function shortMonthDay(k){
+    const text=parseDateKey(k);
+    if(!text) return '';
+    const [y,m,d]=text.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric'}).format(new Date(y,m-1,d));
+}
+function formatLeaveWorkingDaysLabel(start,end){
     const total=eachDateKey(start,end).length||1;
-    const working=Number(String(workingDaysValue||countWorkingDays(start,end)||'').replace(/[^\d.]/g,''))||0;
-    const dayLabel=total===1?'whole':`${total} days`;
-    if(total===1 || !working || working===total) return dayLabel;
-    const workLabel=working===1?'1 working day':`${working} working days`;
-    return `${dayLabel} (${workLabel})`;
+    return total===1?'1 working day':`${total} working days`;
+}
+function formatLeaveDuration(start,end){
+    const from=parseDateKey(start);
+    const to=parseDateKey(end)||from;
+    const work=formatLeaveWorkingDaysLabel(from,to);
+    if(!from) return work;
+    if(from===to) return `${shortMonthDay(from)} • ${work}`;
+    return `${shortMonthDay(from)} – ${shortMonthDay(to)} • ${work}`;
 }
 function formatLeaveRangeLabel(start,end){
     const from=parseDateKey(start);
@@ -950,8 +1000,9 @@ function leaveCalendarEntries(leave){
     const row=hydrateLeaveRow(leave);
     const start=parseDateKey(row.start_date);
     const end=parseDateKey(row.end_date)||start;
-    const duration=formatLeaveDuration(start,end,row.working_days);
+    const duration=formatLeaveDuration(start,end);
     const rangeLabel=formatLeaveRangeLabel(start,end);
+    const workLabel=formatLeaveWorkingDaysLabel(start,end);
     const attachments=parseAttachments(row);
     return eachDateKey(start,end).map((date,index)=>({
         id: index===0 ? `leave-${row.id}` : `leave-${row.id}-${date}`,
@@ -961,7 +1012,7 @@ function leaveCalendarEntries(leave){
         startAt: `${start}T08:00:00`,
         endAt: `${end||start}T17:00:00`,
         time: duration,
-        detailTime: `${rangeLabel} • ${duration}`,
+        detailTime: `${rangeLabel} • ${workLabel}`,
         type: 'leave',
         category: 'leave',
         location: row.office_department || 'Faculty Leave Filing',
@@ -1085,7 +1136,7 @@ async function loadAllAdminData(){
     }
     events = combined.sort((a,b) => new Date(a.startAt) - new Date(b.startAt));
     rebuildEventIndex();
-    document.getElementById('realtime-status').textContent = '';
+    document.getElementById('realtime-status').textContent = 'Realtime connected.';
     renderCalendar();
     openPendingCalendarNotification();
 }
@@ -1587,12 +1638,17 @@ function renderProfile(p,u){ const nameEl = document.getElementById('profileName
 async function loadAdminProfile(){let {data,error}=await supabaseClient.auth.getUser();if(error||!data?.user)return;currentUser=data.user;let meta=currentUser.user_metadata||{},profile={first_name:meta.first_name||'',last_name:meta.last_name||'',email:currentUser.email||'',role:meta.role||'Administrator'};let res=await supabaseClient.from('admin_profiles').select('*').eq('id',currentUser.id).maybeSingle();if(res.data)profile={...profile,...res.data};currentProfile=profile;renderProfile(profile,currentUser);if(window.CalendarNotifications){CalendarNotifications.startAdminListener({profile:currentProfile});}}
 
 async function bootAdminCalendar(){
+    if(window.__citeAdminBooted) return;
+    window.__citeAdminBooted=true;
     populateControls();
     renderCalendar();
     status('Loading calendar...');
     try { subscribe(); } catch (_) {}
+    const runPdf=()=>{ loadPdfLibs(); loadPdfBanners(); };
+    if(typeof requestIdleCallback==='function') requestIdleCallback(runPdf, { timeout: 1800 });
+    else setTimeout(runPdf, 250);
     const tasks=[];
-    if(typeof loadSidebar==='function') tasks.push(loadSidebar());
+    if(typeof loadSidebar==='function') tasks.push(Promise.resolve(loadSidebar()).catch(()=>{}));
     tasks.push(loadAdminProfile());
     tasks.push(loadAllAdminData());
     await Promise.all(tasks);
@@ -1947,18 +2003,41 @@ function exportCalendarPDF() {
     drawCalendarPdf(doc, 'Admin Calendar', banners);
     doc.save(`CITE-Flow-Admin-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
 }
-loadPdfLibs();
-loadPdfBanners();
 
 </script>
 <script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
 <script src="../nav.js?v=10"></script>
+<style id="cite-cal-selects">
+.cite-select-wrap{position:relative;display:inline-flex;align-items:center}
+.cite-select-wrap>select,#month-select,#year-select{
+    -webkit-appearance:none!important;
+    appearance:none!important;
+    background-color:#ffffff!important;
+    background-image:none!important;
+    padding-right:34px!important;
+    cursor:pointer;
+}
+.cite-select-chevron{
+    position:absolute!important;
+    right:10px!important;
+    top:50%!important;
+    width:14px!important;
+    height:14px!important;
+    margin-top:-7px!important;
+    pointer-events:none!important;
+    color:#475569!important;
+    z-index:2!important;
+    display:block!important;
+}
+</style>
 <script>
 (function () {
     var css = document.getElementById('cite-cal-design');
+    var selects = document.getElementById('cite-cal-selects');
     var main = document.querySelector('main.app-surface');
     if (css) document.body.appendChild(css);
+    if (selects) document.body.appendChild(selects);
     if (main) main.classList.remove('main-content');
     if (typeof bootAdminCalendar === 'function') bootAdminCalendar();
 })();
