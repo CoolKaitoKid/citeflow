@@ -10,8 +10,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth.js"></script>
-    <script src="../shared/workflow.js?v=chair-review-8"></script>
-    <script src="../shared/auth-guard.js?v=chair-review-8"></script>
+    <script src="../shared/workflow.js?v=auth-session-1"></script>
+    <script src="../shared/auth-guard.js?v=auth-session-1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
 
     <link
@@ -209,6 +209,25 @@
         .quick-hub-btn:disabled {
             opacity: .65;
             cursor: wait;
+        }
+
+        .mfo-report-hub {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding: 18px 18px 16px;
+            border-radius: 16px;
+            background: linear-gradient(180deg, #fff8f4 0%, #ffffff 72%);
+            border: 1px solid #e8cfc3;
+            box-shadow: 0 1px 2px rgba(15,23,42,.04);
+        }
+
+        @media (min-width: 768px) {
+            .mfo-report-hub {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+            }
         }
 
         .submissions-mode-tabs {
@@ -443,9 +462,17 @@ const SUPABASE_ANON =
         ? window.__SUPABASE_ANON__
         : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
 
-const db = window.supabaseClient || (typeof supabase !== 'undefined'
-    ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
-    : null);
+const db = window.CiteFlowAuth?.ensureSharedClient?.()
+    || window.supabaseClient
+    || (typeof supabase !== 'undefined'
+        ? supabase.createClient(
+            SUPABASE_URL,
+            SUPABASE_ANON,
+            window.CiteFlowAuth?.AUTH_CLIENT_OPTIONS || {
+                auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+            }
+        )
+        : null);
 window.supabaseClient = db;
 
 
@@ -1153,55 +1180,36 @@ async function requireFacultyAuth() {
         return true;
     }
 
-    const {
-        data,
-        error
-    } =
-        await db.auth.getSession();
+    if (window.CiteFlowAuthGuard?.ready) {
+        await window.CiteFlowAuthGuard.ready;
+        if (window.CiteFlowAuthGuard.state === 'AUTH_UNAUTHENTICATED') {
+            return false;
+        }
+        if (window.CiteFlowAuthGuard.user) {
+            currentUser = window.CiteFlowAuthGuard.user;
+            authChecked = true;
+            return true;
+        }
+    }
 
-    if (
-        error
-        ||
-        !data?.session?.user
-    ) {
-        window.location.href =
-            '../login.html';
+    const session = window.CiteFlowAuth?.getFreshSession
+        ? await window.CiteFlowAuth.getFreshSession(db)
+        : (await db.auth.getSession()).data?.session;
 
+    if (!session?.user) {
+        const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
+        window.location.replace(`../login.html?next=${next}`);
         return false;
     }
 
-    const user =
-        data.session.user;
+    const user = session.user;
 
     if (window.CiteFlowWorkflow?.canAccessFacultyPortalSession) {
         const access = await CiteFlowWorkflow.canAccessFacultyPortalSession(user);
         if (!access.allowed) {
-            await db.auth.signOut();
-            window.location.href = '../login.html';
-            return false;
-        }
-    } else {
-        const profileProbe = await db
-            .from('faculty')
-            .select('role, position')
-            .eq('auth_user_id', user.id)
-            .maybeSingle();
-
-        const metaRole = String(user.user_metadata?.role || '').toLowerCase();
-        const profileRole = String(profileProbe.data?.role || profileProbe.data?.position || '').toLowerCase();
-        const portalRole = profileRole || metaRole;
-        const allowedPortal =
-            portalRole === 'faculty'
-            || portalRole.includes('chair')
-            || portalRole === 'dean'
-            || portalRole.includes('secretary')
-            || portalRole === 'admin'
-            || portalRole === 'administrator'
-            || !!profileProbe.data;
-
-        if (portalRole && !allowedPortal) {
-            await db.auth.signOut();
-            window.location.href = '../login.html';
+            // Authenticated but not authorized for faculty portal — do not silently sign out.
+            console.warn('[Auth] Authenticated user is not allowed on the faculty portal.');
+            window.location.replace('../login.html');
             return false;
         }
     }
@@ -2178,6 +2186,8 @@ function renderListPage() {
             ${renderSummary(all)}
 
 
+            ${renderMfoReportHub()}
+
             ${renderQuickSubmissionHub()}
 
 
@@ -2476,7 +2486,32 @@ function renderEmptyList(message, detail) {
    NAVIGATION
 ========================================================= */
 
+function isMfoTask(task) {
+    if (!task) return false;
+    if (window.CiteFlowWorkflow?.resolveDocumentCategory?.(task) === 'MFO') return true;
+    const blob = [
+        task.title,
+        task.report_name,
+        task.name,
+        task.instructions,
+        task.assigned_label,
+        task.description
+    ].join(' ').toLowerCase();
+    return /\bmfo\b|major final output|accomplishment report/.test(blob);
+}
+
+function openMfoReport(taskId) {
+    const query = taskId ? `?task=${encodeURIComponent(taskId)}` : '';
+    window.location.href = `mfo-report.html${query}`;
+}
+
 function openTask(taskId) {
+
+    const model = getAssignedModels().find((item) => String(item.task?.id) === String(taskId));
+    if (model?.task && isMfoTask(model.task)) {
+        openMfoReport(model.task.id);
+        return;
+    }
 
     selectedTaskId =
         String(taskId);
@@ -2749,6 +2784,66 @@ async function createFacultyQuickTask(categoryValue) {
 
 }
 
+
+function findMfoSubmitModel() {
+    const models = getAssignedModels().filter((model) => isMfoTask(model.task));
+    if (!models.length) return null;
+    const rank = (model) => {
+        if (isActionable(model.status, model.sub, model.task)) return 0;
+        if (String(model.status || '').toLowerCase() === 'revision') return 1;
+        if (isSubmittedStatus(model.status, model.sub, model.task)) return 2;
+        return 3;
+    };
+    return models.slice().sort((a, b) => {
+        const diff = rank(a) - rank(b);
+        if (diff) return diff;
+        return new Date(b.task?.created_at || b.task?.due_at || 0) - new Date(a.task?.created_at || a.task?.due_at || 0);
+    })[0];
+}
+
+function renderMfoReportHub() {
+    const matching = findMfoSubmitModel();
+    const status = String(matching?.status || matching?.sub?.status || '').toLowerCase();
+    const canContinue = matching && isActionable(matching.status, matching.sub, matching.task);
+    const returned = status === 'revision' || String(matching?.sub?.approval_stage || '').toLowerCase() === 'revision';
+    let actionLabel = 'Create MFO Report';
+    let hint = 'Start your quarterly accomplishment report. This is separate from Quick Submit documents.';
+    if (matching && (canContinue || returned)) {
+        actionLabel = returned ? 'Continue revision' : 'Continue MFO Report';
+        hint = matching.task?.title
+            ? `Resume ${matching.task.title}.`
+            : 'Resume the MFO report already started for this period.';
+    } else if (matching && isSubmittedStatus(matching.status, matching.sub, matching.task)) {
+        actionLabel = 'View MFO Report';
+        hint = 'This period already has a submitted MFO. Open it to review status.';
+    }
+
+    return `
+        <section class="surface rounded-[16px] p-5 lg:p-6 mb-7">
+            <div class="mfo-report-hub">
+                <div class="min-w-0">
+                    <div class="text-[11px] font-bold uppercase tracking-wide text-[#8c2a10]">
+                        Quarterly Accomplishment Report
+                    </div>
+                    <h2 class="text-base font-bold text-gray-950 mt-1">
+                        MFO Report
+                    </h2>
+                    <p class="text-sm text-gray-500 mt-1">
+                        ${escapeHtml(hint)}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    class="cite-action"
+                    style="background:#621708;color:#fff;border-color:#621708;white-space:nowrap;"
+                    onclick="openMfoReport(${matching?.task?.id ? `'${escapeHtml(matching.task.id)}'` : ''})"
+                >
+                    ${escapeHtml(actionLabel)}
+                </button>
+            </div>
+        </section>
+    `;
+}
 
 function renderQuickSubmissionHub() {
 
@@ -6729,8 +6824,8 @@ window.onload = async () => {
 
 <script src="../shared/system-ui.js"></script>
 <script src="../shared/cite-settings.js"></script>
-<script src="chairperson-review.js?v=chair-review-10"></script>
-<script src="faculty-nav.js?v=chair-review-8"></script>
+<script src="chairperson-review.js?v=auth-session-1"></script>
+<script src="faculty-nav.js?v=mfo-2"></script>
 
 </body>
 </html>

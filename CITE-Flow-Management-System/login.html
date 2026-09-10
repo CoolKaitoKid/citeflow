@@ -647,14 +647,17 @@
                     }
 
                     // Authenticate using Centralized Auth Engine
-                    const result = await CiteFlowAuth.login(email, password);
+                    const nextParam = new URLSearchParams(window.location.search).get('next');
+                    const result = await CiteFlowAuth.login(email, password, { next: nextParam });
+
+                    if (!result?.session?.user) {
+                        throw new Error('Login succeeded but the session could not be confirmed. Please try again.');
+                    }
 
                     showAlert('Login successful! Redirecting...', 'success');
 
-                    // Route user to appropriate portal
-                    setTimeout(() => {
-                        window.location.href = result.destination;
-                    }, 600);
+                    // Route only after session is confirmed.
+                    window.location.replace(result.destination);
 
                 } catch (err) {
                     console.error('Login error:', err);

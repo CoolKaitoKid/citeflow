@@ -537,7 +537,12 @@ async function loadAdminNavigation() {
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
-        } else {
+        } else if (!window.__citeflowMessengerLoading) {
+            // Guard the injection. A second navigation load arriving before
+            // this script finishes would evaluate messenger.js again, and the
+            // replacement module state knows nothing about the realtime
+            // channels the first copy already registered on the client.
+            window.__citeflowMessengerLoading = true;
             const isSubfolder = isInAdminFolder();
             const msgrScript = document.createElement("script");
             msgrScript.src = isSubfolder ? "../shared/messenger.js" : "shared/messenger.js";

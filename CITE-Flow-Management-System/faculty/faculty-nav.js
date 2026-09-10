@@ -24,7 +24,7 @@ function normalizeFacultyPageKey(pageFile) {
         .replace(/^faculty\//, "")
         .replace(/^chairperson\//, "")
         .replace(/\.html$/, "");
-    if (key === "workflow-approval") return "submissions";
+    if (key === "workflow-approval" || key === "mfo-report") return "submissions";
     return key;
 }
 
@@ -35,6 +35,7 @@ function facultyPageMap(pageName) {
         "faculty-profile": "faculty-profile.html",
         profile: "faculty-profile.html",
         submissions: "submissions.html",
+        "mfo-report": "mfo-report.html",
         "status-tracking": "status-tracking.html",
         document: "document.html",
         "document-vault": "document.html",
@@ -376,7 +377,12 @@ async function loadFacultyNavigation() {
 
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
-        } else {
+        } else if (!window.__citeflowMessengerLoading) {
+            // Guard the injection. A second navigation load arriving before
+            // this script finishes would evaluate messenger.js again, and the
+            // replacement module state knows nothing about the realtime
+            // channels the first copy already registered on the client.
+            window.__citeflowMessengerLoading = true;
             const script = document.createElement("script");
             script.src = "../shared/messenger.js";
             script.onload = () => {

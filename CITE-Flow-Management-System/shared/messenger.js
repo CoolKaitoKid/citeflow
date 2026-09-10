@@ -1569,19 +1569,33 @@ window.CiteFlowMessenger = (function () {
     /**
      * Initialize messenger
      */
+    // `initialized` is only set after several awaits, so two callers arriving
+    // together would both get past that check and each subscribe. Callers share
+    // one in-flight init instead.
+    let initPromise = null;
+
     async function init() {
         if (State.initialized) return;
+        if (initPromise) return initPromise;
 
-        mountDOM();
+        initPromise = (async () => {
+            mountDOM();
 
-        const hasUser = await resolveCurrentUser();
-        console.log("CiteFlowMessenger: init() hasUser:", hasUser, "userId:", State.currentUserId);
-        if (hasUser) {
-            await detectOptionalMessengerSchema();
-            await loadConversations(true);
-            subscribeToInbox();
-            subscribeToPresence();
-            State.initialized = true;
+            const hasUser = await resolveCurrentUser();
+            console.log("CiteFlowMessenger: init() hasUser:", hasUser, "userId:", State.currentUserId);
+            if (hasUser) {
+                await detectOptionalMessengerSchema();
+                await loadConversations(true);
+                subscribeToInbox();
+                subscribeToPresence();
+                State.initialized = true;
+            }
+        })();
+
+        try {
+            await initPromise;
+        } finally {
+            initPromise = null;
         }
     }
 
@@ -2771,7 +2785,20 @@ window.CiteFlowMessenger = (function () {
         teardownInboxChannel();
         const myToken = ++State._inboxChannelToken;
 
-        const channel = sb.channel(`msgr-inbox-${State.currentUserId}`);
+        // Supabase hands back an existing channel when the topic is already
+        // registered on the client, and removeChannel() only detaches it
+        // asynchronously. Reusing the topic here would therefore return the
+        // previous, already-subscribed instance, and attaching a
+        // postgres_changes listener to a subscribed channel throws. A
+        // per-attempt suffix keeps each attempt on its own topic. Safe here
+        // because this channel carries only postgres_changes — no presence or
+        // broadcast that would need a shared topic.
+        //
+        // The suffix must not be derived from a module-scoped counter: a second
+        // evaluation of this script would restart the counter and collide with
+        // the topics the first copy registered.
+        const attemptId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+        const channel = sb.channel(`msgr-inbox-${State.currentUserId}-${attemptId}`);
 
         channel
             .on(

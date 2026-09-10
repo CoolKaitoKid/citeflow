@@ -21,12 +21,19 @@
     let debounceTimer = null;
 
     function getSupabaseClient() {
+        if (global.CiteFlowAuth?.ensureSharedClient) {
+            const shared = global.CiteFlowAuth.ensureSharedClient();
+            if (shared) return shared;
+        }
         if (global.supabaseClient) return global.supabaseClient;
         if (global.db) return global.db;
         const url = global.__SUPABASE_URL__;
         const key = global.__SUPABASE_ANON__;
         if (global.supabase?.createClient && url && key) {
-            global.supabaseClient = global.supabase.createClient(url, key);
+            const options = global.CiteFlowAuth?.AUTH_CLIENT_OPTIONS || {
+                auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+            };
+            global.supabaseClient = global.supabase.createClient(url, key, options);
             return global.supabaseClient;
         }
         return null;
@@ -52,7 +59,8 @@
         { value: 'LDP', label: 'LDP' },
         { value: 'Syllabus', label: 'Syllabus' },
         { value: 'IPCR', label: 'IPCR' },
-        { value: 'TOS', label: 'Table of Specifications (TOS)' }
+        { value: 'TOS', label: 'Table of Specifications (TOS)' },
+        { value: 'MFO', label: 'MFO (Accomplishment Report)' }
     ];
 
     const QUICK_SUBMISSION_CATEGORY_VALUES = ['Syllabus', 'DTR', 'TOS', 'IPCR', 'LDP'];
@@ -97,6 +105,7 @@
         }
 
         if (lower.includes('table of specifications')) return 'TOS';
+        if (lower.includes('major final output')) return 'MFO';
 
         const tokens = tokenizeCategorySource(raw);
         for (const cat of DOCUMENT_CATEGORIES) {
@@ -316,6 +325,61 @@
         return requiresChairpersonReview(config, task)
             ? APPROVAL_STAGES.CHAIRPERSON
             : APPROVAL_STAGES.FINAL;
+    }
+
+    /**
+     * True when this person would be the reviewer of their own submission.
+     *
+     * A chairperson still has to file their own report, and the chairperson
+     * stage is scoped by department. If the only grant covering their
+     * department is their own, routing the report to the chairperson stage
+     * parks it forever: they are excluded from reviewing themselves, and no
+     * other chairperson is in scope.
+     */
+    function submitterIsOwnChairperson(faculty, delegatedAccess) {
+        if (!faculty) return false;
+        if (!hasChairpersonWorkflowAccess(faculty, delegatedAccess)) return false;
+        const own = facultyDepartmentCode(faculty);
+        if (!own || own === 'n/a') return false;
+        return chairpersonAuthorizedDepartments(faculty, delegatedAccess).includes(own);
+    }
+
+    /**
+     * Decide the stage a brand-new submission enters.
+     *
+     * Preference order is deliberate. wf_resolve_initial_approval_stage() runs
+     * with full visibility of every grant, which the browser does not have —
+     * RLS shows a chairperson only their own grant rows, so the client alone
+     * cannot tell "I am the only chairperson for my department" from "another
+     * chairperson also covers it". When the function is not deployed we fall
+     * back to the local rule, which is correct for the common case.
+     */
+    async function resolveInitialApprovalStageForSubmission(sb, options) {
+        const { config, task, submitterFaculty, delegatedAccess } = options || {};
+        const localStage = resolveInitialApprovalStage(config, task);
+
+        const client = sb || getSupabaseClient();
+        if (client?.rpc && task?.id) {
+            try {
+                const { data, error } = await client.rpc('wf_resolve_initial_approval_stage', {
+                    p_task_id: task.id
+                });
+                if (!error && typeof data === 'string' && data) {
+                    return data;
+                }
+                if (error && error.code !== 'PGRST202') {
+                    console.warn('CiteFlowWorkflow: stage routing RPC failed:', error.message || error);
+                }
+            } catch (error) {
+                console.warn('CiteFlowWorkflow: stage routing RPC threw:', error);
+            }
+        }
+
+        if (localStage === APPROVAL_STAGES.CHAIRPERSON
+            && submitterIsOwnChairperson(submitterFaculty, delegatedAccess)) {
+            return APPROVAL_STAGES.FINAL;
+        }
+        return localStage;
     }
 
     function getApprovalStage(submission, config, task) {
@@ -654,6 +718,42 @@
         return isPendingChairpersonReview(submission, config, task);
     }
 
+    /**
+     * Ask the database whether this session holds a chairperson grant, and
+     * remember the answer for the rest of the page's life.
+     *
+     * This exists because the two halves of the chairperson feature disagreed
+     * about who is authorized. The review queue is populated by
+     * wf_list_chairperson_submissions(), a SECURITY DEFINER function, so it can
+     * legitimately return rows while RLS on wf_delegated_access hides the grant
+     * row itself from the browser. The client-side grant check then found no
+     * grant and refused the action with "You are not authorized...", even
+     * though the database would have allowed the write. The server is the only
+     * component that can see both sides, so it decides.
+     */
+    let chairGrantServerAnswer = null;
+    async function serverConfirmsChairpersonGrant(sb) {
+        if (chairGrantServerAnswer !== null) return chairGrantServerAnswer;
+        const client = sb || getSupabaseClient();
+        if (!client?.rpc) return false;
+        try {
+            const { data, error } = await client.rpc('wf_current_user_has_chairperson_grant');
+            if (error) {
+                console.warn('CiteFlowWorkflow: chairperson grant RPC unavailable:', error.message || error);
+                return false;
+            }
+            chairGrantServerAnswer = data === true;
+            return chairGrantServerAnswer;
+        } catch (error) {
+            console.warn('CiteFlowWorkflow: chairperson grant RPC threw:', error);
+            return false;
+        }
+    }
+
+    function resetChairpersonGrantCache() {
+        chairGrantServerAnswer = null;
+    }
+
     function canReviewAsFinalApprover(submission, actorFaculty, context) {
         if (!submission || !actorFaculty) return false;
         if (isChairperson(actorFaculty)) return false;
@@ -680,13 +780,24 @@
     }
 
     async function getFreshSession(sb) {
-        const { data: { session }, error } = await sb.auth.getSession();
+        if (global.CiteFlowAuth?.getFreshSession) {
+            return global.CiteFlowAuth.getFreshSession(sb || getSupabaseClient());
+        }
+        const client = sb || getSupabaseClient();
+        if (!client) return null;
+        const { data: { session }, error } = await client.auth.getSession();
         if (error || !session?.user) return null;
         const expiresAt = Number(session.expires_at || 0);
         const nowSec = Math.floor(Date.now() / 1000);
         if (expiresAt && expiresAt > nowSec + 15) return session;
-        const refreshed = await sb.auth.refreshSession();
-        if (refreshed.error || !refreshed.data?.session?.user) return null;
+        // Share one refresh across the page; concurrent refreshes race on the
+        // rotating refresh token and trip the endpoint rate limit.
+        if (global.CiteFlowAuth?.refreshSessionShared) {
+            const shared = await global.CiteFlowAuth.refreshSessionShared(client);
+            return shared?.user ? shared : session;
+        }
+        const refreshed = await client.auth.refreshSession();
+        if (refreshed.error || !refreshed.data?.session?.user) return session;
         return refreshed.data.session;
     }
 
@@ -874,8 +985,18 @@
         const profileRole = faculty?.role || normalizeRoleValue(faculty?.raw_role || faculty?.position || '');
         const role = profileRole || metaRole;
 
-        const allowed = !!faculty || role === 'faculty' || role === 'chairperson' ||
-            role === 'dean' || role === 'college_secretary' || role === 'admin';
+        // Any linked faculty profile may use the faculty portal.
+        // Do not require the role string to equal exactly "faculty".
+        const allowed = !!faculty
+            || role === 'faculty'
+            || role === 'chairperson'
+            || String(role || '').includes('chair')
+            || role === 'dean'
+            || role === 'college_secretary'
+            || String(role || '').includes('secretary')
+            || role === 'admin'
+            || role === 'administrator'
+            || !role;
 
         return { allowed, faculty };
     }
@@ -937,7 +1058,8 @@
 
     async function currentUserHasChairpersonGrant(sb, faculty, user) {
         const client = sb || getSupabaseClient();
-        const authUser = user || await getCurrentUser();
+        const session = client ? await getFreshSession(client) : null;
+        const authUser = user || session?.user || await getCurrentUser();
         const isChair = isChairperson(faculty);
         const debug = {
             authUserId: authUser?.id || null,
@@ -950,6 +1072,7 @@
             position: faculty?.position || null,
             department: faculty?.department || faculty?.department_code || null,
             isChairperson: isChair,
+            sessionPresent: !!session?.user,
             grantFound: false,
             grantId: null,
             grantActive: false,
@@ -965,6 +1088,32 @@
             return false;
         }
 
+        if (!session?.user && !authUser?.id) {
+            debug.shouldShow = false;
+            console.info('[Chairperson Access Debug]', debug);
+            return false;
+        }
+
+        // Prefer database authorization when the session is present.
+        try {
+            const rpc = await client.rpc('wf_current_user_has_chairperson_grant');
+            debug.rpcValue = rpc.data;
+            debug.rpcError = rpc.error?.message || null;
+            if (!rpc.error && rpc.data === true) {
+                debug.shouldShow = true;
+                console.info('[Chairperson Access Debug]', debug);
+                return true;
+            }
+            if (!rpc.error && rpc.data === false) {
+                debug.shouldShow = false;
+                console.info('[Chairperson Access Debug]', debug);
+                return false;
+            }
+        } catch (error) {
+            debug.rpcError = error?.message || String(error);
+        }
+
+        // UI convenience fallback only when the RPC is unavailable.
         let grants = [];
         const filters = [];
         if (faculty.id != null) filters.push(`grantee_faculty_id.eq.${faculty.id}`);
@@ -992,29 +1141,9 @@
         debug.grantFound = !!matched;
         debug.grantId = matched?.id || null;
         debug.grantActive = !!(matched && grantIsActive(matched));
-
-        if (matched) {
-            debug.shouldShow = true;
-            console.info('[Chairperson Access Debug]', debug);
-            return true;
-        }
-
-        try {
-            const rpc = await client.rpc('wf_current_user_has_chairperson_grant');
-            debug.rpcValue = rpc.data;
-            debug.rpcError = rpc.error?.message || null;
-            if (!rpc.error && rpc.data === true) {
-                debug.shouldShow = true;
-                console.info('[Chairperson Access Debug]', debug);
-                return true;
-            }
-        } catch (error) {
-            debug.rpcError = error?.message || String(error);
-        }
-
-        debug.shouldShow = false;
+        debug.shouldShow = !!matched;
         console.info('[Chairperson Access Debug]', debug);
-        return false;
+        return !!matched;
     }
 
     function formatApprovalStage(stage) {
@@ -1082,20 +1211,69 @@
         })));
     }
 
+    /**
+     * Name the column the database is rejecting.
+     *
+     *   42703     column wf_submissions.foo does not exist
+     *   PGRST204  Could not find the 'foo' column of 'wf_submissions' in the
+     *             schema cache
+     */
+    function unknownColumnFromError(error) {
+        const raw = String(error?.message || '');
+        const code = String(error?.code || '');
+        if (code && code !== '42703' && code !== 'PGRST204' && !/column|schema cache/i.test(raw)) {
+            return null;
+        }
+        const patterns = [
+            /column\s+(?:[\w.]*\.)?"?([a-z0-9_]+)"?\s+does not exist/i,
+            /could not find the '([a-z0-9_]+)' column/i,
+            /'([a-z0-9_]+)' column of/i
+        ];
+        for (const pattern of patterns) {
+            const match = raw.match(pattern);
+            if (match && match[1]) return match[1];
+        }
+        return null;
+    }
+
+    /**
+     * Approval history is the audit trail behind every "who declined this and
+     * why". A failure here used to be a console line, which meant a decline
+     * could report success while its reason was never recorded. The caller now
+     * gets the error so it can tell the user the action was only partly saved.
+     */
     async function recordApprovalHistory(sb, entry) {
-        const { error } = await sb.from('wf_approval_history').insert(entry);
-        if (error) console.error('CiteFlowWorkflow.recordApprovalHistory:', error);
-        return !error;
+        const optional = new Set();
+        const build = () => {
+            const copy = { ...entry };
+            optional.forEach((column) => { delete copy[column]; });
+            return copy;
+        };
+
+        let { error } = await sb.from('wf_approval_history').insert(build());
+        const maxPasses = Object.keys(entry).length + 1;
+        for (let pass = 0; pass < maxPasses && error; pass += 1) {
+            const column = unknownColumnFromError(error);
+            if (!column || optional.has(column) || column === 'submission_id') break;
+            optional.add(column);
+            ({ error } = await sb.from('wf_approval_history').insert(build()));
+        }
+
+        if (error) {
+            console.error('CiteFlowWorkflow.recordApprovalHistory:', error);
+            return { ok: false, error: error.message || 'Failed to record approval history.' };
+        }
+        return { ok: true };
     }
 
     /**
      * Compute next submission state after a review action.
      * Never returns "pending" — maps to underreview for DB enum compatibility.
      */
-    function computeReviewTransition(submission, action, actorFaculty, config) {
-        const stage = getApprovalStage(submission, config);
+    function computeReviewTransition(submission, action, actorFaculty, config, task) {
+        const stage = getApprovalStage(submission, config, task);
         const actorRole = normalizeRole(actorFaculty).role;
-        const requiresChair = requiresChairpersonReview(config);
+        const requiresChair = requiresChairpersonReview(config, task);
         const requiresFinal = config?.requires_final_approval !== false;
 
         let nextStage = stage;
@@ -1133,23 +1311,94 @@
         return { nextStage, nextStatus, historyAction, actorRoleLabel };
     }
 
+    /**
+     * Apply a review update and prove that a row actually changed.
+     *
+     * PostgREST returns no error for an UPDATE whose WHERE clause matches
+     * nothing once RLS has filtered it, so the previous fire-and-forget call
+     * reported "Submission marked rejected" for a decline the database had
+     * silently refused. Asking for the updated row back turns that into a real
+     * failure the caller can show.
+     *
+     * The retry loop exists because this schema has drifted from the migrations
+     * in the repo; rather than fail outright on a column that a given
+     * deployment lacks, drop it and retry. Status and approval_stage are never
+     * dropped — an update that cannot move the workflow forward must fail.
+     */
+    async function updateSubmissionStrict(sb, submissionId, update) {
+        const dropped = new Set();
+        const build = () => {
+            const copy = { ...update };
+            dropped.forEach((column) => { delete copy[column]; });
+            return copy;
+        };
+
+        let result = await sb.from('wf_submissions')
+            .update(build()).eq('id', submissionId).select('id');
+
+        const maxPasses = Object.keys(update).length + 1;
+        for (let pass = 0; pass < maxPasses && result.error; pass += 1) {
+            const column = unknownColumnFromError(result.error);
+            if (!column || dropped.has(column)) break;
+            if (column === 'status' || column === 'approval_stage') break;
+            console.warn(`CiteFlowWorkflow: wf_submissions has no "${column}" column; retrying without it.`);
+            dropped.add(column);
+            result = await sb.from('wf_submissions')
+                .update(build()).eq('id', submissionId).select('id');
+        }
+
+        if (result.error) {
+            console.error('CiteFlowWorkflow.applySubmissionReview update:', result.error);
+            const message = String(result.error.message || '');
+            if (result.error.code === '42501' || /row-level security/i.test(message)) {
+                return {
+                    ok: false,
+                    error: 'The database refused this action for your account. '
+                        + 'Your login is not recognised as an approver for this submission.'
+                };
+            }
+            return { ok: false, error: message || 'Failed to update submission.' };
+        }
+
+        if (!Array.isArray(result.data) || result.data.length === 0) {
+            return {
+                ok: false,
+                error: 'No submission was updated. Your account does not have permission '
+                    + 'to review this submission, or it was changed by someone else. '
+                    + 'Nothing was saved.'
+            };
+        }
+
+        return { ok: true };
+    }
+
     function buildReviewUpdate(transition, comment, actorName, rawSubmission) {
+        const trimmed = String(comment || '').trim();
+
         const update = {
             status: transition.nextStatus,
             approval_stage: transition.nextStage,
             reviewed_by_name: actorName,
             reviewed_at: new Date().toISOString(),
-            review_remarks: comment || null,
             last_reviewed_by_role: transition.actorRoleLabel
         };
+
+        // Approve carries no remarks, and writing null here used to erase the
+        // chairperson's revision remarks that faculty were still reading on the
+        // status-tracking page. Only overwrite when there is something to say.
+        if (trimmed) {
+            update.review_remarks = trimmed;
+        }
 
         if (transition.nextStage === APPROVAL_STAGES.APPROVED) {
             update.final_approved_at = new Date().toISOString();
             update.final_approved_by_name = actorName;
-            update.final_approval_remarks = comment || null;
+            update.final_approval_remarks = trimmed || null;
         }
 
-        if (transition.nextStatus === 'revision' || transition.nextStatus === 'rejected') {
+        // Only a revision sends the report back for another round. A decline is
+        // terminal, so counting it as a resubmission overstated the count.
+        if (transition.nextStatus === 'revision') {
             update.resubmission_count = Number(rawSubmission?.resubmission_count || 0) + 1;
         }
 
@@ -1179,11 +1428,20 @@
         const target = targetFaculty || actorFaculty;
         const reviewContext = { delegatedAccess: delegatedAccess || [], config, task };
 
+        // A chairperson whose grant row is hidden from the browser by RLS still
+        // fails the local check, so fall back to asking the database before
+        // refusing. This only ever widens the check to what the database itself
+        // would permit: the write is still governed by RLS, and
+        // updateSubmissionStrict() reports an actual refusal honestly.
+        const chairAllowedLocally = canReviewAsChairperson(submission, actorFaculty, target, reviewContext);
+        const chairStageIsOpen = isPendingChairpersonReview(submission, config, task);
+        const chairAllowed = chairAllowedLocally
+            || (chairStageIsOpen && await serverConfirmsChairpersonGrant(sb));
+
         if (action === 'approved') {
             if (stage === APPROVAL_STAGES.CHAIRPERSON) {
-                const chairOk = canReviewAsChairperson(submission, actorFaculty, target, reviewContext);
                 const finalSkipChair = canReviewAsFinalApprover(submission, actorFaculty, reviewContext);
-                if (!chairOk && !finalSkipChair) {
+                if (!chairAllowed && !finalSkipChair) {
                     return { ok: false, error: 'You are not authorized to perform chairperson review on this submission.' };
                 }
             } else if (stage === APPROVAL_STAGES.FINAL) {
@@ -1194,9 +1452,8 @@
                 return { ok: false, error: 'This submission is already fully approved.' };
             }
         } else {
-            const canChair = canReviewAsChairperson(submission, actorFaculty, target, reviewContext);
             const canFinal = canReviewAsFinalApprover(submission, actorFaculty, reviewContext);
-            if (!canChair && !canFinal) {
+            if (!chairAllowed && !canFinal) {
                 return { ok: false, error: 'You are not authorized to review this submission.' };
             }
         }
@@ -1205,16 +1462,13 @@
             return { ok: false, error: 'Please provide remarks before submitting this action.' };
         }
 
-        const transition = computeReviewTransition(submission, action, actorFaculty, config);
+        const transition = computeReviewTransition(submission, action, actorFaculty, config, task);
         const update = buildReviewUpdate(transition, comment, actorName, submission);
 
-        const { error } = await sb.from('wf_submissions').update(update).eq('id', submissionId);
-        if (error) {
-            console.error('CiteFlowWorkflow.applySubmissionReview update:', error);
-            return { ok: false, error: error.message || 'Failed to update submission.' };
-        }
+        const written = await updateSubmissionStrict(sb, submissionId, update);
+        if (!written.ok) return written;
 
-        await recordApprovalHistory(sb, {
+        const history = await recordApprovalHistory(sb, {
             submission_id: submissionId,
             task_id: submission.task_id,
             faculty_id: submission.faculty_id,
@@ -1254,7 +1508,17 @@
             submission_id: submissionId
         });
 
-        return { ok: true, transition, update };
+        // The status change is committed at this point, so the action succeeded.
+        // A failed audit row is still worth telling the reviewer about, because
+        // the decision will not appear in the approval history panel.
+        return {
+            ok: true,
+            transition,
+            update,
+            warning: history.ok
+                ? null
+                : 'The decision was saved, but it could not be added to the approval history.'
+        };
     }
 
     async function unsubmitSubmission(sb, options) {
@@ -1563,6 +1827,7 @@
         ensureTitleReflectsCategory,
         getSupabaseClient,
         getCurrentUser,
+        getFreshSession,
         getCurrentFaculty,
         loadFacultyAssignedTasks,
         canAccessFacultyPortalSession,
@@ -1581,6 +1846,8 @@
         getChairpersonGrant,
         hasChairpersonWorkflowAccess,
         currentUserHasChairpersonGrant,
+        serverConfirmsChairpersonGrant,
+        resetChairpersonGrantCache,
         loadActiveDelegatedAccess,
         formatApprovalStage,
         chairpersonAuthorizedDepartments,
@@ -1588,6 +1855,9 @@
         facultyDepartmentCode,
         requiresChairpersonReview,
         resolveInitialApprovalStage,
+        resolveInitialApprovalStageForSubmission,
+        submitterIsOwnChairperson,
+        unknownColumnFromError,
         isPendingChairpersonReview,
         grantMatchesChairperson,
         getApprovalStage,

@@ -1,13 +1,52 @@
 // ==============================================================================
 // CITE-Flow Client-Side Role-Based Route Guard & Session Verifier
 // Load shared/auth.js before this file when possible.
+//
+// Auth states:
+//   AUTH_INITIALIZING   — session restoration in progress (do NOT redirect)
+//   AUTHENTICATED       — Supabase session confirmed
+//   AUTH_UNAUTHENTICATED — session restoration finished with no user
 // ==============================================================================
 
 (function () {
+    const AuthState = {
+        INITIALIZING: 'AUTH_INITIALIZING',
+        AUTHENTICATED: 'AUTHENTICATED',
+        UNAUTHENTICATED: 'AUTH_UNAUTHENTICATED'
+    };
+
+    let guardState = AuthState.INITIALIZING;
+    let resolveReady;
+    const ready = new Promise((resolve) => { resolveReady = resolve; });
+
+    const guardApi = {
+        state: AuthState.INITIALIZING,
+        ready,
+        session: null,
+        user: null,
+        faculty: null,
+        AuthState
+    };
+    window.CiteFlowAuthGuard = guardApi;
+
     function getClient() {
+        if (window.CiteFlowAuth?.ensureSharedClient) {
+            return window.CiteFlowAuth.ensureSharedClient();
+        }
+        if (window.CiteFlowAuth?.getClient) {
+            return window.CiteFlowAuth.getClient();
+        }
         if (window.supabaseClient) return window.supabaseClient;
         if (window.supabase && typeof window.supabase.createClient === 'function' && window.__SUPABASE_URL__ && window.__SUPABASE_ANON__) {
-            return window.supabase.createClient(window.__SUPABASE_URL__, window.__SUPABASE_ANON__);
+            const options = window.CiteFlowAuth?.AUTH_CLIENT_OPTIONS || {
+                auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+            };
+            window.supabaseClient = window.supabase.createClient(
+                window.__SUPABASE_URL__,
+                window.__SUPABASE_ANON__,
+                options
+            );
+            return window.supabaseClient;
         }
         return null;
     }
@@ -40,6 +79,26 @@
         return !fallbackNeedsOnboarding(facultyRecord, user);
     }
 
+    function finish(state, payload = {}) {
+        guardState = state;
+        guardApi.state = state;
+        guardApi.session = payload.session || null;
+        guardApi.user = payload.user || payload.session?.user || null;
+        guardApi.faculty = payload.faculty || null;
+        resolveReady(guardApi);
+    }
+
+    function buildLoginRedirect(prefix) {
+        const next = `${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`;
+        const encoded = encodeURIComponent(next);
+        return `${prefix}login.html?next=${encoded}`;
+    }
+
+    function redirectToLogin(prefix) {
+        finish(AuthState.UNAUTHENTICATED);
+        window.location.replace(buildLoginRedirect(prefix));
+    }
+
     async function initAuthGuard() {
         const currentPath = window.location.pathname.toLowerCase();
 
@@ -49,48 +108,53 @@
 
         const isFacultyArea = currentPath.includes('/faculty/') ||
             currentPath === '/faculty' ||
-            ['dashboard', 'faculty-profile', 'calendar', 'document', 'status-tracking', 'submissions', 'system-settings'].some(p => currentPath === `/faculty/${p}` || currentPath === `/faculty/${p}.html`);
+            ['dashboard', 'faculty-profile', 'calendar', 'document', 'status-tracking', 'submissions', 'system-settings', 'mfo-report'].some(p => currentPath === `/faculty/${p}` || currentPath === `/faculty/${p}.html`);
 
         const isChairpersonArea = currentPath.includes('/chairperson/');
         const isOnboardingArea = currentPath.includes('onboarding');
 
-        if (!isAdminArea && !isFacultyArea && !isOnboardingArea && !isChairpersonArea) return;
+        if (!isAdminArea && !isFacultyArea && !isOnboardingArea && !isChairpersonArea) {
+            finish(AuthState.AUTHENTICATED);
+            return;
+        }
 
         const isInsideSubfolder = currentPath.includes('/admin/') || currentPath.includes('/faculty/') || currentPath.includes('/chairperson/');
         const prefix = isInsideSubfolder ? '../' : '';
 
         const sb = getClient();
-        if (!sb) return;
+        if (!sb) {
+            // Client not ready yet — do not treat as logged out.
+            console.warn('Auth Guard: Supabase client unavailable during init; skipping hard redirect.');
+            finish(AuthState.INITIALIZING);
+            return;
+        }
 
         try {
-            const { data: { session }, error } = await sb.auth.getSession();
+            guardState = AuthState.INITIALIZING;
+            guardApi.state = AuthState.INITIALIZING;
 
-            if (error || !session || !session.user) {
-                console.warn("Auth Guard: No authenticated session detected. Redirecting to login...");
-                window.location.href = `${prefix}login.html`;
+            let activeSession = null;
+            if (window.CiteFlowAuth?.getFreshSession) {
+                activeSession = await window.CiteFlowAuth.getFreshSession(sb);
+            } else if (window.CiteFlowAuth?.waitForSession) {
+                activeSession = await window.CiteFlowAuth.waitForSession({ timeoutMs: 8000 });
+            } else {
+                const { data: { session } } = await sb.auth.getSession();
+                activeSession = session;
+            }
+
+            if (!activeSession?.user) {
+                console.warn('Auth Guard: Session restoration finished with no authenticated user.');
+                redirectToLogin(prefix);
                 return;
             }
 
             async function redirectExpiredSession() {
-                console.warn("Auth Guard: Session expired. Redirecting to login...");
+                console.warn('Auth Guard: Session expired after refresh failure. Redirecting to login...');
                 try {
                     await sb.auth.signOut({ scope: 'local' });
                 } catch (e) { /* ignore */ }
-                window.location.href = `${prefix}login.html`;
-            }
-
-            // getSession() returns a stored session even after the access JWT expires.
-            // Refresh before any table queries so PostgREST does not return PGRST303.
-            let activeSession = session;
-            const expiresAt = Number(session.expires_at || 0);
-            const nowSec = Math.floor(Date.now() / 1000);
-            if (expiresAt && expiresAt <= nowSec + 15) {
-                const refreshed = await sb.auth.refreshSession();
-                if (refreshed.error || !refreshed.data?.session?.user) {
-                    await redirectExpiredSession();
-                    return;
-                }
-                activeSession = refreshed.data.session;
+                redirectToLogin(prefix);
             }
 
             const user = activeSession.user;
@@ -118,15 +182,24 @@
                 || String(facultyLookup.error.message || '').toLowerCase().includes('jwt expired')
             );
             if (facultyAuthFailed) {
-                await redirectExpiredSession();
-                return;
+                const refreshed = window.CiteFlowAuth?.refreshSessionShared
+                    ? await window.CiteFlowAuth.refreshSessionShared(sb)
+                    : (await sb.auth.refreshSession())?.data?.session || null;
+                if (!refreshed?.user) {
+                    await redirectExpiredSession();
+                    return;
+                }
+                // JWT refreshed — continue with existing user; do not treat RLS/data errors as logout.
+            } else if (facultyLookup.error) {
+                // Authorization/data error ≠ logged out.
+                console.warn('Auth Guard: faculty lookup error (not treating as logout):', facultyLookup.error);
             }
 
             const facultyRows = Array.isArray(facultyLookup.data)
                 ? facultyLookup.data
                 : (facultyLookup.data ? [facultyLookup.data] : []);
-            const facultyRecord = facultyRows.find((row) => /chair/i.test(String(row.role || row.position || '')))
-                || facultyRows.find((row) => String(row.auth_user_id || '') === String(user.id))
+            const facultyRecord = facultyRows.find((row) => String(row.auth_user_id || '') === String(user.id))
+                || facultyRows.find((row) => /chair/i.test(String(row.role || row.position || '')))
                 || facultyRows[0]
                 || null;
             const adminProfileRole = String(adminProfile?.role || '').toLowerCase();
@@ -145,7 +218,10 @@
             const onboardingRequired = needsOnboarding(facultyRecord, user);
             const onboardingDone = isOnboardingComplete(facultyRecord, user);
 
-            // Sync validated encrypted session token with anti-tamper metadata
+            const facultyPortalOk = window.CiteFlowAuth?.isFacultyPortalRole
+                ? window.CiteFlowAuth.isFacultyPortalRole(role, facultyRecord)
+                : (Boolean(facultyRecord) || role === 'faculty' || isChair || isDean || isSecretary || isAdminRole);
+
             if (window.CiteFlowAuth?.cacheUserInfo) {
                 const cachedRole = isChair
                     ? (facultyRecord?.role || facultyRecord?.position || 'Chairperson')
@@ -153,18 +229,24 @@
                 window.CiteFlowAuth.cacheUserInfo(user, cachedRole, facultyRecord);
             }
 
+            finish(AuthState.AUTHENTICATED, {
+                session: activeSession,
+                user,
+                faculty: facultyRecord
+            });
+
             if (isOnboardingArea) {
                 if (onboardingDone) {
                     const adminDestination = (isAdminRole || isDean || isSecretary || (isChair && hasAdminAccess))
                         ? `${prefix}admin/dashboard.html`
                         : `${prefix}faculty/dashboard.html`;
-                    window.location.href = adminDestination;
+                    window.location.replace(adminDestination);
                 }
                 return;
             }
 
             if (isChairpersonArea) {
-                window.location.href = `${prefix}faculty/submissions.html#chair-review`;
+                window.location.replace(`${prefix}faculty/submissions.html#chair-review`);
                 return;
             }
 
@@ -173,49 +255,45 @@
                 if (chairOnly) {
                     if (isWorkflowApprovalPage) {
                         const granted = await chairHasActiveGrant(sb, facultyRecord, user);
-                        window.location.href = granted
+                        window.location.replace(granted
                             ? `${prefix}faculty/submissions.html#chair-review`
-                            : `${prefix}faculty/dashboard.html`;
+                            : `${prefix}faculty/dashboard.html`);
                         return;
                     }
-                    window.location.href = `${prefix}faculty/dashboard.html`;
+                    window.location.replace(`${prefix}faculty/dashboard.html`);
                     return;
                 } else if (isWorkflowApprovalPage) {
                     const canWorkflow = isAdminRole || isDean || isSecretary || isChair || hasAdminAccess;
                     if (!canWorkflow) {
-                        window.location.href = isInsideSubfolder ? 'dashboard.html' : `${prefix}admin/dashboard.html`;
+                        window.location.replace(isInsideSubfolder ? 'dashboard.html' : `${prefix}admin/dashboard.html`);
                         return;
                     }
                 } else if (role === 'faculty' || (facultyRole === 'faculty' && !hasAdminAccess && !isChair && !isDean && !isSecretary && !isAdminRole)) {
-                    window.location.href = isInsideSubfolder ? '../faculty/dashboard.html' : 'faculty/dashboard.html';
+                    window.location.replace(isInsideSubfolder ? '../faculty/dashboard.html' : 'faculty/dashboard.html');
                     return;
                 }
 
                 if (facultyRecord && onboardingRequired && !isAdminRole) {
-                    window.location.href = `${prefix}onboarding.html`;
+                    window.location.replace(`${prefix}onboarding.html`);
                     return;
                 }
             } else if (isFacultyArea) {
-                const isFacultyPortalRole = role === 'faculty' || facultyRole === 'faculty' || isChair;
-
-                if (!facultyRecord && role !== 'admin' && role !== 'administrator') {
-                    window.location.href = `${prefix}login.html`;
-                    return;
+                // Authenticated session is enough to stay on the faculty portal.
+                // Missing faculty row or non-standard role titles must NOT force login.
+                if (!facultyPortalOk && !isAdminRole && !isDean && !isSecretary && !facultyRecord) {
+                    console.warn('Auth Guard: authenticated user has no faculty profile yet; allowing page to handle it.');
                 }
 
-                if (facultyRecord && !isFacultyPortalRole && !isDean && !isSecretary && role !== 'admin' && role !== 'administrator') {
-                    window.location.href = `${prefix}login.html`;
-                    return;
-                }
-
-                if (onboardingRequired) {
-                    console.info("Auth Guard: First-time onboarding required.");
-                    window.location.href = `${prefix}onboarding.html`;
+                if (onboardingRequired && facultyRecord) {
+                    console.info('Auth Guard: First-time onboarding required.');
+                    window.location.replace(`${prefix}onboarding.html`);
                     return;
                 }
             }
         } catch (err) {
-            console.error("Auth Guard check encountered error:", err);
+            console.error('Auth Guard check encountered error:', err);
+            // Do not redirect to login on unexpected errors — may be transient.
+            finish(guardState === AuthState.AUTHENTICATED ? AuthState.AUTHENTICATED : AuthState.INITIALIZING);
         }
     }
 
@@ -228,7 +306,7 @@
         if (!facultyRecord || !sb) return false;
         if (window.CiteFlowWorkflow?.currentUserHasChairpersonGrant) {
             try {
-                return await window.CiteFlowWorkflow.currentUserHasChairpersonGrant(sb, facultyRecord);
+                return await window.CiteFlowWorkflow.currentUserHasChairpersonGrant(sb, facultyRecord, user);
             } catch (_) {}
         }
         if (window.CiteFlowWorkflow?.hasChairpersonWorkflowAccess) {

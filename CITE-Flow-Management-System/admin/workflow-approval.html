@@ -773,6 +773,7 @@
                     <option value="Syllabus">Syllabus</option>
                     <option value="IPCR">IPCR</option>
                     <option value="TOS">Table of Specifications (TOS)</option>
+                    <option value="MFO">MFO (Accomplishment Report)</option>
                 </select>
                 <div class="view-toggle shrink-0" title="Switch main page task layout">
                     <button id="listViewBtn" class="active" onclick="setTaskViewMode('list')">List</button>
@@ -929,6 +930,7 @@
                         <option value="Syllabus">Syllabus</option>
                         <option value="IPCR">IPCR</option>
                         <option value="TOS">Table of Specifications (TOS)</option>
+                        <option value="MFO">MFO (Accomplishment Report)</option>
                     </select>
                 </div>
                 <div>
@@ -1096,6 +1098,7 @@
                     <option value="Syllabus">Syllabus</option>
                     <option value="IPCR">IPCR</option>
                     <option value="TOS">Table of Specifications (TOS)</option>
+                    <option value="MFO">MFO (Accomplishment Report)</option>
                 </select>
             </div>
             <div>
@@ -1584,8 +1587,40 @@ function normalizeFileRecord(file) {
         id: file.id || '',
         name: file.file_name || file.name || file.filename || 'Submitted file',
         url: file.file_url || file.public_url || file.url || file.signed_url || file.path || '',
+        // The object key inside the wf-submissions bucket. Needed because that
+        // bucket is private: any public URL recorded at upload time will not
+        // load for a reviewer, so the key has to be signed on demand.
+        storagePath: file.storage_path || file.file_path || '',
         uploadedAt: file.created_at || file.uploaded_at || file.updated_at || file.uploadedAt || null
     };
+}
+
+const SUBMISSION_BUCKET = 'wf-submissions';
+
+function hasFileTarget(file) {
+    const normalized = normalizeFileRecord(file);
+    return !!(normalized.storagePath || normalized.url);
+}
+
+/**
+ * Prefer a freshly signed URL over the stored one. Submissions uploaded into
+ * the private bucket only have a usable link once signed; external-link
+ * submissions have no storage object and fall back to their saved URL.
+ */
+async function resolveFileUrlAsync(file) {
+    const normalized = normalizeFileRecord(file);
+    if (normalized.storagePath && db?.storage) {
+        try {
+            const signed = await db.storage
+                .from(SUBMISSION_BUCKET)
+                .createSignedUrl(normalized.storagePath, 60 * 60);
+            if (signed.data?.signedUrl) return signed.data.signedUrl;
+            if (signed.error) console.warn('Signed URL failed:', signed.error.message);
+        } catch (error) {
+            console.warn('Signed URL threw:', error);
+        }
+    }
+    return normalized.url || '';
 }
 
 function getFacultyById(id) {
@@ -2091,7 +2126,7 @@ function registerFileAction(file) {
 function renderFileChip(file) {
     const normalized = normalizeFileRecord(file);
     const key = registerFileAction(normalized);
-    const hasUrl = !!resolveFileUrl(normalized);
+    const hasUrl = hasFileTarget(normalized);
     const uploadedLabel = normalized.uploadedAt ? `Uploaded ${formatDateTime(normalized.uploadedAt)}` : '';
     return `
         <div class="file-chip">
@@ -2144,22 +2179,32 @@ function refreshOpenReviewModalFiles() {
     renderFacultyFileUpdateNotice(raw);
 }
 
-function previewFileByKey(key) {
+async function previewFileByKey(key) {
     const file = window.workflowFileActionCache[key];
-    if (!file || !resolveFileUrl(file)) {
+    if (!file || !hasFileTarget(file)) {
         showToast('This file does not have a preview URL saved.', 'warn');
         return;
     }
-    previewFile(resolveFileUrl(file), file.name);
+    const url = await resolveFileUrlAsync(file);
+    if (!url) {
+        showToast('Unable to open this file. You may not have access to it.', 'warn');
+        return;
+    }
+    previewFile(url, file.name);
 }
 
-function downloadFileByKey(key) {
+async function downloadFileByKey(key) {
     const file = window.workflowFileActionCache[key];
-    if (!file || !resolveFileUrl(file)) {
+    if (!file || !hasFileTarget(file)) {
         showToast('This file does not have a download URL saved.', 'warn');
         return;
     }
-    downloadFile(resolveFileUrl(file), file.name);
+    const url = await resolveFileUrlAsync(file);
+    if (!url) {
+        showToast('Unable to download this file. You may not have access to it.', 'warn');
+        return;
+    }
+    downloadFile(url, file.name);
 }
 
 function previewFile(url, fileName) {
@@ -2840,8 +2885,29 @@ function applyReview(newStatus) {
         showToast('Please provide remarks before submitting.', 'error');
         return;
     }
-    const sub = allSubmissions.find(s => `${s.task_id}|${s.faculty_id}` === activeReviewId);
-    if (!sub || !sub.submission_id) return;
+    // allSubmissions is the rendered matrix and is filtered down for
+    // chairperson actors, and openReviewModal can open a row that only exists
+    // in the raw submission list. Falling back to workflowState keeps Decline
+    // from becoming a button that does nothing at all.
+    let sub = allSubmissions.find(s => `${s.task_id}|${s.faculty_id}` === activeReviewId);
+    if (!sub || !sub.submission_id) {
+        const [taskId, facultyId] = String(activeReviewId || '').split('|');
+        const raw = (workflowState.submissions || []).find(s =>
+            String(s.task_id) === String(taskId) && String(s.faculty_id) === String(facultyId));
+        if (raw) {
+            sub = {
+                task_id: raw.task_id,
+                faculty_id: raw.faculty_id,
+                submission_id: raw.id,
+                faculty_name: getFacultyById(raw.faculty_id)?.full_name || 'Faculty',
+                status: raw.status
+            };
+        }
+    }
+    if (!sub || !sub.submission_id) {
+        showToast('This submission could not be found. Please refresh the page and try again.', 'error');
+        return;
+    }
     const labels = { approved: 'Approved', revision: 'Revision requested', rejected: 'Rejected' };
     const types  = { approved: 'success', revision: 'warn', rejected: 'error' };
     applyReviewRealtime(sub.submission_id, newStatus, comment, labels, types, sub);
@@ -4320,6 +4386,23 @@ async function grantAccessRealtime(faculty, depts) {
         }));
     }
     if (error) {
+        // 42501 here never means the payload was wrong. The wf_delegated_access
+        // write policy is WITH CHECK (wf_is_final_approver()), so the insert was
+        // refused because this signed-in account is not recognised as an
+        // administrator — almost always a missing admin_profiles row, since
+        // CiteFlowAuth creates that row inside a try/catch that swallows failures.
+        if (error.code === '42501' || /row-level security/i.test(error.message || '')) {
+            console.error('[Workflow] Grant refused by RLS: wf_is_final_approver() is false for this account.', {
+                code: error.code,
+                diagnose: 'await supabase.rpc("wf_debug_final_approver")'
+            });
+            showToast(
+                'This account is not recognised as an administrator, so it cannot grant access. '
+                + 'Run admin/018_fix_admin_final_approver.sql to diagnose and repair the admin record.',
+                'error'
+            );
+            return;
+        }
         showToast(error.message || 'Failed to grant access.', 'error');
         return;
     }
@@ -4617,6 +4700,78 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
     closeReviewModal();
     await fetchAllData();
     if (activeTaskDetailId) renderTaskDetailPage(activeTaskDetailId, { focusFacultyId: sub.faculty_id });
+}
+
+/**
+ * The evidence files are not the report. An MFO submission's report lives in
+ * the mfo_* tables, and opens read-only in the same official-template renderer
+ * the faculty member previews, so link it above the attachment list.
+ */
+/**
+ * Case B indicator. A submission that requires Chairperson review, in a
+ * department no active grant covers, cannot move: it must not fall through to
+ * final approval, and no Chairperson is authorized to pick it up. Admin is the
+ * only one who can resolve that, so say so here rather than leaving an
+ * apparently idle submission.
+ *
+ * Display only. Authorization still comes from wf_chairperson_in_scope() and
+ * wf_task_requires_chairperson() server-side.
+ */
+function chairpersonGrantGapHtml(sub, stage) {
+    if (stage !== 'chairperson') return '';
+    const dept = normalizeText(sub?.department_code || sub?.department || '');
+    if (!dept) return '';
+
+    const covered = (workflowState.delegatedAccess || []).some((d) => {
+        if (d.is_active === false) return false;
+        const codes = Array.isArray(d.department_codes) ? d.department_codes : [];
+        if (codes.length) return codes.some((c) => normalizeText(c) === dept);
+        // A grant with no explicit scope falls back to the grantee's own
+        // department, matching wf_grant_departments() in SQL.
+        const grantee = (workflowState.faculty || []).find((f) =>
+            String(f.id) === String(d.grantee_faculty_id || '')
+            || normalizeText(f.full_name) === normalizeText(d.grantee_name));
+        return grantee ? normalizeText(grantee.department_code || grantee.department) === dept : false;
+    });
+    if (covered) return '';
+
+    return `
+        <div class="p-3 rounded-lg bg-amber-50 border border-amber-200 mt-2">
+            <div class="text-xs font-semibold text-amber-900">Waiting on a Chairperson access grant</div>
+            <div class="text-xs text-amber-800 mt-1">
+                This submission requires Chairperson review, but no active grant covers
+                <strong>${escapeHtml(dept.toUpperCase())}</strong>. It will not advance to final approval on its own.
+                Grant access in <strong>Manage Access &rarr; Grant Access</strong> for this department.
+            </div>
+        </div>`;
+}
+
+/**
+ * True when this submission is a structured MFO report.
+ *
+ * Evidence beats naming. Any file tagged with an mfo_packet_id proves a packet
+ * exists, whereas the title regex is only a guess — and it used to read
+ * task.category, a column this database does not have, so the guess was
+ * running on one field fewer than it looked.
+ */
+function submissionHasMfoPacket(sub) {
+    if (!sub?.submission_id) return false;
+    return (workflowState.submissionFiles || []).some(f =>
+        String(f.submission_id) === String(sub.submission_id)
+        && (f.mfo_packet_id || f.mfo_section));
+}
+
+function isMfoSubmission(task, sub) {
+    if (submissionHasMfoPacket(sub)) return true;
+    const haystack = [task?.title, task?.instructions].filter(Boolean).join(' ');
+    return /\bmfo\b|major final output|accomplishment report/i.test(haystack);
+}
+
+function mfoReportLinkHtml(task, sub) {
+    if (!sub?.submission_id) return '';
+    if (!isMfoSubmission(task, sub)) return '';
+    return `<a class="file-action-btn" style="display:inline-flex;margin-bottom:8px" target="_blank" rel="noopener"
+        href="../faculty/mfo-report.html?submission=${encodeURIComponent(sub.submission_id)}&view=review">Open completed MFO report</a>`;
 }
 
 /* ---------- Override review modal so stage is visible ---------- */
@@ -5379,6 +5534,9 @@ applyReviewRealtime = async function unifiedApplyReviewRealtime(submissionId, ne
                     : 'Submission marked rejected.';
 
     CiteFlowWorkflow.showToast(toast, newStatus === 'approved' ? 'success' : newStatus === 'revision' ? 'warn' : 'error');
+    if (result.warning) {
+        CiteFlowWorkflow.showToast(result.warning, 'warn');
+    }
     closeReviewModal();
     await fetchAllData();
     if (activeTaskDetailId) renderTaskDetailPage(activeTaskDetailId, { focusFacultyId: sub.faculty_id });
@@ -5436,9 +5594,11 @@ openReviewModal = async function unifiedOpenReviewModal(taskId, facultyRef) {
             </div>
             ${categoryLabel ? `<div class="text-xs text-indigo-700 mt-2">Document category: <strong>${escapeHtml(categoryLabel)}</strong></div>` : ''}
             ${raw?.review_remarks ? `<div class="text-xs text-indigo-700 mt-2">${escapeHtml(raw.review_remarks)}</div>` : ''}
-        </div>`;
+        </div>
+        ${chairpersonGrantGapHtml(sub, String(raw?.approval_stage || sub.approval_stage || '').toLowerCase())}`;
 
-    document.getElementById('modalFiles').innerHTML = renderFileList(sub.files, 'No submitted files saved.');
+    document.getElementById('modalFiles').innerHTML =
+        mfoReportLinkHtml(task, sub) + renderFileList(sub.files, 'No submitted files saved.');
     renderFacultyFileUpdateNotice(raw || sub);
     document.getElementById('adminComment').value = '';
 

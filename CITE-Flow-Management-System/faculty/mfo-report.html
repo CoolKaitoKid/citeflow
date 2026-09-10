@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MFO Report - CITE-Flow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth.js?v=auth-shared-refresh-1"></script>
+    <script src="../shared/workflow.js?v=auth-shared-refresh-1"></script>
+    <script src="../shared/auth-guard.js?v=auth-shared-refresh-1"></script>
+    <script src="../shared/cite-settings.js"></script>
+    <script src="../shared/mfo-sources.js?v=mfo-provenance-1"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <link rel="stylesheet" href="faculty-nav.css?v=chair-sidebar-only">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+        body { background: #f3f4f7; color: #111827; }
+        .mfo-sticky {
+            position: sticky; top: 72px; z-index: 30;
+            background: rgba(255,255,255,.94);
+            backdrop-filter: blur(10px);
+            border: 1px solid #e8eaef;
+        }
+        .mfo-section { border: 1px solid #e8eaef; background: #fff; }
+        .mfo-section[open] > summary .mfo-chevron { transform: rotate(180deg); }
+        .mfo-section summary::-webkit-details-marker { display: none; }
+        .mfo-field {
+            width: 100%; border: 1px solid #e5e7eb; border-radius: 12px;
+            padding: 10px 12px; font-size: 13px; background: #fff;
+        }
+        .mfo-field:focus {
+            outline: none; border-color: #8c2a10;
+            box-shadow: 0 0 0 4px rgba(140,42,16,.10);
+        }
+        .mfo-field:disabled { background: #f8fafc; color: #64748b; }
+        .mfo-label { display: block; font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+        .mfo-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 11px; font-weight: 700; border-radius: 999px;
+            padding: 3px 10px; border: 1px solid #fed7aa; background: #fff7ed; color: #c2410c;
+        }
+        .mfo-chip-calc { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+        .mfo-chip-lock { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+        .mfo-flag {
+            display: inline-block; margin-left: 6px;
+            font-size: 9px; font-weight: 800; letter-spacing: .03em;
+            text-transform: uppercase; border-radius: 999px;
+            padding: 2px 7px; border: 1px solid transparent; vertical-align: middle;
+        }
+        .mfo-flag-auto { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+        .mfo-flag-manual { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+        .mfo-flag-need { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+        .mfo-flag-na { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+        .mfo-record { border: 1px solid #edf0f5; border-radius: 16px; padding: 14px; background: #fbfcfd; }
+        .mfo-photo-card {
+            border: 1px solid #edf0f5;
+            border-radius: 14px;
+            padding: 12px 14px;
+            background: #fbfcfd;
+            margin-bottom: 10px;
+        }
+        .mfo-photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+            gap: 8px;
+        }
+        .mfo-photo-thumb {
+            display: block;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+            background: #f8fafc;
+        }
+        .mfo-photo-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .mfo-photo-thumb-wrap {
+            position: relative;
+        }
+        .mfo-photo-remove {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            border: 0;
+            background: rgba(15, 23, 42, 0.72);
+            color: #fff;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+        }
+        #mfoToast {
+            position: fixed; right: 16px; bottom: 20px; z-index: 80;
+            display: none; max-width: 360px; padding: 12px 16px;
+            border-radius: 14px; font-size: 13px; font-weight: 600;
+            box-shadow: 0 16px 40px rgba(15,23,42,.16);
+        }
+        #mfoToast.ok { display: block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        #mfoToast.err { display: block; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .cite-action-primary {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            background: #621708; color: #fff; border: 1px solid #621708;
+            border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 700;
+        }
+        .cite-action-primary:disabled { opacity: .55; cursor: not-allowed; }
+        /* ---- Completed report view -------------------------------------
+           Mirrors the official accomplishment report: serif body, ruled
+           tables, institutional letterhead. Sized in millimetres so the
+           on-screen preview matches the printed sheet. */
+        .mfo-doc {
+            background: #fff; color: #000;
+            font-family: 'Times New Roman', Times, serif;
+            width: 210mm; max-width: 100%;
+            margin: 0 auto; padding: 14mm 12mm;
+            box-shadow: 0 10px 40px rgba(15,23,42,.12);
+        }
+        .mfo-doc-title { text-align: center; font-size: 15px; font-weight: 700; }
+        .mfo-doc-sub { text-align: center; font-size: 12px; margin-top: 2px; }
+        .mfo-doc-ident { margin: 12px 0 8px; font-size: 12px; }
+        .mfo-doc-ident .row { display: flex; gap: 12mm; flex-wrap: wrap; margin-bottom: 4px; }
+        .mfo-doc-ident .row span { flex: 1 1 60mm; }
+        .mfo-doc-instr { font-size: 11px; font-style: italic; margin: 6px 0 4px; letter-spacing: .06em; }
+        .mfo-doc-group {
+            margin-top: 14px; font-size: 12px; font-weight: 700;
+            background: #eee; border: 1px solid #000; padding: 4px 6px;
+        }
+        .mfo-doc-pi { margin-top: 9px; font-size: 11.5px; font-weight: 700; }
+        .mfo-doc-note { font-size: 10.5px; font-style: italic; margin: 3px 0; }
+        .mfo-doc-lines {
+            border-bottom: 1px solid #000; min-height: 18mm;
+            font-size: 11.5px; padding: 4px 2px; margin-top: 4px;
+            white-space: pre-wrap;
+        }
+        .mfo-doc-break { break-before: page; page-break-before: always; margin-top: 18px; }
+        .mfo-doc-photos { display: flex; flex-wrap: wrap; gap: 4mm; margin-top: 5px; }
+        .mfo-doc-photo { flex: 1 1 78mm; max-width: 88mm; }
+        /* contain, never stretch: portrait and landscape both keep their ratio */
+        .mfo-doc-photo img {
+            width: 100%; height: auto; max-height: 70mm;
+            object-fit: contain; border: 1px solid #000; display: block;
+        }
+        .mfo-doc-photo .cap { font-size: 9.5px; margin-top: 2px; text-align: center; }
+        .mfo-doc table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
+        .mfo-doc th, .mfo-doc td {
+            border: 1px solid #000; padding: 4px 5px;
+            font-size: 10.5px; vertical-align: top;
+            word-wrap: break-word; overflow-wrap: anywhere;
+        }
+        .mfo-doc th { background: #f2f2f2; font-weight: 700; text-align: left; }
+        .mfo-doc-entry { border: 1px solid #000; padding: 6px 8px; margin-top: 6px; font-size: 11px; }
+        .mfo-doc-entry .t { font-weight: 700; font-size: 12px; }
+        .mfo-doc-entry dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; margin: 4px 0; }
+        .mfo-doc-entry dt { font-weight: 700; }
+        .mfo-doc-sign { margin-top: 18px; font-size: 12px; display: flex; gap: 16mm; flex-wrap: wrap; }
+        .mfo-doc-sign .box { min-width: 70mm; }
+        .mfo-doc-sign .line { border-bottom: 1px solid #000; height: 12mm; }
+        /* The signature sits on the same ruled line a wet signature would use,
+           so a signed and an unsigned report print to the same layout. */
+        .mfo-doc-sign .line.sig { display: flex; align-items: flex-end; }
+        .mfo-doc-sign .line.sig img { max-height: 11.5mm; max-width: 100%; object-fit: contain; }
+        /* Official letterhead and accreditation strip, at the template's own
+           display widths (108.24mm / 151.39mm), both centred as the document
+           has them. Width alone plus height:auto keeps each banner's aspect
+           ratio, so neither logo can stretch. */
+        .mfo-doc-head { text-align: center; margin-bottom: 6px; }
+        .mfo-doc-head img { width: 108.24mm; height: auto; display: inline-block; }
+        .mfo-doc-foot { text-align: center; margin-top: 14px; }
+        .mfo-doc-foot img { width: 151.39mm; height: auto; display: inline-block; }
+        @media (max-width: 768px) {
+            .mfo-doc-head img, .mfo-doc-foot img { width: 100%; }
+        }
+
+        @media print {
+            /* Print only the report: no chrome, no toolbar, no buttons. */
+            @page { size: A4 portrait; margin: 12mm; }
+            html, body { background: #fff !important; }
+            body * { visibility: hidden; }
+            #mfoReportDoc, #mfoReportDoc * { visibility: visible; }
+            #mfoReportDoc {
+                position: absolute; left: 0; top: 0;
+                width: 100%; margin: 0; padding: 0;
+                box-shadow: none;
+            }
+            #sidebar-container, #navbar-container, #mfoToast,
+            .mfo-doc-toolbar, .mfo-sticky { display: none !important; }
+            main.mfo-main { margin-left: 0 !important; }
+            /* Keep a section's heading with its table and never split a row. */
+            .mfo-doc-group, .mfo-doc-pi { break-after: avoid; page-break-after: avoid; }
+            .mfo-doc table, .mfo-doc-entry { break-inside: avoid; page-break-inside: avoid; }
+            .mfo-doc tr, .mfo-doc img { break-inside: avoid; page-break-inside: avoid; }
+            .mfo-doc thead { display: table-header-group; }
+            .mfo-doc-sign { break-inside: avoid; page-break-inside: avoid; }
+            /* The template carries the letterhead once at the top and the
+               accreditation strip once at the end, so both stay in the flow:
+               nothing is fixed over the page and the footer cannot cover the
+               last table or the signature area. Keeping each banner unsplit
+               prevents clipping, and avoiding a break before the footer stops
+               it from stranding on a blank final page. */
+            .mfo-doc-head, .mfo-doc-foot { break-inside: avoid; page-break-inside: avoid; }
+            .mfo-doc-head img, .mfo-doc-foot img { max-width: 100%; }
+            .mfo-doc-foot { break-before: avoid; page-break-before: avoid; }
+        }
+
+        @media (max-width: 768px) {
+            .mfo-doc { width: 100%; padding: 16px; }
+            .mfo-sticky { top: 64px; }
+            .mfo-actions { width: 100%; }
+            .mfo-actions .cite-action,
+            .mfo-actions .cite-action-primary { width: 100%; justify-content: center; }
+            main.mfo-main { margin-left: 0 !important; }
+        }
+    </style>
+</head>
+<body class="cite-page bg-slate-50 overflow-x-hidden min-h-screen">
+<div class="flex min-h-screen w-full">
+    <div id="sidebar-container"></div>
+    <main class="mfo-main flex-1 min-w-0 ml-[220px] overflow-x-hidden">
+        <div id="navbar-container"></div>
+        <div class="px-4 sm:px-6 lg:px-8 py-6 pb-24 max-w-[1320px] mx-auto">
+            <div id="mfoApp">
+                <div class="surface rounded-[16px] p-6">
+                    <div class="skeleton-text xl" style="width:220px;margin-bottom:12px"></div>
+                    <div class="skeleton-text" style="width:70%"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+<div id="mfoToast"></div>
+<script src="faculty-nav.js?v=mfo-5"></script>
+<script src="../shared/system-ui.js"></script>
+<script src="mfo-report.js?v=mfo-official-template-2"></script>
+</body>
+</html>

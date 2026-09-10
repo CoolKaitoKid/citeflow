@@ -1,4 +1,7 @@
 -- =============================================================================
+-- SUPERSEDED by admin/013_mfo_faculty_chairperson_auth_fix.sql for auth/debug
+-- Prefer running 013 (includes faculty MFO ownership + chair queue diagnostics).
+-- =============================================================================
 -- RUN THIS IN THE SAME SUPABASE PROJECT THE APP USES:
 --   https://supabase.com/dashboard/project/uforealazougjckepggc/sql
 -- Project ref must be: uforealazougjckepggc

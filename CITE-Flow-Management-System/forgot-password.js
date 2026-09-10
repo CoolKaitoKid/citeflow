@@ -1,6 +1,6 @@
-// CITE-Flow custom 8-digit forgot-password flow.
-// Browser → Edge Function `forgot-password-otp` (send / verify / reset).
-// Does not use supabase.auth.signInWithOtp() and does not send email itself.
+// CITE-Flow forgot-password flow.
+// Uses Auth email OTP. The Edge Function `forgot-password-otp` is not
+// deployed, so it is not called (a browser fetch would log a CORS 404).
 (() => {
   const supabaseUrl = (typeof window.__SUPABASE_URL__ === 'string' && window.__SUPABASE_URL__)
     ? window.__SUPABASE_URL__
@@ -41,6 +41,8 @@
 
   const EMAIL_KEY = 'citeflow_password_reset_email';
   const TOKEN_KEY = 'citeflow_password_reset_token';
+  const MODE_KEY = 'citeflow_password_reset_mode';
+  const AUTH_SESSION_TOKEN = 'auth-otp-session';
 
   const COPY = {
     email: {
@@ -106,23 +108,39 @@
     sessionStorage.setItem(TOKEN_KEY, token);
   }
 
+  function readResetMode() {
+    return String(sessionStorage.getItem(MODE_KEY) || '');
+  }
+
+  function storeResetMode(mode) {
+    if (!mode) {
+      sessionStorage.removeItem(MODE_KEY);
+      return;
+    }
+    sessionStorage.setItem(MODE_KEY, mode);
+  }
+
   function clearResetState() {
     sessionStorage.removeItem(EMAIL_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(MODE_KEY);
   }
 
   function setAlert(message, kind) {
-    if (!formAlert) return;
     const text = String(message || '').trim();
-    if (!text) {
-      formAlert.style.display = 'none';
-      formAlert.textContent = '';
-      formAlert.className = 'form-alert';
+    if (formAlert) {
+      if (!text) {
+        formAlert.style.display = 'none';
+        formAlert.textContent = '';
+        formAlert.className = 'form-alert';
+        return;
+      }
+      formAlert.className = 'form-alert ' + (kind === 'success' ? 'success' : 'error');
+      formAlert.textContent = text;
+      formAlert.style.display = 'block';
       return;
     }
-    formAlert.className = 'form-alert ' + (kind === 'success' ? 'success' : 'error');
-    formAlert.textContent = text;
-    formAlert.style.display = 'block';
+    if (text) window.alert(text);
   }
 
   function setSuccessBanner(visible) {
@@ -174,6 +192,11 @@
     return 'Something went wrong. Please try again.';
   }
 
+  function isFunctionUnavailable(error) {
+    const code = error && error.code;
+    return code === 'function_unavailable' || code === 'network';
+  }
+
   async function callForgotPassword(payload) {
     const endpoint = `${supabaseUrl}/functions/v1/forgot-password-otp`;
     let response;
@@ -189,7 +212,7 @@
       });
     } catch (_networkError) {
       const err = new Error(friendlyMessage('network'));
-      err.code = 'network';
+      err.code = 'function_unavailable';
       throw err;
     }
 
@@ -204,14 +227,66 @@
       return body;
     }
 
-    const gatewayMissing = body.code === 'NOT_FOUND'
-      || /function was not found/i.test(String(body.message || ''));
+    const gatewayMissing = (response.status === 404 || response.status === 401)
+      && !body.error
+      && (body.code === 'NOT_FOUND' || /function was not found/i.test(String(body.message || '')) || !body.message);
     const code = gatewayMissing
-      ? 'server_error'
+      ? 'function_unavailable'
       : (body.error || (response.status === 429 ? 'rate_limited' : 'server_error'));
     const err = new Error(friendlyMessage(code, gatewayMissing ? '' : body.message));
     err.code = code;
     throw err;
+  }
+
+  function mapAuthOtpError(error) {
+    const raw = String((error && error.message) || '');
+    if (/signups not allowed|user not found|unable to validate email/i.test(raw)) {
+      return Object.assign(new Error(friendlyMessage('not_registered')), { code: 'not_registered' });
+    }
+    if (/rate|too many|security purposes/i.test(raw)) {
+      return Object.assign(new Error(friendlyMessage('rate_limited', raw)), { code: 'rate_limited' });
+    }
+    if (/expired/i.test(raw)) {
+      return Object.assign(new Error(friendlyMessage('expired_otp')), { code: 'expired_otp' });
+    }
+    if (/invalid|token/i.test(raw)) {
+      return Object.assign(new Error(friendlyMessage('invalid_otp', raw)), { code: 'invalid_otp' });
+    }
+    return Object.assign(new Error(raw || friendlyMessage('server_error')), { code: 'server_error' });
+  }
+
+  async function sendViaAuthOtp(email) {
+    if (!supabaseClient) {
+      throw Object.assign(new Error(friendlyMessage('network')), { code: 'network' });
+    }
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false }
+    });
+    if (error) throw mapAuthOtpError(error);
+  }
+
+  async function verifyViaAuthOtp(email, otp) {
+    if (!supabaseClient) {
+      throw Object.assign(new Error(friendlyMessage('network')), { code: 'network' });
+    }
+    const { data, error } = await supabaseClient.auth.verifyOtp({
+      email,
+      token: otp,
+      type: 'email'
+    });
+    if (error) throw mapAuthOtpError(error);
+    if (!data || !data.user) {
+      throw Object.assign(new Error(friendlyMessage('invalid_otp')), { code: 'invalid_otp' });
+    }
+  }
+
+  async function resetViaAuthOtp(password) {
+    if (!supabaseClient) {
+      throw Object.assign(new Error(friendlyMessage('network')), { code: 'network' });
+    }
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    if (error) throw mapAuthOtpError(error);
   }
 
   function passwordMeetsPolicy(password) {
@@ -232,7 +307,8 @@
     setBusy(resendLink, true);
     setAlert('');
     try {
-      await callForgotPassword({ action: 'send', email: normalized });
+      await sendViaAuthOtp(normalized);
+      storeResetMode('auth');
       storeEmail(normalized);
       storeResetToken('');
       if (emailInput) emailInput.value = normalized;
@@ -252,33 +328,43 @@
   async function verifyOtp() {
     const email = readEmail();
     const otp = String((otpInput && otpInput.value) || '').replace(/\D/g, '');
+    const authMode = readResetMode() !== 'edge';
 
     if (!email) {
       setAlert('Please enter your email first.');
       showStep('email');
       return;
     }
-    if (!/^\d{8}$/.test(otp)) {
-      setAlert('Please enter the 8-digit code from your email.');
+    if (authMode ? !/^\d{6,8}$/.test(otp) : !/^\d{8}$/.test(otp)) {
+      setAlert(authMode
+        ? 'Please enter the verification code from your email.'
+        : 'Please enter the 8-digit code from your email.');
       return;
     }
 
     setBusy(verifyBtn, true, 'Verifying...');
     setAlert('');
     try {
-      const result = await callForgotPassword({ action: 'verify', email, otp });
-      const resetToken = String(result.resetToken || '');
-      if (!resetToken) {
-        throw Object.assign(new Error('Password reset failed'), { code: 'invalid_reset' });
+      if (authMode) {
+        await verifyViaAuthOtp(email, otp);
+        storeEmail(email);
+        storeResetToken(AUTH_SESSION_TOKEN);
+      } else {
+        const result = await callForgotPassword({ action: 'verify', email, otp });
+        const resetToken = String(result.resetToken || '');
+        if (!resetToken) {
+          throw Object.assign(new Error('Password reset failed'), { code: 'invalid_reset' });
+        }
+        storeEmail(email);
+        storeResetToken(resetToken);
+        storeResetMode('edge');
       }
-      storeEmail(email);
-      storeResetToken(resetToken);
       if (otpInput) otpInput.value = '';
       if (newPasswordInput) newPasswordInput.value = '';
       if (confirmPasswordInput) confirmPasswordInput.value = '';
       showStep('reset');
     } catch (error) {
-      storeResetToken('');
+      if (!authMode) storeResetToken('');
       setAlert(error && error.message ? error.message : 'Invalid verification code');
       if (error && (error.code === 'expired_otp' || error.code === 'too_many_attempts')) {
         showStep('otp');
@@ -295,7 +381,8 @@
     const newPassword = String((newPasswordInput && newPasswordInput.value) || '');
     const confirmPassword = String((confirmPasswordInput && confirmPasswordInput.value) || '');
 
-    if (!email || !resetToken) {
+    const usingAuthSession = readResetMode() === 'auth' || resetToken === AUTH_SESSION_TOKEN;
+    if (!email || (!resetToken && !usingAuthSession)) {
       setAlert('Please verify the 8-digit code before resetting your password.');
       showStep(email ? 'otp' : 'email');
       return;
@@ -316,12 +403,16 @@
     setBusy(resetBtn, true, 'Resetting...');
     setAlert('');
     try {
-      await callForgotPassword({
-        action: 'reset',
-        email,
-        resetToken,
-        password: newPassword
-      });
+      if (usingAuthSession) {
+        await resetViaAuthOtp(newPassword);
+      } else {
+        await callForgotPassword({
+          action: 'reset',
+          email,
+          resetToken,
+          password: newPassword
+        });
+      }
       clearResetState();
       if (supabaseClient) {
         try {

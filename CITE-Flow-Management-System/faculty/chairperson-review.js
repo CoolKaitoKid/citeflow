@@ -59,15 +59,31 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
     }
 
     function effectiveGrants() {
-        if (review.grants.length) return review.grants;
-        if (review.access && global.currentFaculty) {
-            return [{
-                is_active: true,
-                grantee_faculty_id: global.currentFaculty.id,
-                grantee_auth_user_id: global.currentFaculty.auth_user_id || global.currentUser?.id || null
-            }];
+        return (review.grants || []).filter((grant) => grant && grant.is_active !== false);
+    }
+
+    async function ensureAuthSession() {
+        const client = db();
+        if (!client?.auth?.getSession) return null;
+        if (wf()?.getFreshSession) {
+            try {
+                return await wf().getFreshSession(client);
+            } catch (_) {}
         }
-        return [];
+        const { data: { session }, error } = await client.auth.getSession();
+        if (error || !session?.user) return null;
+        const expiresAt = Number(session.expires_at || 0);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (expiresAt && expiresAt <= nowSec + 15) {
+            if (global.CiteFlowAuth?.refreshSessionShared) {
+                const shared = await global.CiteFlowAuth.refreshSessionShared(client);
+                return shared?.user ? shared : session;
+            }
+            const refreshed = await client.auth.refreshSession();
+            if (refreshed.error || !refreshed.data?.session?.user) return session;
+            return refreshed.data.session;
+        }
+        return session;
     }
 
     function sameDept(target) {
@@ -121,6 +137,16 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             };
         }).filter((row) => {
             if (!review.access) return false;
+            // Nobody reviews their own submission, whatever their grant says.
+            if (isOwnSubmission(row)) return false;
+            // Rows from wf_list_chairperson_submissions() are already scoped by
+            // the database to an active grant, the granted departments, and
+            // tasks that require Chairperson review. Re-filtering them here
+            // would only risk hiding valid work when the browser's copy of the
+            // grants is incomplete, so scope filtering applies to the degraded
+            // fallback path alone.
+            if (review.queueSource === 'rpc') return true;
+
             const helper = wf();
             const target = targetFaculty(row);
             if (helper?.canBrowseAsChairperson) {
@@ -133,11 +159,28 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         });
     }
 
+    /**
+     * A grant covering the chairperson's own department would otherwise put
+     * their own submissions in their review queue.
+     */
+    function isOwnSubmission(row) {
+        const me = global.currentFaculty;
+        if (!me || !row) return false;
+        const mine = [me.id, me.auth_user_id].filter((v) => v !== null && v !== undefined).map(String);
+        return mine.includes(String(row.faculty_id));
+    }
+
     function isPending(row) {
         const helper = wf();
         if (!helper || !review.access) return false;
+        if (isOwnSubmission(row)) return false;
         if (helper.canReviewAsChairperson(row, global.currentFaculty, targetFaculty(row), reviewContext(row.task))) {
             return true;
+        }
+        // Authorization for these rows was already settled by the database, so
+        // what remains is purely a question of stage and status.
+        if (review.queueSource === 'rpc') {
+            return helper.isPendingChairpersonReview(row, row.config, row.task);
         }
         const target = targetFaculty(row);
         const authorized = helper.chairpersonAuthorizedDepartments?.(global.currentFaculty, effectiveGrants()) || [];
@@ -381,34 +424,46 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         if (!v || (review.submissions || []).length) return '';
 
         const version = String(v.sql_patch_version || review.sqlVersion || '').trim();
-        const patched = version === '011-chair-queue' || v.matching_grant_count != null || v.empty_reason != null;
+        const patched = /013-mfo-faculty-chair-auth|011-chair-queue/.test(version)
+            || v.matching_grant_count != null
+            || v.empty_reason != null;
         const grantBlocked = v.has_grant === false;
         const reason = String(v.empty_reason || '');
-        const grantCount = review.grants?.length || 0;
+        const detail = String(v.empty_reason_detail || '');
+        const grantCount = Number.isFinite(Number(v.matching_grant_count))
+            ? Number(v.matching_grant_count)
+            : (review.grants?.length || 0);
 
         let title = 'Chairperson Review cannot load department submissions.';
-        let text = 'New faculty submissions that need Chairperson review will appear here after the live database rules match your grant.';
+        let text = 'Ask an administrator to confirm your Chairperson access for your department, then refresh this page.';
 
         if (!patched) {
-            title = 'This page is not reading the SQL you ran yet.';
-            text = 'Confirm the SQL Editor project is uforealazougjckepggc (Cite-Flow), run the latest admin/FIX-chairperson-queue-NOW.sql, then hard-refresh with Ctrl+F5. A success message in another Supabase project will not update this app.';
+            title = 'Chairperson Review is not fully configured yet.';
+            text = 'Please contact the administrator. Database authorization rules for Chairperson Review still need to be applied.';
+        } else if (reason === 'no_auth') {
+            title = 'Your session is not available for Chairperson Review.';
+            text = detail || 'Please sign in again, then reopen Chairperson Review.';
+        } else if (reason === 'no_faculty_row') {
+            title = 'Your faculty profile could not be resolved.';
+            text = detail || 'Ask the administrator to link your login to a faculty profile.';
         } else if (grantBlocked || reason === 'no_matching_grant') {
-            title = 'Postgres still has no matching Chairperson grant.';
-            text = grantCount
-                ? 'The page can see a grant row, but the database helper is not matching it. Re-grant Ella (faculty id 90) in Workflow Approval → Manage Access for BSIT, run the SQL again, then refresh.'
-                : 'Ask Admin to grant you access in Workflow Approval → Manage Access for BSIT, using faculty id 90, then refresh.';
+            title = 'No active Chairperson grant was found for your account.';
+            text = 'Ask Admin to grant you access in Workflow Approval → Manage Access for your department, then refresh.';
+        } else if (reason === 'empty_authorized_departments') {
+            title = 'Your grant has no usable department scope.';
+            text = detail || 'Ask Admin to set department codes (for example BSIT, BSIE, or BIT) on your grant.';
         } else if (reason === 'no_submissions_in_table' || reason === 'no_in_scope_chair_required_submissions' || reason === 'in_scope_join_returned_zero') {
-            title = 'No department submissions are visible yet.';
-            text = 'The SQL patch is active. If Admin can see BSIT submissions, those rows are still outside Chairperson scope (department join or Chairperson-review flag).';
+            title = 'No department submissions are waiting for Chairperson review.';
+            text = 'When faculty submit reports that require Chairperson review in your authorized department, they will appear here.';
         }
 
-        const debugLine = `patch=${version || 'missing'}; has_grant=${String(v.has_grant)}; is_chair_role=${String(v.is_chair_role)}; grants=${v.matching_grant_count ?? grantCount}; reason=${reason || 'n/a'}`;
+        const debugLine = `patch=${version || 'missing'}; has_grant=${String(v.has_grant)}; is_chair_role=${String(v.is_chair_role)}; grants=${grantCount}; reason=${reason || 'n/a'}${detail ? `; detail=${detail}` : ''}`;
+        console.warn('[Chairperson Review]', debugLine);
 
         return `
             <div class="rounded-[16px] border border-amber-200 bg-amber-50 p-4 mb-4 text-sm text-amber-950">
                 <p class="font-bold">${esc(title)}</p>
                 <p class="mt-1">${esc(text)}</p>
-                <p class="mt-2 text-xs font-mono text-amber-800/80">${esc(debugLine)}</p>
             </div>`;
     }
 
@@ -440,6 +495,35 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             </div>`;
     }
 
+    /**
+     * Link to the structured MFO report itself. The evidence files are not the
+     * report — the report lives in the mfo_* tables and is rendered read-only
+     * by the same official-template renderer the faculty member previews.
+     */
+    function renderMfoLink(row) {
+        if (!isMfoSubmission(row)) return '';
+        return `
+            <div class="mt-2">
+                <a class="file-manage-btn inline-flex" target="_blank" rel="noopener"
+                   href="mfo-report.html?submission=${encodeURIComponent(row.id)}&view=review">
+                    Open completed MFO report
+                </a>
+            </div>`;
+    }
+
+    function isMfoSubmission(row) {
+        // A file carrying MFO packet tags proves a structured MFO exists, which
+        // is stronger evidence than matching words in the task title.
+        const files = Array.isArray(row?.files) ? row.files : [];
+        if (files.some((file) => file?.mfo_packet_id || file?.mfo_section)) return true;
+
+        const blob = [
+            row?.task_title, row?.task?.title, row?.task?.instructions,
+            row?.config?.report_name
+        ].filter(Boolean).join(' ').toLowerCase();
+        return /\bmfo\b|major final output|accomplishment report/.test(blob);
+    }
+
     function renderCard(row) {
         const helper = wf();
         const actionable = isPending(row);
@@ -466,6 +550,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                     <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">${esc(stage)}</span>
                 </div>
                 <p class="text-sm text-slate-500">Submitted ${esc(formatWhen(row.submitted_at))}</p>
+                ${renderMfoLink(row)}
                 <div class="mt-3 space-y-2">${renderFiles(row.files)}</div>
                 <div class="flex flex-wrap gap-2 mt-4">${actions}</div>
             </article>`;
@@ -592,7 +677,23 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             return false;
         }
 
-        review.access = await helper.currentUserHasChairpersonGrant(db(), faculty, user);
+        const session = await ensureAuthSession();
+        if (!session?.user) {
+            console.info('[Chairperson Access Debug] no authenticated session before grant check');
+            review.access = false;
+            review.visibility = {
+                sql_patch_version: review.sqlVersion || null,
+                has_grant: false,
+                is_chair_role: false,
+                matching_grant_count: 0,
+                empty_reason: 'no_auth',
+                empty_reason_detail: 'no authenticated Supabase session'
+            };
+            syncTabs();
+            return false;
+        }
+
+        review.access = await helper.currentUserHasChairpersonGrant(db(), faculty, user || session.user);
         if (!review.access && review.mode === 'chair') {
             review.mode = 'mine';
         }
@@ -613,13 +714,31 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             review.faculty = [];
             review.grants = [];
             review.configs = [];
-            review.visibility = null;
-            review.sqlVersion = null;
+            review.visibility = review.visibility || null;
+            review.sqlVersion = review.sqlVersion || null;
             syncTabs();
             return;
         }
 
         const client = db();
+        const session = await ensureAuthSession();
+        if (!session?.user) {
+            review.submissions = [];
+            review.grants = [];
+            review.visibility = {
+                sql_patch_version: review.sqlVersion || null,
+                has_grant: false,
+                is_chair_role: false,
+                matching_grant_count: 0,
+                empty_reason: 'no_auth',
+                empty_reason_detail: 'no authenticated Supabase session'
+            };
+            review.access = false;
+            review.mode = 'mine';
+            syncTabs();
+            return;
+        }
+
         const [
             facultyRes, tasksRes, grantsRes, configsRes
         ] = await Promise.all([
@@ -629,9 +748,30 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             client.from('wf_report_configs').select('id, report_name, requires_chairperson_review, requires_final_approval')
         ]);
 
-        let submissionsRes = await client.from('wf_submissions').select('*');
+        // The contents of this queue are decided by the database, not the
+        // browser. wf_list_chairperson_submissions() is the authoritative set:
+        // it returns nothing without an active wf_delegated_access grant,
+        // restricts rows to the granted department scope, and includes only
+        // tasks whose wf_report_configs row requires Chairperson review.
+        //
+        // A plain select on wf_submissions cannot drive this queue. Its RLS
+        // policy is `wf_is_final_approver() OR wf_owns_submission() OR
+        // wf_chairperson_can_browse_submission()`, so it also returns the
+        // chairperson's own submissions — which both pollutes the queue and,
+        // because the previous code only consulted the RPC when that select
+        // came back empty, meant the authoritative query never ran for any
+        // chairperson who had ever submitted anything themselves.
+        let submissionsRes = await client.rpc('wf_list_chairperson_submissions');
+        review.queueSource = 'rpc';
+        if (submissionsRes.error) {
+            // Older database without the function deployed. RLS still governs
+            // the rows; the client-side scope filters below remain in force.
+            console.warn('Chairperson queue RPC unavailable, falling back to RLS-filtered select:', submissionsRes.error);
+            submissionsRes = await client.from('wf_submissions').select('*');
+            review.queueSource = 'rls-select';
+        }
 
-        const failed = [facultyRes, tasksRes, submissionsRes, grantsRes, configsRes].find((result) => result.error);
+        const failed = [facultyRes, tasksRes, grantsRes, configsRes].find((result) => result.error);
         if (failed?.error) {
             console.warn('Chairperson Review could not load department data:', failed.error);
         }
@@ -656,18 +796,6 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         });
         console.warn('[Chairperson File Debug] grants:', JSON.stringify(review.grants, null, 2));
 
-        if (!(submissionsRes.data || []).length) {
-            const listed = await client.rpc('wf_list_chairperson_submissions');
-            console.warn('[Chairperson File Debug] RPC submissions:', listed.data);
-            console.warn('[Chairperson File Debug] RPC submissions error:', listed.error);
-            if (listed.error) {
-                console.warn('[Chairperson File Debug] Run admin/FIX-chairperson-queue-NOW.sql if this RPC is missing or still returns [].');
-            }
-            if (!listed.error && Array.isArray(listed.data) && listed.data.length) {
-                submissionsRes = listed;
-            }
-        }
-
         const versionRes = await client.rpc('wf_chairperson_sql_version');
         review.sqlVersion = typeof versionRes.data === 'string'
             ? versionRes.data
@@ -685,6 +813,22 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         }
         console.warn('[Chairperson File Debug] visibility:', JSON.stringify(review.visibility, null, 2));
         console.warn('[Chairperson File Debug] visibility error:', visibilityFallback.error);
+
+        if (review.visibility?.empty_reason === 'no_auth') {
+            review.access = false;
+            review.mode = 'mine';
+            review.submissions = [];
+            syncTabs();
+            return;
+        }
+
+        if (review.visibility && review.visibility.has_grant === false) {
+            review.access = false;
+            review.mode = 'mine';
+            review.submissions = [];
+            syncTabs();
+            return;
+        }
 
         review.submissions = submissionsRes.data || [];
 
@@ -704,9 +848,6 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         console.log('[Chairperson File Debug] files query result:', filesRes.data);
         console.log('[Chairperson File Debug] files query error:', filesRes.error);
         if (filesRes.error) console.warn('[Chairperson File Debug] files query error:', filesRes.error);
-        if (!filesRes.error && submissionIds.length && !(filesRes.data || []).length) {
-            console.warn('[Chairperson File Debug] wf_submission_files returned []. If Admin can preview this same submission, RLS is blocking the Chairperson file SELECT. Run admin/workflow-chairperson-files-rls.sql');
-        }
         review.filesError = filesRes.error || null;
 
         const rawFiles = filesRes.data || [];
@@ -719,13 +860,13 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             review.files.push({ ...file, _resolvedUrl: resolved });
         }
 
-        if (wf() && global.currentFaculty && !wf().hasChairpersonWorkflowAccess(global.currentFaculty, review.grants)) {
-            const rpcOk = await wf().currentUserHasChairpersonGrant(client, global.currentFaculty);
-            review.access = rpcOk;
-            if (!rpcOk) {
-                review.mode = 'mine';
-                review.submissions = [];
-            }
+        const rpcOk = await wf()?.currentUserHasChairpersonGrant?.(client, global.currentFaculty, session.user);
+        if (wf() && global.currentFaculty && review.visibility?.has_grant !== true && !rpcOk) {
+            review.access = false;
+            review.mode = 'mine';
+            review.submissions = [];
+        } else if (rpcOk === true) {
+            review.access = true;
         }
         syncTabs();
     }
@@ -836,6 +977,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             <p class="text-sm text-slate-600 mt-1">${esc(row.faculty_name)} · ${esc((row.department || '—').toUpperCase())}</p>
             <p class="text-sm text-slate-500 mt-2">Submitted ${esc(formatWhen(row.submitted_at))}</p>
             <p class="text-sm text-slate-700 mt-2"><span class="font-semibold">Status:</span> ${esc(stage)}</p>
+            ${renderMfoLink(row)}
             <div class="mt-4">${renderFiles(row.files)}</div>
             ${isPending(row) ? `<div class="flex flex-wrap gap-2 mt-5">
                 <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.closeView(); CiteFlowChairReview.approve('${row.id}')">Approve</button>

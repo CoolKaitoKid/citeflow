@@ -3,25 +3,35 @@
 // ==============================================================================
 
 window.CiteFlowAuth = (function () {
+    const AUTH_CLIENT_OPTIONS = {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+        }
+    };
+
     /**
-     * Get the active Supabase client instance.
+     * Single shared Supabase client for the whole app.
      */
     function getClient() {
         if (window.supabaseClient) {
             return window.supabaseClient;
         }
         if (window.supabase && typeof window.supabase.createClient === 'function' && window.__SUPABASE_URL__ && window.__SUPABASE_ANON__) {
-            window.supabaseClient = window.supabase.createClient(window.__SUPABASE_URL__, window.__SUPABASE_ANON__, {
-                auth: {
-                    persistSession: true,
-                    autoRefreshToken: true,
-                    detectSessionInUrl: true
-                }
-            });
+            window.supabaseClient = window.supabase.createClient(
+                window.__SUPABASE_URL__,
+                window.__SUPABASE_ANON__,
+                AUTH_CLIENT_OPTIONS
+            );
             return window.supabaseClient;
         }
         console.error("CiteFlowAuth: Supabase client is not initialized.");
         return null;
+    }
+
+    function ensureSharedClient() {
+        return getClient();
     }
 
     /**
@@ -369,8 +379,16 @@ window.CiteFlowAuth = (function () {
     }
 
     function isFacultyPortalRole(role, facultyProfile) {
+        // A linked public.faculty row is enough for the faculty portal.
+        if (facultyProfile && facultyProfile.id != null) return true;
         const r = String(role || facultyProfile?.role || facultyProfile?.position || '').toLowerCase();
-        return !r || r === 'faculty' || r.includes('chair');
+        return !r
+            || r === 'faculty'
+            || r.includes('chair')
+            || r === 'dean'
+            || r.includes('secretary')
+            || r === 'admin'
+            || r === 'administrator';
     }
 
     function isAdminPortalRole(role, facultyProfile) {
@@ -394,7 +412,7 @@ window.CiteFlowAuth = (function () {
      * @param {string} password 
      * @returns {Promise<{ user: object, role: string, destination: string }>}
      */
-    async function login(email, password) {
+    async function login(email, password, options = {}) {
         const sb = getClient();
         if (!sb) throw new Error("Authentication service is unavailable. Please try again later.");
 
@@ -406,21 +424,49 @@ window.CiteFlowAuth = (function () {
 
         if (authError) throw authError;
 
-        const user = authData?.user;
+        let user = authData?.user;
+        let session = authData?.session || null;
         if (!user) throw new Error("No user account returned from authentication.");
+
+        // Confirm persisted session before any redirect.
+        if (!session?.user) {
+            const confirmed = await waitForSession({ timeoutMs: 5000 });
+            session = confirmed;
+            user = confirmed?.user || user;
+        }
+        if (!session?.user) {
+            throw new Error("Login succeeded but the session could not be confirmed. Please try again.");
+        }
 
         // Check user role in metadata
         let role = String(user.user_metadata?.role || '').trim().toLowerCase();
 
-        // Check if there is a matching record in the faculty table
-        const { data: facultyProfile, error: facultyError } = await sb
+        // Prefer auth_user_id match; avoid maybeSingle crash on duplicate emails.
+        let facultyProfile = null;
+        const byAuth = await sb
             .from('faculty')
             .select('*')
-            .or(`auth_user_id.eq.${user.id},email.ilike.${cleanEmail}`)
+            .eq('auth_user_id', user.id)
+            .order('id', { ascending: true })
+            .limit(1)
             .maybeSingle();
-
-        if (facultyError && facultyError.code !== 'PGRST116') {
-            console.warn("CiteFlowAuth: Warning fetching faculty profile:", facultyError.message);
+        if (!byAuth.error && byAuth.data) {
+            facultyProfile = byAuth.data;
+        } else {
+            const byEmail = await sb
+                .from('faculty')
+                .select('*')
+                .or(`email.ilike.${cleanEmail},existing_email.ilike.${cleanEmail}`)
+                .order('id', { ascending: true })
+                .limit(5);
+            if (byEmail.error && byEmail.error.code !== 'PGRST116') {
+                console.warn("CiteFlowAuth: Warning fetching faculty profile:", byEmail.error.message);
+            }
+            const rows = byEmail.data || [];
+            facultyProfile = rows.find((row) => String(row.auth_user_id || '') === String(user.id))
+                || rows.find((row) => !row.auth_user_id)
+                || rows[0]
+                || null;
         }
 
         // Helper to resolve relative file paths for both Live Server & Express
@@ -445,7 +491,9 @@ window.CiteFlowAuth = (function () {
                     firstName = parts[0] || 'Administrator';
                     lastName = parts.slice(1).join(' ') || '';
                 }
-                await sb.from('admin_profiles').upsert({
+                // Self-heals an administrator whose row was never created at
+                // registration. Without it wf_is_final_approver() stays false.
+                const { error: adminProfileError } = await sb.from('admin_profiles').upsert({
                     id: user.id,
                     email: user.email,
                     first_name: firstName,
@@ -453,7 +501,16 @@ window.CiteFlowAuth = (function () {
                     role: 'Administrator',
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'id' });
-            } catch (_) {}
+                if (adminProfileError) {
+                    console.error(
+                        'CiteFlowAuth: could not sync the admin_profiles record on login. Workflow writes '
+                        + '(Grant Access, final approval) will be refused by RLS until it exists.',
+                        adminProfileError
+                    );
+                }
+            } catch (e) {
+                console.error('CiteFlowAuth: admin_profiles sync failed on login:', e);
+            }
         } else if (facultyProfile || isFacultyPortalRole(role, facultyProfile)) {
             const facultyRole = facultyProfile?.role || portalRole || 'Faculty';
             cacheUserInfo(user, facultyRole, facultyProfile);
@@ -463,10 +520,16 @@ window.CiteFlowAuth = (function () {
             } else {
                 destination = `${prefix}faculty/dashboard.html`;
             }
+        } else {
+            cacheUserInfo(user, portalRole || 'User', facultyProfile);
+            destination = `${prefix}faculty/dashboard.html`;
         }
+
+        destination = resolvePostLoginDestination(destination, options.next || null);
 
         return {
             user,
+            session,
             role: role || (facultyProfile ? 'Faculty' : 'User'),
             facultyProfile,
             destination
@@ -524,7 +587,10 @@ window.CiteFlowAuth = (function () {
         // 3. Immediately insert newly registered administrator into public.admin_profiles table
         if (authData?.user?.id) {
             try {
-                await sb.from('admin_profiles').upsert({
+                // This row is what wf_is_final_approver() reads, so losing it
+                // silently leaves an administrator unable to grant workflow
+                // access or approve anything. Report the failure loudly.
+                const { error: adminProfileError } = await sb.from('admin_profiles').upsert({
                     id: authData.user.id,
                     first_name: firstName.trim(),
                     last_name: lastName.trim(),
@@ -534,8 +600,15 @@ window.CiteFlowAuth = (function () {
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'id' });
+                if (adminProfileError) {
+                    console.error(
+                        'CiteFlowAuth: could not create the admin_profiles record. This account will not be '
+                        + 'recognised as an administrator until it exists (see admin/018_fix_admin_final_approver.sql).',
+                        adminProfileError
+                    );
+                }
             } catch (e) {
-                console.warn("CiteFlowAuth: Notice creating admin_profiles record during registration:", e);
+                console.error("CiteFlowAuth: failed creating admin_profiles record during registration:", e);
             }
         }
 
@@ -769,17 +842,180 @@ window.CiteFlowAuth = (function () {
     }
 
     /**
+     * Wait until Supabase has restored (or confirmed absence of) a session.
+     * Distinguishes AUTH_INITIALIZING from AUTH_UNAUTHENTICATED.
+     */
+    async function waitForSession(options = {}) {
+        const sb = getClient();
+        if (!sb) return null;
+        const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 8000;
+
+        try {
+            const first = await sb.auth.getSession();
+            if (first?.data?.session?.user) {
+                return first.data.session;
+            }
+        } catch (_) {}
+
+        return new Promise((resolve) => {
+            let settled = false;
+            let subscription = null;
+
+            const finish = (session) => {
+                if (settled) return;
+                settled = true;
+                try { subscription?.unsubscribe?.(); } catch (_) {}
+                resolve(session || null);
+            };
+
+            try {
+                const result = sb.auth.onAuthStateChange((event, session) => {
+                    if (session?.user) {
+                        finish(session);
+                        return;
+                    }
+                    // After storage restore completes with no user, treat as unauthenticated.
+                    if (event === 'INITIAL_SESSION') {
+                        finish(null);
+                    }
+                });
+                subscription = result?.data?.subscription || null;
+            } catch (_) {
+                finish(null);
+                return;
+            }
+
+            // Safety bound only — primary signal is INITIAL_SESSION / getSession.
+            setTimeout(async () => {
+                try {
+                    const again = await sb.auth.getSession();
+                    finish(again?.data?.session || null);
+                } catch (_) {
+                    finish(null);
+                }
+            }, timeoutMs);
+        });
+    }
+
+    /**
+     * Token refresh is shared across the whole page.
+     *
+     * Several modules independently decide the token looks stale — the auth
+     * guard, workflow, the sidebar's chairperson check, and each feature page.
+     * Supabase rotates the refresh token on every use, so two concurrent
+     * refreshes make the second one present an already-consumed token, and a
+     * burst of those trips the endpoint rate limit and returns 429 to
+     * everything on the page.
+     *
+     * So: concurrent callers share one in-flight refresh, and a 429 starts a
+     * cooldown during which we keep using the session we already hold rather
+     * than hammering the endpoint.
+     */
+    const REFRESH_COOLDOWN_MS = 60000;
+    let refreshInFlight = null;
+    let refreshBlockedUntil = 0;
+
+    function isRateLimited(error) {
+        const status = Number(error?.status || error?.statusCode || 0);
+        const message = String(error?.message || '').toLowerCase();
+        return status === 429
+            || message.includes('rate limit')
+            || message.includes('too many requests');
+    }
+
+    async function currentStoredSession(client) {
+        try {
+            const { data } = await client.auth.getSession();
+            return data?.session || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * Refresh the session at most once at a time. Returns the best session
+     * available, which may be the existing one when a refresh is not possible.
+     */
+    async function refreshSessionShared(sb) {
+        const client = sb || getClient();
+        if (!client?.auth?.refreshSession) return null;
+
+        if (Date.now() < refreshBlockedUntil) {
+            return currentStoredSession(client);
+        }
+        if (refreshInFlight) return refreshInFlight;
+
+        refreshInFlight = (async () => {
+            try {
+                const { data, error } = await client.auth.refreshSession();
+                if (error) {
+                    if (isRateLimited(error)) {
+                        refreshBlockedUntil = Date.now() + REFRESH_COOLDOWN_MS;
+                        console.warn('CiteFlowAuth: token refresh is rate limited. Continuing with the session already held.');
+                        return currentStoredSession(client);
+                    }
+                    console.warn('CiteFlowAuth: token refresh failed.', error);
+                    return null;
+                }
+                return data?.session || null;
+            } catch (error) {
+                if (isRateLimited(error)) {
+                    refreshBlockedUntil = Date.now() + REFRESH_COOLDOWN_MS;
+                }
+                console.warn('CiteFlowAuth: token refresh threw.', error);
+                return currentStoredSession(client);
+            } finally {
+                refreshInFlight = null;
+            }
+        })();
+
+        return refreshInFlight;
+    }
+
+    async function getFreshSession(sb) {
+        const client = sb || getClient();
+        if (!client) return null;
+        const waited = await waitForSession({ timeoutMs: 8000 });
+        if (!waited?.user) return null;
+
+        // getSession() already renews an expiring token when autoRefreshToken
+        // is on, so only force a refresh once the token is actually at its end.
+        const expiresAt = Number(waited.expires_at || 0);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (!expiresAt || expiresAt > nowSec + 15) return waited;
+
+        const refreshed = await refreshSessionShared(client);
+        if (refreshed?.user) return refreshed;
+
+        // Keep the session we hold rather than reporting a signed-out user: the
+        // access token may still be accepted, and a real 401 from a query is
+        // already handled by the callers.
+        return waited.user ? waited : null;
+    }
+
+    function isSafeInternalNext(nextPath) {
+        if (!nextPath || typeof nextPath !== 'string') return false;
+        const value = nextPath.trim();
+        if (!value.startsWith('/') && !value.startsWith('./') && !/^[a-z0-9_./?#&=%-]+$/i.test(value)) {
+            return false;
+        }
+        if (value.includes('://') || value.startsWith('//') || value.toLowerCase().includes('javascript:')) {
+            return false;
+        }
+        if (/login\.html|register\.html|forgot\.html/i.test(value)) return false;
+        return true;
+    }
+
+    function resolvePostLoginDestination(defaultDestination, nextPath) {
+        if (isSafeInternalNext(nextPath)) return nextPath;
+        return defaultDestination;
+    }
+
+    /**
      * Get current session and user safely
      */
     async function getSession() {
-        const sb = getClient();
-        if (!sb) return null;
-        try {
-            const { data: { session } } = await sb.auth.getSession();
-            return session;
-        } catch (e) {
-            return null;
-        }
+        return waitForSession({ timeoutMs: 8000 });
     }
 
     return {
@@ -789,6 +1025,12 @@ window.CiteFlowAuth = (function () {
         completeOnboarding,
         logout,
         getSession,
+        waitForSession,
+        getFreshSession,
+        refreshSessionShared,
+        ensureSharedClient,
+        resolvePostLoginDestination,
+        isSafeInternalNext,
         cacheUserInfo,
         getCachedUser,
         getUser: getCachedUser,
@@ -801,6 +1043,7 @@ window.CiteFlowAuth = (function () {
         needsOnboarding,
         isOnboardingComplete,
         isFacultyPortalRole,
-        isAdminPortalRole
+        isAdminPortalRole,
+        AUTH_CLIENT_OPTIONS
     };
 })();

@@ -8,13 +8,14 @@
 
     if (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function') {
         if (!window.supabaseClient) {
-            window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            const options = (window.CiteFlowAuth && window.CiteFlowAuth.AUTH_CLIENT_OPTIONS) || {
                 auth: {
                     persistSession: true,
                     autoRefreshToken: true,
                     detectSessionInUrl: true
                 }
-            });
+            };
+            window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, options);
         }
     }
 })();
