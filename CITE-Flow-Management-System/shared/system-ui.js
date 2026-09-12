@@ -317,6 +317,109 @@
         }
     };
 
+    // Global Flatpickr Integration for ALL date inputs across CiteFlow
+    (function initCiteFlowDatePickers() {
+        if (!document.querySelector('link[href*="flatpickr"]')) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css';
+            document.head.appendChild(link);
+        }
+
+        const style = document.createElement('style');
+        style.textContent = `
+            .flatpickr-calendar {
+                font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+                border-radius: 20px !important;
+                box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.08) !important;
+                border: none !important;
+                padding: 10px !important;
+                z-index: 999999 !important;
+            }
+            .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange,
+            .flatpickr-day.selected:hover, .flatpickr-day.selected:focus {
+                background: #621708 !important;
+                border-color: #621708 !important;
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+            .flatpickr-day.today {
+                border-color: #621708 !important;
+            }
+            .flatpickr-day:hover {
+                background: #f1f5f9 !important;
+            }
+            .flatpickr-months .flatpickr-month {
+                background: transparent !important;
+                color: #0f172a !important;
+                fill: #0f172a !important;
+            }
+            .flatpickr-current-month .flatpickr-monthDropdown-months, 
+            .flatpickr-current-month input.cur-year {
+                font-weight: 700 !important;
+                color: #0f172a !important;
+            }
+            input[data-cite-picker="true"] {
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'/%3E%3C/svg%3E") !important;
+                background-repeat: no-repeat !important;
+                background-position: right 14px center !important;
+                background-size: 18px 18px !important;
+                padding-right: 40px !important;
+                cursor: pointer !important;
+            }
+        `;
+        document.head.appendChild(style);
+
+        function attachFlatpickr() {
+            if (typeof flatpickr !== 'function') return;
+            const dateInputs = document.querySelectorAll('input[type="date"], input[data-cite-picker="true"]');
+            dateInputs.forEach(input => {
+                if (input._flatpickr) return;
+                input.type = 'text';
+                input.setAttribute('data-cite-picker', 'true');
+                input.setAttribute('autocomplete', 'off');
+                input.setAttribute('placeholder', 'YYYY-MM-DD');
+
+                flatpickr(input, {
+                    dateFormat: 'Y-m-d',
+                    allowInput: true,
+                    clickOpens: true,
+                    closeOnSelect: true,
+                    defaultDate: input.value || null,
+                    onChange: function(selectedDates, dateStr, instance) {
+                        input.value = dateStr;
+                        instance.close();
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                });
+            });
+        }
+
+        if (typeof flatpickr === 'function') {
+            attachFlatpickr();
+        } else if (!document.querySelector('script[src*="flatpickr"]')) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/flatpickr';
+            script.onload = () => {
+                attachFlatpickr();
+            };
+            document.head.appendChild(script);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                attachFlatpickr();
+                const observer = new MutationObserver(() => attachFlatpickr());
+                observer.observe(document.body, { childList: true, subtree: true });
+            });
+        } else {
+            attachFlatpickr();
+            const observer = new MutationObserver(() => attachFlatpickr());
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
+    })();
+
     applyTheme();
     migrateLegacyFeedbackNotifications();
 

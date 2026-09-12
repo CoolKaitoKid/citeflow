@@ -14,6 +14,7 @@
     <script src="shared/supabase-config.js"></script>
     <script src="shared/auth.js"></script>
     <script src="shared/auth-guard.js"></script>
+    <script src="shared/system-ui.js"></script>
 
     <style>
         :root {
@@ -1006,7 +1007,9 @@
 
                 // If user has already completed onboarding, redirect to dashboard
                 if (!sessionVerification.needsOnboarding) {
-                    window.location.href = 'faculty/dashboard.html';
+                    const role = String(currentSessionUser?.user_metadata?.role || profile?.role || '').toLowerCase();
+                    const isAdmin = role === 'admin' || role === 'administrator' || Boolean(profile?.admin_access);
+                    window.location.href = isAdmin ? 'admin/dashboard.html' : 'faculty/dashboard.html';
                     return;
                 }
 
@@ -1194,7 +1197,9 @@
                         showAlert('Onboarding complete! Redirecting to your dashboard...', 'success');
 
                         setTimeout(() => {
-                            window.location.href = 'faculty/dashboard.html';
+                            const role = String(currentSessionUser?.user_metadata?.role || position?.value || '').toLowerCase();
+                            const isAdmin = role === 'admin' || role === 'administrator';
+                            window.location.href = isAdmin ? 'admin/dashboard.html' : 'faculty/dashboard.html';
                         }, 1200);
 
                     } catch (err) {

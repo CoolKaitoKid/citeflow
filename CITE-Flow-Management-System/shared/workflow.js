@@ -262,7 +262,7 @@
 
         const grantName = normalizeText(grant.grantee_name);
         const facultyName = normalizeText(faculty.full_name || faculty.name);
-        if (grantName && facultyName && grantName === facultyName) return true;
+        if (grantName && facultyName && (grantName === facultyName || grantName.includes(facultyName) || facultyName.includes(grantName))) return true;
 
         const grantEmail = normalizeText(grant.grantee_email || grant.email);
         const facultyEmail = normalizeText(faculty.email || faculty.existing_email);
@@ -283,6 +283,8 @@
 
     function hasChairpersonWorkflowAccess(faculty, delegatedAccess) {
         if (!faculty) return false;
+        if (isChairperson(faculty)) return true;
+        if (isWorkflowAdmin(faculty)) return true;
         return matchingChairpersonGrants(faculty, delegatedAccess).length > 0;
     }
 
@@ -1061,6 +1063,12 @@
         const session = client ? await getFreshSession(client) : null;
         const authUser = user || session?.user || await getCurrentUser();
         const isChair = isChairperson(faculty);
+        const isAdmin = isWorkflowAdmin(faculty);
+
+        if (isChair || isAdmin) {
+            return true;
+        }
+
         const debug = {
             authUserId: authUser?.id || null,
             authEmail: authUser?.email || null,
@@ -1812,6 +1820,158 @@
             : [assigned, submitted, finalStep, completed];
     }
 
+    // =========================================================================
+    // ACCOMPLISHMENT REPORT WORKFLOW HELPERS
+    // =========================================================================
+
+    const AR_STATUSES = {
+        draft:          { label: 'Draft',           css: 'bg-gray-100 text-gray-700 border-gray-200' },
+        submitted:      { label: 'Submitted',       css: 'bg-blue-50 text-blue-700 border-blue-100' },
+        chair_approved: { label: 'Chair Certified', css: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+        dean_approved:  { label: 'Approved',        css: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+        revision:       { label: 'Revision Requested', css: 'bg-purple-50 text-purple-700 border-purple-100' },
+        rejected:       { label: 'Declined',        css: 'bg-rose-50 text-rose-700 border-rose-100' }
+    };
+
+    function formatAccomplishmentReportStatus(status) {
+        return (AR_STATUSES[status] || AR_STATUSES.draft).label;
+    }
+
+    function getAccomplishmentReportStatusCss(status) {
+        return (AR_STATUSES[status] || AR_STATUSES.draft).css;
+    }
+
+    /**
+     * Check if the actor can review an accomplishment report submission as Chairperson.
+     * Returns true if:
+     *  - Actor is a chairperson with delegated access
+     *  - Report status is 'submitted'
+     *  - Actor's department scope covers the faculty member
+     */
+    function canReviewAccomplishmentAsChair(actor, reportSubmission, targetFaculty, delegatedAccess) {
+        if (!actor || !reportSubmission) return false;
+        if (reportSubmission.status !== 'submitted') return false;
+        if (!hasChairpersonWorkflowAccess(actor, delegatedAccess)) return false;
+        if (targetFaculty && !isInChairpersonScope(actor, targetFaculty, delegatedAccess)) return false;
+        return true;
+    }
+
+    /**
+     * Check if the actor can review an accomplishment report submission as Dean/Admin.
+     * Returns true if:
+     *  - Actor is an admin/dean/college_secretary
+     *  - Report status is 'chair_approved'
+     */
+    function canReviewAccomplishmentAsDean(actor, reportSubmission) {
+        if (!actor || !reportSubmission) return false;
+        if (reportSubmission.status !== 'chair_approved') return false;
+        if (!isWorkflowAdmin(actor) && !isFinalApprover(actor)) return false;
+        return true;
+    }
+
+    /**
+     * Apply a review action to an accomplishment report submission.
+     * @param {object} sb - Supabase client
+     * @param {object} options
+     * @param {number} options.reportId - accomplishment_report_submissions.id
+     * @param {string} options.action - 'approve' | 'revision' | 'reject'
+     * @param {string} options.actorRole - 'chairperson' | 'dean' | 'admin'
+     * @param {string} options.actorName - Display name of reviewer
+     * @param {number} options.actorId - Faculty/admin ID
+     * @param {string} [options.remarks] - Review remarks
+     * @param {number} [options.facultyId] - Target faculty ID (for notification)
+     */
+    async function reviewAccomplishmentReport(sb, options) {
+        const { reportId, action, actorRole, actorName, actorId, remarks, facultyId } = options;
+        if (!reportId || !action || !actorRole) {
+            throw new Error('Missing required review parameters');
+        }
+
+        const isChairRole = actorRole === 'chairperson';
+        const now = new Date().toISOString();
+        let update = { updated_at: now };
+        let notifMessage = '';
+
+        if (isChairRole) {
+            // Chairperson actions
+            if (action === 'approve') {
+                update.status = 'chair_approved';
+                update.chair_reviewed_by = actorName;
+                update.chair_reviewed_by_id = actorId;
+                update.chair_reviewed_at = now;
+                update.chair_remarks = remarks || null;
+                notifMessage = `Your accomplishment report has been certified by Chairperson ${actorName}.`;
+            } else if (action === 'revision') {
+                update.status = 'revision';
+                update.chair_reviewed_by = actorName;
+                update.chair_reviewed_by_id = actorId;
+                update.chair_reviewed_at = now;
+                update.chair_remarks = remarks || 'Please revise and resubmit.';
+                notifMessage = `Your accomplishment report was returned for revision by ${actorName}. Remarks: ${remarks || 'Please revise and resubmit.'}`;
+            } else if (action === 'reject') {
+                update.status = 'rejected';
+                update.chair_reviewed_by = actorName;
+                update.chair_reviewed_by_id = actorId;
+                update.chair_reviewed_at = now;
+                update.chair_remarks = remarks || 'Report declined.';
+                notifMessage = `Your accomplishment report was declined by ${actorName}.`;
+            }
+        } else {
+            // Dean / Admin actions
+            if (action === 'approve') {
+                update.status = 'dean_approved';
+                update.dean_reviewed_by = actorName;
+                update.dean_reviewed_by_id = actorId;
+                update.dean_reviewed_at = now;
+                update.dean_remarks = remarks || null;
+                notifMessage = `Your accomplishment report has been fully approved by ${actorName}.`;
+            } else if (action === 'revision') {
+                update.status = 'revision';
+                update.dean_reviewed_by = actorName;
+                update.dean_reviewed_by_id = actorId;
+                update.dean_reviewed_at = now;
+                update.dean_remarks = remarks || 'Please revise and resubmit.';
+                notifMessage = `Your accomplishment report was returned for revision by ${actorName}. Remarks: ${remarks || 'Please revise and resubmit.'}`;
+            } else if (action === 'reject') {
+                update.status = 'rejected';
+                update.dean_reviewed_by = actorName;
+                update.dean_reviewed_by_id = actorId;
+                update.dean_reviewed_at = now;
+                update.dean_remarks = remarks || 'Report declined.';
+                notifMessage = `Your accomplishment report was declined by ${actorName}.`;
+            }
+        }
+
+        const { error } = await sb
+            .from('accomplishment_report_submissions')
+            .update(update)
+            .eq('id', reportId);
+
+        if (error) throw error;
+
+        // Send notification to the faculty member
+        if (facultyId && notifMessage) {
+            await createWorkflowNotification(sb, {
+                faculty_id: facultyId,
+                type: 'accomplishment_report',
+                title: 'Accomplishment Report Update',
+                message: notifMessage,
+                is_read: false
+            });
+        }
+
+        // Log activity
+        await logActivity(sb, {
+            actor_name: actorName,
+            action: `accomplishment_report_${action}`,
+            target: `Report #${reportId}`,
+            log_type: 'accomplishment_report',
+            details: remarks || `${actorRole} ${action}d accomplishment report`
+        });
+
+        return update;
+    }
+
     const api = {
         VALID_DB_STATUSES,
         APPROVAL_STAGES,
@@ -1888,6 +2048,12 @@
         subscribeWorkflow,
         cleanupWorkflowRealtime,
         buildTimelineSteps,
+        AR_STATUSES,
+        formatAccomplishmentReportStatus,
+        getAccomplishmentReportStatusCss,
+        canReviewAccomplishmentAsChair,
+        canReviewAccomplishmentAsDean,
+        reviewAccomplishmentReport,
         escapeHtml,
         sameDepartment
     };

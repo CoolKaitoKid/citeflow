@@ -525,20 +525,22 @@ async function loadDashboardData() {
     // Fetch all data sources in parallel (workflow + vault documents)
     const [
         facultyList, submissions, wfTasks, vaultDocuments, documents, research,
-        teaching, advisory, adminRoles, activities, engagement, accomplishments
+        teaching, advisory, adminRoles, activities, engagement, accomplishments,
+        extensionProjects
     ] = await Promise.all([
         safeSelect('faculty', 'id, department, status, full_name, first_name, last_name, created_at'),
         safeSelect('wf_submissions', 'id, task_id, faculty_id, status, submitted_at, reviewed_at'),
         safeSelect('wf_tasks', 'id, title, status, category, due_date, created_at'),
         safeSelect('documents', '*'),
-        safeSelect('faculty_documents', 'id, faculty_id, title, document_name, status, category, uploaded_at'),
+        safeSelect('faculty_documents', 'id, faculty_id, title, document_name, status, category, uploaded_at, expiry_date'),
         safeSelect('faculty_research_projects', 'id, faculty_id, title, status, start_date, end_date, created_at'),
         safeSelect('faculty_teaching_loads', 'id, faculty_id, units, status, academic_year, semester, created_at'),
         safeSelect('faculty_advisory_loads', 'id, faculty_id, units, status, created_at'),
         safeSelect('faculty_admin_role_loads', 'id, faculty_id, units, role_title, status, created_at'),
         safeSelect('wf_activity_log', 'id, actor_name, action, target, details, created_at'),
         safeSelect('engagement_logs', 'id, faculty_id, faculty_name, department, activity_type, activity_title, description, created_at'),
-        safeSelect('faculty_accomplishments', 'id, faculty_id, title, accomplishment_type, date_achieved, created_at')
+        safeSelect('faculty_accomplishments', 'id, faculty_id, title, accomplishment_type, date_achieved, created_at'),
+        safeSelect('extension_projects', 'id, faculty_id, project_title, status, beneficiary_count, start_date, end_date, created_at')
     ]);
 
     // Build department lookup map
@@ -583,6 +585,9 @@ async function loadDashboardData() {
     const filteredVaultDocs = department
         ? vaultDocuments.filter(row => row.department === department || !row.department)
         : vaultDocuments;
+    const filteredExtensionProjects = department
+        ? extensionProjects.filter(p => deptFacultyIds.has(p.faculty_id))
+        : extensionProjects;
 
     // ─── Metric Card Calculations ───
 
@@ -634,6 +639,20 @@ async function loadDashboardData() {
         ? `${totalPending} awaiting review`
         : 'No pending reviews';
 
+    // Expiring documents alert (injected near pending card)
+    const expiringAlert = document.getElementById('expiringDocsAlert');
+    if (expiringAlert) expiringAlert.remove();
+    if (expiringCount > 0) {
+        const pendingCard = document.getElementById('pendingDocuments')?.closest('.card, [class*="rounded"]');
+        if (pendingCard) {
+            const alertEl = document.createElement('div');
+            alertEl.id = 'expiringDocsAlert';
+            alertEl.className = 'mt-3 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium flex items-center gap-2';
+            alertEl.innerHTML = `<span class="text-base">⚠</span> ${expiringCount} document${expiringCount > 1 ? 's' : ''} expiring soon`;
+            pendingCard.appendChild(alertEl);
+        }
+    }
+
     // ─── Workload Calculations ───
     const activeTeaching = filteredTeaching.filter(r => String(r.status || 'Active').toLowerCase() !== 'archived');
     const activeAdvisory = filteredAdvisory.filter(r => String(r.status || 'Active').toLowerCase() !== 'archived');
@@ -647,7 +666,17 @@ async function loadDashboardData() {
     const ongoingResearch = filteredResearch.filter(r => String(r.status || '').toLowerCase() === 'ongoing').length;
 
     // ─── Extension / Engagement count ───
-    const extensionServices = filteredEngagement.length + filteredAccomplishments.length;
+    const extensionServices = filteredEngagement.length + filteredAccomplishments.length + filteredExtensionProjects.length;
+
+    // ─── Expiring Documents Alert ───
+    const now = new Date();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const expiringDocs = filteredDocs.filter(d => {
+        if (!d.expiry_date) return false;
+        const exp = new Date(d.expiry_date + 'T00:00:00');
+        return exp.getTime() - now.getTime() <= thirtyDaysMs;
+    });
+    const expiringCount = expiringDocs.length;
 
     // ─── Administrative tasks ───
     const administrativeTasks = activeAdminRoles.length;

@@ -386,6 +386,17 @@ function normalizeStatus(status) {
     return 'Pending';
 }
 
+function normalizeAccomplishmentReportStatus(status) {
+    const value = String(status || '').toLowerCase();
+    if (value === 'dean_approved') return 'Approved';
+    if (value === 'chair_approved') return 'Under Review';
+    if (value === 'submitted') return 'Under Review';
+    if (value === 'revision') return 'Pending';
+    if (value === 'rejected') return 'Pending';
+    if (value === 'draft') return 'Pending';
+    return normalizeStatus(status);
+}
+
 async function safeSelect(table, query = '*') {
     try {
         const { data, error } = await supabaseClient.from(table).select(query);
@@ -500,6 +511,7 @@ async function loadDashboardData() {
 
     const documents = await safeSelect('faculty_documents', '*');
     const requests = await safeSelect('faculty_document_requests', '*');
+    const accomplishmentReports = await safeSelect('accomplishment_report_submissions', '*');
 
     const ownDocuments = facultyId
         ? documents.filter(item => String(item.faculty_id) === String(facultyId))
@@ -508,6 +520,10 @@ async function loadDashboardData() {
     const ownRequests = facultyId
         ? requests.filter(item => String(item.faculty_id) === String(facultyId))
         : requests;
+
+    const ownAccomplishmentReports = facultyId
+        ? accomplishmentReports.filter(item => String(item.faculty_id) === String(facultyId))
+        : accomplishmentReports;
 
     const combined = [
         ...ownDocuments.map(item => ({
@@ -523,7 +539,19 @@ async function loadDashboardData() {
             status: normalizeStatus(item.status || 'Pending'),
             due_date: item.due_date || item.created_at,
             created_at: item.created_at
-        }))
+        })),
+        ...ownAccomplishmentReports.map(item => {
+            const typeLabel = item.report_type === 'online' ? 'Online/WFH' : 'Face-to-Face';
+            return {
+                title: `Accomplishment Report (${typeLabel})`,
+                description: item.period_start && item.period_end
+                    ? `${formatDate(item.period_start)} – ${formatDate(item.period_end)}`
+                    : 'Accomplishment report submission',
+                status: normalizeAccomplishmentReportStatus(item.status),
+                due_date: item.updated_at || item.created_at,
+                created_at: item.created_at
+            };
+        })
     ];
 
     const pending = combined.filter(item => item.status === 'Pending').length;
@@ -598,6 +626,7 @@ function subscribeRealtime() {
         .channel('faculty-dashboard-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_document_requests' }, loadDashboardData)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'accomplishment_report_submissions' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, loadDashboardData)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, async () => {
             await loadFacultyProfile();

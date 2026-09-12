@@ -1,5 +1,6 @@
 // ==============================================================================
-// CITE-Flow Centralized Storage Cipher & Supabase Configuration
+// CITE-Flow Centralized Storage Cipher & Data Protection Engine
+// Automatically and transparently encrypts sensitive items in localStorage & sessionStorage
 // ==============================================================================
 
 (function initCiteFlowStorageCipher() {
@@ -9,6 +10,9 @@
     const PREFIX = 'cf_enc_v2::';
     const INSTITUTIONAL_KEY = 'CTU_CITEFLOW_STORAGE_CIPHER_PROT_KEY_2026_@#!';
 
+    /**
+     * Determines whether a given storage key should be encrypted.
+     */
     function shouldEncryptKey(key) {
         if (!key || typeof key !== 'string') return false;
         const lower = key.toLowerCase();
@@ -23,6 +27,9 @@
         );
     }
 
+    /**
+     * Encrypt a string using dynamic IV + multi-round XOR + S-Box + Base64
+     */
     function encryptValue(str) {
         if (typeof str !== 'string') str = String(str);
         if (!str || str.startsWith(PREFIX)) return str;
@@ -56,6 +63,9 @@
         }
     }
 
+    /**
+     * Decrypt an armored ciphertext string back to original plaintext
+     */
     function decryptValue(str) {
         if (typeof str !== 'string' || !str.startsWith(PREFIX)) {
             return str;
@@ -92,8 +102,11 @@
         }
     }
 
+    // Intercept Storage.prototype methods to transparently protect all access
     const nativeSetItem = Storage.prototype.setItem;
     const nativeGetItem = Storage.prototype.getItem;
+    const nativeRemoveItem = Storage.prototype.removeItem;
+    const nativeClear = Storage.prototype.clear;
 
     Storage.prototype.setItem = function (key, value) {
         if (shouldEncryptKey(key) && value !== null && value !== undefined) {
@@ -112,6 +125,9 @@
         return raw;
     };
 
+    /**
+     * Migrate existing plaintext keys in storage to encrypted format immediately
+     */
     function migrateStorage(storage) {
         if (!storage) return;
         try {
@@ -132,9 +148,11 @@
         } catch (_) {}
     }
 
+    // Run migration on both localStorage and sessionStorage immediately
     migrateStorage(window.localStorage);
     migrateStorage(window.sessionStorage);
 
+    // Export utility helper for manual encryption/decryption if needed
     window.CiteFlowStorageCipher = {
         encrypt: encryptValue,
         decrypt: decryptValue,
@@ -143,25 +161,4 @@
             migrateStorage(window.sessionStorage);
         }
     };
-})();
-
-(function () {
-    const SUPABASE_URL = 'https://uforealazougjckepggc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
-
-    window.__SUPABASE_URL__ = SUPABASE_URL;
-    window.__SUPABASE_ANON__ = SUPABASE_ANON_KEY;
-
-    if (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function') {
-        if (!window.supabaseClient) {
-            const options = (window.CiteFlowAuth && window.CiteFlowAuth.AUTH_CLIENT_OPTIONS) || {
-                auth: {
-                    persistSession: true,
-                    autoRefreshToken: true,
-                    detectSessionInUrl: true
-                }
-            };
-            window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, options);
-        }
-    }
 })();

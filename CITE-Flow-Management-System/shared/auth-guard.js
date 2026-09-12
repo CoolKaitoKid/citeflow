@@ -223,9 +223,9 @@
                 : (Boolean(facultyRecord) || role === 'faculty' || isChair || isDean || isSecretary || isAdminRole);
 
             if (window.CiteFlowAuth?.cacheUserInfo) {
-                const cachedRole = isChair
-                    ? (facultyRecord?.role || facultyRecord?.position || 'Chairperson')
-                    : (isAdminRole ? 'Admin' : (facultyRecord?.role || 'Faculty'));
+                const cachedRole = isAdminRole
+                    ? 'Admin'
+                    : (isChair ? (facultyRecord?.role || facultyRecord?.position || 'Chairperson') : (facultyRecord?.role || 'Faculty'));
                 window.CiteFlowAuth.cacheUserInfo(user, cachedRole, facultyRecord);
             }
 
@@ -278,6 +278,12 @@
                     return;
                 }
             } else if (isFacultyArea) {
+                // Administrators should be sent to the admin dashboard
+                if (isAdminRole) {
+                    window.location.replace(`${prefix}admin/dashboard.html`);
+                    return;
+                }
+
                 // Authenticated session is enough to stay on the faculty portal.
                 // Missing faculty row or non-standard role titles must NOT force login.
                 if (!facultyPortalOk && !isAdminRole && !isDean && !isSecretary && !facultyRecord) {

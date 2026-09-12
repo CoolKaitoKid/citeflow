@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -656,6 +656,114 @@
                             </thead>
                             <tbody id="chairDepartmentTableBody"></tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- =========================================================
+                 ACCOMPLISHMENT REPORT SUBMISSIONS
+                 ========================================================= -->
+            <p class="wf-section-label">Accomplishment Reports</p>
+            <div class="main-surface p-5 mb-6">
+                <div class="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h2 class="text-[15px] font-semibold text-slate-900">Faculty Accomplishment Report Submissions</h2>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Review, certify, and approve accomplishment reports submitted by faculty members.
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <select id="arStatusFilter" onchange="loadAccomplishmentReportSubmissions()" class="field-input text-xs" style="width:auto;">
+                            <option value="pending">Pending My Review</option>
+                            <option value="all">All Submissions</option>
+                            <option value="submitted">Submitted</option>
+                            <option value="chair_approved">Chair Certified</option>
+                            <option value="dean_approved">Approved</option>
+                            <option value="revision">Revision Requested</option>
+                            <option value="rejected">Declined</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table w-full">
+                        <thead>
+                            <tr>
+                                <th class="text-left">Faculty</th>
+                                <th class="text-left">Department</th>
+                                <th class="text-left">Type</th>
+                                <th class="text-left">Period</th>
+                                <th class="text-left">Status</th>
+                                <th class="text-left">Submitted</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="arSubmissionsTableBody">
+                            <tr><td colspan="7" class="text-center" style="padding:24px;color:#9ca3af;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Accomplishment Report Review Modal -->
+            <div id="arReviewModal" class="modal-backdrop" style="z-index:2100;">
+                <div class="modal-panel" style="max-width:720px;margin:0 16px;background:#fff;">
+                    <div class="modal-header flex items-start justify-between gap-4">
+                        <div class="flex-1">
+                            <h2 class="text-base font-semibold text-gray-900 mb-0.5">Review Accomplishment Report</h2>
+                            <p class="text-xs text-gray-500" id="arReviewSubtitle">—</p>
+                        </div>
+                        <button type="button" onclick="closeArReviewModal()" class="text-gray-400 hover:text-gray-600 transition-colors p-1 flex-shrink-0 mt-0.5">
+                            <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="modal-body space-y-4" style="padding:20px 24px;">
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="field-label text-xs mb-0">Report PDF</label>
+                                <a id="arReviewPdfLink" href="#" target="_blank" rel="noopener" class="text-xs text-blue-600 hover:underline">Open PDF in new tab ↗</a>
+                            </div>
+                            <div id="arReviewPdfContainer" class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50" style="height:380px;">
+                                <iframe id="arReviewPdfIframe" style="width:100%;height:100%;border:none;" title="Accomplishment Report PDF"></iframe>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs">
+                            <div>
+                                <span class="text-slate-400 block font-medium">Faculty:</span>
+                                <strong id="arReviewFaculty" class="text-slate-800">—</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-medium">Department:</span>
+                                <strong id="arReviewDept" class="text-slate-800">—</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-medium">Report Type:</span>
+                                <strong id="arReviewType" class="text-slate-800">—</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-medium">Period:</span>
+                                <strong id="arReviewPeriod" class="text-slate-800">—</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-medium">Status:</span>
+                                <strong id="arReviewStatus" class="text-slate-800">—</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-medium">Submitted:</span>
+                                <strong id="arReviewSubmittedAt" class="text-slate-800">—</strong>
+                            </div>
+                        </div>
+                        <div id="arReviewHistoryBlock" class="hidden">
+                            <label class="field-label text-xs mb-1">Review History</label>
+                            <div id="arReviewHistory" class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-xs space-y-2"></div>
+                        </div>
+                        <div>
+                            <label for="arReviewRemarks" class="field-label text-xs">Remarks / Feedback (optional)</label>
+                            <textarea id="arReviewRemarks" rows="2" class="field-input text-xs" placeholder="Add remarks or feedback for the faculty member..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer flex items-center justify-end gap-2" id="arReviewActions" style="padding:16px 24px;">
+                        <!-- Dynamically populated based on user role -->
                     </div>
                 </div>
             </div>
@@ -5669,6 +5777,253 @@ init = async function unifiedInit() {
     }
     await loadWorkflowActor();
     return _wfOriginalInit();
+};
+
+// =========================================================================
+// ACCOMPLISHMENT REPORT APPROVAL FUNCTIONS
+// =========================================================================
+
+let _arSubmissions = [];
+let _arFacultyMap = {};
+let _arCurrentReport = null;
+
+async function loadAccomplishmentReportSubmissions() {
+    const WF = window.CiteFlowWorkflow;
+    if (!WF) return;
+
+    const filterVal = document.getElementById('arStatusFilter')?.value || 'pending';
+    const isChair = WF.isChairperson(currentActorFaculty) && !WF.isWorkflowAdmin(currentActorFaculty);
+    const isAdmin = WF.isWorkflowAdmin(currentActorFaculty) || WF.isFinalApprover(currentActorFaculty);
+
+    // Build query
+    let query = supabaseClient.from('accomplishment_report_submissions').select('*');
+
+    if (filterVal === 'pending') {
+        // Show items pending for the current user's role
+        if (isChair && !isAdmin) {
+            query = query.eq('status', 'submitted');
+        } else if (isAdmin) {
+            query = query.in('status', ['submitted', 'chair_approved']);
+        } else {
+            query = query.in('status', ['submitted', 'chair_approved']);
+        }
+    } else if (filterVal !== 'all') {
+        query = query.eq('status', filterVal);
+    }
+
+    const { data, error } = await query.order('submitted_at', { ascending: false });
+
+    if (error) {
+        console.error('loadAccomplishmentReportSubmissions:', error);
+        return;
+    }
+
+    _arSubmissions = data || [];
+
+    // Load faculty info for each unique faculty_id
+    const facultyIds = [...new Set(_arSubmissions.map(s => s.faculty_id).filter(Boolean))];
+    if (facultyIds.length) {
+        const { data: faculties, error: facError } = await supabaseClient
+            .from('faculty')
+            .select('id, full_name, name, department, email')
+            .in('id', facultyIds);
+        if (facError) console.error('Faculty query error in loadAccomplishmentReportSubmissions:', facError);
+        _arFacultyMap = {};
+        (faculties || []).forEach(f => { _arFacultyMap[f.id] = f; });
+    }
+
+    // Filter by department for chairperson
+    let filtered = _arSubmissions;
+    if (isChair && !isAdmin && filterVal === 'pending') {
+        const deptAccess = WF.chairpersonAuthorizedDepartments(currentActorFaculty, getActorDelegatedAccess());
+        filtered = _arSubmissions.filter(s => {
+            const fac = _arFacultyMap[s.faculty_id];
+            const facDept = WF.normalizeText(fac?.department || s.report_data?.department || '');
+            return deptAccess.length === 0 || deptAccess.includes(facDept);
+        });
+    }
+
+    renderArSubmissionsTable(filtered);
+}
+
+function renderArSubmissionsTable(submissions) {
+    const tbody = document.getElementById('arSubmissionsTableBody');
+    if (!tbody) return;
+
+    const WF = window.CiteFlowWorkflow;
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+    if (!submissions.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="padding:24px;color:#9ca3af;">No accomplishment report submissions found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = submissions.map(s => {
+        const fac = _arFacultyMap[s.faculty_id] || {};
+        const facultyName = fac.full_name || fac.name || s.report_data?.facultyName || 'Unknown';
+        const dept = fac.department || s.report_data?.department || '—';
+        const typeLabel = s.report_type === 'online' ? 'Online/WFH' : 'Face-to-Face';
+        const period = `${fmtDate(s.period_start)} – ${fmtDate(s.period_end)}`;
+        const statusLabel = WF ? WF.formatAccomplishmentReportStatus(s.status) : s.status;
+        const statusCss = WF ? WF.getAccomplishmentReportStatusCss(s.status) : '';
+        const submitted = fmtDate(s.submitted_at);
+
+        return `<tr>
+            <td>${escapeHtml(facultyName)}</td>
+            <td>${escapeHtml(dept)}</td>
+            <td>${typeLabel}</td>
+            <td style="font-size:12px;">${period}</td>
+            <td><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusCss}">${statusLabel}</span></td>
+            <td style="font-size:12px;">${submitted}</td>
+            <td class="text-right">
+                <button onclick="openArReviewModal(${s.id})" class="btn btn-ghost btn-sm">Review</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function openArReviewModal(reportId) {
+    const WF = window.CiteFlowWorkflow;
+    const s = _arSubmissions.find(r => r.id === reportId);
+    if (!s) return alert('Report not found.');
+
+    _arCurrentReport = s;
+    const fac = _arFacultyMap[s.faculty_id] || {};
+    const facultyName = fac.full_name || fac.name || s.report_data?.facultyName || 'Unknown';
+    const dept = fac.department || s.report_data?.department || '—';
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+    // Fill modal details
+    document.getElementById('arReviewSubtitle').textContent = `${facultyName} — ${s.report_type === 'online' ? 'Online/WFH' : 'Face-to-Face'} Report`;
+    document.getElementById('arReviewFaculty').textContent = facultyName;
+    document.getElementById('arReviewDept').textContent = dept;
+    document.getElementById('arReviewType').textContent = s.report_type === 'online' ? 'Online/WFH Teaching-Learning' : 'Face-to-Face Accomplishment';
+    document.getElementById('arReviewPeriod').textContent = `${fmtDate(s.period_start)} – ${fmtDate(s.period_end)}`;
+    document.getElementById('arReviewStatus').textContent = WF ? WF.formatAccomplishmentReportStatus(s.status) : s.status;
+    document.getElementById('arReviewSubmittedAt').textContent = fmtDate(s.submitted_at);
+
+    // PDF preview
+    const pdfUrl = s.report_pdf_url || '';
+    document.getElementById('arReviewPdfIframe').src = pdfUrl;
+    document.getElementById('arReviewPdfLink').href = pdfUrl;
+
+    // Review history
+    const historyBlock = document.getElementById('arReviewHistoryBlock');
+    const historyDiv = document.getElementById('arReviewHistory');
+    let historyHtml = '';
+    if (s.chair_reviewed_by) {
+        historyHtml += `<div class="flex items-start gap-2">
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700">Chair</span>
+            <div><span class="font-medium">${escapeHtml(s.chair_reviewed_by)}</span> — ${fmtDate(s.chair_reviewed_at)}
+            ${s.chair_remarks ? `<br><span class="text-slate-500">"${escapeHtml(s.chair_remarks)}"</span>` : ''}</div>
+        </div>`;
+    }
+    if (s.dean_reviewed_by) {
+        historyHtml += `<div class="flex items-start gap-2">
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700">Dean</span>
+            <div><span class="font-medium">${escapeHtml(s.dean_reviewed_by)}</span> — ${fmtDate(s.dean_reviewed_at)}
+            ${s.dean_remarks ? `<br><span class="text-slate-500">"${escapeHtml(s.dean_remarks)}"</span>` : ''}</div>
+        </div>`;
+    }
+    if (historyHtml) {
+        historyBlock.classList.remove('hidden');
+        historyDiv.innerHTML = historyHtml;
+    } else {
+        historyBlock.classList.add('hidden');
+    }
+
+    // Clear remarks
+    document.getElementById('arReviewRemarks').value = '';
+
+    // Render action buttons based on actor role
+    const actionsDiv = document.getElementById('arReviewActions');
+    const isChair = WF && WF.isChairperson(currentActorFaculty) && !WF.isWorkflowAdmin(currentActorFaculty);
+    const isAdmin = WF && (WF.isWorkflowAdmin(currentActorFaculty) || WF.isFinalApprover(currentActorFaculty));
+
+    let btns = '<button onclick="closeArReviewModal()" class="btn btn-ghost">Close</button>';
+
+    if (s.status === 'submitted' && (isChair || isAdmin)) {
+        btns += `
+            <button onclick="executeArReview('revision')" class="btn" style="background:#f3e8ff;color:#7c3aed;border:1px solid #ddd6fe;">
+                <i class="fa-solid fa-rotate-left" style="font-size:11px;margin-right:4px;"></i> Request Revision
+            </button>
+            <button onclick="executeArReview('approve')" class="btn btn-primary">
+                <i class="fa-solid fa-check" style="font-size:11px;margin-right:4px;"></i> ${isChair ? 'Certify as Chairperson' : 'Approve'}
+            </button>`;
+    } else if (s.status === 'chair_approved' && isAdmin) {
+        btns += `
+            <button onclick="executeArReview('revision')" class="btn" style="background:#f3e8ff;color:#7c3aed;border:1px solid #ddd6fe;">
+                <i class="fa-solid fa-rotate-left" style="font-size:11px;margin-right:4px;"></i> Request Revision
+            </button>
+            <button onclick="executeArReview('approve')" class="btn btn-primary">
+                <i class="fa-solid fa-check" style="font-size:11px;margin-right:4px;"></i> Final Approve
+            </button>`;
+    }
+
+    actionsDiv.innerHTML = btns;
+
+    // Show modal
+    document.getElementById('arReviewModal').classList.add('open');
+    document.getElementById('arReviewModal').style.display = 'flex';
+}
+
+function closeArReviewModal() {
+    document.getElementById('arReviewModal').classList.remove('open');
+    document.getElementById('arReviewModal').style.display = 'none';
+    document.getElementById('arReviewPdfIframe').src = '';
+    _arCurrentReport = null;
+}
+
+async function executeArReview(action) {
+    const WF = window.CiteFlowWorkflow;
+    if (!WF || !_arCurrentReport) return;
+
+    const s = _arCurrentReport;
+    const remarks = document.getElementById('arReviewRemarks').value.trim();
+    const isChair = WF.isChairperson(currentActorFaculty) && !WF.isWorkflowAdmin(currentActorFaculty);
+    const actorRole = isChair ? 'chairperson' : 'admin';
+
+    const actionLabel = action === 'approve'
+        ? (isChair ? 'certify' : 'approve')
+        : action;
+
+    if (!confirm(`Are you sure you want to ${actionLabel} this accomplishment report?`)) return;
+
+    try {
+        await WF.reviewAccomplishmentReport(supabaseClient, {
+            reportId: s.id,
+            action,
+            actorRole,
+            actorName: ADMIN_NAME,
+            actorId: currentActorFaculty?.id,
+            remarks: remarks || null,
+            facultyId: s.faculty_id
+        });
+
+        closeArReviewModal();
+
+        if (typeof showToast === 'function') {
+            showToast(`Report ${actionLabel}d successfully!`, 'success');
+        }
+
+        await loadAccomplishmentReportSubmissions();
+
+    } catch (err) {
+        console.error('executeArReview error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+
+// Load accomplishment report submissions after the workflow page initializes
+const _origLoadWorkflowActor = loadWorkflowActor;
+loadWorkflowActor = async function() {
+    await _origLoadWorkflowActor();
+    // Load AR submissions after actor is loaded
+    try { await loadAccomplishmentReportSubmissions(); } catch(e) { console.error('AR load error:', e); }
 };
 
 </script>

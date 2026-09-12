@@ -441,6 +441,21 @@ window.CiteFlowAuth = (function () {
         // Check user role in metadata
         let role = String(user.user_metadata?.role || '').trim().toLowerCase();
 
+        // Check if user is in admin_profiles
+        let adminProfile = null;
+        try {
+            const adminLookup = await sb
+                .from('admin_profiles')
+                .select('id, role, department')
+                .eq('id', user.id)
+                .maybeSingle();
+            if (!adminLookup.error && adminLookup.data) {
+                adminProfile = adminLookup.data;
+                const admRole = String(adminProfile.role || '').trim().toLowerCase();
+                if (admRole) role = admRole;
+            }
+        } catch (_) {}
+
         // Prefer auth_user_id match; avoid maybeSingle crash on duplicate emails.
         let facultyProfile = null;
         const byAuth = await sb
@@ -476,9 +491,14 @@ window.CiteFlowAuth = (function () {
         // Determine effective role & destination
         let destination = `${prefix}admin/dashboard.html`;
 
-        const portalRole = role || String(facultyProfile?.role || 'Faculty');
+        const isUserAdmin = Boolean(adminProfile)
+            || role === 'admin'
+            || role === 'administrator'
+            || isAdminPortalRole(role, facultyProfile);
 
-        if (isAdminPortalRole(role, facultyProfile) && isOnboardingComplete(facultyProfile, user)) {
+        const portalRole = isUserAdmin ? 'Admin' : (role || String(facultyProfile?.role || 'Faculty'));
+
+        if (isUserAdmin) {
             cacheUserInfo(user, 'Admin', facultyProfile);
             destination = `${prefix}admin/dashboard.html`;
             try {
