@@ -143,6 +143,79 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.4; }
         }
+
+        .compact-select {
+            position: relative;
+        }
+        .compact-select-trigger,
+        .compact-select-panel {
+            display: none;
+        }
+
+        @media (max-width: 767px) {
+            .compact-select-native {
+                position: absolute !important;
+                width: 1px !important;
+                height: 1px !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                overflow: hidden !important;
+                border: 0 !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .compact-select-trigger {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                width: 100%;
+                text-align: left;
+                cursor: pointer;
+            }
+            .compact-select-trigger span {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .compact-select-panel {
+                display: none;
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: calc(100% + 6px);
+                z-index: 80;
+                max-height: 168px;
+                overflow-y: auto;
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 14px;
+                box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+            }
+            .compact-select-panel.open {
+                display: block;
+            }
+            .compact-select-panel.open-up {
+                top: auto;
+                bottom: calc(100% + 6px);
+            }
+            .compact-select-option {
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 8px 12px;
+                font-size: 13px;
+                line-height: 1.3;
+                color: #334155;
+                background: #ffffff;
+                border: 0;
+            }
+            .compact-select-option.active {
+                background: #621708;
+                color: #ffffff;
+            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 overflow-x-hidden min-h-screen">
@@ -449,6 +522,81 @@ function formatDate(value) {
 function getMonthLabel(date) {
     return new Date(date).toLocaleString('en-US', { month: 'short', year: '2-digit' });
 }
+
+/* ─── Compact mobile dropdowns (desktop keeps native select) ─── */
+function closeAllCompactSelects(exceptPanel) {
+    document.querySelectorAll('.compact-select-panel').forEach((panel) => {
+        if (panel !== exceptPanel) panel.classList.remove('open', 'open-up');
+    });
+}
+
+function refreshCompactSelect(select) {
+    const wrap = select.closest('.compact-select');
+    if (!wrap) return;
+    const triggerLabel = wrap.querySelector('.compact-select-trigger span');
+    const panel = wrap.querySelector('.compact-select-panel');
+    const selected = select.selectedOptions[0];
+    if (triggerLabel) triggerLabel.textContent = selected ? selected.textContent : '';
+    if (!panel) return;
+    panel.innerHTML = [...select.options].map((option) => `
+        <button type="button" class="compact-select-option ${option.selected ? 'active' : ''}" data-value="${esc(option.value)}">${esc(option.textContent)}</button>
+    `).join('');
+}
+
+function refreshCompactSelects() {
+    document.querySelectorAll('select.field').forEach(refreshCompactSelect);
+}
+
+function initCompactSelects() {
+    document.querySelectorAll('select.field').forEach((select) => {
+        if (select.dataset.compact === 'true') {
+            refreshCompactSelect(select);
+            return;
+        }
+        select.dataset.compact = 'true';
+        const wrap = document.createElement('div');
+        wrap.className = ['compact-select', ...[...select.classList].filter((c) => c !== 'field')].join(' ');
+        select.parentNode.insertBefore(wrap, select);
+        wrap.appendChild(select);
+        select.classList.add('compact-select-native');
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'compact-select-trigger field text-xs sm:text-sm py-2.5';
+        trigger.innerHTML = '<span></span><i class="fas fa-chevron-down text-slate-400 text-[10px]"></i>';
+
+        const panel = document.createElement('div');
+        panel.className = 'compact-select-panel';
+
+        wrap.appendChild(trigger);
+        wrap.appendChild(panel);
+
+        trigger.addEventListener('click', (event) => {
+            event.preventDefault();
+            const willOpen = !panel.classList.contains('open');
+            closeAllCompactSelects();
+            if (!willOpen) return;
+            const rect = wrap.getBoundingClientRect();
+            panel.classList.toggle('open-up', rect.bottom + 180 > window.innerHeight && rect.top > 180);
+            panel.classList.add('open');
+        });
+
+        panel.addEventListener('click', (event) => {
+            const option = event.target.closest('.compact-select-option');
+            if (!option) return;
+            select.value = option.dataset.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            refreshCompactSelect(select);
+            closeAllCompactSelects();
+        });
+
+        refreshCompactSelect(select);
+    });
+}
+
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('.compact-select')) closeAllCompactSelects();
+});
 
 /* ─── Safe Supabase fetch ─── */
 async function safeSelect(table, query = '*', filters = null) {
@@ -1114,6 +1262,7 @@ function subscribeRealtime() {
    ═══════════════════════════════════════════════════ */
 window.addEventListener('load', async () => {
     try { await loadSidebar(); } catch (error) { console.warn('Dashboard navigation load skipped:', error); }
+    try { initCompactSelects(); } catch (error) { console.warn('Dashboard compact selects skipped:', error); }
     try { await loadAdminProfile(); } catch (error) { console.warn('Dashboard profile load skipped:', error); }
     try { await loadDashboardData(); } catch (error) { console.error('Dashboard data load failed:', error); }
     try { subscribeRealtime(); } catch (error) { console.warn('Dashboard realtime skipped:', error); }

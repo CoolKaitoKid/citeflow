@@ -37,6 +37,127 @@
         .action-download, .action-exported { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
         .action-other { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
         .table-row:hover { background: #f8fafc; }
+
+        /* Calendar Dropdown & Custom Select Styling (Consistent across views) */
+        .cite-select-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            width: 100%;
+        }
+        .cite-select-wrap > select {
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            background-color: #ffffff !important;
+            background-image: none !important;
+            padding-right: 38px !important;
+            cursor: pointer;
+        }
+        .cite-select-chevron {
+            position: absolute !important;
+            right: 12px !important;
+            top: 50% !important;
+            width: 14px !important;
+            height: 14px !important;
+            margin-top: -7px !important;
+            pointer-events: none !important;
+            color: #475569 !important;
+            z-index: 2 !important;
+            display: block !important;
+        }
+    </style>
+    <style id="reports-cal-compact">
+    /* Mobile responsive fixes to keep dropdowns fixed/scrollable without disappearing */
+    select:not([multiple]) {
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    .compact-select { position: relative; display: inline-block; width: 100%; max-width: 100%; }
+    .compact-select-trigger,
+    .compact-select-panel { display: none; }
+    @media (max-width: 767px) {
+        .cite-select-wrap .cite-select-chevron { display: none !important; }
+        .compact-select { width: 100%; display: block; }
+        .compact-select-native {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            overflow: hidden !important;
+            border: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .compact-select-trigger {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            position: relative;
+            padding-right: 40px !important;
+            background-color: #ffffff;
+            color: #0f172a;
+        }
+        .compact-select-trigger::after {
+            content: "";
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            width: 12px;
+            height: 8px;
+            margin-top: -4px;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1h10L6 7z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-size: 12px 8px;
+        }
+        .compact-select-trigger span {
+            min-width: 0;
+            flex: 1;
+            overflow: hidden;
+            text-align: left;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .compact-select-panel {
+            display: none;
+            position: fixed !important;
+            z-index: 100050 !important;
+            max-height: 220px !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+            pointer-events: auto !important;
+        }
+        .compact-select-panel.open { display: block !important; }
+        .compact-select-option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 13px;
+            line-height: 1.3;
+            color: #334155;
+            background: #ffffff;
+            border: 0;
+            cursor: pointer;
+        }
+        .compact-select-option:hover,
+        .compact-select-option:active {
+            background: #f1f5f9;
+        }
+        .compact-select-option.active {
+            background: #621708;
+            color: #ffffff;
+        }
+    }
     </style>
 </head>
 <body class="bg-gray-50 overflow-x-hidden min-h-screen">
@@ -120,7 +241,10 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 flex-1">
                         <div>
                             <label class="text-[11px] font-bold text-slate-500 uppercase">Filter by Module</label>
-                            <select id="module-filter" onchange="applyFilters()" class="field mt-1.5"><option value="">All Modules</option></select>
+                            <div class="cite-select-wrap mt-1.5">
+                                <select id="module-filter" onchange="applyFilters()" class="field"><option value="">All Modules</option></select>
+                                <svg class="cite-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
                         </div>
                         <div>
                             <label class="text-[11px] font-bold text-slate-500 uppercase">From Date</label>
@@ -412,6 +536,9 @@ function populateModuleFilter() {
     const names = [...new Set([...defaultModules, ...allLogs.map(l => l.module).filter(Boolean)])].sort();
     select.innerHTML = '<option value="">All Modules</option>' + names.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
     select.value = current;
+    if (typeof refreshCompactSelect === 'function') {
+        refreshCompactSelect(select);
+    }
 }
 
 function applyFilters() {
@@ -438,6 +565,9 @@ function resetFilters() {
     document.getElementById('from-date').value = '';
     document.getElementById('to-date').value = '';
     document.getElementById('search-reports').value = '';
+    if (typeof refreshCompactSelect === 'function') {
+        refreshCompactSelect(document.getElementById('module-filter'));
+    }
     applyFilters();
 }
 
@@ -714,10 +844,125 @@ async function loadAdminProfile() {
     }
 }
 
+/* Compact Select Handler (Same as Calendar) */
+function closeAllCompactSelects(exceptPanel) {
+    document.querySelectorAll('.compact-select-panel').forEach((panel) => {
+        if (panel === exceptPanel) return;
+        panel.classList.remove('open', 'open-up');
+        panel.style.position = '';
+        panel.style.left = '';
+        panel.style.width = '';
+        panel.style.top = '';
+        panel.style.bottom = '';
+        panel.style.zIndex = '';
+    });
+}
+function positionCompactPanel(panel, wrap) {
+    const rect = wrap.getBoundingClientRect();
+    const openUp = rect.bottom + 230 > window.innerHeight && rect.top > 230;
+    panel.classList.toggle('open-up', openUp);
+    panel.style.position = 'fixed';
+    panel.style.left = `${Math.max(12, rect.left)}px`;
+    panel.style.width = `${Math.max(rect.width, 160)}px`;
+    panel.style.zIndex = '100050';
+    if (openUp) {
+        panel.style.top = 'auto';
+        panel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+    } else {
+        panel.style.top = `${rect.bottom + 6}px`;
+        panel.style.bottom = 'auto';
+    }
+}
+function compactEsc(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
+    }[c]));
+}
+function refreshCompactSelect(select) {
+    if (!select) return;
+    const wrap = select.closest('.compact-select');
+    if (!wrap) return;
+    const trigger = wrap.querySelector('.compact-select-trigger');
+    const triggerLabel = wrap.querySelector('.compact-select-trigger span');
+    const panel = wrap.querySelector('.compact-select-panel');
+    const selected = select.selectedOptions[0];
+    if (trigger) {
+        const copied = [...select.classList].filter((c) =>
+            c !== 'compact-select-native' && c !== 'appearance-none'
+        );
+        trigger.className = ['compact-select-trigger', ...copied].join(' ');
+    }
+    if (triggerLabel) triggerLabel.textContent = selected ? selected.textContent : '';
+    if (!panel) return;
+    panel.innerHTML = [...select.options].filter((option) => !option.hidden).map((option) => `
+        <button type="button" class="compact-select-option ${option.selected ? 'active' : ''}" data-value="${compactEsc(option.value)}">${compactEsc(option.textContent)}</button>
+    `).join('');
+}
+function initCompactSelects() {
+    document.querySelectorAll('select:not([multiple])').forEach((select) => {
+        if (select.closest('.csc-form')) return;
+        if (select.dataset.compact === 'true') {
+            refreshCompactSelect(select);
+            return;
+        }
+        select.dataset.compact = 'true';
+        const wrap = document.createElement('div');
+        wrap.className = 'compact-select';
+        select.parentNode.insertBefore(wrap, select);
+        wrap.appendChild(select);
+        select.classList.add('compact-select-native');
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'compact-select-trigger';
+        trigger.innerHTML = '<span></span>';
+
+        const panel = document.createElement('div');
+        panel.className = 'compact-select-panel';
+
+        wrap.appendChild(trigger);
+        wrap.appendChild(panel);
+
+        trigger.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const willOpen = !panel.classList.contains('open');
+            closeAllCompactSelects();
+            if (!willOpen) return;
+            positionCompactPanel(panel, wrap);
+            panel.classList.add('open');
+        });
+
+        panel.addEventListener('click', (event) => {
+            const option = event.target.closest('.compact-select-option');
+            if (!option) return;
+            select.value = option.dataset.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            refreshCompactSelect(select);
+            closeAllCompactSelects();
+        });
+
+        refreshCompactSelect(select);
+    });
+}
+document.addEventListener('click', (event) => {
+    if (event.target.closest('.compact-select-option')) return;
+    if (event.target.closest('.compact-select-trigger')) return;
+    closeAllCompactSelects();
+});
+document.addEventListener('scroll', () => {
+    const openPanel = document.querySelector('.compact-select-panel.open');
+    if (!openPanel) return;
+    const wrap = openPanel.closest('.compact-select');
+    if (wrap) positionCompactPanel(openPanel, wrap);
+}, true);
+window.addEventListener('resize', () => closeAllCompactSelects());
+
 window.addEventListener('load', async () => {
     if (typeof loadSidebar === 'function') await loadSidebar();
     await loadAdminProfile();
     await loadReports();
+    initCompactSelects();
     subscribeReports();
 });
 </script>
