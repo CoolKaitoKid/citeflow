@@ -43,7 +43,9 @@ function facultyPageMap(pageName) {
         "system-settings": "system-settings.html",
         settings: "system-settings.html",
         "workflow-approval": "submissions.html#chair-review",
-        "chairperson-workflow-approval": "submissions.html#chair-review"
+        "chairperson-workflow-approval": "submissions.html#chair-review",
+        // 👉 Idugang kini nga linya:
+        "help-support": "help-support.html"
     }[key] || `${key}.html`;
 }
 
