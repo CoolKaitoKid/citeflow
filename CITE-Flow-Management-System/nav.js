@@ -33,7 +33,8 @@ function pageMap(pageName) {
         "user-management": "user-management.html",
         "system-settings": "system-settings.html",
         "admin-profile": "admin-profile.html",
-        profile: "admin-profile.html"
+        profile: "admin-profile.html",
+        "help-support": "help-support.html"
     }[key] || `${key}.html`;
 }
 
