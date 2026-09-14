@@ -97,6 +97,83 @@
         return iso >= start && iso <= end ? 'in' : 'out';
     }
 
+    /**
+     * Faculty accomplishments only auto-fill a packet when date_achieved
+     * falls inside that packet's period. Undated and out-of-period rows
+     * stay source records; they are not offered as candidates.
+     */
+    function accomplishmentPeriodFit(row, ctx) {
+        return periodFit(row?.date_achieved, ctx?.period) === 'in' ? 'in' : 'out';
+    }
+
+    function accomplishmentType(row) {
+        return text(row?.accomplishment_type);
+    }
+
+    function isTrainingAccomplishment(row) {
+        return /seminar|training|workshop|conference|webinar/i.test(accomplishmentType(row));
+    }
+
+    function isCertificationAccomplishment(row) {
+        return /cert|licens|accredit|audit/i.test(accomplishmentType(row));
+    }
+
+    function isAwardAccomplishment(row) {
+        return /award|honor|recognition|plaque|medal/i.test(
+            `${accomplishmentType(row)} ${text(row?.title)}`
+        );
+    }
+
+    function isOtherAccomplishment(row) {
+        if (isTrainingAccomplishment(row) || isCertificationAccomplishment(row) || isAwardAccomplishment(row)) {
+            return false;
+        }
+        return /^other$/i.test(accomplishmentType(row));
+    }
+
+    function accomplishmentPhotos(row) {
+        const out = [];
+        const attachments = Array.isArray(row?.photo_attachments) ? row.photo_attachments : [];
+        attachments.forEach((item, index) => {
+            const url = text(item?.photo_url);
+            if (!url) return;
+            const nameFromUrl = url.split('/').pop() || '';
+            out.push({
+                file_url: url,
+                file_name: text(item?.title) || decodeURIComponent(nameFromUrl.split('?')[0]) || `photo-${index + 1}`,
+                mfo_caption: text(item?.title) || text(item?.description),
+                source_ref: `${row?.id}:${index}`
+            });
+        });
+        if (!out.length && text(row?.proof_file_url)) {
+            const url = text(row.proof_file_url);
+            const nameFromUrl = url.split('/').pop() || '';
+            out.push({
+                file_url: url,
+                file_name: decodeURIComponent(nameFromUrl.split('?')[0]) || 'proof',
+                mfo_caption: text(row.title),
+                source_ref: `${row?.id}:proof`
+            });
+        }
+        return out;
+    }
+
+    function hasAccomplishmentPhotos(row) {
+        return accomplishmentPhotos(row).length > 0;
+    }
+
+    function documentationFromAccomplishment(row, sectionCode, recordTable) {
+        return {
+            section_code: sectionCode,
+            title: text(row.title),
+            caption: text(row.title),
+            activity_date: isoDate(row.date_achieved),
+            venue: text(row.venue),
+            narrative: text(row.description),
+            record_table: recordTable
+        };
+    }
+
     /** Teaching-load style period test, which uses academic year and semester text. */
     function termFit(row, period) {
         const wantYear = text(period?.academic_year);
@@ -186,8 +263,8 @@
                 {
                     key: 'accomplishments',
                     table: 'faculty_accomplishments',
-                    fit: (row, ctx) => periodFit(row.date_achieved, ctx.period),
-                    accept: (row) => /cert|licens|accredit|audit/i.test(text(row.accomplishment_type)),
+                    fit: accomplishmentPeriodFit,
+                    accept: isCertificationAccomplishment,
                     build: (row) => ({
                         certification_title: text(row.title),
                         certification_nature: text(row.accomplishment_type),
@@ -227,17 +304,18 @@
             label: 'Trainings, workshops and seminars',
             table: 'mfo_pi7_trainings',
             owner: 'faculty',
-            manualOnly: ['venue', 'sponsoring_agency', 'role'],
+            manualOnly: ['sponsoring_agency', 'role'],
             sources: [
                 {
                     key: 'accomplishments',
                     table: 'faculty_accomplishments',
-                    fit: (row, ctx) => periodFit(row.date_achieved, ctx.period),
-                    accept: (row) => /seminar|training|workshop|conference|webinar/i.test(text(row.accomplishment_type)),
+                    fit: accomplishmentPeriodFit,
+                    accept: isTrainingAccomplishment,
                     build: (row) => ({
                         title: text(row.title),
                         training_type: text(row.accomplishment_type),
                         activity_date: isoDate(row.date_achieved),
+                        venue: text(row.venue),
                         remarks: text(row.description)
                     })
                 },
@@ -443,21 +521,37 @@
             table: 'mfo_other_initiatives',
             owner: 'either',
             manualOnly: ['students_involved', 'student_role', 'faculty_role'],
-            sources: [{
-                key: 'engagement',
-                table: 'engagement_logs',
-                fit: (row, ctx) => periodFit(row.activity_at, ctx.period),
-                accept: (row) => !/^(login|logout|profile|password|system)/i.test(text(row.activity_type)),
-                build: (row, ctx) => ({
-                    activity_title: text(row.activity_title),
-                    category: text(row.activity_type),
-                    description: text(row.description),
-                    activity_date: isoDate(row.activity_at),
-                    venue: text(row.details?.venue) || text(row.details?.location),
-                    sponsoring_agency: text(row.details?.sponsoring_agency) || text(row.details?.agency),
-                    faculty_involved: text(row.faculty_name) || text(ctx.facultyName(row.faculty_id))
-                })
-            }]
+            sources: [
+                {
+                    key: 'accomplishments',
+                    table: 'faculty_accomplishments',
+                    fit: accomplishmentPeriodFit,
+                    accept: isOtherAccomplishment,
+                    build: (row, ctx) => ({
+                        activity_title: text(row.title),
+                        category: text(row.accomplishment_type),
+                        description: text(row.description),
+                        activity_date: isoDate(row.date_achieved),
+                        venue: text(row.venue),
+                        faculty_involved: text(ctx.facultyName(row.faculty_id))
+                    })
+                },
+                {
+                    key: 'engagement',
+                    table: 'engagement_logs',
+                    fit: (row, ctx) => periodFit(row.activity_at, ctx.period),
+                    accept: (row) => !/^(login|logout|profile|password|system)/i.test(text(row.activity_type)),
+                    build: (row, ctx) => ({
+                        activity_title: text(row.activity_title),
+                        category: text(row.activity_type),
+                        description: text(row.description),
+                        activity_date: isoDate(row.activity_at),
+                        venue: text(row.details?.venue) || text(row.details?.location),
+                        sponsoring_agency: text(row.details?.sponsoring_agency) || text(row.details?.agency),
+                        faculty_involved: text(row.faculty_name) || text(ctx.facultyName(row.faculty_id))
+                    })
+                }
+            ]
         },
 
         awards: {
@@ -470,16 +564,78 @@
             sources: [{
                 key: 'accomplishments',
                 table: 'faculty_accomplishments',
-                fit: (row, ctx) => periodFit(row.date_achieved, ctx.period),
-                accept: (row) => /award|honor|recognition|plaque|medal/i.test(
-                    `${text(row.accomplishment_type)} ${text(row.title)}`
-                ),
+                fit: accomplishmentPeriodFit,
+                accept: isAwardAccomplishment,
                 build: (row) => ({
                     award_title: text(row.title),
                     award_type: text(row.accomplishment_type),
                     awarded_at: isoDate(row.date_achieved),
                     remarks: text(row.description)
                 })
+            }]
+        },
+
+        documentation_pi7: {
+            section: 'mfo1_pi7',
+            indicator: 'Documentation · PI7',
+            label: 'Training photo documentation',
+            table: 'mfo_documentation_items',
+            owner: 'faculty',
+            manualOnly: ['activity_time'],
+            sources: [{
+                key: 'accomplishment_photos',
+                table: 'faculty_accomplishments',
+                fit: accomplishmentPeriodFit,
+                accept: (row) => isTrainingAccomplishment(row) && hasAccomplishmentPhotos(row),
+                build: (row) => documentationFromAccomplishment(row, 'mfo1_pi7', 'mfo_pi7_trainings')
+            }]
+        },
+
+        documentation_pi5: {
+            section: 'mfo1_pi5',
+            indicator: 'Documentation · PI5',
+            label: 'Certification photo documentation',
+            table: 'mfo_documentation_items',
+            owner: 'faculty',
+            manualOnly: ['activity_time'],
+            sources: [{
+                key: 'accomplishment_photos',
+                table: 'faculty_accomplishments',
+                fit: accomplishmentPeriodFit,
+                accept: (row) => isCertificationAccomplishment(row) && hasAccomplishmentPhotos(row),
+                build: (row) => documentationFromAccomplishment(row, 'mfo1_pi5', 'mfo_pi5_certifications')
+            }]
+        },
+
+        documentation_awards: {
+            section: 'awards',
+            indicator: 'Documentation · Awards',
+            label: 'Award photo documentation',
+            table: 'mfo_documentation_items',
+            owner: 'either',
+            manualOnly: ['activity_time'],
+            sources: [{
+                key: 'accomplishment_photos',
+                table: 'faculty_accomplishments',
+                fit: accomplishmentPeriodFit,
+                accept: (row) => isAwardAccomplishment(row) && hasAccomplishmentPhotos(row),
+                build: (row) => documentationFromAccomplishment(row, 'awards', 'mfo_awards')
+            }]
+        },
+
+        documentation_other_initiatives: {
+            section: 'other_initiatives',
+            indicator: 'Documentation · Other',
+            label: 'Other initiative photo documentation',
+            table: 'mfo_documentation_items',
+            owner: 'either',
+            manualOnly: ['activity_time'],
+            sources: [{
+                key: 'accomplishment_photos',
+                table: 'faculty_accomplishments',
+                fit: accomplishmentPeriodFit,
+                accept: (row) => isOtherAccomplishment(row) && hasAccomplishmentPhotos(row),
+                build: (row) => documentationFromAccomplishment(row, 'other_initiatives', 'mfo_other_initiatives')
             }]
         },
 
@@ -1005,7 +1161,12 @@
         eventDetails,
         detailSpecFor,
         recordTitle,
+        accomplishmentPhotos,
+        isTrainingAccomplishment,
+        isCertificationAccomplishment,
+        isAwardAccomplishment,
+        isOtherAccomplishment,
         // Exposed for the report and documentation renderers.
-        helpers: { isBlank, text, isoDate, authorsToText, normalizeKey, periodFit, termFit, sourceLabel }
+        helpers: { isBlank, text, isoDate, authorsToText, normalizeKey, periodFit, termFit, sourceLabel, accomplishmentPeriodFit }
     };
 })(typeof window !== 'undefined' ? window : globalThis);

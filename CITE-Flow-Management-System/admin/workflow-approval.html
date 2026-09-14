@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -4323,18 +4323,17 @@ async function generateNextTaskForConfig(configOrId, manual = false) {
     );
 
     if (existing) {
+        if (!manual) return existing;
         try {
             const changed = await applyConfigToExistingRecurringTask(existing, config, period, { notify: true });
-            if (manual) {
-                showToast(
-                    changed
-                        ? `${existing.title} updated. Faculty now see the current requirement and due date.`
-                        : `The next ${period.label} task already exists.`
-                );
-            }
+            showToast(
+                changed
+                    ? `${existing.title} updated. Faculty now see the current requirement and due date.`
+                    : `The next ${period.label} task already exists.`
+            );
         } catch (error) {
             console.error('Recurring task update failed:', error);
-            if (manual) showToast(error.message || 'Unable to update the current recurring task.', 'error');
+            showToast(error.message || 'Unable to update the current recurring task.', 'error');
         }
         return existing;
     }
@@ -5144,11 +5143,11 @@ async function fetchAllData(isRetry) {
         db.from('wf_submission_files').select('*'),
         db.from('wf_notifications').select('*').order('created_at', { ascending: false }).limit(50),
         db.from('wf_activity_log').select('*').order('created_at', { ascending: false }).limit(100),
-        db.from('wf_comments').select('*').order('created_at', { ascending: false }),
+        db.from('wf_comments').select('*').order('created_at', { ascending: false }).limit(200),
         db.from('wf_delegated_access').select('*').eq('is_active', true),
         db.from('wf_report_configs').select('*').order('created_at', { ascending: false }),
         db.from('wf_report_targets').select('*'),
-        db.from('wf_approval_history').select('*').order('created_at', { ascending: false })
+        db.from('wf_approval_history').select('*').order('created_at', { ascending: false }).limit(200)
     ]);
 
     const required = { faculty, tasks, assignments, submissions, files, delegates, reportConfigs };
@@ -5175,7 +5174,7 @@ async function fetchAllData(isRetry) {
     workflowState.assignments = assignments.data || [];
     workflowState.submissions = submissions.data || [];
     workflowState.submissionFiles = files.data || [];
-    workflowState.notifications = await applyAdminNotificationPrefs(notifications.error ? [] : (notifications.data || []));
+    workflowState.notifications = notifications.error ? [] : (notifications.data || []);
     workflowState.activity = activity.data || [];
     workflowState.comments = comments.data || [];
     workflowState.delegatedAccess = delegates.data || [];
@@ -5185,21 +5184,34 @@ async function fetchAllData(isRetry) {
 
     await loadWorkflowActor();
     syncChairpersonWorkbenchChrome();
-
-    renderAll();
-    if (!isChairpersonQueueActor()) {
-        await generateNextReportingTasks();
-    }
-
-    // Refresh local data once after generation so the newly generated task
-    // appears immediately.
-    if (!isChairpersonQueueActor() && (workflowState.reportConfigs || []).length) {
-        const { data: freshTasks } = await db.from('wf_tasks').select('*').order('created_at', { ascending: false });
-        if (freshTasks) workflowState.tasks = freshTasks;
-    }
-
     renderAll();
     refreshOpenReviewModalFiles();
+    if (typeof loadAccomplishmentReportSubmissions === 'function') {
+        loadAccomplishmentReportSubmissions().catch((error) => console.error('AR load error:', error));
+    }
+    if (!isChairpersonQueueActor()) {
+        scheduleBackgroundWorkflowMaintenance();
+    }
+}
+
+let workflowMaintenanceTimer = null;
+function scheduleBackgroundWorkflowMaintenance() {
+    if (workflowMaintenanceTimer) return;
+    workflowMaintenanceTimer = setTimeout(async () => {
+        workflowMaintenanceTimer = null;
+        try {
+            await generateNextReportingTasks();
+            if ((workflowState.reportConfigs || []).length) {
+                const { data: freshTasks } = await db.from('wf_tasks').select('*').order('created_at', { ascending: false });
+                if (freshTasks) {
+                    workflowState.tasks = freshTasks;
+                    renderAll();
+                }
+            }
+        } catch (error) {
+            console.warn('Background workflow maintenance skipped:', error);
+        }
+    }, 0);
 }
 
 function startWorkflowRealtime() {
@@ -6031,12 +6043,6 @@ document.addEventListener('scroll', () => closeAllCompactSelects(), true);
 const _wfOriginalInit = init;
 init = async function unifiedInit() {
     initCompactSelects();
-    const sessionOk = await ensureFreshAuthSession();
-    if (!sessionOk) {
-        await redirectToLoginAfterExpiry();
-        return;
-    }
-    await loadWorkflowActor();
     const result = await _wfOriginalInit();
     initCompactSelects();
     return result;
@@ -6281,13 +6287,7 @@ async function executeArReview(action) {
     }
 }
 
-// Load accomplishment report submissions after the workflow page initializes
-const _origLoadWorkflowActor = loadWorkflowActor;
-loadWorkflowActor = async function() {
-    await _origLoadWorkflowActor();
-    // Load AR submissions after actor is loaded
-    try { await loadAccomplishmentReportSubmissions(); } catch(e) { console.error('AR load error:', e); }
-};
+// AR submissions are loaded once after the first workflow paint, not on every actor refresh.
 
 </script>
 <script src="../shared/system-ui.js"></script>

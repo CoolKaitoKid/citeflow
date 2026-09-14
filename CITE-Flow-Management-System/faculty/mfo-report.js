@@ -210,7 +210,7 @@
             group: 'Other Initiatives / Activities',
             title: 'Other initiatives / activities',
             add: 'Add Initiative',
-            columns: ['activity_title', 'category', 'description', 'activity_date', 'venue', 'sponsoring_agency', 'students_involved', 'student_role', 'faculty_involved', 'faculty_role', 'remarks', 'faculty_id', 'sort_order', 'is_not_applicable'],
+            columns: ['activity_title', 'category', 'description', 'activity_date', 'venue', 'sponsoring_agency', 'students_involved', 'student_role', 'faculty_involved', 'faculty_role', 'remarks', 'source_kind', 'source_table', 'source_id', 'faculty_id', 'sort_order', 'is_not_applicable'],
             fields: [
                 { key: 'activity_title', label: 'Title of activity', type: 'text' },
                 { key: 'category', label: 'Category', type: 'text', placeholder: 'instruction / research / extension' },
@@ -246,7 +246,7 @@
             group: 'Documentation',
             title: 'Supporting documentation (general)',
             add: 'Add Documentation',
-            columns: ['section_code', 'title', 'caption', 'activity_date', 'activity_time', 'venue', 'narrative', 'record_table', 'record_id', 'faculty_id', 'sort_order'],
+            columns: ['section_code', 'title', 'caption', 'activity_date', 'activity_time', 'venue', 'narrative', 'record_table', 'record_id', 'source_kind', 'source_table', 'source_id', 'faculty_id', 'sort_order'],
             fields: [
                 { key: 'section_code', label: 'Documentation group', type: 'select', options: [
                     'documentation_instruction',
@@ -276,8 +276,16 @@
 
     const IMAGE_EXT = /\.(png|jpe?g|webp|gif)$/i;
 
+    function fileIsImage(file) {
+        const name = String(file?.file_name || file?.storage_path || file?.file_url || '');
+        if (IMAGE_EXT.test(name)) return true;
+        if (/^image\//i.test(String(file?.content_type || file?.mime_type || file?.file_type || ''))) return true;
+        return /\/photos\//i.test(String(file?.storage_path || file?.file_path || ''));
+    }
+
     const state = {
         user: null,
+        session: null,
         faculty: null,
         db: null,
         task: null,
@@ -289,11 +297,13 @@
         sectionStatus: {},
         rows: {},
         busy: false,
+        busyLabel: '',
         locked: false,
         reviewOpen: false,
         previewOpen: false,
         configs: [],
         photoModal: null,
+        previewPhotosReady: false,
         lastSaved: null,
         catalog: [],
         taskWarning: '',
@@ -301,12 +311,19 @@
         configError: '',
         chairName: '',
         reviewerMode: false,
+        printingOfficial: false,
+        reviewerActor: null,
         sourceWarning: '',
         sourceErrors: [],
         autoSummary: null
     };
 
     function db() {
+        const shared = global.CiteFlowAuth?.ensureSharedClient?.();
+        if (shared) {
+            state.db = shared;
+            return shared;
+        }
         return state.db || global.supabaseClient || global.CiteFlowWorkflow?.getSupabaseClient?.();
     }
 
@@ -314,6 +331,20 @@
         return String(value ?? '').replace(/[&<>'"]/g, (c) => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
         }[c]));
+    }
+
+    function beginBusy(label) {
+        if (state.busy) return false;
+        state.busy = true;
+        state.busyLabel = label || 'Working…';
+        render();
+        return true;
+    }
+
+    function endBusy() {
+        state.busy = false;
+        state.busyLabel = '';
+        render();
     }
 
     function toast(message, type) {
@@ -346,8 +377,11 @@
         // Checked before the session heuristics below: an authorization failure
         // is not an authentication failure, and telling a signed-in user to
         // sign in again sends them chasing the wrong problem.
-        if (code === '42501' || /row-level security|violates row-level|permission denied|42501/i.test(msg)) {
-            return 'Unable to save or submit the MFO report. Please try again or contact the administrator.';
+        if (code === '42501' || /row-level security|violates row-level|permission denied|42501|AccessDenied/i.test(msg)) {
+            if (/storage|object|bucket|wf-submissions/i.test(msg + String(error?.details || ''))) {
+                return 'Photo upload was blocked by storage permissions. Run migration 027 in the SQL Editor, then reload this page.';
+            }
+            return 'Unable to save or submit the MFO report. If you were just signed in, reload the page. If this continues, sign in again.';
         }
         if (/jwt|expired|session|not authenticated/i.test(msg)) {
             return 'Your session expired. Please sign in again.';
@@ -383,9 +417,69 @@
             }
             const refreshed = await client.auth.refreshSession();
             if (refreshed.error || !refreshed.data?.session?.user) return session;
+            console.info('[AUTH TRACE] AFTER REFRESH', {
+                hasSession: !!refreshed.data.session,
+                hasUser: !!refreshed.data.session?.user,
+                authUserId: refreshed.data.session?.user?.id || null,
+                expiresAt: refreshed.data.session?.expires_at || null
+            });
             return refreshed.data.session;
         }
         return session;
+    }
+
+    async function requireLiveSession() {
+        const client = db();
+        console.info('[AUTH TRACE] BEFORE MFO SESSION CHECK', {
+            hasClient: !!client,
+            guardState: global.CiteFlowAuthGuard?.state || null,
+            guardHasSession: !!global.CiteFlowAuthGuard?.session,
+            guardHasUser: !!global.CiteFlowAuthGuard?.user
+        });
+        const session = await ensureAuthSession();
+        console.info('[AUTH TRACE] AFTER GET SESSION', {
+            hasSession: !!session,
+            hasUser: !!session?.user,
+            authUserId: session?.user?.id || null,
+            expiresAt: session?.expires_at || null
+        });
+        if (session?.user?.id && session?.access_token) {
+            state.user = session.user;
+            state.session = session;
+            return session;
+        }
+        console.error('[MFO] write blocked: no live JWT', await authSnapshot());
+        throw new Error('Your session expired. Please sign in again.');
+    }
+
+    async function logWriteAccess(reason) {
+        try {
+            const snapshot = await authSnapshot();
+            const debug = await db().rpc('mfo_debug_write_access', { p_packet_id: state.packet?.id || null });
+            console.info('[MFO] write-access', reason, {
+                clientAuthUserId: snapshot.authUserId,
+                jwtPresent: snapshot.jwtPresent,
+                debug: debug.data || debug.error
+            });
+        } catch (error) {
+            console.warn('[MFO] write-access log failed', error);
+        }
+    }
+
+    async function linkFacultyAuthIfSafe() {
+        try {
+            const { data, error } = await db().rpc('wf_link_faculty_auth_user_if_safe');
+            if (error) {
+                if (!/could not find the function|PGRST202|42883/i.test(error.message || '')) {
+                    console.warn('[MFO] wf_link_faculty_auth_user_if_safe', error);
+                }
+                return null;
+            }
+            return data || null;
+        } catch (error) {
+            console.warn('[MFO] wf_link_faculty_auth_user_if_safe threw', error);
+            return null;
+        }
     }
 
     function isNumericFacultyId(value) {
@@ -566,12 +660,9 @@
      */
     function mfoApprovalConfig() {
         const config = linkedApprovalConfig();
-        // The MFO workflow requires Chairperson review unless a linked
-        // configuration explicitly disables it. A missing configuration is a
-        // configuration error, never consent to bypass the Chairperson, so the
-        // route still reads as 'chairperson' here and submitPacket() refuses
-        // rather than quietly sending the report to Admin.
-        if (!config) return { requires_chairperson_review: true };
+        // Match wf_task_requires_chairperson(): an unlinked task follows the
+        // database default and enters final approval.
+        if (!config) return { requires_chairperson_review: false };
         if (config.requires_chairperson_review === false) return config;
         return Object.assign({}, config, { requires_chairperson_review: true });
     }
@@ -579,18 +670,6 @@
     function requiresChairpersonReview() {
         return mfoApprovalConfig().requires_chairperson_review !== false;
     }
-
-    /**
-     * True when the task carries no linked wf_report_configs row. The database
-     * decides routing from wf_tasks.report_config_id, so without it the
-     * Chairperson queue can never surface this submission — which makes
-     * submitting it a silent bypass. Blocked instead.
-     */
-    function approvalConfigMissing() {
-        return !linkedApprovalConfig();
-    }
-
-    const CONFIG_ERROR = 'Workflow configuration error: this MFO task is not linked to an MFO report configuration, so the system cannot route it to your Chairperson. Ask an administrator to link the task to a wf_report_configs entry with Chairperson review enabled. Submission is blocked until then — the report will not be sent directly to Admin.';
 
     function mfoApprovalStage() {
         return global.CiteFlowWorkflow.resolveInitialApprovalStage(mfoApprovalConfig(), state.task);
@@ -758,35 +837,164 @@
 
     function filesFor(code, recordId) {
         return (state.files || []).filter((file) => {
-            if (recordId) return String(file.mfo_record_id || '') === String(recordId);
-            return file.mfo_section === code && !file.mfo_record_id;
+            if (recordId) {
+                return String(file.mfo_record_id || '') === String(recordId)
+                    || String(file.mfo_documentation_id || '') === String(recordId);
+            }
+            return file.mfo_section === code && !file.mfo_record_id && !file.mfo_documentation_id;
         });
+    }
+
+    function uniquePhotosForRecord(sectionCode, recordId) {
+        const photos = [];
+        filesFor(sectionCode, recordId)
+            .concat((state.files || []).filter((file) => (
+                String(file.mfo_documentation_id || '') === String(recordId || '')
+                || String(file.mfo_record_id || '') === String(recordId || '')
+            )))
+            .forEach((file) => {
+                if (!fileIsImage(file)) return;
+                if (photos.some((item) => String(item.id) === String(file.id)
+                    || (file.file_url && String(item.file_url || '') === String(file.file_url || '')))) {
+                    return;
+                }
+                photos.push(file);
+            });
+        return photos;
+    }
+
+    function fileDisplaySrc(file) {
+        return String(file?.display_url || file?.file_url || '').trim();
+    }
+
+    /**
+     * wf-submissions is private. Editor thumbs must use a signed URL from
+     * storage_path, not the public file_url (that 404s after refresh).
+     * Accomplishment photos that only have a public faculty-accomplishments
+     * URL still use file_url.
+     */
+    async function resolveFileDisplayUrl(file) {
+        if (!file) return '';
+        const path = String(file.storage_path || file.file_path || '').trim();
+        if (path) {
+            try {
+                const signed = await db().storage.from(BUCKET).createSignedUrl(path, 60 * 60);
+                if (signed.data?.signedUrl) {
+                    file.display_url = signed.data.signedUrl;
+                    return file.display_url;
+                }
+                if (signed.error) console.warn('[MFO] sign photo', signed.error);
+            } catch (error) {
+                console.warn('[MFO] sign photo', error);
+            }
+        }
+        const fallback = String(file.file_url || '').trim();
+        if (fallback) {
+            file.display_url = fallback;
+            return fallback;
+        }
+        return String(file.display_url || '');
+    }
+
+    function blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Could not read the image.'));
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    async function urlToDataUrl(url) {
+        const src = String(url || '').trim();
+        if (!src || src.startsWith('data:')) return src;
+        const response = await fetch(src);
+        if (!response.ok) throw new Error(`Could not read image (${response.status}).`);
+        const dataUrl = await blobToDataUrl(await response.blob());
+        if (!/^data:image\//i.test(dataUrl)) throw new Error('That file is not a readable image.');
+        return dataUrl;
+    }
+
+    async function hydrateFileDisplayUrls(files) {
+        await Promise.all((files || []).map((file) => resolveFileDisplayUrl(file)));
+    }
+
+    async function hydrateEditorPhotoNodes() {
+        const nodes = Array.from(document.querySelectorAll('#mfoApp img[data-storage-path]'));
+        if (!nodes.length) return;
+        await Promise.all(nodes.map(async (img) => {
+            const path = String(img.getAttribute('data-storage-path') || '').trim();
+            if (path) {
+                try {
+                    const signed = await db().storage.from(BUCKET).createSignedUrl(path, 60 * 60);
+                    if (signed.data?.signedUrl) {
+                        img.src = signed.data.signedUrl;
+                        const parent = img.closest('a[href]');
+                        if (parent && (!parent.getAttribute('href') || parent.getAttribute('href') === '#')) {
+                            parent.href = signed.data.signedUrl;
+                        }
+                        return;
+                    }
+                } catch (_) {}
+            }
+            const fallback = String(img.getAttribute('data-file-url') || '').trim();
+            if (fallback) img.src = fallback;
+        }));
+    }
+
+    function photoThumb(file, extraClass) {
+        const src = fileDisplaySrc(file);
+        const path = String(file.storage_path || file.file_path || '').trim();
+        return `
+            <a href="${esc(src || '#')}" target="_blank" rel="noopener" class="${extraClass || 'mfo-photo-thumb'}" title="${esc(file.file_name || '')}">
+                <img src="${esc(src)}"
+                     alt="${esc(file.file_name || 'Documentation photo')}"
+                     loading="lazy"
+                     data-storage-path="${esc(path)}"
+                     data-file-url="${esc(file.file_url || '')}">
+            </a>
+        `;
+    }
+
+    function prepareRenderFallback(error) {
+        const user = state.user || global.CiteFlowAuthGuard?.user || {};
+        const metadata = user.user_metadata || {};
+        state.faculty = state.faculty || {
+            id: null,
+            full_name: metadata.full_name || metadata.name || user.email || 'Faculty',
+            email: user.email || '',
+            department: metadata.department || '',
+            position: metadata.position || metadata.role || 'Faculty',
+            role: metadata.role || 'Faculty'
+        };
+        state.period = state.period || quarterPeriod(manilaNow());
+        state.files = Array.isArray(state.files) ? state.files : [];
+        state.sectionStatus = state.sectionStatus || {};
+        TABLES.forEach((def) => {
+            if (!Array.isArray(state.rows[def.table])) state.rows[def.table] = [];
+        });
+        state.sourceWarning = 'Some report data could not be loaded. The official MFO template remains available; retry loading data before saving.';
+        if (error) console.warn('[MFO] rendering with unavailable packet data:', error);
     }
 
     async function init() {
         const root = document.getElementById('mfoApp');
+        console.info('[AUTH TRACE] MFO PAGE LOAD');
         try {
-            if (typeof global.loadSidebar === 'function') await global.loadSidebar();
             state.db = db();
             if (!state.db) throw new Error('Database client is not available.');
 
             if (global.CiteFlowAuthGuard?.ready) {
                 await global.CiteFlowAuthGuard.ready;
-                if (global.CiteFlowAuthGuard.state === 'AUTH_UNAUTHENTICATED') {
-                    return;
-                }
             }
 
-            const wf = global.CiteFlowWorkflow;
             const session = await ensureAuthSession();
-            state.user = session?.user
-                || global.CiteFlowAuthGuard?.user
-                || await wf.getCurrentUser();
-            if (!state.user) {
-                const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}`);
-                window.location.replace(`../login.html?next=${next}`);
-                return;
+            if (!(session?.user?.id && session?.access_token)) {
+                throw new Error('Your session expired. Please sign in again.');
             }
+            state.user = session.user;
+            if (typeof global.loadSidebar === 'function') await global.loadSidebar();
+            await linkFacultyAuthIfSafe();
 
             // Reviewer route: same renderer, read-only, reading the author's
             // packet instead of the signed-in user's. Access is decided by
@@ -807,18 +1015,8 @@
             render();
         } catch (error) {
             if (root) {
-                const message = friendlyError(error, error.message);
-                const isAuth = /session expired|not authenticated|sign in/i.test(message);
-                root.innerHTML = `
-                    <div class="surface rounded-[16px] p-6">
-                        <div class="cite-kicker">MFO Report</div>
-                        <h1 class="cite-title">${isAuth ? 'Sign in required' : 'Unable to open MFO'}</h1>
-                        <p class="cite-subtitle mt-2">${esc(message)}</p>
-                        <div class="flex flex-wrap gap-2 mt-5">
-                            <a href="submissions.html" class="cite-action inline-flex">Back to Submissions</a>
-                            <button type="button" class="cite-action-primary" onclick="location.reload()">Retry</button>
-                        </div>
-                    </div>`;
+                prepareRenderFallback(error);
+                render();
             }
         }
     }
@@ -834,14 +1032,29 @@
         const client = db();
         state.reviewerMode = true;
 
-        const sub = await client.from('wf_submissions').select('*').eq('id', submissionId).maybeSingle();
+        let sub = await client.from('wf_submissions').select('*').eq('id', submissionId).maybeSingle();
         if (sub.error) throw sub.error;
+        if (!sub.data) {
+            const listed = await client.rpc('wf_list_chairperson_submissions');
+            if (listed.error) throw listed.error;
+            sub = {
+                data: (listed.data || []).find((row) => String(row.id) === String(submissionId)) || null,
+                error: null
+            };
+        }
         if (!sub.data) throw new Error('This submission is not available to your account.');
         state.submission = sub.data;
 
-        const packet = await client.from('mfo_packets').select('*')
+        let packet = await client.from('mfo_packets').select('*')
             .eq('submission_id', submissionId).maybeSingle();
         if (packet.error) throw packet.error;
+        if (!packet.data && state.submission.task_id && state.submission.faculty_id) {
+            packet = await client.from('mfo_packets').select('*')
+                .eq('task_id', state.submission.task_id)
+                .eq('faculty_id', state.submission.faculty_id)
+                .maybeSingle();
+            if (packet.error) throw packet.error;
+        }
         if (!packet.data) throw new Error('No MFO report is attached to this submission.');
         state.packet = packet.data;
 
@@ -874,10 +1087,72 @@
         };
 
         await loadPacketData();
+        // The report still belongs to the author. Resolve the signed-in
+        // reviewer separately so Approve / Revision / Decline can name the
+        // Chairperson without rewriting "Submitted by".
+        try {
+            state.reviewerActor = await resolveMfoFaculty(state.user);
+        } catch (_) {
+            state.reviewerActor = null;
+        }
         // Locked so no editor control can ever write through this route.
         state.locked = true;
         state.previewOpen = true;
         render();
+    }
+
+    function reviewerCanAct() {
+        if (!state.reviewerMode || !state.submission || !state.reviewerActor) return false;
+        const helper = global.CiteFlowWorkflow;
+        if (helper?.isPendingChairpersonReview) {
+            return helper.isPendingChairpersonReview(state.submission, state.config, state.task);
+        }
+        const status = String(state.submission.status || '').toLowerCase();
+        const stage = String(state.submission.approval_stage || '').toLowerCase();
+        return ['submitted', 'late', 'underreview'].includes(status) && stage === 'chairperson';
+    }
+
+    async function reviewerAction(action) {
+        if (!reviewerCanAct() || !global.CiteFlowWorkflow?.applySubmissionReview) return;
+        let comment = '';
+        if (action === 'revision' || action === 'rejected') {
+            comment = String(window.prompt(action === 'revision'
+                ? 'Remarks for revision (required):'
+                : 'Reason for decline (required):') || '').trim();
+            if (!comment) {
+                toast('Remarks are required.', 'error');
+                return;
+            }
+        } else if (!window.confirm('Approve this MFO and send it to Admin final approval?')) {
+            return;
+        }
+        if (!beginBusy(action === 'approved' ? 'Approving…' : action === 'revision' ? 'Sending revision…' : 'Declining…')) return;
+        try {
+            const result = await global.CiteFlowWorkflow.applySubmissionReview(db(), {
+                submissionId: state.submission.id,
+                submission: state.submission,
+                action,
+                comment,
+                actorFaculty: state.reviewerActor,
+                actorUser: state.user,
+                targetFaculty: state.faculty,
+                task: state.task,
+                config: state.config,
+                delegatedAccess: []
+            });
+            if (!result.ok) throw new Error(result.error || 'Review action failed.');
+            toast(action === 'approved'
+                ? 'Chairperson approval recorded. Admin will handle final approval.'
+                : action === 'revision'
+                    ? 'Revision requested. Faculty must revise and resubmit.'
+                    : 'Submission declined. Faculty and Admin can still see this decision.',
+                action === 'rejected' ? 'error' : action === 'revision' ? 'warn' : 'success');
+            window.location.href = 'submissions.html#chair-review';
+        } catch (error) {
+            toast(friendlyError(error, 'Unable to record the review decision.'), 'error');
+        } finally {
+            endBusy();
+        }
     }
 
     async function resolveContext() {
@@ -921,7 +1196,7 @@
 
         if (task) {
             state.task = task;
-            state.config = mfoConfigs.find((cfg) => String(cfg.id) === String(task.report_config_id)) || mfoConfigs[0] || null;
+            state.config = state.configs.find((cfg) => String(cfg.id) === String(task.report_config_id)) || mfoConfigs[0] || null;
             if (!state.config && task.report_config_id) {
                 const one = await client.from('wf_report_configs').select('*').eq('id', task.report_config_id).maybeSingle();
                 state.config = one.data || null;
@@ -964,8 +1239,7 @@
             await createFallbackTask();
         }
 
-        // Named up front rather than discovered at submit time.
-        state.configError = (state.task && approvalConfigMissing()) ? CONFIG_ERROR : '';
+        state.configError = '';
     }
 
     const NO_TASK_WARNING = 'No MFO task is assigned for this period. You can still save a draft. Ask an administrator to create a quarterly MFO report before submitting.';
@@ -1086,16 +1360,11 @@
         const task = state.task;
         const period = state.period;
 
-        let session = await ensureAuthSession();
-        if (!session?.user) {
-            // Second opinion straight from storage: a failed refresh must not
-            // be reported as a signed-out user while a usable session is held.
-            session = (await client.auth.getSession())?.data?.session || null;
-        }
-        if (!session?.user) {
-            console.error('[MFO] no session before packet write', await authSnapshot());
-            throw new Error('Not authenticated');
-        }
+        // Same recovery as every other write: adopt AuthGuard tokens onto
+        // the shared client before mfo_packets INSERT. A bare getSession()
+        // here used to throw "Not authenticated" while the page was already
+        // past requireLiveSession().
+        await requireLiveSession();
 
         if (task?.id) {
             const existingSub = await client
@@ -1144,6 +1413,18 @@
                 p_submission_id: state.submission?.id || null
             };
 
+            const rpcSession = (await client.auth.getSession())?.data?.session || null;
+            console.info('[MFO] packet RPC auth state', {
+                hasSession: !!rpcSession,
+                hasUser: !!rpcSession?.user,
+                jwtPresent: !!rpcSession?.access_token,
+                authUserId: rpcSession?.user?.id || null,
+                expiresAt: rpcSession?.expires_at || null,
+                facultyId
+            });
+            if (!rpcSession?.user?.id || !rpcSession?.access_token) {
+                throw new Error('Your session expired. Please sign in again.');
+            }
             let created = await client.rpc('mfo_ensure_faculty_packet', rpcPayload);
             if (created.error && /could not find|PGRST202|function|schema cache/i.test(created.error.message || '')) {
                 console.warn('[MFO] mfo_ensure_faculty_packet RPC missing — falling back to owned insert');
@@ -1256,6 +1537,9 @@
                 const copy = { ...row };
                 if (def.table === 'mfo_pi8_instructional_materials') copy.authors_text = authorsToText(row.authors);
                 if (def.table === 'mfo_documentation_items') Object.assign(copy, unpackDocDetails(row));
+                (def.fields || []).forEach((field) => {
+                    if (field.type === 'checkbox') copy[field.key] = !!copy[field.key];
+                });
                 return copy;
             });
         }));
@@ -1275,7 +1559,9 @@
         } else {
             files = await client.from('wf_submission_files').select('*').eq('mfo_packet_id', packetId);
         }
+        if (files.error) console.warn('[MFO] evidence files', files.error);
         state.files = files.data || [];
+        await hydrateFileDisplayUrls(state.files);
     }
 
     function sourcesApi() {
@@ -1332,6 +1618,7 @@
         let filled = 0;
 
         TABLES.forEach((def) => {
+            if (def.table === 'mfo_documentation_items') return;
             const forSection = candidates[def.code];
             if (!forSection || !forSection.length) return;
             if (state.sectionStatus[def.code]?.is_not_applicable) return;
@@ -1348,12 +1635,132 @@
             }
         });
 
+        const docDef = TABLES.find((item) => item.table === 'mfo_documentation_items');
+        const docCandidates = Object.values(candidates || {})
+            .flat()
+            .filter((item) => item && item.table === 'mfo_documentation_items');
+        if (docDef && docCandidates.length && !state.sectionStatus[docDef.code]?.is_not_applicable) {
+            try {
+                const result = api.mergeCandidates(state.rows.mfo_documentation_items || [], docCandidates, {
+                    newRow: () => Object.assign(emptyRow(docDef), { faculty_id: state.faculty.id }),
+                    refreshSystemValues: true
+                });
+                state.rows.mfo_documentation_items = result.rows;
+                added += result.added;
+                filled += result.filled;
+            } catch (error) {
+                console.warn('[MFO] merge failed for mfo_documentation_items', error);
+            }
+        }
+
+        state.sourceAccomplishments = loaded.rows.faculty_accomplishments || [];
+        linkDocumentationToMappedRows();
+        attachReferencedAccomplishmentPhotos(loaded);
         state.autoSummary = { added, filled };
+    }
+
+    function linkDocumentationToMappedRows() {
+        (state.rows.mfo_documentation_items || []).forEach((doc) => {
+            if (textValue(doc.source_table) !== 'faculty_accomplishments' || !doc.source_id) return;
+            const table = textValue(doc.record_table);
+            if (!table || !state.rows[table]) return;
+            const match = state.rows[table].find((row) => (
+                textValue(row.source_table) === 'faculty_accomplishments'
+                && String(row.source_id) === String(doc.source_id)
+            ));
+            if (match && isUuid(match.id)) doc.record_id = match.id;
+        });
+    }
+
+    function fileAlreadyLinked(fileUrl, docId) {
+        return (state.files || []).some((file) => (
+            String(file.file_url || '') === String(fileUrl || '')
+            && (
+                String(file.mfo_documentation_id || '') === String(docId || '')
+                || String(file.mfo_record_id || '') === String(docId || '')
+            )
+        ));
+    }
+
+    /**
+     * Point MFO documentation at the original faculty-accomplishments public
+     * URLs. The file is not copied into wf-submissions.
+     */
+    function attachReferencedAccomplishmentPhotos(loaded) {
+        const api = sourcesApi();
+        if (!api?.accomplishmentPhotos) return;
+        const byId = new Map(
+            (loaded?.rows?.faculty_accomplishments || []).map((row) => [String(row.id), row])
+        );
+        state.files = state.files || [];
+        (state.rows.mfo_documentation_items || []).forEach((doc) => {
+            if (textValue(doc.source_table) !== 'faculty_accomplishments' || !doc.source_id) return;
+            const source = byId.get(String(doc.source_id));
+            if (!source) return;
+            api.accomplishmentPhotos(source).forEach((ref) => {
+                if (fileAlreadyLinked(ref.file_url, doc.id)) return;
+                state.files.push({
+                    id: `ref-${ref.source_ref}`,
+                    file_url: ref.file_url,
+                    file_name: ref.file_name,
+                    mfo_caption: ref.mfo_caption || '',
+                    mfo_section: doc.section_code,
+                    mfo_record_id: doc.id,
+                    mfo_documentation_id: isUuid(doc.id) ? doc.id : null,
+                    mfo_packet_id: state.packet?.id || null,
+                    storage_path: '',
+                    file_path: '',
+                    referenced_from: 'faculty_accomplishments',
+                    source_ref: ref.source_ref
+                });
+            });
+        });
+    }
+
+    function textValue(value) {
+        return String(value || '').trim();
+    }
+
+    async function persistReferencedEvidence() {
+        if (state.locked) return;
+        const api = sourcesApi();
+        if (!api?.accomplishmentPhotos) return;
+        if (!state.submission?.id) await ensurePacket();
+        if (!state.submission?.id) return;
+
+        const byId = new Map(
+            (state.sourceAccomplishments || []).map((row) => [String(row.id), row])
+        );
+
+        for (const doc of (state.rows.mfo_documentation_items || [])) {
+            if (!isUuid(doc.id) || textValue(doc.source_table) !== 'faculty_accomplishments') continue;
+            const source = byId.get(String(doc.source_id));
+            if (!source) continue;
+            for (const ref of api.accomplishmentPhotos(source)) {
+                if (fileAlreadyLinked(ref.file_url, doc.id)) continue;
+                try {
+                    await insertEvidenceFile({
+                        submission_id: state.submission.id,
+                        file_name: ref.file_name,
+                        file_url: ref.file_url,
+                        storage_path: '',
+                        file_path: '',
+                        mfo_section: doc.section_code,
+                        mfo_record_id: doc.id,
+                        mfo_documentation_id: doc.id,
+                        mfo_packet_id: state.packet?.id || null,
+                        mfo_caption: ref.mfo_caption || null
+                    });
+                } catch (error) {
+                    console.warn('[MFO] referenced accomplishment photo was not linked', error);
+                }
+            }
+        }
     }
 
     function updateRow(table, index, key, input) {
         const row = state.rows[table]?.[index];
-        if (!row || state.locked) return;
+        if (!row || state.locked || state.busy) return;
         row[key] = input.type === 'checkbox' ? input.checked : input.value;
         // Record that this value was typed by the user so no later automatic
         // refresh can replace it.
@@ -1362,10 +1769,28 @@
             const preview = document.getElementById(`manhours-${index}`);
             if (preview) preview.textContent = manhoursPreview(row);
         }
+        if (input.type === 'checkbox') persistCheckboxField(table);
+    }
+
+    /**
+     * Checkboxes must survive refresh without waiting for Save Draft.
+     * Same write path as a draft save for that table only — no extra table.
+     */
+    async function persistCheckboxField(table) {
+        if (!state.packet?.id || state.locked || state.busy) return;
+        const def = TABLES.find((item) => item.table === table);
+        if (!def) return;
+        try {
+            await requireLiveSession();
+            await saveTable(def);
+            state.lastSaved = new Date().toISOString();
+        } catch (error) {
+            toast(friendlyError(error, 'Unable to save that change.'), 'error');
+        }
     }
 
     function addRow(table) {
-        if (state.locked) return;
+        if (state.locked || state.busy) return;
         const def = TABLES.find((item) => item.table === table);
         if (!def) return;
         state.rows[table] = state.rows[table] || [];
@@ -1374,7 +1799,7 @@
     }
 
     function removeRow(table, index) {
-        if (state.locked) return;
+        if (state.locked || state.busy) return;
         state.rows[table].splice(index, 1);
         render();
     }
@@ -1382,16 +1807,80 @@
     function setSectionNa(code, checked) {
         if (state.locked) return;
         const current = state.sectionStatus[code] || { section_code: code };
-        current.is_not_applicable = checked;
-        current.completeness = checked ? 'not_applicable' : ((state.rows[TABLES.find((d) => d.code === code)?.table] || []).length ? 'draft' : 'empty');
+        current.is_not_applicable = !!checked;
+        current.completeness = current.is_not_applicable
+            ? 'not_applicable'
+            : ((state.rows[TABLES.find((d) => d.code === code)?.table] || []).length ? 'draft' : 'empty');
         state.sectionStatus[code] = current;
+        const y = window.scrollY;
+        render();
+        window.scrollTo({ top: y, behavior: 'auto' });
+        persistSectionNa(code);
+    }
+
+    function updateNotes(input) {
+        if (!state.packet || state.locked || state.busy) return;
+        state.packet.notes = input.value;
+        scheduleNotesSave();
+    }
+
+    let notesSaveTimer = null;
+    function scheduleNotesSave() {
+        if (notesSaveTimer) clearTimeout(notesSaveTimer);
+        notesSaveTimer = setTimeout(() => {
+            persistNotes().catch((error) => {
+                toast(friendlyError(error, 'Unable to save additional details.'), 'error');
+            });
+        }, 500);
+    }
+
+    async function persistNotes() {
+        if (!state.packet?.id || state.locked || state.busy) return;
+        try {
+            await requireLiveSession();
+            await updatePacket({ notes: state.packet.notes || null });
+            state.lastSaved = new Date().toISOString();
+        } catch (error) {
+            toast(friendlyError(error, 'Unable to save additional details.'), 'error');
+        }
+    }
+
+    function updateOfficialCell(table, index, key, input) {
+        updateRow(table, index, key, input);
+        if (table === 'mfo_documentation_items' && key === 'title') {
+            const row = state.rows[table]?.[index];
+            if (row) row.caption = row.title;
+        }
+    }
+
+    function persistOfficialTable(table) {
+        persistCheckboxField(table);
+    }
+
+    async function persistSectionNa(code) {
+        if (!state.packet?.id || state.locked) return;
+        try {
+            await requireLiveSession();
+            await saveOneSectionStatus(code);
+        } catch (error) {
+            toast(friendlyError(error, 'Unable to save the Not Applicable setting.'), 'error');
+        }
     }
 
     function payloadFromRow(def, row, index) {
+        const packetId = state.packet?.id;
+        const facultyId = Number(state.faculty?.id);
+        if (!packetId) {
+            throw new Error('Unable to save MFO rows because the packet id is missing.');
+        }
+        if (!Number.isFinite(facultyId)) {
+            throw new Error('Unable to save MFO rows because faculty.id is not numeric.');
+        }
         const payload = {
-            packet_id: state.packet.id,
-            faculty_id: state.faculty.id,
+            packet_id: packetId,
+            faculty_id: facultyId,
             sort_order: index,
+            is_not_applicable: !!row.is_not_applicable,
             field_sources: sourcesApi()?.fieldSources(row) || {}
         };
         def.columns.forEach((key) => {
@@ -1412,6 +1901,8 @@
             }
             if (value === '' || value === undefined) value = null;
             if (key === 'has_moa') value = !!row.has_moa;
+            if (key === 'is_not_applicable') value = !!row.is_not_applicable;
+            if (key === 'faculty_id') value = facultyId;
             payload[key] = value;
         });
         if (def.table === 'mfo_extension_trainings' && !payload.manhours_formula) {
@@ -1427,8 +1918,8 @@
      */
     const OPTIONAL_COLUMNS = [
         'field_sources', 'title', 'venue', 'activity_time', 'record_table', 'record_id',
-        // Migration 019 (e-signature).
-        'signature_data_url', 'signature_name', 'signature_signed_at'
+        'source_kind', 'source_table', 'source_id',
+        'notes'
     ];
     const unsupportedColumns = new Set();
 
@@ -1448,14 +1939,7 @@
         return copy;
     }
 
-    /**
-     * Update the packet row, dropping any column this deployment does not have.
-     *
-     * The two packet writes used to be plain updates, so one unknown column
-     * failed the whole save. That matters more now that the signature lives on
-     * this row: a database without migration 019 must still be able to save a
-     * draft, just without a signature.
-     */
+    /** Update the packet row, dropping optional columns this deployment lacks. */
     async function updatePacket(payload) {
         const client = db();
         const run = (data) => client.from('mfo_packets')
@@ -1474,17 +1958,62 @@
             result = await run(stripUnsupported(payload));
         }
         if (result.error) throw result.error;
-        if (result.data) state.packet = { ...state.packet, ...result.data };
+        if (!result.data) {
+            throw new Error('The report was not updated. Reload the page and try again.');
+        }
+        state.packet = { ...state.packet, ...result.data };
         return result.data;
+    }
+
+    function childSelectColumns(def) {
+        const cols = ['id'];
+        if ((def.columns || []).includes('source_table')) cols.push('source_table');
+        if ((def.columns || []).includes('source_id')) cols.push('source_id');
+        return cols.join(', ');
+    }
+
+    function isMissingColumnError(error) {
+        const code = String(error?.code || '');
+        const message = String(error?.message || error?.details || '');
+        return code === '42703' || code === 'PGRST204'
+            || /column .+ does not exist|could not find the '.+' column|schema cache/i.test(message);
+    }
+
+    async function loadExistingChildRows(def, packetId) {
+        const client = db();
+        let existing = await client.from(def.table)
+            .select(childSelectColumns(def))
+            .eq('packet_id', packetId);
+        if (existing.error && isMissingColumnError(existing.error)) {
+            const column = unknownColumnFrom(existing.error);
+            if (column) unsupportedColumns.add(column);
+            console.warn(`[MFO] ${def.table} has no source columns; matching existing rows by id only.`);
+            existing = await client.from(def.table).select('id').eq('packet_id', packetId);
+        }
+        if (existing.error) throw existing.error;
+        return existing.data || [];
+    }
+
+    function existingIdForRow(row, existingRows, usedIds) {
+        if (isUuid(row.id)) return row.id;
+        const sourceTable = textValue(row.source_table);
+        const sourceId = textValue(row.source_id);
+        if (!sourceTable || !sourceId) return null;
+        const match = existingRows.find((item) =>
+            !usedIds.has(item.id)
+            && textValue(item.source_table) === sourceTable
+            && String(item.source_id) === String(row.source_id)
+        );
+        return match ? match.id : null;
     }
 
     async function saveTable(def) {
         const client = db();
         const packetId = state.packet.id;
         const rows = state.rows[def.table] || [];
-        const existing = await client.from(def.table).select('id').eq('packet_id', packetId);
-        if (existing.error) throw existing.error;
+        const existingRows = await loadExistingChildRows(def, packetId);
         const keep = [];
+        const usedIds = new Set();
 
         async function write(payload, rowId) {
             const run = (data) => (rowId
@@ -1506,48 +2035,65 @@
 
         for (let i = 0; i < rows.length; i += 1) {
             const payload = payloadFromRow(def, rows[i], i);
-            if (isUuid(rows[i].id)) {
-                await write(payload, rows[i].id);
-                keep.push(rows[i].id);
+            const existingId = existingIdForRow(rows[i], existingRows, usedIds);
+            if (existingId) {
+                await write(payload, existingId);
+                rows[i].id = existingId;
+                keep.push(existingId);
+                usedIds.add(existingId);
             } else {
                 const saved = await write(payload, null);
                 rows[i].id = saved.id;
                 keep.push(saved.id);
+                usedIds.add(saved.id);
             }
         }
-        const extras = (existing.data || []).map((row) => row.id).filter((id) => !keep.includes(id));
+        const extras = existingRows.map((row) => row.id).filter((id) => !keep.includes(id));
         if (extras.length) {
             const { error } = await client.from(def.table).delete().eq('packet_id', packetId).in('id', extras);
             if (error) throw error;
         }
     }
 
-    async function saveSectionStatus(forSubmit) {
+    async function saveOneSectionStatus(code, forSubmit) {
+        const def = TABLES.find((item) => item.code === code);
+        if (!def || !state.packet?.id) return;
         const client = db();
-        for (const def of TABLES) {
-            const rows = state.rows[def.table] || [];
-            const na = !!state.sectionStatus[def.code]?.is_not_applicable;
-            const completeness = na ? 'not_applicable' : (rows.length ? (forSubmit ? 'complete' : 'draft') : 'empty');
-            const payload = {
-                packet_id: state.packet.id,
-                section_code: def.code,
-                is_not_applicable: na,
-                completeness
-            };
-            const current = state.sectionStatus[def.code];
-            if (current?.id) {
-                const { error } = await client.from('mfo_section_status').update(payload).eq('id', current.id);
-                if (error) throw error;
+        const rows = state.rows[def.table] || [];
+        const na = !!state.sectionStatus[def.code]?.is_not_applicable;
+        const completeness = na ? 'not_applicable' : (rows.length ? (forSubmit ? 'complete' : 'draft') : 'empty');
+        const payload = {
+            packet_id: state.packet.id,
+            section_code: def.code,
+            is_not_applicable: na,
+            completeness
+        };
+        const current = state.sectionStatus[def.code] || { section_code: def.code };
+        let saved = null;
+        if (current.id) {
+            const updated = await client.from('mfo_section_status').update(payload).eq('id', current.id).select('*').maybeSingle();
+            if (updated.error) throw updated.error;
+            saved = updated.data;
+        } else {
+            const upserted = await client.from('mfo_section_status').upsert(payload, { onConflict: 'packet_id,section_code' }).select('*').maybeSingle();
+            if (upserted.error && !/no unique|on conflict/i.test(upserted.error.message || '')) {
+                const inserted = await client.from('mfo_section_status').insert(payload).select('*').maybeSingle();
+                if (inserted.error) throw inserted.error;
+                saved = inserted.data;
+            } else if (upserted.error) {
+                throw upserted.error;
             } else {
-                const { data, error } = await client.from('mfo_section_status').upsert(payload, { onConflict: 'packet_id,section_code' }).select('*').maybeSingle();
-                if (error && !/no unique|on conflict/i.test(error.message || '')) {
-                    const inserted = await client.from('mfo_section_status').insert(payload).select('*').maybeSingle();
-                    if (inserted.error) console.warn('[MFO] section status', inserted.error);
-                    else if (inserted.data) state.sectionStatus[def.code] = inserted.data;
-                } else if (data) {
-                    state.sectionStatus[def.code] = data;
-                }
+                saved = upserted.data;
             }
+        }
+        state.sectionStatus[def.code] = saved
+            ? { ...current, ...saved, is_not_applicable: na, completeness }
+            : { ...current, ...payload };
+    }
+
+    async function saveSectionStatus(forSubmit) {
+        for (const def of TABLES) {
+            await saveOneSectionStatus(def.code, forSubmit);
         }
     }
 
@@ -1556,9 +2102,10 @@
             toast('This MFO is already submitted and cannot be edited until it is returned for revision.', 'error');
             return;
         }
-        state.busy = true;
-        render();
+        if (!beginBusy('Saving…')) return;
         try {
+            await requireLiveSession();
+            await logWriteAccess('save-draft');
             await updatePacket({
                 packet_state: statusLabel() === 'Returned for Revision' ? 'revision' : 'draft',
                 period_label: state.period.period_label,
@@ -1568,21 +2115,23 @@
                 period_end: state.period.period_end,
                 academic_year: state.period.academic_year || null,
                 semester: state.period.semester || null,
-                department: state.faculty.department || state.packet.department
+                department: state.faculty.department || state.packet.department,
+                notes: state.packet?.notes || null
             });
             for (const def of TABLES) await saveTable(def);
+            await persistReferencedEvidence();
             await saveSectionStatus();
             state.lastSaved = new Date().toISOString();
             toast('Draft saved successfully.');
         } catch (error) {
             try {
+                const snapshot = await authSnapshot();
                 const debug = await db().rpc('mfo_debug_write_access', { p_packet_id: state.packet?.id || null });
-                console.error('[MFO] write-access debug', debug.data || debug.error);
+                console.error('[MFO] write-access debug', { snapshot, debug: debug.data || debug.error });
             } catch (_) {}
             toast(friendlyError(error, 'Unable to save draft.'), 'error');
         } finally {
-            state.busy = false;
-            render();
+            endBusy();
         }
     }
 
@@ -1605,13 +2154,7 @@
                 department: state.faculty.department,
                 period: state.period,
                 task_id: state.task?.id,
-                submission_id: state.submission?.id,
-                // Captured in the snapshot so the signature stays with the
-                // version of the report it was applied to, even if the packet
-                // row is later re-signed.
-                signature_name: state.packet?.signature_name || null,
-                signature_signed_at: state.packet?.signature_signed_at || null,
-                signature_data_url: state.packet?.signature_data_url || null
+                submission_id: state.submission?.id
             },
             sections: {},
             files: state.files
@@ -1632,14 +2175,9 @@
     }
 
     async function submitPacket() {
+        if (state.busy) return;
         if (!state.task?.id) {
             toast(state.taskWarning || 'Ask an administrator to create an MFO task before submitting.', 'error');
-            return;
-        }
-        if (approvalConfigMissing()) {
-            state.configError = CONFIG_ERROR;
-            render();
-            toast(CONFIG_ERROR, 'error');
             return;
         }
         if (state.locked && statusLabel() !== 'Returned for Revision' && statusLabel() !== 'Declined') {
@@ -1662,9 +2200,10 @@
         if (!window.confirm(`Submit this MFO Report for ${reviewer}? You will not be able to edit it unless it is returned for revision.`)) {
             return;
         }
-        state.busy = true;
-        render();
+        if (!beginBusy('Submitting…')) return;
         try {
+            await requireLiveSession();
+            await logWriteAccess('submit');
             await saveDraftInternal(true);
             const client = db();
             const now = new Date().toISOString();
@@ -1697,11 +2236,17 @@
                 saved = await client.from('wf_submissions').upsert(slim, { onConflict: 'task_id,faculty_id' }).select('*').single();
             }
             if (saved.error) throw saved.error;
+            if (!saved.data?.id) throw new Error('The workflow submission was not created.');
             state.submission = saved.data;
-            await client.from('mfo_packets').update({
+            const linked = await client.from('mfo_packets').update({
                 packet_state: wasRevision ? 'resubmitted' : (late ? 'late' : 'submitted'),
                 submission_id: saved.data.id
-            }).eq('id', state.packet.id).eq('faculty_id', state.faculty.id);
+            }).eq('id', state.packet.id).eq('faculty_id', state.faculty.id).select('id, submission_id').maybeSingle();
+            if (linked.error) throw linked.error;
+            if (!linked.data?.submission_id) {
+                throw new Error('The MFO was submitted, but it was not linked to the workflow submission, so Chairperson Review cannot open it.');
+            }
+            state.packet.submission_id = linked.data.submission_id;
             await writeSnapshot(wasRevision ? 'resubmitted' : 'submitted', wasRevision ? 'resubmitted' : (late ? 'late' : 'submitted'));
             await global.CiteFlowWorkflow.recordSubmissionEvent(db(), {
                 faculty: state.faculty,
@@ -1716,18 +2261,19 @@
                 : `MFO Report submitted. Status: ${statusLabel()}.`);
         } catch (error) {
             try {
+                const snapshot = await authSnapshot();
                 const debug = await db().rpc('mfo_debug_write_access', { p_packet_id: state.packet?.id || null });
-                console.error('[MFO] write-access debug', debug.data || debug.error);
+                console.error('[MFO] write-access debug', { snapshot, debug: debug.data || debug.error });
             } catch (_) {}
             toast(friendlyError(error, 'Unable to submit the MFO report.'), 'error');
         } finally {
-            state.busy = false;
             state.reviewOpen = false;
-            render();
+            endBusy();
         }
     }
 
     async function saveDraftInternal(forSubmit) {
+        await requireLiveSession();
         await updatePacket({
             period_label: state.period.period_label,
             reporting_year: state.period.reporting_year,
@@ -1735,221 +2281,19 @@
             period_start: state.period.period_start,
             period_end: state.period.period_end,
             academic_year: state.period.academic_year || null,
-            semester: state.period.semester || null
+            semester: state.period.semester || null,
+            notes: state.packet?.notes || null
         });
         for (const def of TABLES) await saveTable(def);
+        await persistReferencedEvidence();
         await saveSectionStatus(!!forSubmit);
         state.lastSaved = new Date().toISOString();
-    }
-
-    /* ═══════════════════════════════════════════════════════════════
-       ELECTRONIC SIGNATURE
-
-       "Submitted by" stays exactly as it was — a printed name taken from the
-       faculty record. The signature is an addition beside it.
-
-       It is stored as a PNG data URL on mfo_packets rather than as a Storage
-       object on purpose. The printed report has to render the signature at
-       window.print() time, and a Storage object would need a signed URL that
-       may not have resolved yet, which prints a blank box. Keeping the image on
-       the packet row also means it travels with the report for free: the
-       reviewer route already selects the packet with select('*'), so both
-       Chairperson and Admin see the same signature as the author, and the
-       snapshot written at submit time preserves it.
-
-       Size is bounded by downscaling to SIGNATURE_MAX_WIDTH before encoding.
-       ═══════════════════════════════════════════════════════════════ */
-
-    const SIGNATURE_MAX_WIDTH = 700;
-    const SIGNATURE_MAX_BYTES = 400 * 1024;
-
-    /** Redraw the pad after render() has replaced the DOM. */
-    function restoreSignaturePad() {
-        const canvas = document.getElementById('mfoSignaturePad');
-        if (!canvas) return;
-        // Match the backing store to the displayed size so strokes are crisp
-        // and land under the pointer.
-        const rect = canvas.getBoundingClientRect();
-        const ratio = window.devicePixelRatio || 1;
-        if (rect.width && (canvas.width !== Math.round(rect.width * ratio))) {
-            canvas.width = Math.round(rect.width * ratio);
-            canvas.height = Math.round(rect.height * ratio);
-        }
-        const ctx = canvas.getContext('2d');
-        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = '#111827';
-        signaturePad.ctx = ctx;
-        signaturePad.dirty = false;
-    }
-
-    const signaturePad = { ctx: null, drawing: false, dirty: false };
-
-    function signaturePointerDown(event) {
-        if (state.locked) return;
-        const canvas = document.getElementById('mfoSignaturePad');
-        if (!canvas || !signaturePad.ctx) return;
-        event.preventDefault();
-        signaturePad.drawing = true;
-        const point = signaturePointer(canvas, event);
-        signaturePad.ctx.beginPath();
-        signaturePad.ctx.moveTo(point.x, point.y);
-    }
-
-    function signaturePointerMove(event) {
-        if (!signaturePad.drawing || !signaturePad.ctx) return;
-        const canvas = document.getElementById('mfoSignaturePad');
-        if (!canvas) return;
-        event.preventDefault();
-        const point = signaturePointer(canvas, event);
-        signaturePad.ctx.lineTo(point.x, point.y);
-        signaturePad.ctx.stroke();
-        signaturePad.dirty = true;
-    }
-
-    function signaturePointerUp() {
-        signaturePad.drawing = false;
-    }
-
-    function signaturePointer(canvas, event) {
-        const rect = canvas.getBoundingClientRect();
-        const source = event.touches?.[0] || event.changedTouches?.[0] || event;
-        return { x: source.clientX - rect.left, y: source.clientY - rect.top };
-    }
-
-    function clearSignaturePad() {
-        const canvas = document.getElementById('mfoSignaturePad');
-        if (!canvas) return;
-        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-        signaturePad.dirty = false;
-    }
-
-    /** Trim transparent margins and downscale, so the stored PNG stays small. */
-    function normalizeSignatureCanvas(canvas) {
-        const ctx = canvas.getContext('2d');
-        const { width, height } = canvas;
-        const pixels = ctx.getImageData(0, 0, width, height).data;
-        let minX = width; let minY = height; let maxX = -1; let maxY = -1;
-        for (let y = 0; y < height; y += 1) {
-            for (let x = 0; x < width; x += 1) {
-                if (pixels[((y * width) + x) * 4 + 3] > 8) {
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
-                }
-            }
-        }
-        if (maxX < 0) return null;
-
-        const pad = 6;
-        minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
-        maxX = Math.min(width - 1, maxX + pad); maxY = Math.min(height - 1, maxY + pad);
-        const cropW = (maxX - minX) + 1;
-        const cropH = (maxY - minY) + 1;
-
-        const scale = Math.min(1, SIGNATURE_MAX_WIDTH / cropW);
-        const out = document.createElement('canvas');
-        out.width = Math.max(1, Math.round(cropW * scale));
-        out.height = Math.max(1, Math.round(cropH * scale));
-        out.getContext('2d').drawImage(
-            canvas, minX, minY, cropW, cropH, 0, 0, out.width, out.height
-        );
-        return out.toDataURL('image/png');
-    }
-
-    async function saveDrawnSignature() {
-        if (state.locked) return;
-        const canvas = document.getElementById('mfoSignaturePad');
-        if (!canvas) return;
-        const dataUrl = normalizeSignatureCanvas(canvas);
-        if (!dataUrl) {
-            toast('Please draw your signature in the box first.', 'error');
-            return;
-        }
-        await persistSignature(dataUrl);
-    }
-
-    async function uploadSignatureImage(input) {
-        const file = input.files?.[0];
-        input.value = '';
-        if (!file || state.locked) return;
-        if (!/^image\//.test(file.type || '')) {
-            toast('A signature must be an image file (PNG or JPG).', 'error');
-            return;
-        }
-        try {
-            const dataUrl = await downscaleImageFile(file);
-            await persistSignature(dataUrl);
-        } catch (error) {
-            toast(friendlyError(error, 'Unable to read that signature image.'), 'error');
-        }
-    }
-
-    function downscaleImageFile(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onerror = () => reject(new Error('Could not read the image.'));
-            reader.onload = () => {
-                const image = new Image();
-                image.onerror = () => reject(new Error('That file is not a readable image.'));
-                image.onload = () => {
-                    const scale = Math.min(1, SIGNATURE_MAX_WIDTH / (image.width || 1));
-                    const canvas = document.createElement('canvas');
-                    canvas.width = Math.max(1, Math.round(image.width * scale));
-                    canvas.height = Math.max(1, Math.round(image.height * scale));
-                    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-                    resolve(canvas.toDataURL('image/png'));
-                };
-                image.src = String(reader.result);
-            };
-            reader.readAsDataURL(file);
-        });
-    }
-
-    async function persistSignature(dataUrl) {
-        if (dataUrl && dataUrl.length > SIGNATURE_MAX_BYTES) {
-            toast('That signature image is too large. Please use a smaller or simpler image.', 'error');
-            return;
-        }
-        const typed = String(document.getElementById('mfoSignatureName')?.value || '').trim();
-        state.busy = true;
-        render();
-        try {
-            await updatePacket({
-                signature_data_url: dataUrl,
-                signature_name: dataUrl ? (typed || state.faculty.full_name || null) : null,
-                signature_signed_at: dataUrl ? new Date().toISOString() : null
-            });
-            if (unsupportedColumns.has('signature_data_url')) {
-                toast('This database does not have the signature columns yet. Run migration 019.', 'error');
-                return;
-            }
-            toast(dataUrl ? 'Electronic signature saved.' : 'Electronic signature removed.');
-        } catch (error) {
-            toast(friendlyError(error, 'Unable to save the signature.'), 'error');
-        } finally {
-            state.busy = false;
-            render();
-        }
-    }
-
-    async function removeSignature() {
-        if (state.locked) return;
-        if (!window.confirm('Remove the electronic signature from this report?')) return;
-        await persistSignature(null);
-    }
-
-    function hasSignature() {
-        return !!String(state.packet?.signature_data_url || '').trim();
     }
 
     async function uploadFile(code, table, index, input) {
         const file = input.files?.[0];
         input.value = '';
-        if (!file || state.locked) return;
+        if (!file || state.locked || state.busy) return;
         if (file.size > MAX_FILE_BYTES) {
             toast('File must be 10 MB or smaller.', 'error');
             return;
@@ -1958,7 +2302,9 @@
             toast('Allowed files: PDF, images, Word, and Excel.', 'error');
             return;
         }
+        if (!beginBusy('Uploading…')) return;
         try {
+            await requireLiveSession();
             if (!state.task?.id) {
                 toast(state.taskWarning || 'An assigned MFO task is required before files can be attached.', 'error');
                 return;
@@ -1979,7 +2325,7 @@
             const recordId = index >= 0 ? state.rows[table]?.[index]?.id : null;
             const safeName = file.name.replace(/[^\w.\-]+/g, '_');
             const path = `${state.faculty.id}/${state.task.id}/${state.packet.id}/${Date.now()}-${safeName}`;
-            const uploaded = await db().storage.from(BUCKET).upload(path, file, { upsert: true, contentType: file.type || undefined });
+            const uploaded = await db().storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type || undefined });
             if (uploaded.error) throw uploaded.error;
             const pub = db().storage.from(BUCKET).getPublicUrl(path);
             const row = {
@@ -1997,9 +2343,10 @@
             };
             await insertEvidenceFileOrCleanUp(row, path);
             toast('Documentation attached.');
-            render();
         } catch (error) {
             toast(friendlyError(error, 'Unable to upload the file.'), 'error');
+        } finally {
+            endBusy();
         }
     }
 
@@ -2101,23 +2448,36 @@
         }
 
         if (result.error) throw result.error;
+        await resolveFileDisplayUrl(result.data);
         state.files.push(result.data);
         return result.data;
     }
 
-    async function removeFile(fileId) {
+    async function removeFile(fileId, options) {
         if (state.locked) return;
+        const nested = !!options?.nested;
+        if (!nested && state.busy) return;
         const file = state.files.find((item) => String(item.id) === String(fileId));
         if (!file) return;
+        if (!nested && !beginBusy('Removing file…')) return;
         try {
+            if (!isUuid(file.id)) {
+                state.files = state.files.filter((item) => String(item.id) !== String(fileId));
+                render();
+                return;
+            }
             const path = file.storage_path || file.file_path;
             if (path) await db().storage.from(BUCKET).remove([path]);
             const { error } = await db().from('wf_submission_files').delete().eq('id', fileId);
             if (error) throw error;
             state.files = state.files.filter((item) => String(item.id) !== String(fileId));
-            render();
         } catch (error) {
             toast(friendlyError(error, 'Unable to remove the file.'), 'error');
+        } finally {
+            if (!nested) {
+                endBusy();
+                render();
+            }
         }
     }
 
@@ -2149,7 +2509,7 @@
     }
 
     function fieldControl(def, row, index, field) {
-        const disabled = state.locked ? 'disabled' : '';
+        const disabled = (state.locked || state.busy) ? 'disabled' : '';
         const value = row[field.key] ?? '';
         const oninput = `CiteFlowMfoFaculty.updateRow('${def.table}', ${index}, '${field.key}', this)`;
         if (field.type === 'textarea') {
@@ -2171,27 +2531,28 @@
     function renderFiles(code, table, index) {
         const recordId = index >= 0 ? state.rows[table]?.[index]?.id : null;
         const files = filesFor(code, isUuid(recordId) ? recordId : null);
+        const imageThumbs = files.filter(fileIsImage).map((file) => photoThumb(file)).join('');
         const list = files.map((file) => `
             <div class="flex items-center justify-between gap-2 text-xs bg-white border border-slate-200 rounded-xl px-3 py-2">
-                <a class="font-semibold text-[#621708] truncate" href="${esc(file.file_url || '#')}" target="_blank" rel="noopener">${esc(file.file_name)}</a>
-                ${state.locked ? '' : `<button type="button" class="text-rose-600 font-bold" onclick="CiteFlowMfoFaculty.removeFile('${file.id}')">Remove</button>`}
+                <a class="font-semibold text-[#621708] truncate" href="${esc(fileDisplaySrc(file) || '#')}" target="_blank" rel="noopener">${esc(file.file_name)}</a>
+                ${state.locked || state.busy ? '' : `<button type="button" class="text-rose-600 font-bold" onclick="CiteFlowMfoFaculty.removeFile('${file.id}')">Remove</button>`}
             </div>
         `).join('');
         return `
             <div class="mt-3 space-y-2">
                 <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">File attachments</div>
+                ${imageThumbs ? `<div class="mfo-photo-grid">${imageThumbs}</div>` : ''}
                 ${list || '<div class="text-xs text-slate-400">No files attached to this record yet.</div>'}
-                ${state.locked ? '' : `
-                    <label class="cite-action inline-flex cursor-pointer">
-                        + Add File
-                        <input type="file" class="hidden" onchange="CiteFlowMfoFaculty.uploadFile('${code}', '${table}', ${index}, this)">
-                    </label>
+                ${state.locked || state.busy ? '' : `
+                    <button type="button" class="cite-action" onclick="this.nextElementSibling.click()">+ Add File</button>
+                    <input type="file" class="mfo-file-input" onchange="CiteFlowMfoFaculty.uploadFile('${code}', '${table}', ${index}, this)">
                 `}
             </div>
         `;
     }
 
     function openPhotoModal(sectionCode, docIndex) {
+        if (state.busy) return;
         if (state.locked && docIndex == null) return;
         const existing = docIndex != null ? state.rows.mfo_documentation_items?.[docIndex] : null;
         state.photoModal = {
@@ -2268,16 +2629,16 @@
     }
 
     async function savePhotoModal() {
-        if (!state.photoModal || state.locked) return;
+        if (!state.photoModal || state.locked || state.busy) return;
         const modal = state.photoModal;
         const title = String(modal.title || '').trim();
         if (!title) {
             toast('Title is required for photo documentation.', 'error');
             return;
         }
+        if (!beginBusy('Saving documentation…')) return;
         try {
-            state.busy = true;
-            render();
+            await requireLiveSession();
             state.rows.mfo_documentation_items = state.rows.mfo_documentation_items || [];
             let index = modal.docIndex;
             if (index == null) {
@@ -2306,8 +2667,7 @@
         } catch (error) {
             toast(friendlyError(error, 'Unable to save photo documentation.'), 'error');
         } finally {
-            state.busy = false;
-            render();
+            endBusy();
         }
     }
 
@@ -2321,7 +2681,7 @@
         }
         const safeName = file.name.replace(/[^\w.\-]+/g, '_');
         const path = `${state.faculty.id}/${state.task.id}/${state.packet.id}/photos/${Date.now()}-${safeName}`;
-        const uploaded = await db().storage.from(BUCKET).upload(path, file, { upsert: true, contentType: file.type || undefined });
+        const uploaded = await db().storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type || undefined });
         if (uploaded.error) throw uploaded.error;
         const pub = db().storage.from(BUCKET).getPublicUrl(path);
         const indicator = TABLES.find((d) => d.code === sectionCode)?.title || sectionCode;
@@ -2346,37 +2706,35 @@
     }
 
     async function removePhotoDoc(docIndex) {
-        if (state.locked) return;
+        if (state.locked || state.busy) return;
         const row = state.rows.mfo_documentation_items?.[docIndex];
         if (!row) return;
         if (!window.confirm('Remove this photo documentation entry and its photos?')) return;
+        if (!beginBusy('Removing documentation…')) return;
         try {
             const recordId = isUuid(row.id) ? row.id : null;
             if (recordId) {
                 const linked = state.files.filter((file) => String(file.mfo_record_id || '') === String(recordId));
                 for (const file of linked) {
-                    await removeFile(file.id);
+                    await removeFile(file.id, { nested: true });
                 }
             }
             state.rows.mfo_documentation_items.splice(docIndex, 1);
             const def = TABLES.find((item) => item.table === 'mfo_documentation_items');
             await saveTable(def);
             toast('Photo documentation removed.');
-            render();
         } catch (error) {
             toast(friendlyError(error, 'Unable to remove photo documentation.'), 'error');
+        } finally {
+            endBusy();
         }
     }
 
     function renderPhotoDocs(sectionCode, sectionTitle) {
         const entries = docsForIndicator(sectionCode);
         const cards = entries.map(({ row, index }) => {
-            const photos = isUuid(row.id) ? filesFor(sectionCode, row.id) : [];
-            const thumbs = photos.map((file) => `
-                <a href="${esc(file.file_url || '#')}" target="_blank" rel="noopener" class="mfo-photo-thumb" title="${esc(file.file_name)}">
-                    <img src="${esc(file.file_url || '')}" alt="${esc(file.file_name)}" loading="lazy">
-                </a>
-            `).join('');
+            const photos = uniquePhotosForRecord(sectionCode, row.id);
+            const thumbs = photos.map((file) => photoThumb(file)).join('');
             const details = [
                 row.activity_date ? `Date: ${String(row.activity_date).slice(0, 10)}` : '',
                 row.activity_time ? `Time: ${row.activity_time}` : '',
@@ -2390,7 +2748,7 @@
                             ${details ? `<div class="text-xs text-slate-500 mt-1">${esc(details)}</div>` : ''}
                             ${row.narrative ? `<p class="text-sm text-slate-600 mt-2 whitespace-pre-wrap">${esc(row.narrative)}</p>` : ''}
                         </div>
-                        ${state.locked ? '' : `
+                        ${state.locked || state.busy ? '' : `
                             <div class="flex flex-col gap-1 shrink-0">
                                 <button type="button" class="text-xs font-bold text-[#621708]" onclick="CiteFlowMfoFaculty.openPhotoModal('${esc(sectionCode)}', ${index})">Edit</button>
                                 <button type="button" class="text-xs font-bold text-rose-600" onclick="CiteFlowMfoFaculty.removePhotoDoc(${index})">Remove</button>
@@ -2409,7 +2767,7 @@
                         <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Optional photo documentation</div>
                         <p class="text-xs text-slate-500">Add titled photo entries for this performance indicator (date, time, venue optional).</p>
                     </div>
-                    ${state.locked ? '' : `
+                    ${state.locked || state.busy ? '' : `
                         <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.openPhotoModal('${esc(sectionCode)}')">
                             + Attach Photo Documentation
                         </button>
@@ -2430,9 +2788,7 @@
             : [];
         const existingThumbs = existingPhotos.map((file) => `
             <div class="mfo-photo-thumb-wrap">
-                <a href="${esc(file.file_url || '#')}" target="_blank" rel="noopener" class="mfo-photo-thumb">
-                    <img src="${esc(file.file_url || '')}" alt="${esc(file.file_name)}">
-                </a>
+                ${photoThumb(file)}
                 ${state.locked ? '' : `<button type="button" class="mfo-photo-remove" onclick="CiteFlowMfoFaculty.removeFile('${file.id}')">×</button>`}
             </div>
         `).join('');
@@ -2482,17 +2838,15 @@
                             <label class="mfo-label">Photos (one or more)</label>
                             <div class="mfo-photo-grid mb-2">${existingThumbs}${pendingThumbs || ''}</div>
                             ${state.locked ? '' : `
-                                <label class="cite-action inline-flex cursor-pointer">
-                                    + Add Photos
-                                    <input type="file" accept="image/*" multiple class="hidden" onchange="CiteFlowMfoFaculty.addPhotoModalFiles(this)">
-                                </label>
+                                <button type="button" class="cite-action" onclick="this.nextElementSibling.click()">+ Upload Photos</button>
+                                <input type="file" accept="image/*" multiple class="mfo-file-input" onchange="CiteFlowMfoFaculty.addPhotoModalFiles(this)">
                             `}
                         </div>
                     </div>
 
                     <div class="flex flex-col sm:flex-row gap-2 mt-5">
                         <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closePhotoModal()">Cancel</button>
-                        ${state.locked ? '' : `<button type="button" class="cite-action-primary" ${state.busy ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.savePhotoModal()">Save Documentation</button>`}
+                        ${state.locked ? '' : `<button type="button" class="cite-action-primary" ${state.busy ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.savePhotoModal()">${state.busyLabel === 'Saving documentation…' ? 'Saving…' : 'Save Documentation'}</button>`}
                     </div>
                 </div>
             </div>
@@ -2508,7 +2862,7 @@
                         <span class="text-sm font-bold text-slate-900">Record ${index + 1}</span>
                         ${suggested ? '<span class="mfo-chip">Suggested from existing record — confirm or edit</span>' : ''}
                     </div>
-                    ${state.locked ? '' : `<button type="button" class="text-xs font-bold text-rose-600" onclick="CiteFlowMfoFaculty.removeRow('${def.table}', ${index})">Remove</button>`}
+                    ${state.locked || state.busy ? '' : `<button type="button" class="text-xs font-bold text-rose-600" onclick="CiteFlowMfoFaculty.removeRow('${def.table}', ${index})">Remove</button>`}
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     ${def.fields.map((field) => `
@@ -2543,30 +2897,32 @@
             : rows.map((_, index) => index);
 
         return `
-            <details class="mfo-section rounded-[16px] mb-3" ${na ? '' : 'open'}>
+            <details class="mfo-section rounded-[16px] mb-3" open>
                 <summary class="cursor-pointer px-4 sm:px-5 py-4 flex items-center justify-between gap-3 list-none">
                     <div>
                         <div class="text-[11px] font-bold uppercase tracking-wide text-[#621708]">${esc(def.group)}</div>
                         <div class="text-sm font-bold text-slate-900">${esc(def.title)}</div>
                     </div>
+                    <label class="mfo-na-toggle" aria-pressed="${na ? 'true' : 'false'}"
+                           onclick="event.stopPropagation();">
+                        <input type="checkbox" ${na ? 'checked' : ''} ${state.locked || state.busy ? 'disabled' : ''}
+                               onclick="event.stopPropagation();"
+                               onchange="event.stopPropagation(); CiteFlowMfoFaculty.setSectionNa('${def.code}', this.checked)">
+                        Not applicable (NA)
+                    </label>
                     <i class="fa-solid fa-chevron-down mfo-chevron text-slate-400 transition-transform"></i>
                 </summary>
                 <div class="px-4 sm:px-5 pb-5">
                     ${def.hint ? `<p class="text-xs text-slate-500 mb-3">${esc(def.hint)}</p>` : ''}
-                    <label class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 mb-4">
-                        <input type="checkbox" ${na ? 'checked' : ''} ${state.locked ? 'disabled' : ''} onchange="CiteFlowMfoFaculty.setSectionNa('${def.code}', this.checked); CiteFlowMfoFaculty.render();">
-                        Not applicable (NA)
-                    </label>
-                    ${na ? '<p class="text-sm text-slate-500">This section is marked NA for your program contribution.</p>' : `
-                        ${isDocTable ? `
-                            ${generalDocs().map(({ row, index }) => renderRecord(def, row, index)).join('') || '<p class="text-sm text-slate-500 mb-3">No general documentation records yet.</p>'}
-                            ${state.locked ? '' : `<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.addRow('${def.table}')">+ ${esc(def.add)}</button>`}
-                            ${renderPhotoDocs(def.code, def.title)}
-                        ` : `
-                            ${rowIndexes.map((index) => renderRecord(def, state.rows[def.table][index], index)).join('') || '<p class="text-sm text-slate-500 mb-3">No records yet.</p>'}
-                            ${state.locked ? '' : `<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.addRow('${def.table}')">+ ${esc(def.add)}</button>`}
-                            ${renderPhotoDocs(def.code, def.title)}
-                        `}
+                    ${na ? '<p class="text-sm text-slate-500 mb-3">Marked N/A. Existing entries are kept and still print as N/A on the official form.</p>' : ''}
+                    ${isDocTable ? `
+                        ${generalDocs().map(({ row, index }) => renderRecord(def, row, index)).join('') || '<p class="text-sm text-slate-500 mb-3">No general documentation records yet.</p>'}
+                        ${state.locked || state.busy ? '' : `<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.addRow('${def.table}')">+ ${esc(def.add)}</button>`}
+                        ${renderPhotoDocs(def.code, def.title)}
+                    ` : `
+                        ${rowIndexes.map((index) => renderRecord(def, state.rows[def.table][index], index)).join('') || '<p class="text-sm text-slate-500 mb-3">No records yet.</p>'}
+                        ${state.locked || state.busy ? '' : `<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.addRow('${def.table}')">+ ${esc(def.add)}</button>`}
+                        ${renderPhotoDocs(def.code, def.title)}
                     `}
                 </div>
             </details>
@@ -2611,15 +2967,22 @@
             `);
         });
         return `
-            <div class="fixed inset-0 z-50 bg-slate-900/40 flex items-end sm:items-center justify-center p-4" onclick="if(event.target===this){CiteFlowMfoFaculty.reviewOpen(false)}">
-                <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5">
-                    <h2 class="text-lg font-bold mb-1">Review MFO Report</h2>
-                    <p class="text-sm text-slate-500 mb-4">${esc(state.period.period_label)} · ${esc(state.faculty.full_name)}</p>
-                    ${missing.length ? `<div class="mb-4 p-3 rounded-xl bg-amber-50 text-amber-900 text-sm font-semibold">Incomplete: ${missing.map((d) => esc(d.title)).join(', ')}. Mark NA or add records.</div>` : '<div class="mb-4 p-3 rounded-xl bg-emerald-50 text-emerald-800 text-sm font-semibold">All faculty sections have records or are marked NA.</div>'}
-                    ${groups.join('')}
-                    <div class="flex flex-col sm:flex-row gap-2 mt-4">
+            <div class="mfo-review-overlay" onclick="if(event.target===this){CiteFlowMfoFaculty.reviewOpen(false)}">
+                <div class="mfo-review-dialog" role="dialog" aria-modal="true" aria-labelledby="mfoReviewTitle">
+                    <div class="mfo-review-header">
+                        <div>
+                            <h2 id="mfoReviewTitle" class="text-lg font-bold">Review MFO Report</h2>
+                            <p class="text-sm text-slate-500 mt-1">${esc(state.period.period_label)} · ${esc(state.faculty.full_name)}</p>
+                        </div>
+                        <button type="button" class="mfo-review-close" aria-label="Close review" onclick="CiteFlowMfoFaculty.reviewOpen(false)">×</button>
+                    </div>
+                    <div class="mfo-review-body">
+                        ${missing.length ? `<div class="mb-4 p-3 rounded-xl bg-amber-50 text-amber-900 text-sm font-semibold">Incomplete: ${missing.map((d) => esc(d.title)).join(', ')}. Mark NA or add records.</div>` : '<div class="mb-4 p-3 rounded-xl bg-emerald-50 text-emerald-800 text-sm font-semibold">All faculty sections have records or are marked NA.</div>'}
+                        ${groups.join('')}
+                    </div>
+                    <div class="mfo-review-footer">
                         <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.reviewOpen(false)">Close</button>
-                        <button type="button" class="cite-action-primary" ${state.busy || !state.task || missing.length ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.submitPacket()">Submit MFO Report</button>
+                        <button type="button" class="cite-action-primary" ${state.busy || !state.task || missing.length ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.submitPacket()">${state.busyLabel === 'Submitting…' ? 'Submitting…' : 'Submit MFO Report'}</button>
                     </div>
                 </div>
             </div>
@@ -2692,9 +3055,9 @@
                     table: 'mfo_pi3_enrollment',
                     code: 'mfo1_pi3',
                     columns: [
-                        ['Class Section', (r) => r.section],
-                        ['No. of Students Enrolled', (r) => r.students_enrolled],
-                        ['Name of Adviser', (r) => r.adviser_name]
+                        ['Class Section', (r) => r.section, 'section'],
+                        ['No. of Students Enrolled', (r) => r.students_enrolled, 'students_enrolled'],
+                        ['Name of Adviser', (r) => r.adviser_name, 'adviser_name']
                     ]
                 },
                 {
@@ -2703,9 +3066,9 @@
                     code: 'mfo1_pi4',
                     columns: [
                         ['Name of Faculty', (r, c) => c.facultyName],
-                        ['Courses Taught', (r) => [r.subject_code, r.course_title].filter(Boolean).join(' — ')],
-                        ['Status of Syllabus Submission (submitted/not submitted)', (r) => String(r.syllabus_status || '').replace(/_/g, ' ')],
-                        ['Remarks', (r) => r.remarks]
+                        ['Courses Taught', (r) => [r.subject_code, r.course_title].filter(Boolean).join(' — '), 'course_title'],
+                        ['Status of Syllabus Submission (submitted/not submitted)', (r) => String(r.syllabus_status || '').replace(/_/g, ' '), 'syllabus_status'],
+                        ['Remarks', (r) => r.remarks, 'remarks']
                     ]
                 },
                 {
@@ -2714,9 +3077,9 @@
                     code: 'mfo1_pi5',
                     columns: [
                         ['Name of Faculty', (r, c) => c.facultyName],
-                        ['Nature of Certification (accreditor/auditor/NC/TM and others)', (r) => [r.certification_title, r.certification_nature].filter(Boolean).join(' — ')],
-                        ['Granting Agency', (r) => r.granting_agency],
-                        ['Date Granted', (r) => reportDate(r.date_granted)]
+                        ['Nature of Certification (accreditor/auditor/NC/TM and others)', (r) => [r.certification_title, r.certification_nature].filter(Boolean).join(' — '), 'certification_title'],
+                        ['Granting Agency', (r) => r.granting_agency, 'granting_agency'],
+                        ['Date Granted', (r) => reportDate(r.date_granted), 'date_granted']
                     ]
                 },
                 {
@@ -2725,10 +3088,10 @@
                     code: 'mfo1_pi6',
                     columns: [
                         ['Name of Faculty', (r, c) => c.facultyName],
-                        ['Program enrolled in', (r) => r.program_enrolled],
-                        ['Total no. of earned units as of this semester', (r) => r.earned_units],
-                        ['No. of units enrolled in this semester', (r) => r.current_units],
-                        ['Name of Educational Institution', (r) => r.institution_name]
+                        ['Program enrolled in', (r) => r.program_enrolled, 'program_enrolled'],
+                        ['Total no. of earned units as of this semester', (r) => r.earned_units, 'earned_units'],
+                        ['No. of units enrolled in this semester', (r) => r.current_units, 'current_units'],
+                        ['Name of Educational Institution', (r) => r.institution_name, 'institution_name']
                     ]
                 },
                 {
@@ -2737,11 +3100,11 @@
                     code: 'mfo1_pi7',
                     columns: [
                         ['Name of Faculty', (r, c) => c.facultyName],
-                        ['Title of Training/Workshop/Seminar', (r) => r.title],
-                        ['Date', (r) => reportDate(r.activity_date)],
-                        ['Venue', (r) => r.venue],
-                        ['Sponsoring Agency', (r) => r.sponsoring_agency],
-                        ['Role (participant/resource speaker/facilitator)', (r) => r.role]
+                        ['Title of Training/Workshop/Seminar', (r) => r.title, 'title'],
+                        ['Date', (r) => reportDate(r.activity_date), 'activity_date'],
+                        ['Venue', (r) => r.venue, 'venue'],
+                        ['Sponsoring Agency', (r) => r.sponsoring_agency, 'sponsoring_agency'],
+                        ['Role (participant/resource speaker/facilitator)', (r) => r.role, 'role']
                     ]
                 },
                 {
@@ -2749,11 +3112,11 @@
                     table: 'mfo_pi8_instructional_materials',
                     code: 'mfo1_pi8',
                     columns: [
-                        ['Name of Faculty (Authors)', (r, c) => r.authors_text || c.facultyName],
-                        ['Title of Instructional Materials (IM)', (r) => r.title],
-                        ['Type of Instructional Material (print, media, graphics, etc.)', (r) => r.material_type],
-                        ['Courses Utilizing the IMs', (r) => r.courses_utilizing],
-                        ['Nature of Intellection Property Protection (copyright/UM/industrial design/patents etc.', (r) => r.ip_nature]
+                        ['Name of Faculty (Authors)', (r, c) => r.authors_text || c.facultyName, 'authors_text'],
+                        ['Title of Instructional Materials (IM)', (r) => r.title, 'title'],
+                        ['Type of Instructional Material (print, media, graphics, etc.)', (r) => r.material_type, 'material_type'],
+                        ['Courses Utilizing the IMs', (r) => r.courses_utilizing, 'courses_utilizing'],
+                        ['Nature of Intellection Property Protection (copyright/UM/industrial design/patents etc.', (r) => r.ip_nature, 'ip_nature']
                     ]
                 }
             ]
@@ -2766,11 +3129,11 @@
                     table: 'mfo_research_utilized',
                     code: 'mfo3_pi1',
                     columns: [
-                        ['Title of Research', (r) => r.research_title],
-                        ['Proponent/s (Faculty or Students)', (r) => r.proponents_text],
-                        ['Nature of Utilization (technology adoption/commercialization/community extension, etc.)', (r) => r.utilization_nature],
-                        ['Name of Partner Community/Industry', (r) => r.partner_name],
-                        ["Address of Partner's Office", (r) => r.partner_address]
+                        ['Title of Research', (r) => r.research_title, 'research_title'],
+                        ['Proponent/s (Faculty or Students)', (r) => r.proponents_text, 'proponents_text'],
+                        ['Nature of Utilization (technology adoption/commercialization/community extension, etc.)', (r) => r.utilization_nature, 'utilization_nature'],
+                        ['Name of Partner Community/Industry', (r) => r.partner_name, 'partner_name'],
+                        ["Address of Partner's Office", (r) => r.partner_address, 'partner_address']
                     ]
                 },
                 {
@@ -2781,11 +3144,11 @@
                     table: 'mfo_research_completed',
                     code: 'mfo3_pi2',
                     columns: [
-                        ['Title of Research', (r) => r.research_title],
-                        ['Proponent/s (Faculty or Students)', (r) => r.proponents_text],
-                        ['Date Completed', (r) => reportDate(r.completed_at)],
-                        ['Status', (r) => r.research_status],
-                        ['Funding Source', (r) => r.funding_source]
+                        ['Title of Research', (r) => r.research_title, 'research_title'],
+                        ['Proponent/s (Faculty or Students)', (r) => r.proponents_text, 'proponents_text'],
+                        ['Date Completed', (r) => reportDate(r.completed_at), 'completed_at'],
+                        ['Status', (r) => r.research_status, 'research_status'],
+                        ['Funding Source', (r) => r.funding_source, 'funding_source']
                     ]
                 },
                 {
@@ -2793,11 +3156,11 @@
                     table: 'mfo_research_published',
                     code: 'mfo3_pi3',
                     columns: [
-                        ['Title of Research', (r) => r.research_title],
-                        ['Proponent/s (Faculty or Students)', (r) => r.proponents_text],
-                        ['Name of Publication', (r) => r.publication_name],
-                        ['Date Published', (r) => reportDate(r.published_at)],
-                        ['Funding Source', (r) => r.funding_source]
+                        ['Title of Research', (r) => r.research_title, 'research_title'],
+                        ['Proponent/s (Faculty or Students)', (r) => r.proponents_text, 'proponents_text'],
+                        ['Name of Publication', (r) => r.publication_name, 'publication_name'],
+                        ['Date Published', (r) => reportDate(r.published_at), 'published_at'],
+                        ['Funding Source', (r) => r.funding_source, 'funding_source']
                     ]
                 },
                 {
@@ -2805,11 +3168,11 @@
                     table: 'mfo_research_presented',
                     code: 'mfo3_pi4',
                     columns: [
-                        ['Title of Research', (r) => r.research_title],
-                        ['Title of Research Proponents', (r) => r.proponents_text],
-                        ['Date', (r) => reportDate(r.presented_at)],
-                        ['Sponsoring Agency', (r) => r.sponsoring_agency],
-                        ['Venue', (r) => r.venue]
+                        ['Title of Research', (r) => r.research_title, 'research_title'],
+                        ['Title of Research Proponents', (r) => r.proponents_text, 'proponents_text'],
+                        ['Date', (r) => reportDate(r.presented_at), 'presented_at'],
+                        ['Sponsoring Agency', (r) => r.sponsoring_agency, 'sponsoring_agency'],
+                        ['Venue', (r) => r.venue, 'venue']
                     ]
                 }
             ]
@@ -2822,14 +3185,14 @@
                     table: 'mfo_extension_partnerships',
                     code: 'mfo4_pi1',
                     columns: [
-                        ['Title of Community Extension Project', (r) => r.project_title],
-                        ['Proponents', (r) => r.proponents_text],
+                        ['Title of Community Extension Project', (r) => r.project_title, 'project_title'],
+                        ['Proponents', (r) => r.proponents_text, 'proponents_text'],
                         ['Partner Industry/Community (indicate if with/without MOA)', (r) => {
                             const partner = String(r.partner_name || '').trim();
                             if (!partner) return '';
                             return `${partner} (${r.has_moa ? 'with MOA' : 'without MOA'})`;
-                        }],
-                        ['Project Locale', (r) => r.project_locale]
+                        }, 'partner_name'],
+                        ['Project Locale', (r) => r.project_locale, 'project_locale']
                     ]
                 },
                 {
@@ -2837,7 +3200,7 @@
                     table: 'mfo_extension_trainings',
                     code: 'mfo4_pi2',
                     columns: [
-                        ['Title of Training Provided to the Community/Industry', (r) => r.training_title],
+                        ['Title of Training Provided to the Community/Industry', (r) => r.training_title, 'training_title'],
                         ['No. Community Beneficiaries (separate no. of male & female)', (r) => {
                             const male = r.beneficiaries_male;
                             const female = r.beneficiaries_female;
@@ -2845,10 +3208,10 @@
                             if (male !== null && male !== undefined && male !== '') parts.push(`Male: ${male}`);
                             if (female !== null && female !== undefined && female !== '') parts.push(`Female: ${female}`);
                             return parts.join(' / ');
-                        }],
-                        ['Length of Training (number of hours)', (r) => r.training_hours],
+                        }, 'beneficiaries'],
+                        ['Length of Training (number of hours)', (r) => r.training_hours, 'training_hours'],
                         ['Total Manhours', (r) => manhoursPreview(r)],
-                        ['Partner Agency', (r) => r.partner_agency]
+                        ['Partner Agency', (r) => r.partner_agency, 'partner_agency']
                     ]
                 }
             ]
@@ -2861,14 +3224,14 @@
                     table: 'mfo_other_initiatives',
                     code: 'other_initiatives',
                     columns: [
-                        ['Title of Activity', (r) => r.activity_title],
-                        ['Date Conducted', (r) => reportDate(r.activity_date)],
-                        ['Venue', (r) => r.venue],
-                        ['Sponsoring Agency', (r) => r.sponsoring_agency],
-                        ['Students Involved', (r) => r.students_involved],
-                        ['Role', (r) => r.student_role],
-                        ['Faculty Involved', (r) => r.faculty_involved],
-                        ['Role', (r) => r.faculty_role]
+                        ['Title of Activity', (r) => r.activity_title, 'activity_title'],
+                        ['Date Conducted', (r) => reportDate(r.activity_date), 'activity_date'],
+                        ['Venue', (r) => r.venue, 'venue'],
+                        ['Sponsoring Agency', (r) => r.sponsoring_agency, 'sponsoring_agency'],
+                        ['Students Involved', (r) => r.students_involved, 'students_involved'],
+                        ['Role', (r) => r.student_role, 'student_role'],
+                        ['Faculty Involved', (r) => r.faculty_involved, 'faculty_involved'],
+                        ['Role', (r) => r.faculty_role, 'faculty_role']
                     ]
                 }
             ]
@@ -2881,10 +3244,10 @@
                     table: 'mfo_awards',
                     code: 'awards',
                     columns: [
-                        ['Title of Award', (r) => r.award_title],
-                        ['Nature of Award (for excellence in research/instruction/extension, etc)', (r) => r.award_nature || r.award_type],
-                        ['Granting Agency', (r) => r.granting_agency],
-                        ['Date of Awarding Ceremony', (r) => reportDate(r.awarded_at)]
+                        ['Title of Award', (r) => r.award_title, 'award_title'],
+                        ['Nature of Award (for excellence in research/instruction/extension, etc)', (r) => r.award_nature || r.award_type, 'award_nature'],
+                        ['Granting Agency', (r) => r.granting_agency, 'granting_agency'],
+                        ['Date of Awarding Ceremony', (r) => reportDate(r.awarded_at), 'awarded_at']
                     ]
                 }
             ]
@@ -2897,6 +3260,56 @@
      * dropped for being blank. A section with no records still shows its full
      * header row above a single all-N/A row so the structure survives.
      */
+    function canEditOfficialForm() {
+        return !!state.previewOpen && !state.locked && !state.reviewerMode && !state.printingOfficial;
+    }
+
+    function officialNaMark(code) {
+        if (!code) return '';
+        const na = !!state.sectionStatus[code]?.is_not_applicable;
+        if (canEditOfficialForm()) {
+            return ` <label class="mfo-doc-na"><input type="checkbox" ${na ? 'checked' : ''} ${state.busy ? 'disabled' : ''} onchange="CiteFlowMfoFaculty.setSectionNa('${code}', this.checked)"> N/A</label>`;
+        }
+        return ` <span class="mfo-doc-na">${na ? '☑' : '☐'} N/A</span>`;
+    }
+
+    function officialInputType(key) {
+        if (key === 'beneficiaries' || /units|enrolled|hours|students_/.test(key)) return 'number';
+        if (/(_at|_date)$/.test(key) || key === 'date_granted') return 'date';
+        return 'text';
+    }
+
+    function officialRawValue(row, key) {
+        const value = row?.[key];
+        if (value == null || value === '') return '';
+        if (/(_at|_date)$/.test(key) || key === 'date_granted') return String(value).slice(0, 10);
+        return value;
+    }
+
+    function officialCell(indicator, row, rowIndex, col, ctx) {
+        const get = Array.isArray(col) ? col[1] : null;
+        const key = Array.isArray(col) ? col[2] : null;
+        let display = '';
+        try { display = get ? get(row, ctx) : ''; } catch (_) { display = ''; }
+        display = tv(display);
+        if (!canEditOfficialForm() || !key || indicator.programLevel) {
+            return `<td>${esc(display || NA)}</td>`;
+        }
+        const table = indicator.table;
+        const disabled = state.busy ? 'disabled' : '';
+        if (key === 'beneficiaries') {
+            return `<td>
+                <span class="mfo-doc-pair">Male <input class="mfo-doc-cell" type="number" min="0" ${disabled} value="${esc(officialRawValue(row, 'beneficiaries_male'))}" oninput="CiteFlowMfoFaculty.updateOfficialCell('${table}', ${rowIndex}, 'beneficiaries_male', this)" onblur="CiteFlowMfoFaculty.persistOfficialTable('${table}')"></span>
+                <span class="mfo-doc-pair">Female <input class="mfo-doc-cell" type="number" min="0" ${disabled} value="${esc(officialRawValue(row, 'beneficiaries_female'))}" oninput="CiteFlowMfoFaculty.updateOfficialCell('${table}', ${rowIndex}, 'beneficiaries_female', this)" onblur="CiteFlowMfoFaculty.persistOfficialTable('${table}')"></span>
+            </td>`;
+        }
+        const type = officialInputType(key);
+        const moa = key === 'partner_name' && table === 'mfo_extension_partnerships'
+            ? ` <label class="mfo-doc-na"><input type="checkbox" ${row.has_moa ? 'checked' : ''} ${disabled} onchange="CiteFlowMfoFaculty.updateOfficialCell('${table}', ${rowIndex}, 'has_moa', this)"> MOA</label>`
+            : '';
+        return `<td><input class="mfo-doc-cell" type="${type}" ${disabled} value="${esc(officialRawValue(row, key))}" oninput="CiteFlowMfoFaculty.updateOfficialCell('${table}', ${rowIndex}, '${key}', this)" onblur="CiteFlowMfoFaculty.persistOfficialTable('${table}')">${moa}</td>`;
+    }
+
     function formTable(indicator, ctx) {
         const labels = indicator.columns.map((col) => (Array.isArray(col) ? col[0] : col));
         const head = labels.map((label) => `<th>${esc(label)}</th>`).join('');
@@ -2904,26 +3317,19 @@
         const na = indicator.code ? !!state.sectionStatus[indicator.code]?.is_not_applicable : false;
         const rows = indicator.table ? (state.rows[indicator.table] || []) : [];
         const blank = `<tr>${labels.map(() => `<td>${NA}</td>`).join('')}</tr>`;
-
         let body;
-        if (indicator.programLevel || na || !rows.length) {
+        if (indicator.programLevel || !rows.length) {
             body = blank;
         } else {
-            body = rows.map((row) => {
-                const cells = indicator.columns.map((col) => {
-                    const get = Array.isArray(col) ? col[1] : null;
-                    let value;
-                    try {
-                        value = get ? get(row, ctx) : '';
-                    } catch (_) {
-                        value = '';
-                    }
-                    return `<td>${esc(tv(value))}</td>`;
-                }).join('');
+            body = rows.map((row, rowIndex) => {
+                const cells = indicator.columns.map((col) => officialCell(indicator, row, rowIndex, col, ctx)).join('');
                 return `<tr>${cells}</tr>`;
             }).join('');
         }
-        return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+        const addRow = canEditOfficialForm() && indicator.table && !indicator.programLevel
+            ? `<div class="mfo-doc-edit"><button type="button" onclick="CiteFlowMfoFaculty.addRow('${indicator.table}')">Add row</button></div>`
+            : '';
+        return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${addRow}`;
     }
 
     /**
@@ -2932,75 +3338,169 @@
      * and the evidence actually on file. No detail line is emitted for a field
      * the faculty member left blank.
      */
-    function reportDocumentation(rows) {
-        return rows.map((row) => {
-            const details = [
-                ['Date', reportDate(row.activity_date)],
-                ['Time', String(row.activity_time || '').trim()],
-                ['Venue', String(row.venue || '').trim()],
-                ['Sponsoring agency', String(row.sponsoring_agency || '').trim()],
-                ['Role', String(row.role || '').trim()]
-            ].filter(([, value]) => value);
-            const attached = filesFor('documentation_other', row.id)
-                .concat((state.files || []).filter((file) => String(file.mfo_documentation_id || '') === String(row.id)));
+    function reportTitleFromRow(row, fallback) {
+        return String(
+            row?.title || row?.caption || row?.research_title || row?.activity_title
+            || row?.project_title || row?.award_title || row?.certification_title
+            || row?.training_title || row?.course_title || fallback || ''
+        ).trim();
+    }
+
+    function reportPhotoEntries() {
+        const used = new Set();
+        const entries = [];
+
+        function takeImages(list) {
             const unique = [];
-            attached.forEach((file) => {
-                if (!unique.some((item) => String(item.id) === String(file.id))) unique.push(file);
+            (list || []).forEach((file) => {
+                if (!fileIsImage(file)) return;
+                const key = String(file.id || file.storage_path || file.file_path || file.file_url || '');
+                if (!key || used.has(key)) return;
+                used.add(key);
+                unique.push(file);
             });
+            return unique;
+        }
+
+        (state.rows.mfo_documentation_items || []).forEach((row, index) => {
+            entries.push({
+                row,
+                docIndex: index,
+                sectionCode: row.section_code,
+                photos: takeImages(uniquePhotosForRecord(row.section_code, row.id)),
+                others: filesFor(row.section_code, row.id).filter((file) => !fileIsImage(file))
+            });
+        });
+
+        TABLES.forEach((def) => {
+            if (def.table === 'mfo_documentation_items') return;
+            (state.rows[def.table] || []).forEach((row) => {
+                const photos = takeImages(filesFor(def.code, row.id));
+                if (!photos.length) return;
+                entries.push({
+                    row: {
+                        title: reportTitleFromRow(row, def.title),
+                        activity_date: row.activity_date || row.date_granted || row.completed_at
+                            || row.published_at || row.presented_at || row.awarded_at || '',
+                        activity_time: row.activity_time || '',
+                        venue: row.venue || row.project_locale || '',
+                        narrative: row.narrative || row.remarks || row.description || ''
+                    },
+                    photos,
+                    others: []
+                });
+            });
+        });
+
+        return entries.filter((entry) => {
+            const row = entry.row || {};
+            return (entry.photos || []).length
+                || (entry.others || []).length
+                || reportTitleFromRow(row)
+                || String(row.narrative || '').trim()
+                || String(row.activity_date || '').trim()
+                || String(row.venue || '').trim()
+                || String(row.activity_time || '').trim();
+        });
+    }
+
+    function reportDocumentation(entries) {
+        return entries.map((entry) => {
+            const row = entry.row || entry;
+            const images = entry.photos || uniquePhotosForRecord(row.section_code, row.id);
+            const others = entry.others || [];
+            const docIndex = Number.isInteger(entry.docIndex) ? entry.docIndex : -1;
+            const canEditDoc = canEditOfficialForm() && docIndex >= 0;
+            const details = canEditDoc
+                ? [
+                    ['Date', `<input class="mfo-doc-cell" type="date" value="${esc(String(row.activity_date || '').slice(0, 10))}" ${state.busy ? 'disabled' : ''} oninput="CiteFlowMfoFaculty.updateOfficialCell('mfo_documentation_items', ${docIndex}, 'activity_date', this)" onblur="CiteFlowMfoFaculty.persistOfficialTable('mfo_documentation_items')">`],
+                    ['Time', `<input class="mfo-doc-cell" type="text" value="${esc(row.activity_time || '')}" ${state.busy ? 'disabled' : ''} oninput="CiteFlowMfoFaculty.updateOfficialCell('mfo_documentation_items', ${docIndex}, 'activity_time', this)" onblur="CiteFlowMfoFaculty.persistOfficialTable('mfo_documentation_items')">`],
+                    ['Venue', `<input class="mfo-doc-cell" type="text" value="${esc(row.venue || '')}" ${state.busy ? 'disabled' : ''} oninput="CiteFlowMfoFaculty.updateOfficialCell('mfo_documentation_items', ${docIndex}, 'venue', this)" onblur="CiteFlowMfoFaculty.persistOfficialTable('mfo_documentation_items')">`]
+                ]
+                : [
+                    ['Date', reportDate(row.activity_date)],
+                    ['Time', String(row.activity_time || '').trim()],
+                    ['Venue', String(row.venue || '').trim()],
+                    ['Sponsoring agency', String(row.sponsoring_agency || '').trim()],
+                    ['Role', String(row.role || '').trim()]
+                ].filter(([, value]) => value);
             const narrative = String(row.narrative || '').trim();
-            const images = unique.filter((file) => IMAGE_EXT.test(String(file.file_name || '')));
-            const others = unique.filter((file) => !IMAGE_EXT.test(String(file.file_name || '')));
+            const titleBlock = canEditDoc
+                ? `<input class="mfo-doc-cell mfo-doc-title-input" type="text" value="${esc(reportTitleFromRow(row))}" ${state.busy ? 'disabled' : ''} oninput="CiteFlowMfoFaculty.updateOfficialCell('mfo_documentation_items', ${docIndex}, 'title', this)" onblur="CiteFlowMfoFaculty.persistOfficialTable('mfo_documentation_items')">`
+                : `<div class="t">${esc(reportTitleFromRow(row) || 'Untitled activity')}</div>`;
+            const narrativeBlock = canEditDoc
+                ? `<textarea class="mfo-doc-cell" rows="2" ${state.busy ? 'disabled' : ''} oninput="CiteFlowMfoFaculty.updateOfficialCell('mfo_documentation_items', ${docIndex}, 'narrative', this)" onblur="CiteFlowMfoFaculty.persistOfficialTable('mfo_documentation_items')">${esc(narrative)}</textarea>`
+                : (narrative ? `<div>${esc(narrative)}</div>` : '');
             // src is filled in by hydrateReportPhotos(): the bucket is private,
-            // so each object key has to be signed before it will load.
+            // so each object key has to be signed (then inlined) before print.
             const photos = images.map((file) => `
                 <div class="mfo-doc-photo">
                     <img alt="${esc(file.mfo_caption || file.file_name || 'Supporting photo')}"
+                         src="${esc(fileDisplaySrc(file))}"
                          data-storage-path="${esc(file.storage_path || file.file_path || '')}"
                          data-file-url="${esc(file.file_url || '')}">
                     ${file.mfo_caption ? `<div class="cap">${esc(file.mfo_caption)}</div>` : ''}
+                    ${canEditDoc ? `<div class="mfo-doc-edit"><button type="button" onclick="CiteFlowMfoFaculty.removeFile('${file.id}')">Remove photo</button></div>` : ''}
                 </div>`).join('');
             return `
                 <div class="mfo-doc-entry">
-                    <div class="t">${esc(String(row.title || '').trim() || 'Untitled activity')}</div>
+                    ${titleBlock}
                     ${details.length ? `<dl>${details.map(([label, value]) =>
-                        `<dt>${esc(label)}:</dt><dd>${esc(value)}</dd>`).join('')}</dl>` : ''}
-                    ${narrative ? `<div>${esc(narrative)}</div>` : ''}
+                        `<dt>${esc(label)}:</dt><dd>${canEditDoc ? value : esc(value)}</dd>`).join('')}</dl>` : ''}
+                    ${narrativeBlock}
                     ${photos ? `<div class="mfo-doc-photos">${photos}</div>` : ''}
                     ${others.length ? `<div style="margin-top:4px"><b>Attached documents:</b> ${
                         others.map((file) => esc(file.file_name)).join('; ')
                     }</div>` : ''}
+                    ${canEditDoc ? `<div class="mfo-doc-edit">
+                        <button type="button" onclick="CiteFlowMfoFaculty.openPhotoModal('${esc(entry.sectionCode || row.section_code || 'other_initiatives')}', ${docIndex})">Add photos</button>
+                        <button type="button" onclick="CiteFlowMfoFaculty.removePhotoDoc(${docIndex})">Remove entry</button>
+                    </div>` : ''}
                 </div>`;
         }).join('');
     }
 
     /**
      * Resolve each documentation photo to a signed URL after the report is in
-     * the DOM. Signing is per-object and asynchronous, so it cannot happen
-     * inside the synchronous renderer. A photo that cannot be signed is removed
-     * rather than left as a broken image.
+     * the DOM, then inline it as a data URL so window.print() does not depend
+     * on a Storage URL that may still be resolving (or expire mid-print).
      */
     async function hydrateReportPhotos() {
-        const nodes = Array.from(document.querySelectorAll('#mfoReportDoc img[data-storage-path]'));
-        if (!nodes.length) return;
+        const nodes = Array.from(document.querySelectorAll('#mfoReportDoc .mfo-doc-photo img'));
+        if (!nodes.length) {
+            state.previewPhotosReady = true;
+            return;
+        }
         const client = db();
         await Promise.all(nodes.map(async (img) => {
-            const path = img.getAttribute('data-storage-path');
-            if (path && client?.storage) {
+            let src = String(img.getAttribute('src') || '').trim();
+            const path = String(img.getAttribute('data-storage-path') || '').trim();
+            const fallback = String(img.getAttribute('data-file-url') || '').trim();
+            if (path && client?.storage && !src.startsWith('data:')) {
                 try {
                     const signed = await client.storage.from(BUCKET).createSignedUrl(path, 60 * 60);
-                    if (signed.data?.signedUrl) {
-                        img.src = signed.data.signedUrl;
-                        return;
-                    }
+                    if (signed.data?.signedUrl) src = signed.data.signedUrl;
                 } catch (_) {}
             }
-            const fallback = img.getAttribute('data-file-url');
-            if (fallback) {
-                img.src = fallback;
+            if (!src || src === '#' || (!src.startsWith('data:') && !src.startsWith('http'))) {
+                src = fallback || src;
+            }
+            if (src && !src.startsWith('data:')) {
+                try {
+                    src = await urlToDataUrl(src);
+                } catch (_) {
+                    if (fallback && fallback !== src) {
+                        try { src = await urlToDataUrl(fallback); } catch (__) {}
+                    }
+                }
+            }
+            if (src) {
+                img.src = src;
                 return;
             }
             img.closest('.mfo-doc-photo')?.remove();
         }));
+        state.previewPhotosReady = true;
     }
 
     /**
@@ -3023,12 +3523,15 @@
         const faculty = state.faculty;
         const period = state.period || {};
         const ctx = { facultyName: faculty.full_name || '' };
-        const docRows = state.rows.mfo_documentation_items || [];
+        const photoEntries = reportPhotoEntries();
 
         const body = FORM.map((group) => {
-            const heading = `<div class="mfo-doc-group">${esc(group.group)}</div>`;
+            const only = group.indicators.length === 1 ? group.indicators[0] : null;
+            const heading = `<div class="mfo-doc-group">${esc(group.group)}${
+                group.bare && only?.code ? officialNaMark(only.code) : ''
+            }</div>`;
             const tables = group.indicators.map((indicator) => `
-                ${indicator.heading ? `<div class="mfo-doc-pi">${esc(indicator.heading)}</div>` : ''}
+                ${indicator.heading ? `<div class="mfo-doc-pi">${esc(indicator.heading)}${officialNaMark(indicator.code)}</div>` : ''}
                 ${formTable(indicator, ctx)}
             `).join('');
             return heading + tables;
@@ -3063,7 +3566,9 @@
 
                 <div class="mfo-doc-group">Other accomplishment/s of the program that you would like the College of Education to report for this quarter:</div>
                 <div class="mfo-doc-note">(policies created, external grant for instruction/research/extension, etc.)</div>
-                <div class="mfo-doc-lines">${otherAccomplishments ? esc(otherAccomplishments) : NA}</div>
+                ${canEditOfficialForm()
+                    ? `<textarea class="mfo-doc-lines-input" ${state.busy ? 'disabled' : ''} oninput="CiteFlowMfoFaculty.updateNotes(this)" onblur="CiteFlowMfoFaculty.persistNotes()">${esc(otherAccomplishments)}</textarea>`
+                    : `<div class="mfo-doc-lines">${otherAccomplishments ? esc(otherAccomplishments) : NA}</div>`}
 
                 <div class="mfo-doc-sign">
                     <div class="box">
@@ -3078,16 +3583,9 @@
                         <div class="line"></div>
                         <div>${esc(tv(faculty.full_name))}</div>
                     </div>
-                    <div class="box">
-                        <div><b>E-Signature:</b></div>
-                        ${hasSignature()
-                            ? `<div class="line sig"><img src="${esc(state.packet.signature_data_url)}" alt="Electronic signature" /></div>`
-                            : '<div class="line"></div>'}
-                        <div>${esc(tv(state.packet?.signature_name || (hasSignature() ? faculty.full_name : '')))}</div>
-                    </div>
                 </div>
 
-                ${docRows.length ? renderDocumentationPages(docRows, period) : ''}
+                ${photoEntries.length || canEditOfficialForm() ? renderDocumentationPages(photoEntries, period) : ''}
                 ${reportFooter()}
             </div>`;
     }
@@ -3133,7 +3631,8 @@
             <div class="mfo-doc-title">Supporting Documentation</div>
             <div class="mfo-doc-sub">Accomplishment Report – CY ${esc(period.reporting_year || '')} · ${quarterLine(period)}</div>
             <div class="mfo-doc-sub">${esc(tv(state.faculty.full_name))}</div>
-            ${reportDocumentation(rows)}`;
+            ${reportDocumentation(rows)}
+            ${canEditOfficialForm() ? `<div class="mfo-doc-edit"><button type="button" onclick="CiteFlowMfoFaculty.openPhotoModal('other_initiatives')">Add photo documentation</button></div>` : ''}`;
     }
 
     function renderPreview() {
@@ -3149,14 +3648,21 @@
                     }</p>
                 </div>
                 <div class="flex flex-col sm:flex-row gap-2">
-                    ${state.reviewerMode ? '' : '<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closePreview()">← Back to editor</button>'}
+                    ${state.reviewerMode ? '<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = \'submissions.html#chair-review\'">← Back</button>' : '<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closePreview()">← Back to editor</button>'}
+                    ${state.reviewerMode && reviewerCanAct() ? `
+                    <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.reviewerAction('approved')">Approve</button>
+                    <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.reviewerAction('revision')">Request Revision</button>
+                    <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.reviewerAction('rejected')">Decline</button>
+                    ` : ''}
                     <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.printReport()">
                         <i class="fa-solid fa-print"></i> Print
                     </button>
                 </div>
             </div>
-            ${renderReportDocument()}`;
-        window.scrollTo({ top: 0, behavior: 'auto' });
+            ${renderReportDocument()}
+            ${renderPhotoModal()}`;
+        if (!state.photoModal) window.scrollTo({ top: 0, behavior: 'auto' });
+        state.previewPhotosReady = false;
         hydrateReportPhotos();
     }
 
@@ -3166,19 +3672,19 @@
      * surfaced rather than showing a preview that silently omits the changes.
      */
     async function openPreview() {
+        if (state.busy) return;
         if (!state.locked) {
-            state.busy = true;
-            render();
+            if (!beginBusy('Saving…')) return;
             try {
+                await requireLiveSession();
                 await saveDraftInternal(false);
                 state.lastSaved = new Date().toISOString();
             } catch (error) {
-                state.busy = false;
-                render();
+                endBusy();
                 toast(friendlyError(error, 'Unable to save your changes before preview.'), 'error');
                 return;
             }
-            state.busy = false;
+            endBusy();
         }
         state.previewOpen = true;
         render();
@@ -3191,9 +3697,16 @@
         render();
     }
 
-    function printReport() {
+    async function printReport() {
         if (!state.previewOpen) return;
+        state.printingOfficial = true;
+        render();
+        toast('Preparing photos for print…');
+        await hydrateReportPhotos();
         window.print();
+        state.printingOfficial = false;
+        render();
+        hydrateReportPhotos();
     }
 
     function render() {
@@ -3237,10 +3750,10 @@
                     <div class="text-xs text-slate-500">Last saved: ${esc(formatWhen(state.lastSaved || state.packet?.updated_at))}</div>
                 </div>
                 <div class="mfo-actions flex flex-col sm:flex-row gap-2">
-                    <button type="button" class="cite-action" ${state.busy || state.locked ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.saveDraft()">Save Draft</button>
-                    <button type="button" class="cite-action" ${state.busy ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.openPreview()">View / Print Report</button>
-                    <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.reviewOpen(true)">Review MFO Report</button>
-                    <button type="button" class="cite-action-primary" ${state.busy || !state.task || (state.locked && statusLabel() !== 'Returned for Revision') ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.submitPacket()">Submit MFO Report</button>
+                    <button type="button" class="cite-action" ${state.busy || state.locked ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.saveDraft()">${state.busyLabel === 'Saving…' ? 'Saving…' : 'Save Draft'}</button>
+                    <button type="button" class="cite-action" ${state.busy ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.openPreview()">${state.busyLabel === 'Saving…' && !state.locked ? 'Saving…' : 'View / Print Report'}</button>
+                    <button type="button" class="cite-action" ${state.busy ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.reviewOpen(true)">Review MFO Report</button>
+                    <button type="button" class="cite-action-primary" ${state.busy || !state.task || (state.locked && statusLabel() !== 'Returned for Revision') ? 'disabled' : ''} onclick="CiteFlowMfoFaculty.submitPacket()">${state.busyLabel === 'Submitting…' ? 'Submitting…' : 'Submit MFO Report'}</button>
                 </div>
             </div>
 
@@ -3261,97 +3774,21 @@
 
             ${renderProgramLocked()}
             ${grouped.map((block) => block.items.map(renderFacultySection).join('')).join('')}
-            ${renderSignatureSection()}
+            ${renderOtherNotes()}
             ${renderReview()}
             ${renderPhotoModal()}
         `;
-        restoreSignaturePad();
+        hydrateEditorPhotoNodes();
     }
 
-    /**
-     * "Submitted By" and the electronic signature, side by side.
-     *
-     * Submitted By is unchanged and still comes from the faculty record; it is
-     * shown here only so the author can see what will be printed above their
-     * signature.
-     */
-    function renderSignatureSection() {
-        const faculty = state.faculty;
-        const signed = hasSignature();
-        const signedName = state.packet?.signature_name || faculty.full_name || '';
-
+    function renderOtherNotes() {
         return `
             <section class="surface rounded-[16px] p-5 mb-4">
-                <h2 class="text-base font-bold mb-1">Submitted by &amp; electronic signature</h2>
-                <p class="text-xs text-slate-500 mb-4">
-                    Both appear on the printed report and stay attached to this report
-                    for the Chairperson and the Admin to see.
-                </p>
-
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    <div>
-                        <div class="mfo-label">Submitted by</div>
-                        <div class="font-semibold text-sm">${esc(faculty.full_name || '—')}</div>
-                        <div class="text-[11px] text-slate-400">
-                            ${esc(faculty.position || faculty.academic_rank || 'Faculty')}
-                            ${faculty.department ? ` · ${esc(faculty.department)}` : ''}
-                        </div>
-                        <div class="mfo-label mt-4">Date submitted</div>
-                        <div class="font-semibold text-sm">${esc(
-                            state.submission?.submitted_at
-                                ? formatWhen(state.submission.submitted_at)
-                                : 'Not yet submitted'
-                        )}</div>
-                    </div>
-
-                    <div>
-                        <div class="mfo-label">Electronic signature</div>
-                        ${signed ? `
-                            <div class="mt-1 p-3 rounded-xl border border-slate-200 bg-white">
-                                <img src="${esc(state.packet.signature_data_url)}" alt="Electronic signature"
-                                     style="max-height:70px;max-width:100%;display:block" />
-                                <div class="text-[11px] text-slate-500 mt-2">
-                                    ${esc(signedName)}${state.packet?.signature_signed_at
-                                        ? ` · signed ${esc(formatWhen(state.packet.signature_signed_at))}`
-                                        : ''}
-                                </div>
-                            </div>
-                            ${state.locked ? '' : `
-                                <button type="button" class="cite-action mt-2"
-                                        onclick="CiteFlowMfoFaculty.removeSignature()">Remove signature</button>
-                            `}
-                        ` : `
-                            ${state.locked
-                                ? '<div class="text-sm text-slate-500 mt-1">No signature was attached to this report.</div>'
-                                : `
-                                <p class="text-xs text-slate-500 mt-1 mb-2">Sign in the box below, or upload an image of your signature.</p>
-                                <canvas id="mfoSignaturePad" width="700" height="150"
-                                    style="width:100%;height:150px;border:1px dashed #cbd5e1;border-radius:12px;background:#fff;touch-action:none;cursor:crosshair"
-                                    onmousedown="CiteFlowMfoFaculty.signatureDown(event)"
-                                    onmousemove="CiteFlowMfoFaculty.signatureMove(event)"
-                                    onmouseup="CiteFlowMfoFaculty.signatureUp(event)"
-                                    onmouseleave="CiteFlowMfoFaculty.signatureUp(event)"
-                                    ontouchstart="CiteFlowMfoFaculty.signatureDown(event)"
-                                    ontouchmove="CiteFlowMfoFaculty.signatureMove(event)"
-                                    ontouchend="CiteFlowMfoFaculty.signatureUp(event)"></canvas>
-                                <label class="mfo-label mt-3 block" for="mfoSignatureName">Name under the signature</label>
-                                <input id="mfoSignatureName" type="text" class="mfo-field" maxlength="120"
-                                       value="${esc(faculty.full_name || '')}" />
-                                <div class="flex flex-wrap gap-2 mt-3">
-                                    <button type="button" class="cite-action-primary" ${state.busy ? 'disabled' : ''}
-                                            onclick="CiteFlowMfoFaculty.saveDrawnSignature()">Save signature</button>
-                                    <button type="button" class="cite-action"
-                                            onclick="CiteFlowMfoFaculty.clearSignaturePad()">Clear</button>
-                                    <label class="cite-action inline-flex cursor-pointer">
-                                        Upload image
-                                        <input type="file" accept="image/*" class="hidden"
-                                               onchange="CiteFlowMfoFaculty.uploadSignatureImage(this)">
-                                    </label>
-                                </div>
-                            `}
-                        `}
-                    </div>
-                </div>
+                <h2 class="text-base font-bold mb-1">Other accomplishment/s of the program</h2>
+                <p class="text-xs text-slate-500 mb-3">(policies created, external grant for instruction/research/extension, etc.)</p>
+                <textarea class="mfo-field" rows="4" ${state.locked || state.busy ? 'disabled' : ''}
+                          oninput="CiteFlowMfoFaculty.updateNotes(this)"
+                          placeholder="Additional details for this quarter">${esc(state.packet?.notes || '')}</textarea>
             </section>`;
     }
 
@@ -3360,11 +3797,16 @@
         addRow,
         removeRow,
         setSectionNa,
+        updateNotes,
+        persistNotes,
+        updateOfficialCell,
+        persistOfficialTable,
         saveDraft,
         submitPacket,
         openPreview,
         closePreview,
         printReport,
+        reviewerAction,
         uploadFile,
         removeFile,
         render,
@@ -3375,13 +3817,6 @@
         removePendingPhoto,
         savePhotoModal,
         removePhotoDoc,
-        signatureDown: signaturePointerDown,
-        signatureMove: signaturePointerMove,
-        signatureUp: signaturePointerUp,
-        clearSignaturePad,
-        saveDrawnSignature,
-        uploadSignatureImage,
-        removeSignature,
         reviewOpen(open) {
             state.reviewOpen = !!open;
             render();

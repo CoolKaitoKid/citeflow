@@ -338,13 +338,13 @@ window.updateFacultyNavProfile = updateFacultyNavProfile;
 async function loadFacultyNavigation() {
     try {
         const candidateUrls = [
+            "faculty-nav.html?v=sub-load-1",
+            "../faculty/faculty-nav.html?v=sub-load-1",
             "faculty-nav.html",
             "/faculty/faculty-nav.html",
             "faculty/faculty-nav.html",
             "../faculty-nav.html",
-            "../faculty/faculty-nav.html",
-            "faculty-nav.html?v=chair-review-8",
-            "../faculty/faculty-nav.html?v=chair-review-8"
+            "../faculty/faculty-nav.html"
         ];
         let response = null;
         for (const url of candidateUrls) {
@@ -433,25 +433,67 @@ function syncFacultyChairReviewNav(show) {
     item.style.display = visible ? '' : 'none';
 }
 
-async function refreshFacultyChairReviewNav() {
+async function refreshFacultyChairReviewNav(options = {}) {
     const item = document.getElementById('facultyChairWorkflowNav');
     if (!item) return;
+    const attempt = Number(options.attempt || 0);
     let show = false;
     try {
+        if (window.CiteFlowAuthGuard?.ready) {
+            await window.CiteFlowAuthGuard.ready;
+            if (window.CiteFlowAuthGuard.state === 'AUTH_UNAUTHENTICATED') {
+                syncFacultyChairReviewNav(false);
+                return;
+            }
+        }
         const wf = window.CiteFlowWorkflow;
-        const sb = window.supabaseClient || window.db;
-        if (wf?.currentUserHasChairpersonGrant && sb) {
-            const session = await sb.auth.getSession();
-            const user = session?.data?.session?.user || null;
-            const faculty = wf.getCurrentFaculty
-                ? await wf.getCurrentFaculty(user)
-                : window.currentFaculty;
+        const sb = window.CiteFlowAuth?.ensureSharedClient?.() || window.supabaseClient || window.db;
+        if (!sb) {
+            if (attempt < 4) {
+                setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 400);
+            }
+            return;
+        }
+        if (window.__citeChairAccessResolved) {
+            syncFacultyChairReviewNav(window.CiteFlowChairReview?.access === true);
+            return;
+        }
+        const user = window.CiteFlowAuth?.getFreshSession
+            ? (await window.CiteFlowAuth.getFreshSession(sb))?.user
+            : (await sb.auth.getSession())?.data?.session?.user;
+        if (!user) {
+            if (attempt < 4) {
+                setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 400);
+            }
+            return;
+        }
+        let faculty = window.currentFaculty || window.CiteFlowAuthGuard?.faculty || null;
+        if (!faculty && wf?.getCurrentFaculty) {
+            try {
+                faculty = await wf.getCurrentFaculty(user) || faculty;
+            } catch (_) {}
+        }
+        if (!faculty) {
+            // Profile often loads after the sidebar. Do not hide the item yet.
+            if (attempt < 6) {
+                setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 500);
+            } else {
+                syncFacultyChairReviewNav(false);
+            }
+            return;
+        }
+        if (wf?.currentUserHasChairpersonGrant) {
             show = await wf.currentUserHasChairpersonGrant(sb, faculty, user);
         } else if (window.CiteFlowChairReview?.access) {
             show = true;
         } else if (sb?.rpc) {
             const rpc = await sb.rpc('wf_current_user_has_chairperson_grant');
             show = rpc.data === true;
+        }
+        if (show && window.CiteFlowChairReview?.refreshAccess) {
+            try {
+                await window.CiteFlowChairReview.refreshAccess(faculty, user);
+            } catch (_) {}
         }
     } catch (_) {
         show = false;

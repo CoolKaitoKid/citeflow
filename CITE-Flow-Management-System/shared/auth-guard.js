@@ -133,15 +133,14 @@
             guardState = AuthState.INITIALIZING;
             guardApi.state = AuthState.INITIALIZING;
 
-            let activeSession = null;
-            if (window.CiteFlowAuth?.getFreshSession) {
-                activeSession = await window.CiteFlowAuth.getFreshSession(sb);
-            } else if (window.CiteFlowAuth?.waitForSession) {
-                activeSession = await window.CiteFlowAuth.waitForSession({ timeoutMs: 8000 });
-            } else {
-                const { data: { session } } = await sb.auth.getSession();
-                activeSession = session;
-            }
+            let activeSession = await restoreSession(sb);
+
+            console.info('[AUTH TRACE] AUTH GUARD', {
+                hasSession: !!activeSession,
+                hasUser: !!activeSession?.user,
+                authUserId: activeSession?.user?.id || null,
+                expiresAt: activeSession?.expires_at || null
+            });
 
             if (!activeSession?.user) {
                 console.warn('Auth Guard: Session restoration finished with no authenticated user.');
@@ -150,11 +149,16 @@
             }
 
             async function redirectExpiredSession() {
+                // Do not signOut(). A transient 401 during navigation would
+                // wipe a recoverable session and force every menu click to login.
+                const again = await restoreSession(sb);
+                if (again?.user) {
+                    activeSession = again;
+                    return false;
+                }
                 console.warn('Auth Guard: Session expired after refresh failure. Redirecting to login...');
-                try {
-                    await sb.auth.signOut({ scope: 'local' });
-                } catch (e) { /* ignore */ }
                 redirectToLogin(prefix);
+                return true;
             }
 
             const user = activeSession.user;
@@ -186,8 +190,7 @@
                     ? await window.CiteFlowAuth.refreshSessionShared(sb)
                     : (await sb.auth.refreshSession())?.data?.session || null;
                 if (!refreshed?.user) {
-                    await redirectExpiredSession();
-                    return;
+                    if (await redirectExpiredSession()) return;
                 }
                 // JWT refreshed — continue with existing user; do not treat RLS/data errors as logout.
             } else if (facultyLookup.error) {
@@ -301,6 +304,31 @@
             // Do not redirect to login on unexpected errors — may be transient.
             finish(guardState === AuthState.AUTHENTICATED ? AuthState.AUTHENTICATED : AuthState.INITIALIZING);
         }
+    }
+
+    function delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function restoreSession(sb) {
+        if (!sb?.auth) return null;
+
+        if (window.CiteFlowAuth?.getFreshSession) {
+            const fresh = await window.CiteFlowAuth.getFreshSession(sb);
+            if (fresh?.user) return fresh;
+        } else if (window.CiteFlowAuth?.waitForSession) {
+            const waited = await window.CiteFlowAuth.waitForSession({ timeoutMs: 8000, client: sb });
+            if (waited?.user) return waited;
+        }
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+            try {
+                const { data } = await sb.auth.getSession();
+                if (data?.session?.user) return data.session;
+            } catch (_) {}
+            await delay(250 * (attempt + 1));
+        }
+        return null;
     }
 
     function namesMatch(a, b) {

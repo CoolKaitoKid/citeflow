@@ -369,7 +369,13 @@
                 if (!error && typeof data === 'string' && data) {
                     return data;
                 }
-                if (error && error.code !== 'PGRST202') {
+                const missingRpc = !error ? false : (
+                    error.code === 'PGRST202'
+                    || error.code === '42883'
+                    || Number(error.status || error.statusCode || 0) === 404
+                    || /could not find the function|does not exist/i.test(String(error.message || ''))
+                );
+                if (error && !missingRpc) {
                     console.warn('CiteFlowWorkflow: stage routing RPC failed:', error.message || error);
                 }
             } catch (error) {
@@ -739,6 +745,8 @@
         const client = sb || getSupabaseClient();
         if (!client?.rpc) return false;
         try {
+            const session = (await client.auth?.getSession?.())?.data?.session || null;
+            if (!session?.user?.id || !session?.access_token) return false;
             const { data, error } = await client.rpc('wf_current_user_has_chairperson_grant');
             if (error) {
                 console.warn('CiteFlowWorkflow: chairperson grant RPC unavailable:', error.message || error);
@@ -1061,13 +1069,13 @@
     async function currentUserHasChairpersonGrant(sb, faculty, user) {
         const client = sb || getSupabaseClient();
         const session = client ? await getFreshSession(client) : null;
-        const authUser = user || session?.user || await getCurrentUser();
+        let clientSession = null;
+        try {
+            clientSession = (await client?.auth?.getSession())?.data?.session || null;
+        } catch (_) {}
+        const authUser = clientSession?.user || null;
         const isChair = isChairperson(faculty);
         const isAdmin = isWorkflowAdmin(faculty);
-
-        if (isChair || isAdmin) {
-            return true;
-        }
 
         const debug = {
             authUserId: authUser?.id || null,
@@ -1081,6 +1089,8 @@
             department: faculty?.department || faculty?.department_code || null,
             isChairperson: isChair,
             sessionPresent: !!session?.user,
+            clientSessionPresent: !!clientSession?.user,
+            clientJwtPresent: !!clientSession?.access_token,
             grantFound: false,
             grantId: null,
             grantActive: false,
@@ -1090,14 +1100,16 @@
             shouldShow: false
         };
 
+        faculty = faculty || (typeof window !== 'undefined' ? (window.currentFaculty || window.CiteFlowAuthGuard?.faculty) : null);
         if (!faculty || !client) {
             debug.shouldShow = false;
             console.info('[Chairperson Access Debug]', debug);
             return false;
         }
 
-        if (!session?.user && !authUser?.id) {
+        if (!clientSession?.user?.id || !clientSession?.access_token) {
             debug.shouldShow = false;
+            debug.rpcError = 'shared Supabase client has no authenticated session';
             console.info('[Chairperson Access Debug]', debug);
             return false;
         }
@@ -1107,6 +1119,13 @@
             const rpc = await client.rpc('wf_current_user_has_chairperson_grant');
             debug.rpcValue = rpc.data;
             debug.rpcError = rpc.error?.message || null;
+            if (rpc.error && Number(rpc.error.status || 0) === 401) {
+                console.warn('CiteFlowWorkflow: chairperson grant RPC returned 401 with client session present.', {
+                    authUserId: clientSession.user.id,
+                    clientJwtPresent: !!clientSession.access_token,
+                    error: rpc.error.message || rpc.error
+                });
+            }
             if (!rpc.error && rpc.data === true) {
                 debug.shouldShow = true;
                 console.info('[Chairperson Access Debug]', debug);

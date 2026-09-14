@@ -6,12 +6,12 @@
     <title>MFO Report - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../shared/supabase-config.js"></script>
-    <script src="../shared/auth.js?v=auth-shared-refresh-1"></script>
-    <script src="../shared/workflow.js?v=auth-shared-refresh-1"></script>
-    <script src="../shared/auth-guard.js?v=auth-shared-refresh-1"></script>
+    <script src="../shared/supabase-config.js?v=auth-session-4"></script>
+    <script src="../shared/auth.js?v=auth-nav-2"></script>
+    <script src="../shared/workflow.js?v=auth-session-5"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-2"></script>
     <script src="../shared/cite-settings.js"></script>
-    <script src="../shared/mfo-sources.js?v=mfo-provenance-1"></script>
+    <script src="../shared/mfo-sources.js?v=mfo-accomplishment-map-2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css?v=chair-sidebar-only">
     <link rel="stylesheet" href="../shared/skeleton.css">
@@ -29,6 +29,105 @@
         .mfo-section { border: 1px solid #e8eaef; background: #fff; }
         .mfo-section[open] > summary .mfo-chevron { transform: rotate(180deg); }
         .mfo-section summary::-webkit-details-marker { display: none; }
+        .mfo-section summary { flex-wrap: wrap; }
+        .mfo-na-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #334155;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
+            padding: 6px 12px;
+            flex-shrink: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+        .mfo-na-toggle:disabled {
+            opacity: .55;
+            cursor: default;
+        }
+        .mfo-na-check {
+            width: 15px;
+            height: 15px;
+            border: 1.5px solid #64748b;
+            border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            line-height: 1;
+            color: #fff;
+            background: #fff;
+        }
+        .mfo-na-toggle[aria-pressed="true"] .mfo-na-check {
+            background: #621708;
+            border-color: #621708;
+        }
+        .mfo-na-toggle input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            margin: 0;
+            accent-color: #621708;
+            cursor: pointer;
+        }
+        /* Official form N/A mark sits on the existing PI heading line. */
+        .mfo-doc-na {
+            font-weight: 400;
+            font-size: 10.5px;
+            margin-left: 6px;
+            white-space: nowrap;
+        }
+        .mfo-doc-na input { vertical-align: -2px; }
+        .mfo-doc-lines-input {
+            display: block;
+            width: 100%;
+            border: 0;
+            border-bottom: 1px solid #000;
+            min-height: 18mm;
+            font: inherit;
+            font-size: 11.5px;
+            padding: 4px 2px;
+            margin-top: 4px;
+            resize: vertical;
+            background: transparent;
+        }
+        .mfo-doc-edit { margin-top: 3px; font-size: 10px; }
+        .mfo-doc-cell {
+            width: 100%;
+            border: 0;
+            padding: 0;
+            margin: 0;
+            font: inherit;
+            font-size: 10.5px;
+            line-height: inherit;
+            background: transparent;
+            color: inherit;
+            box-sizing: border-box;
+        }
+        .mfo-doc-title-input { font-weight: 700; font-size: 12px; }
+        .mfo-doc-pair { display: inline-block; margin-right: 6px; white-space: nowrap; }
+        .mfo-doc-pair .mfo-doc-cell { width: 48px; display: inline-block; }
+        @media print {
+            .mfo-doc-edit { display: none !important; }
+            .mfo-doc-lines-input { border: 0; border-bottom: 1px solid #000; resize: none; }
+            .mfo-doc-cell { border: 0; }
+        }
+        /* display:none file inputs do not open a picker in several browsers.
+           Keep them in the layout, just off-screen. */
+        .mfo-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
         .mfo-field {
             width: 100%; border: 1px solid #e5e7eb; border-radius: 12px;
             padding: 10px 12px; font-size: 13px; background: #fff;
@@ -100,8 +199,68 @@
             line-height: 1;
             cursor: pointer;
         }
+        /* Above faculty-nav (1000–2200). Tailwind z-50 sat behind the sidebar. */
+        .mfo-review-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2300;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            padding-top: max(16px, calc(var(--cite-navbar-offset, 60px) + 12px));
+            background: rgba(15, 23, 42, 0.45);
+        }
+        .mfo-review-dialog {
+            width: min(42rem, 100%);
+            max-height: min(85dvh, calc(100dvh - var(--cite-navbar-offset, 60px) - 32px));
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            border-radius: 16px;
+            border: 1px solid #e8eaef;
+        }
+        .mfo-review-header,
+        .mfo-review-footer {
+            flex-shrink: 0;
+            padding: 16px 20px;
+        }
+        .mfo-review-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            border-bottom: 1px solid #edf0f5;
+        }
+        .mfo-review-close {
+            width: 32px;
+            height: 32px;
+            border: 0;
+            border-radius: 999px;
+            background: #f1f5f9;
+            color: #334155;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .mfo-review-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 8px 20px 16px;
+        }
+        .mfo-review-footer {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-top: 1px solid #edf0f5;
+            background: #fff;
+        }
+        @media (min-width: 640px) {
+            .mfo-review-footer { flex-direction: row; }
+        }
         #mfoToast {
-            position: fixed; right: 16px; bottom: 20px; z-index: 80;
+            position: fixed; right: 16px; bottom: 20px; z-index: 2400;
             display: none; max-width: 360px; padding: 12px 16px;
             border-radius: 14px; font-size: 13px; font-weight: 600;
             box-shadow: 0 16px 40px rgba(15,23,42,.16);
@@ -238,8 +397,8 @@
     </main>
 </div>
 <div id="mfoToast"></div>
-<script src="faculty-nav.js?v=mfo-5"></script>
+<script src="faculty-nav.js?v=auth-session-4"></script>
 <script src="../shared/system-ui.js"></script>
-<script src="mfo-report.js?v=mfo-official-template-2"></script>
+<script src="mfo-report.js?v=mfo-func-8"></script>
 </body>
 </html>

@@ -9,17 +9,21 @@
     const PREFIX = 'cf_enc_v2::';
     const INSTITUTIONAL_KEY = 'CTU_CITEFLOW_STORAGE_CIPHER_PROT_KEY_2026_@#!';
 
+    function isSupabaseAuthKey(key) {
+        const lower = String(key || '').toLowerCase();
+        return lower.startsWith('sb-') || lower.includes('auth-token');
+    }
+
     function shouldEncryptKey(key) {
         if (!key || typeof key !== 'string') return false;
+        // Supabase must read its own session JSON. Encrypting sb-* keys made
+        // getSession() return nothing, so Postgres saw auth.uid() as null.
+        if (isSupabaseAuthKey(key)) return false;
         const lower = key.toLowerCase();
         return (
             lower.startsWith('citeflow_') ||
-            lower.startsWith('sb-') ||
             lower.startsWith('cf_') ||
-            lower.includes('convo_') ||
-            lower.includes('auth-token') ||
-            lower.includes('user') ||
-            lower.includes('session')
+            lower.includes('convo_')
         );
     }
 
@@ -163,5 +167,11 @@
             };
             window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, options);
         }
+        console.info('[AUTH TRACE] SHARED CLIENT', {
+            hasClient: !!window.supabaseClient,
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+        });
     }
 })();

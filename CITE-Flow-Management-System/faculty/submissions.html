@@ -6,23 +6,33 @@
 
     <title>Submissions - CITE-Flow</title>
 
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../shared/supabase-config.js"></script>
-    <script src="../shared/auth.js"></script>
-    <script src="../shared/workflow.js?v=auth-session-1"></script>
-    <script src="../shared/auth-guard.js?v=auth-session-1"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <script src="../shared/supabase-config.js?v=auth-session-4"></script>
+    <script src="../shared/auth.js?v=auth-nav-2"></script>
+    <script src="../shared/workflow.js?v=auth-session-4"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-2"></script>
+    <script src="../shared/system-ui.js" defer></script>
+    <script src="../shared/cite-settings.js" defer></script>
+    <script src="chairperson-review.js?v=sub-load-1" defer></script>
+    <script src="faculty-nav.js?v=sub-load-1" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/></noscript>
 
     <link rel="stylesheet" href="faculty-nav.css?v=chair-sidebar-only">
     <link rel="stylesheet" href="../shared/skeleton.css">
     <link rel="stylesheet" href="../shared/cite-workbench.css">
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
         * {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', system-ui, sans-serif;
         }
 
         body {
@@ -729,6 +739,8 @@ let isFetchingData = false;
 let pendingDataRefresh = false;
 
 let authChecked = false;
+let submissionsPageStarted = false;
+let chairReviewPrefetchPromise = null;
 let submitInProgress = false;
 let quickSubmitInProgress = false;
 let fileActionInProgress = false;
@@ -1378,13 +1390,18 @@ async function requireFacultyAuth() {
 
     if (window.CiteFlowAuthGuard?.ready) {
         await window.CiteFlowAuthGuard.ready;
-        if (window.CiteFlowAuthGuard.state === 'AUTH_UNAUTHENTICATED') {
-            return false;
-        }
-        if (window.CiteFlowAuthGuard.user) {
+        if (window.CiteFlowAuthGuard.state === 'AUTHENTICATED' && window.CiteFlowAuthGuard.user) {
             currentUser = window.CiteFlowAuthGuard.user;
             authChecked = true;
             return true;
+        }
+        if (window.CiteFlowAuthGuard.state === 'AUTH_UNAUTHENTICATED') {
+            const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
+            window.location.replace(`../login.html?next=${next}`);
+            return false;
+        }
+        if (window.CiteFlowAuthGuard.state === 'AUTH_INITIALIZING') {
+            console.warn('[Auth] Session restoration is still in progress; waiting for a live session.');
         }
     }
 
@@ -1393,6 +1410,11 @@ async function requireFacultyAuth() {
         : (await db.auth.getSession()).data?.session;
 
     if (!session?.user) {
+        if (window.CiteFlowAuthGuard?.state === 'AUTHENTICATED' && window.CiteFlowAuthGuard.user) {
+            currentUser = window.CiteFlowAuthGuard.user;
+            authChecked = true;
+            return true;
+        }
         const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
         window.location.replace(`../login.html?next=${next}`);
         return false;
@@ -1422,10 +1444,24 @@ async function requireFacultyAuth() {
    LOAD FACULTY PROFILE
 ========================================================= */
 
+function wantsChairReviewView() {
+    const hash = String(window.location.hash || '').toLowerCase();
+    return hash === '#chair-review' || hash === '#chairperson-review'
+        || window.CiteFlowChairReview?.mode === 'chair';
+}
+
 async function loadCurrentFacultyProfile() {
 
     if (!currentUser) {
         return null;
+    }
+
+    const cached = window.currentFaculty
+        || (window.CiteFlowAuthGuard?.faculty?.auth_user_id ? window.CiteFlowAuthGuard.faculty : null);
+    if (cached?.id) {
+        return window.CiteFlowWorkflow?.normalizeFaculty
+            ? window.CiteFlowWorkflow.normalizeFaculty(cached)
+            : cached;
     }
 
     if (window.CiteFlowWorkflow) {
@@ -6599,63 +6635,40 @@ async function fetchAllData() {
             console.warn('Faculty profile is inactive, but assigned tasks will still be shown.');
         }
 
-        if (window.CiteFlowChairReview) {
-            await window.CiteFlowChairReview.refreshAccess(currentFaculty, currentUser);
-            await window.CiteFlowChairReview.loadData();
-        }
-
+        wrapChairReviewSetMode();
 
         const facultyId = currentFaculty.id;
+        const chairAccessPromise = window.CiteFlowChairReview
+            ? window.CiteFlowChairReview.refreshAccess(currentFaculty, currentUser)
+            : Promise.resolve(false);
 
-        let assignmentRows = [];
-        let taskRows = [];
-
-        if (window.CiteFlowWorkflow) {
-            const bundle = await CiteFlowWorkflow.loadFacultyAssignedTasks(facultyId);
-            if (bundle.error) {
-                root.innerHTML = `
-                    ${renderTopBar('Submission Tasks', 'There was a problem loading your tasks.')}
-                    <div class="rounded-3xl p-6 bg-white border border-red-100 text-red-600">
-                        ${escapeHtml(bundle.error.message || 'Failed to load assigned tasks.')}
-                    </div>
-                `;
-                return;
-            }
-            assignmentRows = bundle.assignments;
-            taskRows = bundle.tasks;
-        } else {
-            const [tasks, assignments] = await Promise.all([
+        const assignedPromise = window.CiteFlowWorkflow
+            ? CiteFlowWorkflow.loadFacultyAssignedTasks(facultyId)
+            : Promise.all([
                 db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
                 db.from('wf_task_assignments').select('*').eq('faculty_id', facultyId)
-            ]);
-
-            if (tasks.error || assignments.error) {
-                const message =
-                    tasks.error?.message
-                    || assignments.error?.message
-                    || 'Failed to load submission data.';
-
-                root.innerHTML = `
-                    ${renderTopBar('Submission Tasks', 'There was a problem loading your tasks.')}
-                    <div class="rounded-3xl p-6 bg-white border border-red-100 text-red-600">
-                        ${escapeHtml(message)}
-                    </div>
-                `;
-                return;
-            }
-
-            assignmentRows = assignments.data || [];
-            const assignmentTaskIds = new Set(assignmentRows.map(a => String(a.task_id)));
-            taskRows = (tasks.data || []).filter(task => assignmentTaskIds.has(String(task.id)));
-        }
+            ]).then(([tasks, assignments]) => {
+                if (tasks.error || assignments.error) {
+                    return { tasks: [], assignments: [], error: tasks.error || assignments.error };
+                }
+                const rows = assignments.data || [];
+                const assignmentTaskIds = new Set(rows.map(a => String(a.task_id)));
+                return {
+                    assignments: rows,
+                    tasks: (tasks.data || []).filter(task => assignmentTaskIds.has(String(task.id))),
+                    error: null
+                };
+            });
 
         console.info('Faculty submissions: loading workflow data for faculty_id', facultyId);
 
         const [
+            bundle,
             submissions,
             notifications,
             reportConfigs
         ] = await Promise.all([
+            assignedPromise,
             db.from('wf_submissions').select('*').eq('faculty_id', facultyId),
             db
                 .from('wf_notifications')
@@ -6665,6 +6678,19 @@ async function fetchAllData() {
                 .limit(100),
             db.from('wf_report_configs').select('*')
         ]);
+
+        if (bundle.error) {
+            root.innerHTML = `
+                ${renderTopBar('Submission Tasks', 'There was a problem loading your tasks.')}
+                <div class="rounded-3xl p-6 bg-white border border-red-100 text-red-600">
+                    ${escapeHtml(bundle.error.message || 'Failed to load assigned tasks.')}
+                </div>
+            `;
+            return;
+        }
+
+        const assignmentRows = bundle.assignments || [];
+        const taskRows = bundle.tasks || [];
 
         let files = { data: [], error: null };
         if (!submissions.error) {
@@ -6767,11 +6793,23 @@ async function fetchAllData() {
             submissions: state.submissions.length
         });
 
-        if (window.CiteFlowChairReview) {
-            await window.CiteFlowChairReview.refreshAccess(currentFaculty, currentUser);
-            await window.CiteFlowChairReview.loadData();
+        await chairAccessPromise;
+        window.__citeChairAccessResolved = true;
+        if (typeof window.refreshFacultyChairReviewNav === 'function') {
+            window.refreshFacultyChairReviewNav();
         }
 
+        if (window.CiteFlowChairReview?.access) {
+            if (window.__citeChairReviewLoaded) {
+                chairReviewPrefetchPromise = null;
+                window.__citeChairReviewLoaded = false;
+            }
+            if (wantsChairReviewView()) {
+                await ensureChairReviewData(true);
+            } else {
+                ensureChairReviewData(false);
+            }
+        }
 
         if (
             currentView === 'detail'
@@ -6784,7 +6822,11 @@ async function fetchAllData() {
 
         } else if (window.CiteFlowChairReview?.mode === 'chair' && window.CiteFlowChairReview.access) {
 
-            window.CiteFlowChairReview.render();
+            if (window.__citeChairReviewLoaded) {
+                window.CiteFlowChairReview.render();
+            } else {
+                renderListPage();
+            }
 
         } else {
 
@@ -6843,98 +6885,120 @@ async function fetchAllData() {
 }
 
 
-/* =========================================================
-   INITIALIZATION
-========================================================= */
-
-console.warn("[Submissions Debug] registering window.onload");
-window.onload = async () => {
-    console.warn("[Submissions Debug] window.onload ACTUALLY RUNNING");
-    console.warn("[Submissions Debug] CiteFlowChairReview exists:", !!window.CiteFlowChairReview);
-    console.warn("[Submissions Debug] CiteFlowWorkflow exists:", !!window.CiteFlowWorkflow);
-
-    try {
-        if (typeof loadSidebar === 'function') {
-            await loadSidebar();
-        } else if (typeof loadFacultyNavigation === 'function') {
-            await loadFacultyNavigation();
+function wrapChairReviewSetMode() {
+    const review = window.CiteFlowChairReview;
+    if (!review || review.__citeSetModeWrapped) return;
+    const original = review.setMode.bind(review);
+    review.setMode = function(mode) {
+        original(mode);
+        if (mode === 'chair' && review.access && !window.__citeChairReviewLoaded) {
+            ensureChairReviewData(true).then(() => {
+                if (review.mode === 'chair' && review.access) review.render();
+            }).catch((err) => console.warn('[Submissions] Chair review load failed:', err));
         }
-    } catch (navError) {
-        console.error('Faculty navigation failed to load:', navError);
-    }
+    };
+    review.__citeSetModeWrapped = true;
+}
 
+function ensureChairReviewData(wait) {
+    if (!window.CiteFlowChairReview?.access) {
+        return wait ? Promise.resolve() : undefined;
+    }
+    if (window.__citeChairReviewLoaded) {
+        return wait ? Promise.resolve() : undefined;
+    }
+    if (!chairReviewPrefetchPromise) {
+        chairReviewPrefetchPromise = window.CiteFlowChairReview.loadData()
+            .then(() => {
+                window.__citeChairReviewLoaded = true;
+            })
+            .catch((err) => {
+                chairReviewPrefetchPromise = null;
+                throw err;
+            });
+    }
+    if (wait) return chairReviewPrefetchPromise;
+    chairReviewPrefetchPromise.then(() => {
+        if (window.CiteFlowChairReview?.mode === 'chair' && window.CiteFlowChairReview.access) {
+            window.CiteFlowChairReview.render();
+        }
+    }).catch((err) => console.warn('[Submissions] Chair review prefetch failed:', err));
+}
+
+function showSubmissionsSkeleton() {
     const root = document.getElementById('appRoot');
-    if (root && !root.innerHTML.trim()) {
-        root.innerHTML = `
-            ${renderTopBar('Submission Tasks', 'Loading your assigned tasks...', false)}
-            <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-7">
-                <div class="cite-stat cite-stat-neutral rounded-[16px] p-5">
-                    <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
-                </div>
-                <div class="cite-stat cite-stat-pending rounded-[16px] p-5">
-                    <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
-                </div>
-                <div class="cite-stat cite-stat-review rounded-[16px] p-5">
-                    <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
-                </div>
-                <div class="cite-stat cite-stat-urgent rounded-[16px] p-5">
-                    <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
-                </div>
-                <div class="cite-stat cite-stat-approved rounded-[16px] p-5">
-                    <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
-                </div>
-            </section>
-            
-            <div class="space-y-4">
-                <div class="skeleton-card">
-                    <div class="flex items-center gap-4 mb-4">
-                        <div class="skeleton-circle" style="width:48px;height:48px"></div>
-                        <div class="flex-1">
-                            <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
-                            <div class="skeleton-text sm" style="width:40%"></div>
-                        </div>
-                    </div>
-                    <div class="space-y-3 mt-4">
-                        <div class="skeleton-text" style="width:100%"></div>
-                        <div class="skeleton-text" style="width:80%"></div>
-                        <div class="skeleton-text" style="width:70%"></div>
+    if (!root || root.innerHTML.trim()) return;
+    root.innerHTML = `
+        ${renderTopBar('Submission Tasks', 'Loading your assigned tasks...', false)}
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-7">
+            <div class="cite-stat cite-stat-neutral rounded-[16px] p-5">
+                <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
+            </div>
+            <div class="cite-stat cite-stat-pending rounded-[16px] p-5">
+                <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
+            </div>
+            <div class="cite-stat cite-stat-review rounded-[16px] p-5">
+                <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
+            </div>
+            <div class="cite-stat cite-stat-urgent rounded-[16px] p-5">
+                <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
+            </div>
+            <div class="cite-stat cite-stat-approved rounded-[16px] p-5">
+                <div class="skeleton-metric"><div class="skeleton-text sm mx-auto" style="width:80px;margin-bottom:12px"></div><div class="skeleton-text xl mx-auto"></div></div>
+            </div>
+        </section>
+        <div class="space-y-4">
+            <div class="skeleton-card">
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                    <div class="flex-1">
+                        <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                        <div class="skeleton-text sm" style="width:40%"></div>
                     </div>
                 </div>
-                <div class="skeleton-card">
-                    <div class="flex items-center gap-4 mb-4">
-                        <div class="skeleton-circle" style="width:48px;height:48px"></div>
-                        <div class="flex-1">
-                            <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
-                            <div class="skeleton-text sm" style="width:40%"></div>
-                        </div>
-                    </div>
-                    <div class="space-y-3 mt-4">
-                        <div class="skeleton-text" style="width:100%"></div>
-                        <div class="skeleton-text" style="width:80%"></div>
-                        <div class="skeleton-text" style="width:70%"></div>
-                    </div>
-                </div>
-                <div class="skeleton-card">
-                    <div class="flex items-center gap-4 mb-4">
-                        <div class="skeleton-circle" style="width:48px;height:48px"></div>
-                        <div class="flex-1">
-                            <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
-                            <div class="skeleton-text sm" style="width:40%"></div>
-                        </div>
-                    </div>
-                    <div class="space-y-3 mt-4">
-                        <div class="skeleton-text" style="width:100%"></div>
-                        <div class="skeleton-text" style="width:80%"></div>
-                        <div class="skeleton-text" style="width:70%"></div>
-                    </div>
+                <div class="space-y-3 mt-4">
+                    <div class="skeleton-text" style="width:100%"></div>
+                    <div class="skeleton-text" style="width:80%"></div>
+                    <div class="skeleton-text" style="width:70%"></div>
                 </div>
             </div>
-        `;
-    }
+            <div class="skeleton-card">
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                    <div class="flex-1">
+                        <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                        <div class="skeleton-text sm" style="width:40%"></div>
+                    </div>
+                </div>
+                <div class="space-y-3 mt-4">
+                    <div class="skeleton-text" style="width:100%"></div>
+                    <div class="skeleton-text" style="width:80%"></div>
+                    <div class="skeleton-text" style="width:70%"></div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function startSubmissionsPage() {
+    if (submissionsPageStarted) return;
+    submissionsPageStarted = true;
+    wrapChairReviewSetMode();
+    showSubmissionsSkeleton();
+
+    const navPromise = Promise.resolve().then(() => {
+        if (typeof loadSidebar === 'function') return loadSidebar();
+        if (typeof loadFacultyNavigation === 'function') return loadFacultyNavigation();
+        return null;
+    }).catch((navError) => {
+        console.error('Faculty navigation failed to load:', navError);
+    });
 
     await fetchAllData();
+    await navPromise;
 
-    if (window.CiteFlowWorkflow) {
+    if (window.CiteFlowWorkflow && !window.__citeSubmissionsRealtimeBound) {
+        window.__citeSubmissionsRealtimeBound = true;
         CiteFlowWorkflow.subscribeWorkflow(() => {
             fetchAllData();
             if (typeof window.loadFacultyNavNotifications === 'function') {
@@ -6942,6 +7006,18 @@ window.onload = async () => {
             }
         }, ['wf_tasks', 'wf_submissions', 'wf_task_assignments', 'wf_notifications', 'wf_approval_history', 'wf_submission_files', 'wf_delegated_access', 'wf_report_configs', 'faculty']);
     }
+}
+
+/* =========================================================
+   INITIALIZATION
+========================================================= */
+
+console.warn("[Submissions Debug] registering DOMContentLoaded init");
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startSubmissionsPage, { once: true });
+} else {
+    startSubmissionsPage();
+}
 
 
     /*
@@ -6950,32 +7026,25 @@ window.onload = async () => {
     |--------------------------------------------------------------------------
     */
 
-    document.addEventListener(
-        'input',
-        event => {
+document.addEventListener(
+    'input',
+    event => {
 
-            if (
-                event.target?.id
-                === 'taskSearch'
-            ) {
+        if (
+            event.target?.id
+            === 'taskSearch'
+        ) {
 
-                window.__lastSearch =
-                    event.target.value;
-
-            }
+            window.__lastSearch =
+                event.target.value;
 
         }
-    );
 
-};
+    }
+);
 
 </script>
 
-
-<script src="../shared/system-ui.js"></script>
-<script src="../shared/cite-settings.js"></script>
-<script src="chairperson-review.js?v=auth-session-1"></script>
-<script src="faculty-nav.js?v=mfo-2"></script>
 <script id="submissions-compact-init">
 /* Compact Select Handler Initialization matching Calendar & Reports */
 function closeAllCompactSelects(exceptPanel) {
@@ -7090,16 +7159,23 @@ document.addEventListener('scroll', () => {
 }, true);
 window.addEventListener('resize', () => closeAllCompactSelects());
 
-// Periodically check and initialize newly rendered selects (e.g. after DOM re-renders)
-setInterval(() => {
-    if (typeof initCompactSelects === 'function') {
-        initCompactSelects();
-    }
-}, 300);
-
-window.addEventListener('load', () => {
-    setTimeout(initCompactSelects, 200);
-});
+if (typeof initCompactSelects === 'function') {
+    initCompactSelects();
+}
+const compactRoot = document.getElementById('appRoot');
+if (compactRoot && !window.__citeCompactSelectObserver) {
+    window.__citeCompactSelectObserver = new MutationObserver(() => {
+        if (window.__citeCompactSelectTimer) return;
+        window.__citeCompactSelectTimer = setTimeout(() => {
+            window.__citeCompactSelectTimer = null;
+            const needsWrap = compactRoot.querySelector('select:not([multiple]):not(.compact-select-native)');
+            if (needsWrap && typeof initCompactSelects === 'function') {
+                initCompactSelects();
+            }
+        }, 50);
+    });
+    window.__citeCompactSelectObserver.observe(compactRoot, { childList: true, subtree: true });
+}
 </script>
 
 </body>

@@ -6,10 +6,10 @@
     <title>Status Tracking - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../shared/supabase-config.js"></script>
-    <script src="../shared/auth.js"></script>
-    <script src="../shared/workflow.js?v=auth-session-1"></script>
-    <script src="../shared/auth-guard.js?v=auth-session-1"></script>
+    <script src="../shared/supabase-config.js?v=auth-session-2"></script>
+    <script src="../shared/auth.js?v=auth-nav-1"></script>
+    <script src="../shared/workflow.js?v=auth-session-2"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
     <link rel="stylesheet" href="../shared/skeleton.css">
@@ -504,11 +504,18 @@ async function requireFacultyAuth() {
 
     if (window.CiteFlowAuthGuard?.ready) {
         await window.CiteFlowAuthGuard.ready;
-        if (window.CiteFlowAuthGuard.state === 'AUTH_UNAUTHENTICATED') return false;
-        if (window.CiteFlowAuthGuard.user) {
+        if (window.CiteFlowAuthGuard.state === 'AUTHENTICATED' && window.CiteFlowAuthGuard.user) {
             currentUser = window.CiteFlowAuthGuard.user;
             authChecked = true;
             return true;
+        }
+        if (window.CiteFlowAuthGuard.state === 'AUTH_UNAUTHENTICATED') {
+            const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
+            window.location.replace(`../login.html?next=${next}`);
+            return false;
+        }
+        if (window.CiteFlowAuthGuard.state === 'AUTH_INITIALIZING') {
+            console.warn('[Auth] Session restoration is still in progress; waiting for a live session.');
         }
     }
 
@@ -516,7 +523,12 @@ async function requireFacultyAuth() {
         ? await window.CiteFlowAuth.getFreshSession(db)
         : (await db.auth.getSession()).data?.session;
     if (!session?.user) {
-        const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}`);
+        if (window.CiteFlowAuthGuard?.state === 'AUTHENTICATED' && window.CiteFlowAuthGuard.user) {
+            currentUser = window.CiteFlowAuthGuard.user;
+            authChecked = true;
+            return true;
+        }
+        const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
         window.location.replace(`../login.html?next=${next}`);
         return false;
     }
@@ -1026,6 +1038,6 @@ window.onload = async () => {
 </script>
 <script src="../shared/system-ui.js"></script>
 <script src="../shared/cite-settings.js"></script>
-<script src="faculty-nav.js?v=chair-review-8"></script>
+<script src="faculty-nav.js?v=auth-session-3"></script>
 </body>
 </html>
