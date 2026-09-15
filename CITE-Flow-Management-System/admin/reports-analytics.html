@@ -35,6 +35,8 @@
         .action-created, .action-submitted { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
         .action-updated { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
         .action-download, .action-exported { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+        .action-notification { background: #fefce8; color: #a16207; border: 1px solid #fef08a; }
+        .action-admin-upload { background: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
         .action-other { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
         .table-row:hover { background: #f8fafc; }
 
@@ -375,9 +377,10 @@ let allLogs = [], filteredLogs = [];
 const defaultModules = [
     'Workflow Approval', 'Document Vault', 'Workload Tracker',
     'Engagement Logs', 'Faculty Profiles', 'Calendar & Events',
-    'Seminar Feedback', 'User Management', 'Reports and Analytics'
+    'Seminar Feedback', 'User Management', 'Reports and Analytics',
+    'Notifications'
 ];
-const actionColors = ['#621708', '#059669', '#d97706', '#dc2626', '#2563eb', '#7c3aed', '#475569', '#0891b2', '#db2777'];
+const actionColors = ['#621708', '#059669', '#d97706', '#dc2626', '#2563eb', '#7c3aed', '#475569', '#0891b2', '#db2777', '#ca8a04', '#0284c7', '#10b981', '#6366f1'];
 
 function esc(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function formatDate(v) { return v ? new Date(v).toLocaleString([], {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '—'; }
@@ -387,9 +390,11 @@ function actionClass(action) {
     if (a.includes('approv') || a === 'completed') return 'action-approved';
     if (a.includes('revis') || a.includes('request')) return 'action-requested-edit';
     if (a.includes('reject') || a.includes('declin')) return 'action-rejected';
+    if (a.includes('admin-upload')) return 'action-admin-upload';
     if (a.includes('submit') || a.includes('creat') || a.includes('upload') || a.includes('add')) return 'action-created';
     if (a.includes('updat') || a.includes('edit')) return 'action-updated';
     if (a.includes('export') || a.includes('download')) return 'action-download';
+    if (a.includes('notif')) return 'action-notification';
     return 'action-other';
 }
 
@@ -401,10 +406,12 @@ function normalizeAction(action) {
     if (lower.includes('revision') || lower.includes('returned')) return 'Revision Requested';
     if (lower.includes('reject') || lower.includes('decline')) return 'Rejected';
     if (lower.includes('submit')) return 'Submitted';
+    if (lower.includes('admin upload')) return 'Admin Upload';
     if (lower.includes('upload')) return 'Uploaded';
     if (lower.includes('export')) return 'Exported';
     if (lower.includes('create') || lower.includes('add')) return 'Created';
     if (lower.includes('update') || lower.includes('edit')) return 'Updated';
+    if (lower.includes('notif')) return 'Notification';
     return a.charAt(0).toUpperCase() + a.slice(1);
 }
 
@@ -420,14 +427,40 @@ async function safeFetch(table, query = '*') {
 }
 
 async function loadReports() {
-    const [sysLogs, wfLogs, engagementLogs, facultyList, wfTasks, wfSubmissions, docList] = await Promise.all([
+    const [
+        sysLogs,
+        wfLogs,
+        engagementLogs,
+        facultyList,
+        wfTasks,
+        wfSubmissions,
+        docList,
+        resList,
+        accList,
+        extList,
+        vaultList,
+        foldersList,
+        leaveList,
+        feedbackList,
+        wfNotifs,
+        directNotifs
+    ] = await Promise.all([
         safeFetch('system_activity_logs', '*'),
         safeFetch('wf_activity_log', '*'),
         safeFetch('engagement_logs', '*'),
         safeFetch('faculty', 'id, full_name, first_name, last_name, email, department, role, created_at'),
-        safeFetch('wf_tasks', 'id, title, category, created_by_name, created_at'),
+        safeFetch('wf_tasks', 'id, title, created_by_name, created_at'),
         safeFetch('wf_submissions', 'id, task_id, faculty_id, status, submitted_at, reviewed_at, reviewed_by_name, review_remarks'),
-        safeFetch('faculty_documents', 'id, faculty_id, title, document_name, category, status, uploaded_at')
+        safeFetch('faculty_documents', 'id, faculty_id, title, document_name, document_type, sub_category, status, verification_status, verified_by_name, verified_at, created_at'),
+        safeFetch('faculty_research_projects', 'id, faculty_id, title, description, status, start_date, created_at'),
+        safeFetch('faculty_accomplishments', 'id, faculty_id, title, accomplishment_type, description, date_achieved, created_at'),
+        safeFetch('extension_projects', 'id, faculty_id, project_title, partner_organization, status, start_date, created_at'),
+        safeFetch('documents', 'id, name, folder_id, uploaded_at'),
+        safeFetch('folders', 'id, name'),
+        safeFetch('faculty_leaves', 'id, faculty_id, faculty_name, first_name, last_name, leave_type, start_date, end_date, status, date_of_filing, created_at'),
+        safeFetch('calendar_event_feedback', 'id, event_id, faculty_id, faculty_name, overall_rating, feedback_summary, submitted_at'),
+        safeFetch('wf_notifications', 'id, faculty_id, title, message, type, is_read, created_at'),
+        safeFetch('notifications', 'id, user_id, title, message, type, is_read, created_at')
     ]);
 
     const facultyMap = {};
@@ -438,6 +471,11 @@ async function loadReports() {
     const taskMap = {};
     for (const t of wfTasks) {
         taskMap[t.id] = t.title || 'Task';
+    }
+
+    const folderMap = {};
+    for (const f of foldersList) {
+        folderMap[f.id] = f.name || 'Folder';
     }
 
     const aggregated = [];
@@ -489,7 +527,7 @@ async function loadReports() {
                 user_role: 'Faculty',
                 module: 'Workflow Approval',
                 action: 'Submitted',
-                details: `Submitted task: ${tTitle} (Status: ${row.status || 'Pending Review'})`
+                details: `Submitted task: "${tTitle}" (Status: ${row.status || 'Pending Review'})`
             });
         }
         if (row.reviewed_at && row.status) {
@@ -509,14 +547,148 @@ async function loadReports() {
 
     for (const row of docList) {
         const fName = facultyMap[row.faculty_id] || 'Faculty Member';
+        const docTitle = row.title || row.document_name || 'Document';
+        const docType = row.document_type || row.sub_category || 'Profile Document';
+        const isAdminUpload = row.status === 'Uploaded by Admin' || row.status === 'Admin Upload';
+
         aggregated.push({
             id: 'doc_' + row.id,
-            created_at: row.uploaded_at || new Date().toISOString(),
+            created_at: row.created_at || new Date().toISOString(),
+            user_name: isAdminUpload ? (row.verified_by_name || 'Administrator') : fName,
+            user_role: isAdminUpload ? 'Administrator' : 'Faculty',
+            module: 'Faculty Profiles',
+            action: isAdminUpload ? 'Admin Upload' : 'Uploaded',
+            details: isAdminUpload
+                ? `Admin uploaded document for ${fName}: "${docTitle}" (${docType})`
+                : `Uploaded document to profile: "${docTitle}" (${docType})`
+        });
+
+        if (row.verification_status && row.verification_status !== 'pending' && row.verified_at) {
+            const isVerified = row.verification_status === 'verified';
+            aggregated.push({
+                id: 'doc_ver_' + row.id,
+                created_at: row.verified_at,
+                user_name: row.verified_by_name || 'Administrator',
+                user_role: 'Administrator',
+                module: 'Faculty Profiles',
+                action: isVerified ? 'Approved' : 'Rejected',
+                details: `${isVerified ? 'Verified' : 'Rejected verification for'} document: "${docTitle}" (${fName})`
+            });
+        }
+    }
+
+    for (const row of resList) {
+        const fName = facultyMap[row.faculty_id] || 'Faculty Member';
+        aggregated.push({
+            id: 'res_' + row.id,
+            created_at: row.created_at || row.start_date || new Date().toISOString(),
             user_name: fName,
             user_role: 'Faculty',
+            module: 'Faculty Profiles',
+            action: 'Created',
+            details: `Added research project: "${row.title || 'Untitled'}" (Status: ${row.status || 'Ongoing'})`
+        });
+    }
+
+    for (const row of accList) {
+        const fName = facultyMap[row.faculty_id] || 'Faculty Member';
+        aggregated.push({
+            id: 'acc_' + row.id,
+            created_at: row.created_at || row.date_achieved || new Date().toISOString(),
+            user_name: fName,
+            user_role: 'Faculty',
+            module: 'Faculty Profiles',
+            action: 'Created',
+            details: `Recorded accomplishment: "${row.title || 'Untitled'}" (${row.accomplishment_type || 'General'})`
+        });
+    }
+
+    for (const row of extList) {
+        const fName = facultyMap[row.faculty_id] || 'Faculty Member';
+        const partner = row.partner_organization ? ` with ${row.partner_organization}` : '';
+        const status = row.status ? ` (Status: ${row.status})` : '';
+        aggregated.push({
+            id: 'ext_' + row.id,
+            created_at: row.created_at || row.start_date || new Date().toISOString(),
+            user_name: fName,
+            user_role: 'Faculty',
+            module: 'Faculty Profiles',
+            action: 'Created',
+            details: `Added extension project: "${row.project_title || 'Untitled'}"${partner}${status}`
+        });
+    }
+
+    for (const row of vaultList) {
+        const folderName = folderMap[row.folder_id] ? ` (Folder: ${folderMap[row.folder_id]})` : '';
+        aggregated.push({
+            id: 'vault_' + row.id,
+            created_at: row.uploaded_at || new Date().toISOString(),
+            user_name: 'Administrator',
+            user_role: 'Administrator',
             module: 'Document Vault',
             action: 'Uploaded',
-            details: `Uploaded document: ${row.title || row.document_name || 'File'} (${row.category || 'Extension'})`
+            details: `Uploaded file to vault: "${row.name || 'File'}"${folderName}`
+        });
+    }
+
+    for (const row of leaveList) {
+        const fName = facultyMap[row.faculty_id]
+            || [row.first_name, row.last_name].filter(Boolean).join(' ')
+            || row.faculty_name
+            || 'Faculty Member';
+        const dates = row.start_date ? ` from ${row.start_date} to ${row.end_date || row.start_date}` : '';
+        aggregated.push({
+            id: 'leave_' + row.id,
+            created_at: row.created_at || (row.date_of_filing ? row.date_of_filing + 'T08:00:00Z' : new Date().toISOString()),
+            user_name: fName,
+            user_role: 'Faculty',
+            module: 'Calendar & Events',
+            action: 'Submitted',
+            details: `Filed leave application: ${row.leave_type || 'Leave'}${dates} (Status: ${row.status || 'Pending'})`
+        });
+    }
+
+    for (const row of feedbackList) {
+        const fName = row.faculty_name || facultyMap[row.faculty_id] || 'Faculty Member';
+        const ratingStr = row.overall_rating ? ` (Rating: ${row.overall_rating}/5)` : '';
+        const summaryStr = row.feedback_summary ? ` — "${row.feedback_summary}"` : '';
+        aggregated.push({
+            id: 'fb_' + row.id,
+            created_at: row.submitted_at || new Date().toISOString(),
+            user_name: fName,
+            user_role: 'Faculty',
+            module: 'Seminar Feedback',
+            action: 'Submitted',
+            details: `Submitted event feedback${ratingStr}${summaryStr}`
+        });
+    }
+
+    const seenNotifIds = new Set();
+    for (const row of wfNotifs) {
+        seenNotifIds.add('wf_' + row.id);
+        const recipient = facultyMap[row.faculty_id] || (row.faculty_id ? 'Faculty Member' : 'All Faculty');
+        aggregated.push({
+            id: 'notif_wf_' + row.id,
+            created_at: row.created_at || new Date().toISOString(),
+            user_name: recipient,
+            user_role: 'Faculty',
+            module: 'Notifications',
+            action: 'Notification',
+            details: `${row.title || 'Notification'}: ${row.message || 'Notification sent'} (Recipient: ${recipient})`
+        });
+    }
+
+    for (const row of directNotifs) {
+        if (seenNotifIds.has('wf_' + row.id)) continue;
+        const recipient = facultyMap[row.user_id] || 'System User';
+        aggregated.push({
+            id: 'notif_dir_' + row.id,
+            created_at: row.created_at || new Date().toISOString(),
+            user_name: recipient,
+            user_role: 'User',
+            module: 'Notifications',
+            action: 'Notification',
+            details: `${row.title || 'Notification'}: ${row.message || 'Notification sent'}`
         });
     }
 
@@ -807,6 +979,14 @@ function subscribeReports() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, loadReports)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, loadReports)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_research_projects' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_accomplishments' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'extension_projects' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_leaves' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_event_feedback' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, loadReports)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, loadReports)
         .subscribe();
 }
 
