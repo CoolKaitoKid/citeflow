@@ -543,7 +543,7 @@
             <div>
                 <label class="field-label">Role</label>
                 <div class="cite-select-wrap">
-                    <select id="edit-role" class="field-input"><option>Dean</option><option>Secretary</option><option>Faculty</option><option>Administrator</option></select>
+                    <select id="edit-role" class="field-input"><option value="Admin">Admin</option><option value="Chairperson">Chairperson</option><option value="Faculty">Faculty</option></select>
                     <svg class="cite-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </div>
             </div>
@@ -632,27 +632,88 @@ function fmtDate(v){
     return `<div class="last-login-wrap"><span class="last-login-date">${date}</span><span class="last-login-time">${time}</span></div>`;
 }
 function initials(name){return String(name||'U').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0].toUpperCase()).join('')||'U'}
-function normalizeFaculty(row){return{source:'faculty',id:row.id,authUserId:row.auth_user_id||null,name:row.full_name||row.name||row.email||'Faculty User',email:row.email||row.existing_email||'',role:row.role||row.position||'Faculty',department:row.department||'N/A',lastLogin:row.last_login_at||row.last_login||row.updated_at||row.created_at,status:row.status||'Active',raw:row}}
-function normalizeAdmin(row){let name=[row.first_name,row.last_name].filter(Boolean).join(' ').trim()||row.full_name||row.name||row.email||'Administrator';return{source:'admin_profiles',id:row.id||row.user_id,name,email:row.email||'',role:row.role||'Administrator',department:row.department||'Administration',lastLogin:row.last_login_at||row.updated_at||row.created_at,status:row.status||'Active',raw:row}}
+
+function classifyUserRole(rawRole, rawPosition, source) {
+    if (source === 'admin_profiles') return 'Admin';
+    const combined = String(rawRole || rawPosition || '').toLowerCase().trim();
+    if (
+        combined.includes('admin') ||
+        combined.includes('dean') ||
+        combined.includes('director') ||
+        combined.includes('secretary') ||
+        combined.includes('superadmin')
+    ) {
+        return 'Admin';
+    }
+    if (combined.includes('chair')) {
+        return 'Chairperson';
+    }
+    return 'Faculty';
+}
+
+function normalizeFaculty(row){
+    const role = classifyUserRole(row.role, row.position, 'faculty');
+    return {
+        source:'faculty',
+        id:row.id,
+        authUserId:row.auth_user_id||null,
+        name:row.full_name||row.name||[row.first_name,row.last_name].filter(Boolean).join(' ')||row.email||'Faculty User',
+        email:row.email||row.existing_email||'',
+        role: role,
+        rawRole: row.role || row.position || 'Faculty',
+        department:row.department||'N/A',
+        lastLogin:row.last_login_at||row.last_login||row.updated_at||row.created_at,
+        status:row.status||'Active',
+        raw:row
+    };
+}
+
+function normalizeAdmin(row){
+    let name=[row.first_name,row.last_name].filter(Boolean).join(' ').trim()||row.full_name||row.name||row.email||'Administrator';
+    return {
+        source:'admin_profiles',
+        id:row.id||row.user_id,
+        name,
+        email:row.email||'',
+        role:'Admin',
+        rawRole: row.role || 'Administrator',
+        department:row.department||'COTE',
+        lastLogin:row.last_login_at||row.updated_at||row.created_at,
+        status:row.status||'Active',
+        raw:row
+    };
+}
 
 async function loadUsers(){
     let users=[];
-    let f=await supabaseClient.from('faculty').select('*').order('created_at',{ascending:false});
-    if(!f.error)users.push(...(f.data||[]).map(normalizeFaculty));
     let a=await supabaseClient.from('admin_profiles').select('*');
     if(!a.error)users.push(...(a.data||[]).map(normalizeAdmin));
+    let f=await supabaseClient.from('faculty').select('*').order('created_at',{ascending:false});
+    if(!f.error)users.push(...(f.data||[]).map(normalizeFaculty));
     allUsers=dedupeUsers(users);
     populateFilters();
     applyFilters();
     setRealtimeStatus('Realtime user list connected.');
 }
 
-function dedupeUsers(list){let seen=new Set();return list.filter(u=>{let k=(u.source+'-'+u.id)||u.email;if(seen.has(k))return false;seen.add(k);return true})}
+function dedupeUsers(list){
+    let seenEmails=new Set();
+    let seenIds=new Set();
+    return list.filter(u=>{
+        const emailLower=(u.email||'').toLowerCase().trim();
+        if(emailLower && seenEmails.has(emailLower)) return false;
+        const k=u.source+'-'+u.id;
+        if(seenIds.has(k)) return false;
+        if(emailLower) seenEmails.add(emailLower);
+        seenIds.add(k);
+        return true;
+    });
+}
 function setRealtimeStatus(text){let el=document.getElementById('realtime-status');if(el)el.textContent=text}
 function subscribeRealtime(){supabaseClient.channel('user-management-realtime').on('postgres_changes',{event:'*',schema:'public',table:'faculty'},loadUsers).on('postgres_changes',{event:'*',schema:'public',table:'admin_profiles'},loadUsers).subscribe(s=>{if(s==='SUBSCRIBED')setRealtimeStatus('Realtime user list connected.')})}
 
 function populateFilters(){
-    let roles=[...new Set(allUsers.map(u=>u.role).filter(Boolean))].sort();
+    let roles=['Admin', 'Chairperson', 'Faculty'];
     let deps=[...new Set(allUsers.map(u=>u.department).filter(Boolean))].sort();
     
     let roleSel = document.getElementById('role-filter');
@@ -663,8 +724,8 @@ function populateFilters(){
     let curDep = depSel.value;
     let curStat = statSel.value;
 
-    roleSel.innerHTML='<option value="">All Roles</option>'+roles.map(r=>`<option>${esc(r)}</option>`).join('');
-    depSel.innerHTML='<option value="">All Departments</option>'+deps.map(d=>`<option>${esc(d)}</option>`).join('');
+    roleSel.innerHTML='<option value="">All Roles</option>'+roles.map(r=>`<option value="${r}">${r}</option>`).join('');
+    depSel.innerHTML='<option value="">All Departments</option>'+deps.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
     
     roleSel.value = curRole;
     depSel.value = curDep;
@@ -700,7 +761,12 @@ function resetFilters(){
     applyFilters();
 }
 
-function renderStats(){document.getElementById('total-users').textContent=allUsers.length;document.getElementById('active-users').textContent=allUsers.filter(u=>String(u.status).toLowerCase()==='active').length;document.getElementById('faculty-users').textContent=allUsers.filter(u=>String(u.role).toLowerCase().includes('faculty')||u.source==='faculty').length;document.getElementById('result-count').textContent=`${filteredUsers.length} user${filteredUsers.length===1?'':'s'} displayed`}
+function renderStats(){
+    document.getElementById('total-users').textContent=allUsers.length;
+    document.getElementById('active-users').textContent=allUsers.filter(u=>String(u.status).toLowerCase()==='active').length;
+    document.getElementById('faculty-users').textContent=allUsers.filter(u=>u.role==='Faculty'||u.role==='Chairperson'||u.source==='faculty').length;
+    document.getElementById('result-count').textContent=`${filteredUsers.length} user${filteredUsers.length===1?'':'s'} displayed`;
+}
 function badge(value,type){
     let map={role:'bg-slate-100 text-slate-700',status:'bg-slate-100 text-slate-700'};
     if(type==='status'){
@@ -715,9 +781,9 @@ function badge(value,type){
     }
     if(type==='role'){
         let v=String(value).toLowerCase();
-        if(v.includes('faculty')) map.role='bg-emerald-50 text-emerald-800 border border-emerald-200/60 font-semibold';
-        else if(v.includes('secretary')) map.role='bg-blue-50 text-blue-800 border border-blue-200/60 font-semibold';
-        else if(v.includes('dean')||v.includes('admin')) map.role='bg-purple-50 text-purple-800 border border-purple-200/60 font-semibold';
+        if(v === 'admin' || v.includes('admin') || v.includes('dean')) map.role='bg-purple-50 text-purple-800 border border-purple-200 font-semibold';
+        else if(v === 'chairperson' || v.includes('chair')) map.role='bg-indigo-50 text-indigo-800 border border-indigo-200 font-semibold';
+        else map.role='bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold';
     }
     return `<span class="inline-flex px-2.5 py-1 rounded-lg text-xs ${map[type]}">${esc(value)}</span>`;
 }
@@ -808,8 +874,8 @@ function openEditUserModal(source,id){
     document.getElementById('edit-modal-title').textContent=`Update ${u.name}`;
     document.getElementById('edit-name').value=u.name;
     document.getElementById('edit-email').value=u.email;
-    document.getElementById('edit-role').value=['Dean','Secretary','Faculty','Administrator'].includes(u.role)?u.role:'Faculty';
-    document.getElementById('edit-department').value=['All','BSIT','BSIE','BIT','N/A','Administration'].includes(u.department)?u.department:'N/A';
+    document.getElementById('edit-role').value=['Admin','Chairperson','Faculty'].includes(u.role)?u.role:'Faculty';
+    document.getElementById('edit-department').value=['All','BSIT','BSIE','BIT','N/A','Administration','COTE'].includes(u.department)?u.department:'N/A';
     document.getElementById('edit-status').value=['Active','Inactive','On Leave','On Maternity Leave','On Study Leave','On Sabbatical Leave','On Vacation/Sick Leave'].includes(u.status)?u.status:'Active';
     
     if (typeof refreshCompactSelect === 'function') {
@@ -844,7 +910,7 @@ async function saveUserChanges(){
             email,
             existing_email:email,
             role,
-            position:role==='Faculty'?'Faculty':role,
+            position:role,
             department,
             status,
             updated_at:new Date().toISOString()
@@ -861,7 +927,7 @@ async function saveUserChanges(){
             first_name:first_name||name,
             last_name:rest.join(' '),
             email,
-            role,
+            role: role === 'Admin' ? 'Administrator' : role,
             department,
             status,
             updated_at:new Date().toISOString()

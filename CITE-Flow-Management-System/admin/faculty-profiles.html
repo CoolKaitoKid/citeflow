@@ -314,11 +314,8 @@
                             class="w-full px-4 py-2.5 border border-gray-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#621708]/20 focus:border-[#621708] cursor-pointer transition-all"
                         >
                             <option value="">All Roles</option>
-                            <option value="faculty">Faculty</option>
                             <option value="chairperson">Chairperson</option>
-                            <option value="dean">Dean</option>
-                            <option value="instructor">Instructor</option>
-                            <option value="professor">Professor</option>
+                            <option value="faculty">Faculty</option>
                         </select>
                     </div>
 
@@ -1069,19 +1066,8 @@
                         id="add-position"
                         class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#621708]"
                     >
-
-                        <option value="Faculty">
-                            Faculty
-                        </option>
-
-                        <option value="Chairperson">
-                            Chairperson
-                        </option>
-
-                        <option value="Dean/Secretary">
-                            Dean/Secretary
-                        </option>
-
+                        <option value="Faculty">Faculty</option>
+                        <option value="Chairperson">Chairperson</option>
                     </select>
 
                 </div>
@@ -1381,69 +1367,64 @@ let selectedFacultyId = null;
 ============================================================= */
 
 function normalizeRole(role) {
-
     const value =
         String(role || 'faculty')
             .toLowerCase()
             .trim();
 
-
     if (
-        value === 'dean/secretary' ||
-        value === 'dean-secretary' ||
-        value === 'dean & secretary'
+        value.includes('admin') ||
+        value.includes('dean') ||
+        value.includes('director') ||
+        value.includes('superadmin') ||
+        value.includes('secretary')
     ) {
         return 'admin';
-    }
-
-    if (value.includes('secretary')) {
-        return 'secretary';
     }
 
     if (value.includes('chair')) {
         return 'chairperson';
     }
 
-
-    return value;
+    return 'faculty';
 }
 
 
 function hasPermission(permission) {
-
     const list =
         PERMISSIONS[permission] || [];
 
-
-    return list.includes(
-        normalizeRole(currentUser.role)
-    );
+    const norm = normalizeRole(currentUser.role);
+    return list.includes(norm) || list.includes(String(currentUser.role || '').toLowerCase());
 }
 
 
 function canAccessDepartment(department) {
-
     if (
         hasPermission('viewAllDepartments')
     ) {
         return true;
     }
 
+    const normRole = normalizeRole(currentUser.role);
+    if (normRole === 'admin') {
+        return true;
+    }
 
     const userDepartment =
         String(
             currentUser.department || ''
         ).toLowerCase();
 
-
     if (
         !userDepartment ||
         userDepartment === 'all' ||
-        userDepartment === 'n/a'
+        userDepartment === 'n/a' ||
+        userDepartment === 'cote' ||
+        userDepartment.includes('admin')
     ) {
         return true;
     }
-
 
     return (
         String(department || '')
@@ -1864,9 +1845,12 @@ async function loadFacultyProfiles() {
         (data || [])
             .map(normalizeFacultyRow);
 
+    // Faculty Profiles directory is strictly for Faculty and Chairpersons.
+    // Pure Admins belong in Admin Profile and User Management.
+    const facultyOnly = mapped.filter(f => normalizeRole(f.role || f.position) !== 'admin');
 
     facultyData =
-        filterByDepartmentAccess(mapped);
+        filterByDepartmentAccess(facultyOnly);
 
 
     renderFacultyCards(
@@ -1919,11 +1903,11 @@ function applyFacultyFilters() {
         });
     }
 
-    // Filter by role/position
+    // Filter by role classification
     if (roleVal) {
         filtered = filtered.filter(f => {
-            const pos = (f.position || '').toLowerCase();
-            return pos.includes(roleVal);
+            const r = normalizeRole(f.role || f.position);
+            return r === roleVal;
         });
     }
 
@@ -2094,7 +2078,7 @@ function renderFacultyCards(data) {
                             </div>
 
                             <div class="text-sm text-gray-500 truncate">
-                                ${faculty.position}
+                                ${faculty.academicRank && faculty.academicRank !== '—' && faculty.academicRank !== faculty.name ? faculty.academicRank : (normalizeRole(faculty.role || faculty.position) === 'chairperson' ? 'Department Chairperson' : 'Faculty')}
                             </div>
 
                         </div>
@@ -2126,14 +2110,17 @@ function renderFacultyCards(data) {
                     </div>
 
 
-                    <div class="flex justify-between">
+                    <div class="flex justify-between items-center">
 
                         <span class="text-gray-500">
                             Role
                         </span>
 
                         <span>
-                            ${faculty.position}
+                            ${normalizeRole(faculty.role || faculty.position) === 'chairperson'
+                                ? '<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">Chairperson</span>'
+                                : '<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Faculty</span>'
+                            }
                         </span>
 
                     </div>
@@ -2210,16 +2197,17 @@ function openProfile(id) {
     document.body.scrollTop = 0;
 
 
+    const isChair = normalizeRole(faculty.role || faculty.position) === 'chairperson';
     document.getElementById('profile-name').textContent = faculty.name;
-    document.getElementById('profile-position').textContent = faculty.position;
+    document.getElementById('profile-position').textContent = isChair ? 'Chairperson' : (faculty.academicRank && faculty.academicRank !== '—' && faculty.academicRank !== faculty.name ? faculty.academicRank : 'Faculty');
     document.getElementById('profile-phone').textContent = faculty.phone || 'No contact number';
     document.getElementById('profile-email').textContent = faculty.email || '-';
 
     // General Information
     document.getElementById('gen-employee-id').textContent = faculty.employeeId || '—';
     document.getElementById('gen-department').textContent = faculty.department || '—';
-    document.getElementById('gen-access-role').textContent = faculty.role || faculty.position || 'Faculty';
-    document.getElementById('gen-academic-rank').textContent = faculty.academicRank || faculty.position || '—';
+    document.getElementById('gen-access-role').textContent = isChair ? 'Chairperson' : 'Faculty';
+    document.getElementById('gen-academic-rank').textContent = faculty.academicRank || '—';
     document.getElementById('gen-years').textContent = faculty.yearsInService !== '—' ? `${faculty.yearsInService} Year(s)` : '—';
     document.getElementById('gen-shift').textContent = faculty.shift || '—';
     document.getElementById('gen-teaching-status').textContent = faculty.teachingStatus || 'Active';
@@ -2544,19 +2532,8 @@ function openEditModal(section) {
                         id="edit-access-role"
                         class="w-full border border-gray-300 rounded-2xl px-4 py-3"
                     >
-
-                        <option value="Faculty">
-                            Faculty
-                        </option>
-
-                        <option value="Chairperson">
-                            Chairperson
-                        </option>
-
-                        <option value="Dean/Secretary">
-                            Dean/Secretary
-                        </option>
-
+                        <option value="Faculty">Faculty</option>
+                        <option value="Chairperson">Chairperson</option>
                     </select>
 
                 </div>
