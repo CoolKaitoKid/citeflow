@@ -239,6 +239,7 @@
                         <option>BSIT</option>
                         <option>BSIE</option>
                         <option>BIT</option>
+                        <option>COTE</option>
                     </select>
                 </div>
             </header>
@@ -601,7 +602,12 @@ document.addEventListener('click', (event) => {
 /* ─── Safe Supabase fetch ─── */
 async function safeSelect(table, query = '*', filters = null) {
     try {
-        let q = supabaseClient.from(table).select(query);
+        const client = window.supabaseClient || supabaseClient;
+        if (!client) {
+            console.warn(`safeSelect: supabase client not available for ${table}`);
+            return [];
+        }
+        let q = client.from(table).select(query);
         if (filters) {
             for (const [col, val] of Object.entries(filters)) {
                 q = q.eq(col, val);
@@ -619,7 +625,7 @@ async function safeSelect(table, query = '*', filters = null) {
 /* ─── Build a faculty_id → department lookup map ─── */
 function buildFacultyDeptMap(facultyList) {
     const map = {};
-    for (const f of facultyList) {
+    for (const f of (facultyList || [])) {
         map[f.id] = f.department || '';
     }
     return map;
@@ -628,12 +634,9 @@ function buildFacultyDeptMap(facultyList) {
 /* Filter rows by department using the faculty_id → department map */
 function filterByDept(rows, deptMap, department) {
     if (!department) return rows;
-    return rows.filter(row => {
-        // Try direct department field first (some tables may have it)
+    return (rows || []).filter(row => {
         if (row.department) return row.department === department;
-        // Then use faculty_id lookup
         if (row.faculty_id && deptMap[row.faculty_id]) return deptMap[row.faculty_id] === department;
-        // Include rows without faculty_id (system-level)
         return false;
     });
 }
@@ -656,8 +659,11 @@ function getLast6Months() {
 /* Count items per month based on a date field */
 function countByMonth(items, dateField, months) {
     return months.map(m => {
-        return items.filter(item => {
-            const d = new Date(item[dateField]);
+        return (items || []).filter(item => {
+            const raw = item ? (item[dateField] || item.created_at || item.uploaded_at || item.submitted_at || item.date_achieved) : null;
+            if (!raw) return false;
+            const d = new Date(raw);
+            if (Number.isNaN(d.getTime())) return false;
             return d.getFullYear() === m.year && d.getMonth() === m.month;
         }).length;
     });
@@ -667,28 +673,31 @@ function countByMonth(items, dateField, months) {
    MAIN DATA LOADER
    ═══════════════════════════════════════════════════ */
 async function loadDashboardData() {
-    const department = document.getElementById('departmentFilter').value;
-    const mode = document.getElementById('trendsMode').value;
+    const deptEl = document.getElementById('departmentFilter');
+    const department = deptEl ? deptEl.value : '';
+    const modeEl = document.getElementById('trendsMode');
+    const mode = modeEl ? modeEl.value : 'overview';
 
     // Fetch all data sources in parallel (workflow + vault documents)
     const [
         facultyList, submissions, wfTasks, vaultDocuments, documents, research,
         teaching, advisory, adminRoles, activities, engagement, accomplishments,
-        extensionProjects
+        extensionProjects, leaves
     ] = await Promise.all([
         safeSelect('faculty', 'id, department, status, full_name, first_name, last_name, created_at'),
         safeSelect('wf_submissions', 'id, task_id, faculty_id, status, submitted_at, reviewed_at'),
-        safeSelect('wf_tasks', 'id, title, status, category, due_date, created_at'),
+        safeSelect('wf_tasks', 'id, title, created_by_name, created_at'),
         safeSelect('documents', '*'),
-        safeSelect('faculty_documents', 'id, faculty_id, title, document_name, status, category, uploaded_at, expiry_date'),
+        safeSelect('faculty_documents', 'id, faculty_id, title, document_name, status, created_at'),
         safeSelect('faculty_research_projects', 'id, faculty_id, title, status, start_date, end_date, created_at'),
         safeSelect('faculty_teaching_loads', 'id, faculty_id, units, status, academic_year, semester, created_at'),
         safeSelect('faculty_advisory_loads', 'id, faculty_id, units, status, created_at'),
         safeSelect('faculty_admin_role_loads', 'id, faculty_id, units, role_title, status, created_at'),
-        safeSelect('wf_activity_log', 'id, actor_name, action, target, details, created_at'),
+        safeSelect('wf_activity_log', 'id, actor_name, action, target, log_type, created_at'),
         safeSelect('engagement_logs', 'id, faculty_id, faculty_name, department, activity_type, activity_title, description, created_at'),
-        safeSelect('faculty_accomplishments', 'id, faculty_id, title, accomplishment_type, date_achieved, created_at'),
-        safeSelect('extension_projects', 'id, faculty_id, project_title, status, beneficiary_count, start_date, end_date, created_at')
+        safeSelect('faculty_accomplishments', 'id, faculty_id, title, accomplishment_type, description, date_achieved, created_at'),
+        safeSelect('extension_projects', 'id, faculty_id, project_title, status, beneficiary_count, start_date, end_date, created_at'),
+        safeSelect('faculty_leaves', 'id, faculty_id, faculty_name, leave_type, status, start_date, end_date, created_at')
     ]);
 
     // Build department lookup map
@@ -736,62 +745,92 @@ async function loadDashboardData() {
     const filteredExtensionProjects = department
         ? extensionProjects.filter(p => deptFacultyIds.has(p.faculty_id))
         : extensionProjects;
+    const filteredLeaves = department
+        ? leaves.filter(l => deptFacultyIds.has(l.faculty_id))
+        : leaves;
 
     // ─── Metric Card Calculations ───
-
-    // Total Submissions = workflow submissions + faculty documents + vault documents
     const totalSubmissions = safeCount(filteredSubmissions) + safeCount(filteredDocs) + safeCount(filteredVaultDocs);
 
-    // Approved = wf_submissions with status 'Approved' + faculty_documents with status 'approved'/'completed'
     const approvedSubmissions = filteredSubmissions.filter(s =>
         String(s.status || '').toLowerCase() === 'approved'
     ).length;
     const approvedDocs = filteredDocs.filter(d =>
-        ['approved', 'completed'].includes(String(d.status || '').toLowerCase())
+        ['approved', 'completed', 'verified'].includes(String(d.status || d.verification_status || '').toLowerCase())
     ).length;
     const totalApproved = approvedSubmissions + approvedDocs;
 
-    // Pending = wf_submissions with pending statuses + faculty_documents with pending statuses
     const pendingSubmissions = filteredSubmissions.filter(s =>
-        ['pending review', 'under review'].includes(String(s.status || '').toLowerCase())
+        ['pending review', 'under review', 'submitted'].includes(String(s.status || '').toLowerCase())
     ).length;
     const pendingDocs = filteredDocs.filter(d =>
-        ['submitted', 'pending', 'pending review', 'for review'].includes(String(d.status || '').toLowerCase())
+        ['submitted', 'pending', 'pending review', 'for review'].includes(String(d.status || d.verification_status || '').toLowerCase())
     ).length;
     const totalPending = pendingSubmissions + pendingDocs;
 
-    // Rejected count for comprehensive tracking
     const rejectedSubmissions = filteredSubmissions.filter(s =>
         ['rejected', 'revisions requested'].includes(String(s.status || '').toLowerCase())
     ).length;
 
     // ─── Update Metric Cards ───
-    document.getElementById('activeFacultyCount').textContent = activeFaculty.length;
-    const onLeave = activeFaculty.filter(f => String(f.status || '').toLowerCase().includes('leave')).length;
-    document.getElementById('activeFacultyTrend').textContent = onLeave > 0
-        ? `${activeFaculty.length} active, ${onLeave} on leave`
-        : `${activeFaculty.length} active faculty member${activeFaculty.length === 1 ? '' : 's'}`;
+    const activeFacultyCountEl = document.getElementById('activeFacultyCount');
+    if (activeFacultyCountEl) activeFacultyCountEl.textContent = activeFaculty.length;
 
-    document.getElementById('totalDocuments').textContent = totalSubmissions;
-    document.getElementById('totalDocumentsTrend').textContent = totalSubmissions > 0
-        ? `${safeCount(filteredSubmissions)} workflow + ${safeCount(filteredDocs) + safeCount(filteredVaultDocs)} documents`
-        : documentTrendLabel(filteredVaultDocs);
+    const onLeave = filteredLeaves.filter(l => String(l.status || '').toLowerCase() === 'approved').length;
+    const activeFacultyTrendEl = document.getElementById('activeFacultyTrend');
+    if (activeFacultyTrendEl) {
+        activeFacultyTrendEl.textContent = onLeave > 0
+            ? `${activeFaculty.length} active, ${onLeave} on leave`
+            : `${activeFaculty.length} active faculty member${activeFaculty.length === 1 ? '' : 's'}`;
+    }
 
-    document.getElementById('approvedDocuments').textContent = totalApproved;
-    document.getElementById('approvedTrend').textContent = totalSubmissions > 0
-        ? `${percent(totalApproved, totalSubmissions)}% approval rate`
-        : 'No approved records';
+    const totalDocsEl = document.getElementById('totalDocuments');
+    if (totalDocsEl) totalDocsEl.textContent = totalSubmissions;
 
-    document.getElementById('pendingDocuments').textContent = totalPending;
-    document.getElementById('pendingTrend').textContent = totalPending > 0
-        ? `${totalPending} awaiting review`
-        : 'No pending reviews';
+    const totalDocsTrendEl = document.getElementById('totalDocumentsTrend');
+    if (totalDocsTrendEl) {
+        totalDocsTrendEl.textContent = totalSubmissions > 0
+            ? (filteredSubmissions.length > 0
+                ? `${safeCount(filteredSubmissions)} workflow + ${safeCount(filteredDocs) + safeCount(filteredVaultDocs)} documents`
+                : `${totalSubmissions} documents on file`)
+            : documentTrendLabel(filteredVaultDocs);
+    }
 
-    // Expiring documents alert (injected near pending card)
+    const approvedDocsEl = document.getElementById('approvedDocuments');
+    if (approvedDocsEl) approvedDocsEl.textContent = totalApproved;
+
+    const approvedTrendEl = document.getElementById('approvedTrend');
+    if (approvedTrendEl) {
+        const reviewTotal = filteredSubmissions.length + filteredDocs.length;
+        approvedTrendEl.textContent = reviewTotal > 0
+            ? `${percent(totalApproved, reviewTotal)}% approval rate`
+            : (totalSubmissions > 0 ? `${totalApproved} approved / verified` : 'No approved records');
+    }
+
+    const pendingDocsEl = document.getElementById('pendingDocuments');
+    if (pendingDocsEl) pendingDocsEl.textContent = totalPending;
+
+    const pendingTrendEl = document.getElementById('pendingTrend');
+    if (pendingTrendEl) {
+        pendingTrendEl.textContent = totalPending > 0
+            ? `${totalPending} awaiting review`
+            : 'No pending reviews';
+    }
+
+    // ─── Expiring Documents Alert ───
+    const now = new Date();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const expiringDocs = filteredDocs.filter(d => {
+        if (!d.expiry_date) return false;
+        const exp = new Date(d.expiry_date + 'T00:00:00');
+        return exp.getTime() - now.getTime() <= thirtyDaysMs;
+    });
+    const expiringCount = expiringDocs.length;
+
     const expiringAlert = document.getElementById('expiringDocsAlert');
     if (expiringAlert) expiringAlert.remove();
     if (expiringCount > 0) {
-        const pendingCard = document.getElementById('pendingDocuments')?.closest('.card, [class*="rounded"]');
+        const pendingCard = document.getElementById('pendingDocuments')?.closest('.dashboard-card');
         if (pendingCard) {
             const alertEl = document.createElement('div');
             alertEl.id = 'expiringDocsAlert';
@@ -807,70 +846,113 @@ async function loadDashboardData() {
     const activeAdminRoles = filteredAdminRoles.filter(r => String(r.status || 'Active').toLowerCase() !== 'archived');
     const workloadTotal = sumUnits(activeTeaching) + sumUnits(activeAdvisory) + sumUnits(activeAdminRoles);
 
-    // ─── Research Metrics ───
+    // ─── Research & Accomplishment Metrics ───
     const completedResearch = filteredResearch.filter(r =>
         ['completed', 'completed but not published', 'completed and published', 'published', 'patented'].includes(String(r.status || '').toLowerCase())
     ).length;
-    const ongoingResearch = filteredResearch.filter(r => String(r.status || '').toLowerCase() === 'ongoing').length;
+    const totalResearchAndAcc = filteredResearch.length + filteredAccomplishments.length;
+    const completedResearchAndAcc = completedResearch + filteredAccomplishments.length;
 
     // ─── Extension / Engagement count ───
     const extensionServices = filteredEngagement.length + filteredAccomplishments.length + filteredExtensionProjects.length;
-
-    // ─── Expiring Documents Alert ───
-    const now = new Date();
-    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    const expiringDocs = filteredDocs.filter(d => {
-        if (!d.expiry_date) return false;
-        const exp = new Date(d.expiry_date + 'T00:00:00');
-        return exp.getTime() - now.getTime() <= thirtyDaysMs;
-    });
-    const expiringCount = expiringDocs.length;
 
     // ─── Administrative tasks ───
     const administrativeTasks = activeAdminRoles.length;
 
     // ─── Performance Score ───
-    const approvalScore = percent(totalApproved, Math.max(totalSubmissions, 1));
-    const researchScore = clamp(percent(completedResearch, Math.max(filteredResearch.length, 1)));
-    const submissionRate = totalSubmissions > 0
-        ? clamp(percent(totalApproved + totalPending, totalSubmissions))
+    const reviewTotal = filteredSubmissions.length + filteredDocs.length;
+    const approvalScore = reviewTotal > 0
+        ? percent(totalApproved, reviewTotal)
+        : (totalSubmissions > 0 ? 100 : 0);
+    const researchScore = totalResearchAndAcc > 0
+        ? clamp(percent(completedResearchAndAcc, totalResearchAndAcc))
         : 0;
+    const submissionRate = totalSubmissions > 0
+        ? clamp(percent(totalApproved + totalPending + filteredVaultDocs.length, totalSubmissions))
+        : 0;
+
     // Weighted performance: 40% approval, 30% submission activity, 30% research completion
     const performance = clamp(
         (approvalScore * 0.40) + (submissionRate * 0.30) + (researchScore * 0.30)
     );
 
-    document.getElementById('approvalStat').textContent = `${approvalScore}%`;
-    document.getElementById('researchStat').textContent = `${researchScore}%`;
-    document.getElementById('submissionStat').textContent = `${submissionRate}%`;
+    const appStatEl = document.getElementById('approvalStat');
+    if (appStatEl) appStatEl.textContent = `${approvalScore}%`;
+    const resStatEl = document.getElementById('researchStat');
+    if (resStatEl) resStatEl.textContent = `${researchScore}%`;
+    const subStatEl = document.getElementById('submissionStat');
+    if (subStatEl) subStatEl.textContent = `${submissionRate}%`;
+
+    // ─── Hide Skeletons ───
+    const ts = document.getElementById('trendsSkeleton');
+    if (ts) ts.style.display = 'none';
+    const ds = document.getElementById('donutSkeleton');
+    if (ds) ds.style.display = 'none';
 
     // ─── Update Charts & Sections ───
-    updatePerformanceChart(performance);
-    const ts = document.getElementById('trendsSkeleton'); if(ts) ts.style.display = 'none';
-    const ds = document.getElementById('donutSkeleton'); if(ds) ds.style.display = 'none';
-    updateActivityOverview({
-        administrativeTasks,
-        researchOutput: filteredResearch.length,
-        extensionServices,
-        teachingLoad: workloadTotal
-    });
-    updateTrendsChart({
-        submissions: filteredSubmissions,
-        documents: filteredDocs,
-        research: filteredResearch,
-        teaching: filteredTeaching,
-        mode
-    });
-    renderRecentActivities(activities, filteredEngagement, filteredSubmissions, filteredDocs, wfTasks, filteredVaultDocs);
+    try {
+        updatePerformanceChart(performance);
+    } catch (err) {
+        console.warn('Failed to update performance chart:', err);
+    }
+
+    try {
+        updateActivityOverview({
+            administrativeTasks,
+            researchOutput: totalResearchAndAcc,
+            extensionServices,
+            teachingLoad: workloadTotal
+        });
+    } catch (err) {
+        console.warn('Failed to update activity overview:', err);
+    }
+
+    try {
+        updateTrendsChart({
+            submissions: filteredSubmissions,
+            documents: filteredDocs,
+            vaultDocuments: filteredVaultDocs,
+            research: filteredResearch,
+            accomplishments: filteredAccomplishments,
+            teaching: filteredTeaching,
+            mode
+        });
+    } catch (err) {
+        console.warn('Failed to update trends chart:', err);
+    }
+
+    try {
+        renderRecentActivities(
+            activities,
+            filteredEngagement,
+            filteredSubmissions,
+            filteredDocs,
+            wfTasks,
+            filteredVaultDocs,
+            filteredAccomplishments,
+            filteredLeaves
+        );
+    } catch (err) {
+        console.warn('Failed to render recent activities:', err);
+    }
 }
 
 /* ═══════════════════════════════════════════════════
    PERFORMANCE DONUT CHART
    ═══════════════════════════════════════════════════ */
 function updatePerformanceChart(value) {
-    document.getElementById('performancePercent').textContent = `${value}%`;
+    const valEl = document.getElementById('performancePercent');
+    if (valEl) valEl.textContent = `${value}%`;
     const ctx = document.getElementById('performanceDonut');
-    if (performanceChart) performanceChart.destroy();
+    if (!ctx) return;
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not available for performance donut');
+        return;
+    }
+    if (performanceChart) {
+        performanceChart.destroy();
+        performanceChart = null;
+    }
 
     // Dynamic color based on performance level
     let color = '#ef4444'; // red for low
@@ -906,14 +988,17 @@ function updateActivityOverview(values) {
         ['extensionServices', values.extensionServices],
     ];
     rows.forEach(([id, value]) => {
-        document.getElementById(`${id}Label`).textContent = value;
-        document.getElementById(`${id}Bar`).style.width = `${percent(value, max)}%`;
+        const lbl = document.getElementById(`${id}Label`);
+        const bar = document.getElementById(`${id}Bar`);
+        if (lbl) lbl.textContent = value;
+        if (bar) bar.style.width = `${percent(value, max)}%`;
     });
     // Teaching load uses unit display
-    document.getElementById('teachingLoadLabel').textContent = `${values.teachingLoad} units`;
-    // For teaching load bar, use a sensible max (e.g., 27 units × faculty count, or just relative)
+    const tlLabel = document.getElementById('teachingLoadLabel');
+    const tlBar = document.getElementById('teachingLoadBar');
+    if (tlLabel) tlLabel.textContent = `${values.teachingLoad} units`;
     const maxUnits = Math.max(values.teachingLoad, 27);
-    document.getElementById('teachingLoadBar').style.width = `${percent(values.teachingLoad, maxUnits)}%`;
+    if (tlBar) tlBar.style.width = `${percent(values.teachingLoad, maxUnits)}%`;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -921,25 +1006,36 @@ function updateActivityOverview(values) {
    ═══════════════════════════════════════════════════ */
 function updateTrendsChart(data) {
     const ctx = document.getElementById('trendsChart');
-    if (trendsChart) trendsChart.destroy();
+    if (!ctx) return;
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not available for trends chart');
+        return;
+    }
+    if (trendsChart) {
+        trendsChart.destroy();
+        trendsChart = null;
+    }
 
     const months = getLast6Months();
     const labels = months.map(m => m.label);
+
+    const allDocs = [...(data.documents || []), ...(data.vaultDocuments || [])];
+    const allResearch = [...(data.research || []), ...(data.accomplishments || [])];
 
     let datasets = [];
 
     if (data.mode === 'submissions') {
         // Submissions-focused view
-        const submittedByMonth = countByMonth(data.submissions, 'submitted_at', months);
+        const submittedByMonth = countByMonth(data.submissions || [], 'submitted_at', months);
         const approvedByMonth = months.map(m => {
-            return data.submissions.filter(s => {
+            return (data.submissions || []).filter(s => {
                 if (!s.reviewed_at) return false;
                 const d = new Date(s.reviewed_at);
                 return d.getFullYear() === m.year && d.getMonth() === m.month &&
                     String(s.status || '').toLowerCase() === 'approved';
             }).length;
         });
-        const docsByMonth = countByMonth(data.documents, 'uploaded_at', months);
+        const docsByMonth = countByMonth(allDocs, 'uploaded_at', months);
 
         datasets = [
             {
@@ -975,8 +1071,8 @@ function updateTrendsChart(data) {
         ];
     } else if (data.mode === 'workload') {
         // Workload-focused: teaching loads created per month
-        const teachingByMonth = countByMonth(data.teaching, 'created_at', months);
-        const researchByMonth = countByMonth(data.research, 'created_at', months);
+        const teachingByMonth = countByMonth(data.teaching || [], 'created_at', months);
+        const researchByMonth = countByMonth(allResearch, 'created_at', months);
 
         datasets = [
             {
@@ -990,7 +1086,7 @@ function updateTrendsChart(data) {
                 borderWidth: 2.5, tension: 0.4, fill: true
             },
             {
-                label: 'Research Projects',
+                label: 'Research & Accomplishments',
                 data: researchByMonth,
                 borderColor: '#06b6d4',
                 backgroundColor: 'rgba(6,182,212,0.06)',
@@ -1001,10 +1097,10 @@ function updateTrendsChart(data) {
             }
         ];
     } else {
-        // Overview: submissions + documents + research
-        const submittedByMonth = countByMonth(data.submissions, 'submitted_at', months);
-        const docsByMonth = countByMonth(data.documents, 'uploaded_at', months);
-        const researchByMonth = countByMonth(data.research, 'created_at', months);
+        // Overview: submissions + documents + research/accomplishments
+        const submittedByMonth = countByMonth(data.submissions || [], 'submitted_at', months);
+        const docsByMonth = countByMonth(allDocs, 'uploaded_at', months);
+        const researchByMonth = countByMonth(allResearch, 'created_at', months);
 
         datasets = [
             {
@@ -1028,7 +1124,7 @@ function updateTrendsChart(data) {
                 borderWidth: 2.5, tension: 0.4, fill: false
             },
             {
-                label: 'Research',
+                label: 'Research & Output',
                 data: researchByMonth,
                 borderColor: '#06b6d4',
                 backgroundColor: 'rgba(6,182,212,0.06)',
@@ -1093,27 +1189,34 @@ function updateTrendsChart(data) {
 /* ═══════════════════════════════════════════════════
    RECENT ACTIVITY FEED
    ═══════════════════════════════════════════════════ */
-function renderRecentActivities(activities, engagement, submissions, documents, wfTasks, vaultDocuments = []) {
+function renderRecentActivities(activities = [], engagement = [], submissions = [], documents = [], wfTasks = [], vaultDocuments = [], accomplishments = [], leaves = []) {
     // Build task lookup for submission context
     const taskMap = {};
     for (const t of (wfTasks || [])) taskMap[t.id] = t;
 
     const combined = [
-        ...activities.map(item => ({
+        ...(activities || []).map(item => ({
             title: item.action || 'System Activity',
-            meta: item.details || item.details_text || item.target || item.module || 'Activity recorded',
+            meta: item.target || item.log_type || item.actor_name || 'Activity recorded',
             time: item.created_at,
             icon: 'fa-bolt',
             color: 'text-violet-600 bg-violet-50 border-violet-200'
         })),
-        ...engagement.map(item => ({
+        ...(engagement || []).map(item => ({
             title: item.activity_title || item.activity_type || 'Engagement Activity',
-            meta: `${item.faculty_name || 'Faculty'} — ${item.description || item.source_module || item.activity_type || 'Engagement'}`,
+            meta: `${item.faculty_name || 'Faculty'} — ${item.description || item.department || 'Engagement'}`,
             time: item.created_at || item.activity_at,
             icon: 'fa-star',
             color: 'text-amber-600 bg-amber-50 border-amber-200'
         })),
-        ...submissions.map(item => {
+        ...(accomplishments || []).map(item => ({
+            title: item.title || 'Faculty Accomplishment',
+            meta: `${item.accomplishment_type || 'Accomplishment'}${item.description ? ' — ' + item.description : ''}`,
+            time: item.created_at || item.date_achieved,
+            icon: 'fa-award',
+            color: 'text-amber-600 bg-amber-50 border-amber-200'
+        })),
+        ...(submissions || []).map(item => {
             const task = taskMap[item.task_id];
             const statusLower = String(item.status || '').toLowerCase();
             let icon = 'fa-file-arrow-up';
@@ -1129,23 +1232,31 @@ function renderRecentActivities(activities, engagement, submissions, documents, 
                 color
             };
         }),
-        ...documents.map(item => ({
+        ...(documents || []).map(item => ({
             title: item.document_name || item.title || item.name || 'Document uploaded',
             meta: `${item.category || item.document_type || item.mime_type || 'Document'} — ${item.status || 'Submitted'}`,
             time: item.uploaded_at || item.created_at,
             icon: 'fa-folder-open',
             color: 'text-slate-600 bg-slate-50 border-slate-200'
         })),
-        ...vaultDocuments.map(item => ({
-            title: item.name || item.document_name || item.title || 'Document submitted',
-            meta: item.status || item.document_type || item.mime_type || 'Vault document',
+        ...(vaultDocuments || []).map(item => ({
+            title: item.name || item.document_name || item.title || 'Document stored',
+            meta: `${item.mime_type ? item.mime_type.split('/').pop().toUpperCase() + ' · ' : ''}Vault Document`,
             time: item.uploaded_at || item.created_at,
             icon: 'fa-box-archive',
             color: 'text-slate-600 bg-slate-50 border-slate-200'
+        })),
+        ...(leaves || []).map(item => ({
+            title: `Leave Application: ${item.leave_type || 'Leave'}`,
+            meta: `${item.faculty_name || 'Faculty Member'} — Status: ${item.status || 'Pending'}`,
+            time: item.created_at || item.start_date,
+            icon: 'fa-calendar-day',
+            color: 'text-teal-600 bg-teal-50 border-teal-200'
         }))
     ].filter(item => item.title && item.time).sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 8);
 
     const list = document.getElementById('recentActivityList');
+    if (!list) return;
     if (!combined.length) {
         list.innerHTML = `
             <div class="text-center py-8">
@@ -1242,26 +1353,35 @@ async function loadAdminProfile() {
    REALTIME SUBSCRIPTIONS
    ═══════════════════════════════════════════════════ */
 function subscribeRealtime() {
-    supabaseClient.channel('dashboard-realtime')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_research_projects' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_teaching_loads' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_advisory_loads' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_admin_role_loads' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, loadDashboardData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, loadDashboardData)
-        .subscribe();
+    const client = window.supabaseClient || supabaseClient;
+    if (!client || typeof client.channel !== 'function') return;
+    try {
+        client.channel('dashboard-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_research_projects' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_teaching_loads' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_advisory_loads' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_admin_role_loads' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_accomplishments' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'extension_projects' }, loadDashboardData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_leaves' }, loadDashboardData)
+            .subscribe();
+    } catch (err) {
+        console.warn('Dashboard realtime setup error:', err);
+    }
 }
 
 /* ═══════════════════════════════════════════════════
    BOOT
    ═══════════════════════════════════════════════════ */
 window.addEventListener('load', async () => {
-    try { await loadSidebar(); } catch (error) { console.warn('Dashboard navigation load skipped:', error); }
+    try { if (typeof loadSidebar === 'function') await loadSidebar(); } catch (error) { console.warn('Dashboard navigation load skipped:', error); }
     try { initCompactSelects(); } catch (error) { console.warn('Dashboard compact selects skipped:', error); }
     try { await loadAdminProfile(); } catch (error) { console.warn('Dashboard profile load skipped:', error); }
     try { await loadDashboardData(); } catch (error) { console.error('Dashboard data load failed:', error); }
