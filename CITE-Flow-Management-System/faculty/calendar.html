@@ -15,6 +15,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
     <link rel="stylesheet" href="faculty-nav.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/calendar-notifications.js"></script>
@@ -291,9 +293,21 @@ select.modal-field {
         margin-left: 220px !important;
     }
 }
+
+/* =========================================================
+   UNIVERSAL PRINT ENGINE: FITS ANY SIZE OF BONDPAPER
+   (Letter / Short 8.5x11, A4 8.27x11.69, Folio/Legal / Long)
+   IN BOTH PORTRAIT AND LANDSCAPE ORIENTATION
+   ========================================================= */
 @media print {
-    @page { size: A4 portrait; margin: 7mm 8mm; }
-    body.cite-print-leave {
+    @page {
+        size: auto;
+        margin: 4mm 5mm;
+    }
+    html, body {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
         background: #fff !important;
         color: #111 !important;
         -webkit-print-color-adjust: exact;
@@ -317,7 +331,7 @@ select.modal-field {
     }
     body.cite-print-leave #leave-modal > div {
         display: block !important;
-        max-width: none !important;
+        max-width: 100% !important;
         width: 100% !important;
         max-height: none !important;
         box-shadow: none !important;
@@ -332,29 +346,166 @@ select.modal-field {
         background: #fff !important;
         padding: 0 !important;
     }
-    body.cite-print-leave #leave-page-1,
-    body.cite-print-leave #leave-page-2 { display: block !important; }
-    body.cite-print-leave #leave-page-2 { break-before: page; page-break-before: always; }
-    body.cite-print-leave .csc-row-office { display: grid !important; grid-template-columns: 1.1fr 2fr !important; }
-    body.cite-print-leave .csc-row-meta { display: grid !important; grid-template-columns: 1fr 1fr 1fr !important; }
-    body.cite-print-leave .csc-row-split { display: grid !important; grid-template-columns: 1fr 1fr !important; }
-    body.cite-print-leave .csc-row-names { display: grid !important; grid-template-columns: 1fr 1fr 1fr !important; }
-    body.cite-print-leave .csc-row-dates { display: grid !important; grid-template-columns: 1fr 1fr !important; }
-    body.cite-print-leave .csc-header-top { display: grid !important; grid-template-columns: 118px minmax(0,1fr) 72px !important; }
-    body.cite-print-leave .csc-cd-cols,
-    body.cite-print-leave .csc-instr-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; }
-    body.cite-print-leave .csc-cd-left { border-right: 1px solid #111 !important; border-bottom: none !important; }
-    body.cite-print-leave .csc-instr-col + .csc-instr-col { border-left: 1px solid #111 !important; border-top: none !important; }
+    body.cite-print-leave #leave-page-1 {
+        display: block !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        break-after: page !important;
+        page-break-after: always !important;
+    }
+    body.cite-print-leave #leave-page-2 {
+        display: block !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        break-before: page !important;
+        page-break-before: always !important;
+    }
+    body.cite-print-leave .csc-form {
+        color: #111 !important;
+        font-size: 10px !important;
+        line-height: 1.15 !important;
+        border-width: 1.5px !important;
+    }
+    body.cite-print-leave .csc-header {
+        padding: 4px 6px 2px !important;
+    }
+    body.cite-print-leave .csc-header-top {
+        display: grid !important;
+        grid-template-columns: 110px minmax(0,1fr) 60px !important;
+        column-gap: 4px !important;
+    }
+    body.cite-print-leave .csc-seal {
+        width: 54px !important;
+        height: 54px !important;
+        display: block !important;
+    }
+    body.cite-print-leave .csc-bagong {
+        width: 56px !important;
+        height: 56px !important;
+        display: block !important;
+    }
+    body.cite-print-leave .csc-agency .rep { font-size: 9.5px !important; }
+    body.cite-print-leave .csc-agency .uni { font-size: 12px !important; }
+    body.cite-print-leave .csc-agency .campus { font-size: 11px !important; }
+    body.cite-print-leave .csc-agency .addr { font-size: 8.5px !important; }
+    body.cite-print-leave .csc-agency .meta { font-size: 8px !important; }
+    body.cite-print-leave .csc-hrmo {
+        margin-top: 2px !important;
+        font-size: 10.5px !important;
+    }
+    body.cite-print-leave .csc-app-title-wrap {
+        margin: 2px 2px 3px !important;
+    }
+    body.cite-print-leave .csc-app-title {
+        font-size: 17px !important;
+        letter-spacing: .04em !important;
+    }
+    body.cite-print-leave .csc-stamp {
+        font-size: 8px !important;
+    }
+    body.cite-print-leave .csc-title-bar {
+        font-size: 10px !important;
+        padding: 2.5px 4px !important;
+    }
+    body.cite-print-leave .csc-cell {
+        padding: 3px 5px !important;
+    }
+    body.cite-print-leave .csc-head {
+        font-size: 9.5px !important;
+        margin-bottom: 2px !important;
+    }
+    body.cite-print-leave .csc-opt {
+        margin: 1px 0 !important;
+        gap: 5px !important;
+    }
+    body.cite-print-leave .csc-row-office {
+        display: grid !important;
+        grid-template-columns: 1.1fr 2fr !important;
+    }
+    body.cite-print-leave .csc-row-meta {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr 1fr !important;
+    }
+    body.cite-print-leave .csc-row-split {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+    }
+    body.cite-print-leave .csc-row-names {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr 1fr !important;
+    }
+    body.cite-print-leave .csc-row-dates {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px !important;
+    }
+    body.cite-print-leave .csc-credits th,
+    body.cite-print-leave .csc-credits td {
+        padding: 2px 3px !important;
+        height: 16px !important;
+        font-size: 9.5px !important;
+    }
+    body.cite-print-leave .csc-quad {
+        min-height: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+    }
+    body.cite-print-leave .csc-sign {
+        margin-top: 4px !important;
+        padding-top: 4px !important;
+    }
+    body.cite-print-leave .csc-sign .name {
+        font-size: 10.5px !important;
+        min-width: 170px !important;
+    }
+    body.cite-print-leave .csc-sign .role {
+        font-size: 9px !important;
+    }
+    body.cite-print-leave .csc-cd-cols {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+    }
+    body.cite-print-leave .csc-cd-left {
+        border-right: 1px solid #111 !important;
+        border-bottom: none !important;
+        min-height: 0 !important;
+        padding: 4px 6px !important;
+    }
+    body.cite-print-leave .csc-cd-right {
+        min-height: 0 !important;
+        padding: 4px 6px !important;
+    }
+    body.cite-print-leave .csc-director {
+        text-align: center !important;
+        padding: 6px 6px 4px !important;
+    }
+    body.cite-print-leave .csc-director .name {
+        font-size: 10.5px !important;
+    }
+    body.cite-print-leave .csc-director .role {
+        font-size: 9px !important;
+    }
+    body.cite-print-leave .csc-rankings-wrap {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        padding: 3px 6px 4px !important;
+    }
+    body.cite-print-leave .csc-rankings {
+        display: block !important;
+        max-height: 48px !important;
+    }
     body.cite-print-leave .csc-line { display: none !important; }
     body.cite-print-leave .csc-print-val {
         display: block !important;
         width: 100%;
         border: none;
         border-bottom: 1px solid #111;
-        min-height: 18px;
-        padding: 1px 4px;
-        font-size: 12px;
-        line-height: 1.25;
+        min-height: 15px;
+        padding: 1px 3px;
+        font-size: 10.5px;
+        line-height: 1.15;
         color: #111 !important;
         font-family: "Times New Roman", Times, serif;
         white-space: pre-wrap;
@@ -362,36 +513,119 @@ select.modal-field {
     }
     body.cite-print-leave .csc-print-center { text-align: center; }
     body.cite-print-leave .csc-print-bold { font-weight: 700; }
-    body.cite-print-leave .csc-print-indent { margin-left: 1.5rem; }
-    body.cite-print-leave .csc-print-mb { margin-bottom: 0.5rem; }
-    body.cite-print-leave .csc-print-mt { margin-top: 0.5rem; }
+    body.cite-print-leave .csc-print-indent { margin-left: 1rem; }
+    body.cite-print-leave .csc-print-mb { margin-bottom: 0.25rem; }
+    body.cite-print-leave .csc-print-mt { margin-top: 0.25rem; }
+    body.cite-print-leave .csc-lines {
+        height: 13px !important;
+        margin-top: 3px !important;
+    }
     body.cite-print-leave .csc-check {
         -webkit-appearance: none !important;
         appearance: none !important;
-        width: 11px !important;
-        height: 11px !important;
-        min-width: 11px;
-        min-height: 11px;
-        border: 1.15px solid #111 !important;
+        width: 10px !important;
+        height: 10px !important;
+        min-width: 10px;
+        min-height: 10px;
+        border: 1px solid #111 !important;
         border-radius: 2px !important;
         background: #fff !important;
         box-shadow: none !important;
-        margin-top: 2px;
-        print-color-adjust: exact;
-        -webkit-print-color-adjust: exact;
+        margin-top: 1px;
     }
     body.cite-print-leave .csc-check.csc-print-on {
         background: #111 !important;
         box-shadow: inset 0 0 0 2px #fff !important;
     }
-    body.cite-print-leave .csc-form { color: #111 !important; }
-    body.cite-print-leave .csc-seal,
-    body.cite-print-leave .csc-bagong,
-    body.cite-print-leave .csc-rankings {
-        display: block !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+    body.cite-print-leave .csc-instr {
+        font-size: 9.5px !important;
+        line-height: 1.25 !important;
     }
+    body.cite-print-leave .csc-instr-title {
+        font-size: 11px !important;
+        padding: 5px 8px !important;
+    }
+    body.cite-print-leave .csc-instr-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+    }
+    body.cite-print-leave .csc-instr-col {
+        padding: 6px 8px !important;
+    }
+    body.cite-print-leave .csc-instr-col + .csc-instr-col {
+        border-left: 1px solid #111 !important;
+        border-top: none !important;
+    }
+    body.cite-print-leave .csc-instr-item {
+        margin: 0 0 5px !important;
+    }
+    body.cite-print-leave .csc-instr-intro {
+        margin: 0 0 6px !important;
+    }
+    body.cite-print-leave .csc-instr-note {
+        padding: 5px 8px !important;
+        font-size: 9px !important;
+    }
+}
+
+/* =========================================================
+   SPECIALIZED LANDSCAPE AUTO-FIT SCALING ENGINE
+   Guarantees 1 Sheet per Page in Landscape Mode
+   ========================================================= */
+@media print and (orientation: landscape) {
+    @page {
+        size: auto landscape;
+        margin: 2.5mm 4mm;
+    }
+    body.cite-print-leave #leave-page-1,
+    body.cite-print-leave #leave-page-2 {
+        zoom: 0.69;
+        width: 100% !important;
+        max-width: 100% !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    body.cite-print-leave #leave-page-1 {
+        page-break-after: always !important;
+        break-after: page !important;
+    }
+    body.cite-print-leave #leave-page-2 {
+        page-break-before: always !important;
+        break-before: page !important;
+    }
+    body.cite-print-leave .csc-form {
+        font-size: 9px !important;
+        line-height: 1.1 !important;
+    }
+    body.cite-print-leave .csc-header {
+        padding: 2px 4px 1px !important;
+    }
+    body.cite-print-leave .csc-seal {
+        width: 44px !important;
+        height: 44px !important;
+    }
+    body.cite-print-leave .csc-bagong {
+        width: 46px !important;
+        height: 46px !important;
+    }
+    body.cite-print-leave .csc-agency .rep { font-size: 8.5px !important; }
+    body.cite-print-leave .csc-agency .uni { font-size: 11px !important; }
+    body.cite-print-leave .csc-agency .campus { font-size: 10px !important; }
+    body.cite-print-leave .csc-app-title { font-size: 15px !important; }
+    body.cite-print-leave .csc-app-title-wrap { margin: 1px 0 2px !important; }
+    body.cite-print-leave .csc-hrmo { margin-top: 1px !important; font-size: 9.5px !important; }
+    body.cite-print-leave .csc-title-bar { font-size: 9px !important; padding: 2px 4px !important; }
+    body.cite-print-leave .csc-cell { padding: 2px 4px !important; }
+    body.cite-print-leave .csc-head { font-size: 8.5px !important; margin-bottom: 1px !important; }
+    body.cite-print-leave .csc-opt { margin: 0.5px 0 !important; }
+    body.cite-print-leave .csc-lines { height: 11px !important; margin-top: 2px !important; }
+    body.cite-print-leave .csc-director { padding: 4px 4px 2px !important; }
+    body.cite-print-leave .csc-sign { margin-top: 2px !important; padding-top: 2px !important; }
+    body.cite-print-leave .csc-rankings { max-height: 38px !important; }
+    body.cite-print-leave .csc-rankings-wrap { padding: 2px 4px !important; }
+    body.cite-print-leave .csc-instr { font-size: 8.5px !important; line-height: 1.15 !important; }
+    body.cite-print-leave .csc-instr-col { padding: 4px 6px !important; }
+    body.cite-print-leave .csc-instr-item { margin: 0 0 3px !important; }
 }
     </style>
 </head>
@@ -636,16 +870,16 @@ select.modal-field {
                 <div class="csc-row-split grid grid-cols-1 lg:grid-cols-2">
                     <div class="csc-cell">
                         <div class="csc-head mb-2">6.C NUMBER OF WORKING DAYS APPLIED FOR</div>
-                        <input id="leave-working-days" class="csc-line" type="text" placeholder="e.g. 3">
+                        <input id="leave-working-days" class="csc-line" type="text" inputmode="numeric" placeholder="e.g. 3" oninput="updateDatesFromWorkingDays()" onchange="updateDatesFromWorkingDays()">
                         <div class="csc-head mt-3 mb-1">INCLUSIVE DATES</div>
                         <div class="csc-row-dates grid grid-cols-2 gap-3">
                             <div>
                                 <div class="text-[10px]">From</div>
-                                <input id="leave-start-date" class="csc-line" type="date" onchange="updateLeaveWorkingDays()">
+                                <input id="leave-start-date" class="csc-line" type="date" onchange="onLeaveStartDateChange()">
                             </div>
                             <div>
                                 <div class="text-[10px]">To</div>
-                                <input id="leave-end-date" class="csc-line" type="date" onchange="updateLeaveWorkingDays()">
+                                <input id="leave-end-date" class="csc-line" type="date" onchange="onLeaveEndDateChange()">
                             </div>
                         </div>
                     </div>
@@ -821,7 +1055,7 @@ select.modal-field {
                     <i class="fa-solid fa-print text-xs mr-1.5"></i>Print
                 </button>
                 <button type="button" id="leave-back-btn" onclick="showLeavePage(1)" class="hidden px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Back to Form</button>
-                <button type="button" id="leave-next-btn" onclick="showLeavePage(2)" class="px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Next: Instructions</button>
+                <button type="button" id="leave-next-btn" onclick="showLeavePage(2)" class="hidden px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Next: Instructions</button>
                 <button type="button" onclick="submitLeaveFiling()" id="leave-submit-btn" style="background: var(--cite-theme, #621708);" class="hidden px-5 py-2.5 hover:opacity-90 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm">Submit Leave</button>
             </div>
         </div>
@@ -1639,6 +1873,7 @@ function goToday(){now=new Date();currentMonth=now.getMonth();currentYear=now.ge
 
 function leaveVal(id){return (document.getElementById(id)?.value||'').trim()}
 function leaveChecked(name){let el=document.querySelector(`input[name="${name}"]:checked`);return el?el.value:''}
+
 function countWorkingDays(start,end){
     if(!start||!end) return '';
     let a=new Date(start+'T00:00:00'), b=new Date(end+'T00:00:00');
@@ -1647,11 +1882,84 @@ function countWorkingDays(start,end){
     while(d<=b){let day=d.getDay(); if(day!==0&&day!==6) n++; d.setDate(d.getDate()+1);}
     return String(n);
 }
+
+function addWorkingDays(startDateStr, daysCount){
+    const n = Math.ceil(parseFloat(daysCount));
+    if(isNaN(n) || n <= 0 || !startDateStr) return startDateStr || '';
+    let d = new Date(startDateStr + 'T00:00:00');
+    if(Number.isNaN(d.getTime())) return startDateStr || '';
+
+    while(d.getDay() === 0 || d.getDay() === 6){
+        d.setDate(d.getDate() + 1);
+    }
+
+    let added = 1;
+    while(added < n){
+        d.setDate(d.getDate() + 1);
+        if(d.getDay() !== 0 && d.getDay() !== 6){
+            added++;
+        }
+    }
+    return key(d);
+}
+
+function updateDatesFromWorkingDays(){
+    let val = leaveVal('leave-working-days');
+    let days = parseFloat(val);
+    if(isNaN(days) || days <= 0) return;
+
+    let start = leaveVal('leave-start-date');
+    if(!start){
+        start = selectedDate || key(new Date());
+        let startEl = document.getElementById('leave-start-date');
+        if(startEl) startEl.value = start;
+    }
+
+    let dStart = new Date(start + 'T00:00:00');
+    if(!Number.isNaN(dStart.getTime()) && (dStart.getDay() === 0 || dStart.getDay() === 6)){
+        while(dStart.getDay() === 0 || dStart.getDay() === 6){
+            dStart.setDate(dStart.getDate() + 1);
+        }
+        start = key(dStart);
+        let startEl = document.getElementById('leave-start-date');
+        if(startEl) startEl.value = start;
+    }
+
+    let end = addWorkingDays(start, days);
+    let endEl = document.getElementById('leave-end-date');
+    if(endEl) endEl.value = end;
+}
+
+function onLeaveStartDateChange(){
+    let start = leaveVal('leave-start-date');
+    let daysVal = leaveVal('leave-working-days');
+    let days = parseFloat(daysVal);
+
+    if(!isNaN(days) && days > 0 && start){
+        updateDatesFromWorkingDays();
+    } else {
+        updateLeaveWorkingDays();
+    }
+}
+
+function onLeaveEndDateChange(){
+    let start = leaveVal('leave-start-date');
+    let end = leaveVal('leave-end-date');
+    if(start && end && end < start){
+        alert('End date (To) cannot be earlier than start date (From).');
+        document.getElementById('leave-end-date').value = start;
+    }
+    updateLeaveWorkingDays();
+}
+
 function updateLeaveWorkingDays(){
     let start=leaveVal('leave-start-date'), end=leaveVal('leave-end-date');
+    let currentDays = leaveVal('leave-working-days');
+    if(currentDays === '0.5' && start && end && start === end) return;
     let days=countWorkingDays(start,end);
     if(days) document.getElementById('leave-working-days').value=days;
 }
+
 function resetLeaveForm(){
     ['leave-office','leave-last-name','leave-first-name','leave-middle-name','leave-position','leave-salary','leave-others-specify','leave-vac-abroad','leave-sick-hospital','leave-sick-outpatient','leave-women-illness','leave-study-other','leave-working-days','leave-signature','leave-file-input'].forEach(id=>{
         let el=document.getElementById(id); if(el) el.value='';
@@ -2333,48 +2641,54 @@ function loadPdfLibs(){
         .then(()=>add('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'));
 }
 
+/* ==========================================================================
+   CTU FACULTY CALENDAR PDF EXPORT (ALL PILLS FULLY DRAWN + FIT SA PAGE 1)
+   ========================================================================== */
+
 async function loadPdfBanners(){
     if(window.__citePdfBanners) return window.__citePdfBanners;
-    const files={ seal:'ctu-seal.png', bagong:'bagong-pilipinas.png', footer:'ctu-rankings-banner.png' };
-    const bases=[];
-    try { bases.push(new URL('../assets/', document.baseURI).href); } catch(_) {}
-    try { bases.push(new URL('assets/', document.baseURI).href); } catch(_) {}
-    try { bases.push(new URL('../shared/', document.baseURI).href); } catch(_) {}
-    try { bases.push(new URL('shared/', document.baseURI).href); } catch(_) {}
-    const toData=async (res)=>{
-        const blob=await res.blob();
-        return await new Promise((resolve,reject)=>{
-            const r=new FileReader();
-            r.onload=()=>resolve(r.result);
-            r.onerror=reject;
-            r.readAsDataURL(blob);
-        });
-    };
-    const loadOne=async (file)=>{
-        for(const base of bases){
+    const files = { seal: 'ctu-seal.png', bagong: 'bagong-pilipinas.png', footer: 'ctu-rankings-banner.png' };
+    const bases = ['../assets/', 'assets/', '../shared/', 'shared/'];
+
+    const toData = (res) => res.blob().then(blob => new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => resolve('');
+        r.readAsDataURL(blob);
+    }));
+
+    const loadOne = async (file) => {
+        for (const base of bases) {
             try {
-                const res=await fetch(base+file, { cache:'force-cache' });
-                if(res && res.ok){
-                    const data=await toData(res);
-                    if(data) return data;
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 600);
+                const res = await fetch(base + file, { cache: 'force-cache', signal: ctrl.signal });
+                clearTimeout(timer);
+                if (res && res.ok) {
+                    const data = await toData(res);
+                    if (data) return data;
                 }
-            } catch(_) {}
+            } catch (_) {}
         }
         return '';
     };
-    const banners={
-        seal: await loadOne(files.seal),
-        bagong: await loadOne(files.bagong),
-        footer: await loadOne(files.footer)
-    };
-    window.__citePdfBanners=banners;
-    return banners;
+
+    const [seal, bagong, footer] = await Promise.all([
+        loadOne(files.seal),
+        loadOne(files.bagong),
+        loadOne(files.footer)
+    ]);
+
+    window.__citePdfBanners = { seal, bagong, footer };
+    return window.__citePdfBanners;
 }
+
 function pdfImageKind(data){
     const s=String(data||'');
     if(s.indexOf('image/jpeg')>=0) return 'JPEG';
     return 'PNG';
 }
+
 function pdfBannerSize(doc, data, maxW, maxH){
     if(!data) return { w:0, h:0 };
     try {
@@ -2386,28 +2700,31 @@ function pdfBannerSize(doc, data, maxW, maxH){
         return { w:0, h:0 };
     }
 }
+
 function pdfPageLayout(doc, banners){
     const pageW=doc.internal.pageSize.getWidth();
     const pageH=doc.internal.pageSize.getHeight();
     const margin=10;
     const usable=pageW-margin*2;
     const footer=pdfBannerSize(doc, banners&&banners.footer, usable, 20);
-    const letterTop=4.5;
-    const logo=26;
-    const afterLetter=letterTop+logo+12;
+    const letterTop=4.0;
+    const logo=22;
+    const afterLetter=letterTop+logo+10;
     const slimTop=8;
     const contentBottom=pageH-10;
     return { pageW, pageH, margin, usable, footer, letterTop, logo, afterLetter, slimTop, contentBottom };
 }
+
 function pdfDrawSlimHeader(doc, L, portalLabel, pageNo, pageCount){
     doc.setFont('helvetica','normal');
     doc.setFontSize(7);
     doc.setTextColor(148,163,184);
     doc.text(`${months[currentMonth]} ${currentYear}  ·  ${pageNo} / ${pageCount}`, L.pageW-L.margin, L.pageH-6, { align:'right' });
 }
+
 function pdfDrawOfficialHeader(doc, L, banners){
-    const top=4.2;
-    const logoMax=22;
+    const top=4.0;
+    const logoMax=20;
     const gap=3.2;
     const rows=[
         { font:['times','normal'], size:8.5, color:[17,17,17], text:'Republic of the Philippines' },
@@ -2417,7 +2734,7 @@ function pdfDrawOfficialHeader(doc, L, banners){
         { font:['helvetica','normal'], size:7.2, color:[29,78,216], text:'Website: http://www.argao.ctu.edu.ph' },
         { font:['helvetica','normal'], size:7.2, color:[29,78,216], text:'E-mail: cdargao@ctu.edu.ph' },
         { font:['helvetica','normal'], size:7.2, color:[17,17,17], text:'Phone No.: (032) 401-0737 local 1700' },
-        { font:['times','bold'], size:9.5, color:[17,17,17], text:'HUMAN RESOURCE MANAGEMENT OFFICE', extra:1.4 }
+        { font:['times','bold'], size:9.5, color:[17,17,17], text:'FACULTY & ACADEMIC CALENDAR OF ACTIVITIES', extra:1.4 }
     ];
     let textW=0;
     rows.forEach(row=>{
@@ -2431,53 +2748,82 @@ function pdfDrawOfficialHeader(doc, L, banners){
     const blockW=sealS.w+(sealS.w?gap:0)+textW+(bagS.w?gap:0)+bagS.w;
     const x0=(L.pageW-blockW)/2;
     const cx=x0+sealS.w+(sealS.w?gap:0)+textW/2;
-    let ty=top+3.5;
+    let ty=top+3.2;
     rows.forEach(row=>{
         ty+=(row.extra||0);
         doc.setFont(row.font[0], row.font[1]);
         doc.setFontSize(row.size);
         doc.setTextColor(row.color[0], row.color[1], row.color[2]);
         doc.text(row.text, cx, ty, { align:'center' });
-        ty+=3.45;
+        ty+=3.3;
     });
     const logoH=Math.max(sealS.h, bagS.h);
     const logoY=top+Math.max(0, ((ty-top)-logoH)/2);
-    if(sealS.w) doc.addImage(banners.seal, pdfImageKind(banners.seal), x0, logoY, sealS.w, sealS.h);
-    if(bagS.w) doc.addImage(banners.bagong, pdfImageKind(banners.bagong), x0+sealS.w+(sealS.w?gap:0)+textW+gap, logoY, bagS.w, bagS.h);
-    const after=Math.max(ty, logoY+logoH)+2.4;
+    if(sealS.w) doc.addImage(banners.seal, pdfImageKind(banners.seal), x0, logoY, sealS.w, sealS.h, undefined, 'FAST');
+    if(bagS.w) doc.addImage(banners.bagong, pdfImageKind(banners.bagong), x0+sealS.w+(sealS.w?gap:0)+textW+gap, logoY, bagS.w, bagS.h, undefined, 'FAST');
+    const after=Math.max(ty, logoY+logoH)+2.2;
     doc.setDrawColor(98,23,8);
     doc.setLineWidth(0.28);
     doc.line(Math.max(L.margin, x0-6), after, Math.min(L.pageW-L.margin, x0+blockW+6), after);
     L.afterLetter=after+2;
+    return L.afterLetter;
 }
+
+// Mo-kuha sa subtitle (e.g. "Sep 4 - Sep 6 • 3 working days" o "whole")
+function pdfTimeLabel(e){
+    if(!e) return '';
+    if(e.isLeave && e.detailTime) return e.detailTime;
+    const t = String(e.time || '').trim();
+    if(/^all\s*day$/i.test(t)) return 'whole';
+    return t || e.detailTime || '';
+}
+
+// I-render ang tibuok pill sama sa imong gi-upload nga image
+function pdfDrawPill(doc, x, y, w, e, customH){
+    const style = pdfPillStyle(String(e.type||'').toLowerCase());
+    const h = customH || 6.4;
+    doc.setFillColor(style.fill[0], style.fill[1], style.fill[2]);
+    doc.setDrawColor(style.border[0], style.border[1], style.border[2]);
+    doc.setLineWidth(0.18);
+    doc.roundedRect(x, y, w, h, 1.4, 1.4, 'FD');
+    const maxW = w - 3.2;
+
+    // Line 1: Bold Title (e.g. Vacation Leave (Pending))
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(h >= 6.2 ? 6.0 : 5.4);
+    doc.setTextColor(style.text[0], style.text[1], style.text[2]);
+    doc.text(pdfEllipsis(doc, e.title || '', maxW), x + 1.5, y + (h >= 6.2 ? 2.6 : 2.2));
+
+    // Line 2: Subtitle (e.g. Sep 4 - Sep 6 • 3 working days)
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(h >= 6.2 ? 5.0 : 4.4);
+    doc.setTextColor(style.text[0], style.text[1], style.text[2]);
+    doc.text(pdfEllipsis(doc, pdfTimeLabel(e), maxW), x + 1.5, y + (h >= 6.2 ? 5.2 : 4.4));
+    return h;
+}
+
+// Month Grid diin MAKITA GAYUD ANG TANANG PILLS (Walay matago sa +1 more!)
 function pdfDrawMonthGrid(doc, startY, layout){
     const L=layout;
     const gridW=L.usable;
     const cellW=gridW/7;
-    const headerH=8;
-    const pad=2.1;
-    const pillH=8.4;
-    const pillGap=1.15;
-    const dayHeadH=7.4;
-    const minRow=26;
+    const headerH=6.5;
+    const pad=1.2;
+    const dayHeadH=4.8;
     const weeks=pdfMonthWeeks();
-    let y=startY;
-    const x0=L.margin;
-    const ensure=needed=>{
-        if(y+needed<=L.contentBottom) return;
-        doc.addPage();
-        y=L.slimTop+1;
-        pdfDrawWeekdays(doc, x0, y, gridW, cellW, headerH);
-        y+=headerH;
-    };
-    pdfDrawWeekdays(doc, x0, y, gridW, cellW, headerH);
-    y+=headerH;
+    const numWeeks=weeks.length || 5;
+
+    // Header SUN - SAT
+    pdfDrawWeekdays(doc, L.margin, startY, gridW, cellW, headerH);
+
+    // Dynamic row height para igo ra gyud sa Page 1
+    const availableH = (L.pageH - 9) - (startY + headerH);
+    const rowH = availableH / numWeeks;
+
+    let y = startY + headerH;
     weeks.forEach(week=>{
-        const maxEvents=Math.max(0, ...week.map(c=>c?c.events.length:0));
-        const rowH=Math.max(minRow, pad+dayHeadH+maxEvents*(pillH+pillGap)+pad);
-        ensure(rowH);
         week.forEach((cell,i)=>{
-            const x=x0+i*cellW;
+            const x=L.margin+i*cellW;
             if(!cell){
                 doc.setFillColor(248,250,252);
                 doc.rect(x, y, cellW, rowH, 'F');
@@ -2486,63 +2832,90 @@ function pdfDrawMonthGrid(doc, startY, layout){
                 doc.rect(x, y, cellW, rowH, 'F');
                 if(cell.isToday){
                     doc.setFillColor(98,23,8);
-                    doc.circle(x+pad+3.5, y+pad+3.3, 3.5, 'F');
+                    doc.circle(x+pad+3.3, y+pad+3.0, 3.2, 'F');
                     doc.setFont('helvetica','bold');
                     doc.setFontSize(7.4);
                     doc.setTextColor(255,255,255);
-                    doc.text(String(cell.day), x+pad+3.5, y+pad+4.5, { align:'center' });
+                    doc.text(String(cell.day), x+pad+3.3, y+pad+4.1, { align:'center' });
                 } else {
                     doc.setFont('helvetica','bold');
                     doc.setFontSize(8);
                     doc.setTextColor(51,65,85);
-                    doc.text(String(cell.day), x+pad, y+pad+4.4);
+                    doc.text(String(cell.day), x+pad, y+pad+4.0);
                 }
-                if(cell.events.length){
+
+                if(cell.events && cell.events.length){
+                    // Badge count sa ibabaw (e.g. 3)
                     doc.setFont('helvetica','bold');
                     doc.setFontSize(6.4);
                     doc.setTextColor(148,163,184);
-                    doc.text(String(cell.events.length), x+cellW-pad, y+pad+4.3, { align:'right' });
+                    doc.text(String(cell.events.length), x+cellW-pad, y+pad+4.0, { align:'right' });
+
+                    const count = cell.events.length;
+                    const availH = rowH - dayHeadH - pad * 2;
+
+                    // Gi-compute aron masulod TANANG PILLS (apil ang ika-3 nga pill sama sa Day 4)
+                    let pillH = 6.6;
+                    let pillGap = 0.8;
+                    if (count === 3) {
+                        pillH = 6.3;
+                        pillGap = 0.7;
+                    } else if (count >= 4) {
+                        pillH = Math.max(4.6, (availH - (count - 1) * 0.5) / count);
+                        pillGap = 0.5;
+                    }
+
+                    let py = y + pad + dayHeadH;
+                    // I-DRAW ANG TANANG PILLS (WALA NAY MATAGO O MA-TEXT LANG NGA "+1 more")
+                    cell.events.forEach(ev => {
+                        pdfDrawPill(doc, x+pad, py, cellW-pad*2, ev, pillH);
+                        py += pillH + pillGap;
+                    });
                 }
-                let py=y+pad+dayHeadH;
-                cell.events.forEach(ev=>{
-                    pdfDrawPill(doc, x+pad, py, cellW-pad*2, ev);
-                    py+=pillH+pillGap;
-                });
             }
-            doc.setDrawColor(238,242,247);
-            doc.setLineWidth(0.22);
+            doc.setDrawColor(226,232,240);
+            doc.setLineWidth(0.20);
             doc.rect(x, y, cellW, rowH, 'S');
         });
-        y+=rowH;
+        y += rowH;
     });
     return y;
 }
+
 function drawCalendarPdf(doc, portalLabel, banners){
     const L=pdfPageLayout(doc, banners||{});
+
+    // =========================================================================
+    // PAGE 1: OFFICIAL HEADER + TIBUOK MONTH GRID (SEPTEMBER 1 HANGTOD 30)
+    // =========================================================================
     pdfDrawOfficialHeader(doc, L, banners||{});
-    const titleY=L.afterLetter+5;
+    const titleY=L.afterLetter+4;
     doc.setFont('helvetica','bold');
     doc.setFontSize(13);
     doc.setTextColor(15,23,42);
     doc.text(`${months[currentMonth]} ${currentYear}`, L.margin, titleY);
+
     doc.setFont('helvetica','normal');
     doc.setFontSize(8);
     doc.setTextColor(100,116,139);
-    doc.text(portalLabel+'  ·  every schedule shown', L.pageW-L.margin, titleY, { align:'right' });
-    let y=pdfDrawMonthGrid(doc, titleY+4, L);
-    y+=7;
-    if(y>L.contentBottom-28){
-        doc.addPage();
-        y=L.slimTop+6;
-    }
+    doc.text(portalLabel+'  -  every schedule shown', L.pageW-L.margin, titleY, { align:'right' });
+
+    pdfDrawMonthGrid(doc, titleY+4, L);
+
+    // =========================================================================
+    // PAGE 2: SCHEDULES THIS MONTH TABLE (DIIN MAKITA SAB ANG TANANG SCHEDULES)
+    // =========================================================================
+    doc.addPage();
+    let y = L.slimTop + 6;
     doc.setFont('helvetica','bold');
     doc.setFontSize(12);
     doc.setTextColor(15,23,42);
     doc.text('Schedules this month', L.margin, y);
+
     const list=pdfMonthListRows();
     doc.autoTable({
         startY: y+4,
-        margin: { left:L.margin, right:L.margin, top:L.slimTop+2, bottom:10 },
+        margin: { left:L.margin, right:L.margin, top:L.slimTop+4, bottom:14 },
         head: [['Days','Title','Type','Location','Time']],
         body: list.length?list:[['—','No schedules this month','','','']],
         theme: 'grid',
@@ -2551,15 +2924,17 @@ function drawCalendarPdf(doc, portalLabel, banners){
         alternateRowStyles: { fillColor:[248,250,252] },
         columnStyles: { 0:{ cellWidth:58 }, 2:{ cellWidth:26 }, 4:{ cellWidth:38 } }
     });
+
     if(banners && banners.footer && L.footer.h){
         const lastY=(doc.lastAutoTable&&doc.lastAutoTable.finalY)||y;
-        let by=lastY+8;
+        let by=lastY+6;
         if(by+L.footer.h>L.pageH-8){
             doc.addPage();
-            by=L.slimTop+10;
+            by=L.slimTop+8;
         }
-        doc.addImage(banners.footer, pdfImageKind(banners.footer), (L.pageW-L.footer.w)/2, by, L.footer.w, L.footer.h);
+        doc.addImage(banners.footer, pdfImageKind(banners.footer), (L.pageW-L.footer.w)/2, by, L.footer.w, L.footer.h, undefined, 'FAST');
     }
+
     const pages=doc.getNumberOfPages();
     for(let i=1;i<=pages;i++){
         doc.setPage(i);
@@ -2567,16 +2942,33 @@ function drawCalendarPdf(doc, portalLabel, banners){
     }
 }
 
-function exportCalendarPDF() {
-    if(!window.jspdf || !window.jspdf.jsPDF){
-        loadPdfLibs().then(function(){ exportCalendarPDF(); }).catch(function(){ alert('Unable to load PDF exporter. Check your connection and try again.'); });
-        return;
+async function exportCalendarPDF() {
+    const btn = document.querySelector('button[onclick="exportCalendarPDF()"]') || document.getElementById('exportPdfBtn');
+    const origHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Generating PDF...';
     }
-    const { jsPDF } = window.jspdf;
-    const banners = window.__citePdfBanners || { seal:'', bagong:'', footer:'' };
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    drawCalendarPdf(doc, isChairViewer() ? 'Chairperson Calendar' : 'Faculty Calendar', banners);
-    doc.save(`CITE-Flow-${isChairViewer()?'Chairperson':'Faculty'}-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
+
+    try {
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+            await loadPdfLibs();
+        }
+        const { jsPDF } = window.jspdf;
+        const banners = await loadPdfBanners();
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+        
+        drawCalendarPdf(doc, isChairViewer() ? 'Chairperson Calendar' : 'Faculty Calendar', banners);
+        doc.save(`CITE-Flow-${isChairViewer() ? 'Chairperson' : 'Faculty'}-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
+    } catch (err) {
+        console.error('PDF export error:', err);
+        alert('Unable to export PDF. Please check your connection and try again.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHTML;
+        }
+    }
 }
 
 function preloadPdf(){
@@ -2690,22 +3082,6 @@ bootFacultyCalendar();
     line-height:1!important;
     white-space:nowrap!important;
 }
-@media print {
-    body.cite-print-leave > *:not(#leave-modal){display:none!important}
-    body.cite-print-leave .leave-no-print,
-    body.cite-print-leave .leave-no-print *{display:none!important}
-    body.cite-print-leave #leave-modal,
-    body.cite-print-leave #leave-page-1,
-    body.cite-print-leave #leave-page-2{display:block!important;position:static!important;overflow:visible!important;max-height:none!important}
-    body.cite-print-leave .csc-row-office{display:grid!important;grid-template-columns:1.1fr 2fr!important}
-    body.cite-print-leave .csc-row-meta{display:grid!important;grid-template-columns:1fr 1fr 1fr!important}
-    body.cite-print-leave .csc-row-split,
-    body.cite-print-leave .csc-cd-cols,
-    body.cite-print-leave .csc-instr-grid{display:grid!important;grid-template-columns:1fr 1fr!important}
-    body.cite-print-leave .csc-line{display:none!important}
-    body.cite-print-leave .csc-print-val{display:block!important;color:#111!important;border-bottom:1px solid #111;min-height:18px;font-family:"Times New Roman",Times,serif}
-    body.cite-print-leave .csc-check.csc-print-on{background:#111!important;box-shadow:inset 0 0 0 2px #fff!important}
-}
 </style>
 <script>
 (function () {
@@ -2725,6 +3101,7 @@ bootFacultyCalendar();
     }, 120);
     if (typeof bootFacultyCalendar === 'function') bootFacultyCalendar();
 })();
+
 </script>
 </body>
 </html>
