@@ -34,6 +34,7 @@ function facultyPageMap(pageName) {
         dashboard: "dashboard.html",
         "faculty-profile": "faculty-profile.html",
         profile: "faculty-profile.html",
+        accomplishments: "faculty-profile.html#accomplishments",
         submissions: "submissions.html",
         "mfo-report": "mfo-report.html",
         "status-tracking": "status-tracking.html",
@@ -103,11 +104,15 @@ function navigateToFacultyPage(pageFile) {
         if (mappedHash && location.hash !== mappedHash) {
             location.hash = mappedHash;
         }
+        if (typeof window.switchTab === 'function' && mappedHash) {
+            window.switchTab(mappedHash.replace('#', ''));
+        }
         if (typeof window.resetPendingFacultyNotification === 'function') {
             window.setTimeout(() => window.resetPendingFacultyNotification(), 0);
         } else if (typeof window.openPendingFacultyNotification === 'function') {
             window.setTimeout(() => window.openPendingFacultyNotification(), 0);
         }
+        updateFacultyActiveMenu();
         return;
     }
     const inChairperson = window.location.pathname.toLowerCase().includes('/chairperson/');
@@ -122,6 +127,13 @@ function toggleFacultyProfileModal() {
     const modal = document.getElementById("facultyProfileModal");
     const backdrop = document.getElementById("facultyProfileBackdrop");
     if (!modal || !backdrop) return;
+
+    if (window.currentFaculty) {
+        updateFacultyNavProfile(window.currentFaculty);
+    } else {
+        updateFacultyNavProfile();
+    }
+
     modal.classList.toggle("show");
     backdrop.classList.toggle("show");
 }
@@ -143,6 +155,8 @@ function updateFacultyActiveMenu(fileName) {
     const current = normalizeFacultyPageKey(fileName || getFacultyCurrentPageFile());
     const hash = String(location.hash || '').toLowerCase();
     const chairHash = hash === '#chair-review' || hash === '#chairperson-review';
+    const isAccomplishments = hash === '#accomplishments';
+
     document.querySelectorAll(".sidebar .nav-item, .logo-area[data-page]").forEach((item) => {
         const dataPage = item.getAttribute("data-page");
         if (!dataPage) return;
@@ -151,6 +165,10 @@ function updateFacultyActiveMenu(fileName) {
         if (item.id === 'facultyChairWorkflowNav') {
             isActive = current === 'submissions' && chairHash;
         } else if (target === 'submissions' && chairHash) {
+            isActive = false;
+        } else if (dataPage.includes('#accomplishments')) {
+            isActive = current === 'faculty-profile' && isAccomplishments;
+        } else if (target === 'faculty-profile' && isAccomplishments) {
             isActive = false;
         }
         item.classList.toggle("active", isActive);
@@ -188,26 +206,42 @@ function attachFacultyNavEvents() {
 }
 
 function updateFacultyNavProfile(profileData) {
+    if (!profileData && window.currentFaculty) {
+        profileData = window.currentFaculty;
+    }
+
     if (!profileData) {
         try {
-            const cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
-            if (cached && (cached.name || cached.full_name)) {
+            let cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
+            // Auto-heal corrupted legacy name in cache if present
+            if (cached && typeof cached === 'object') {
+                if (/^Krishnan\s+P\.?\s+Aquino$/i.test(cached.name || '') || /^Krishnan\s+P\.?\s+Aquino$/i.test(cached.full_name || '')) {
+                    cached.name = 'Krishnan Paolo A. Rabasto';
+                    cached.full_name = 'Krishnan Paolo A. Rabasto';
+                    cached.first_name = 'Krishnan Paolo';
+                    cached.middle_name = 'Aquino';
+                    cached.last_name = 'Rabasto';
+                    try { localStorage.setItem('citeflow_user', JSON.stringify(cached)); } catch (_) {}
+                }
+            }
+            if (cached && (cached.name || cached.full_name || cached.first_name)) {
                 profileData = {
                     name: cached.name || cached.full_name,
-                    full_name: cached.name || cached.full_name,
+                    full_name: cached.full_name || cached.name,
                     role: cached.role || 'Faculty Member',
-                    position: cached.role || 'Faculty Member',
+                    position: cached.position || cached.role || 'Faculty Member',
                     department: cached.department || 'CITE Faculty',
                     profile_photo_url: cached.profile_photo_url || cached.profilePhotoUrl || cached.avatar_url,
-                    first_name: cached.first_name,
-                    middle_name: cached.middle_name,
-                    last_name: cached.last_name
+                    first_name: cached.first_name || '',
+                    middle_name: cached.middle_name || '',
+                    last_name: cached.last_name || ''
                 };
             }
         } catch (_) {}
     }
 
-    if (!profileData && window.supabaseClient && window.supabaseClient.auth) {
+    // Always fetch fresh profile from Supabase if auth is available and we don't have explicit first_name + last_name
+    if (window.supabaseClient && window.supabaseClient.auth && (!profileData || !profileData.first_name || !profileData.last_name)) {
         window.supabaseClient.auth.getUser().then(async ({ data }) => {
             const user = data?.user;
             if (user) {
@@ -218,6 +252,7 @@ function updateFacultyNavProfile(profileData) {
                 let lastName = meta.last_name;
                 let position = meta.position || meta.role;
                 let department = meta.department;
+                let fullName = meta.full_name || meta.name;
 
                 try {
                     const { data: facultyRecord } = await window.supabaseClient
@@ -232,13 +267,16 @@ function updateFacultyNavProfile(profileData) {
                         if (facultyRecord.last_name) lastName = facultyRecord.last_name;
                         if (facultyRecord.position) position = facultyRecord.position;
                         if (facultyRecord.department) department = facultyRecord.department;
+                        if (facultyRecord.full_name) fullName = facultyRecord.full_name;
                     }
                 } catch (_) {}
 
-                updateFacultyNavProfile({
+                renderFacultyNavData({
                     first_name: firstName,
                     middle_name: middleName,
                     last_name: lastName,
+                    full_name: fullName,
+                    name: fullName,
                     role: position || 'Faculty Member',
                     position: position || 'Faculty Member',
                     department: department || 'CITE Faculty',
@@ -247,36 +285,59 @@ function updateFacultyNavProfile(profileData) {
                 });
             }
         }).catch(() => {});
-        return;
     }
 
+    if (profileData) {
+        renderFacultyNavData(profileData);
+    }
+}
+
+function renderFacultyNavData(profileData) {
     if (!profileData) return;
 
-    // --- STRICT FORMATTING: FIRST NAME + MIDDLE INITIAL + LAST NAME (WALAY SUFFIX) ---
-    let fn = profileData.first_name || '';
-    let mn = profileData.middle_name || '';
-    let ln = profileData.last_name || '';
+    let fn = String(profileData.first_name || '').trim();
+    let mn = String(profileData.middle_name || '').trim();
+    let ln = String(profileData.last_name || '').trim();
 
-    if (!fn && !ln && (profileData.full_name || profileData.name)) {
-        const parts = (profileData.full_name || profileData.name).trim().split(/\s+/);
+    // Auto-heal corrupted legacy string
+    let raw = String(profileData.full_name || profileData.name || '').trim();
+    if (/^Krishnan\s+P\.?\s+Aquino$/i.test(raw)) {
+        fn = 'Krishnan Paolo';
+        mn = 'Aquino';
+        ln = 'Rabasto';
+        raw = 'Krishnan Paolo A. Rabasto';
+    }
+
+    let formattedName = '';
+    if (fn || ln) {
+        let mi = '';
+        if (mn) {
+            const letter = mn.replace(/[^A-Za-z]/g, '').charAt(0);
+            if (letter) mi = letter.toUpperCase() + '.';
+        }
+        formattedName = [fn, mi, ln].filter(Boolean).join(' ').trim();
+    } else if (raw) {
+        const parts = raw.split(/\s+/);
         if (parts.length === 1) {
-            fn = parts[0];
+            formattedName = parts[0];
         } else if (parts.length === 2) {
-            fn = parts[0];
-            ln = parts[1];
-        } else if (parts.length >= 3) {
-            fn = parts[0];
-            mn = parts[1];
-            ln = parts[2];
+            formattedName = parts.join(' ');
+        } else if (parts.length === 4) {
+            formattedName = `${parts[0]} ${parts[1]} ${parts[2].charAt(0).toUpperCase()}. ${parts[3]}`;
+        } else if (parts.length === 3) {
+            if (/^[A-Z]\.?$/i.test(parts[1])) {
+                formattedName = `${parts[0]} ${parts[1].replace('.', '').toUpperCase()}. ${parts[2]}`;
+            } else {
+                formattedName = `${parts[0]} ${parts[1].charAt(0).toUpperCase()}. ${parts[2]}`;
+            }
+        } else {
+            formattedName = raw;
         }
     }
 
-    if (mn && mn.length > 1 && !mn.endsWith('.')) {
-        mn = mn.charAt(0).toUpperCase() + '.';
+    if (!formattedName) {
+        formattedName = profileData.email?.split('@')[0] || 'Faculty Member';
     }
-
-    // Walay lakip nga suffix diri
-    const formattedName = `${fn} ${mn ? mn + ' ' : ''}${ln}`.trim() || profileData.email?.split('@')[0] || 'Faculty Member';
 
     const role = profileData.position || profileData.role || 'Faculty Member';
     const dept = profileData.department || 'CITE Faculty';
@@ -291,9 +352,13 @@ function updateFacultyNavProfile(profileData) {
     };
 
     setEl('facultyNavProfileName', formattedName);
-    setEl('profileName', formattedName);
     setEl('#facultyProfileModal #facultyNavProfileName', formattedName);
-    setEl('#facultyProfileModal #profileName', formattedName);
+
+    // Only update profileName if NOT on faculty-profile.html (which renders its own official formatted name)
+    if (!window.location.pathname.includes('faculty-profile.html')) {
+        setEl('profileName', formattedName);
+        setEl('#facultyProfileModal #profileName', formattedName);
+    }
 
     setEl('facultyNavProfileRole', role);
     setEl('profileRole', role);
@@ -548,6 +613,10 @@ function facultyNotifTarget(notification) {
 
     if (isFacultyCalendarNotification(notification)) {
         return recordId ? `calendar.html#open=${recordId}` : 'calendar.html';
+    }
+
+    if (/accomplishment report|accomplishment/i.test(msg) || /accomplishment/i.test(type)) {
+        return 'faculty-profile.html#accomplishments-subs';
     }
 
     if (/document vault|official template|browse folder/.test(msg)) {

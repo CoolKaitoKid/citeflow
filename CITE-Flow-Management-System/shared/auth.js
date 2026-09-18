@@ -178,10 +178,47 @@ window.CiteFlowAuth = (function () {
     function cacheUserInfo(user, role, profile = null) {
         if (!user || !user.id) return null;
 
+        let firstName = profile?.first_name || user.user_metadata?.first_name || '';
+        let middleName = profile?.middle_name || user.user_metadata?.middle_name || '';
+        let lastName = profile?.last_name || user.user_metadata?.last_name || '';
+        let rawName = profile?.name || profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+
+        if (/^Krishnan\s+P\.?\s+Aquino$/i.test(rawName)) {
+            firstName = 'Krishnan Paolo';
+            middleName = 'Aquino';
+            lastName = 'Rabasto';
+            rawName = 'Krishnan Paolo A. Rabasto';
+        }
+
+        let formalName = rawName;
+        if (firstName || lastName) {
+            let mi = '';
+            if (middleName) {
+                const l = middleName.replace(/[^A-Za-z]/g, '').charAt(0);
+                if (l) mi = l.toUpperCase() + '.';
+            }
+            formalName = [firstName, mi, lastName].filter(Boolean).join(' ').trim();
+        } else if (rawName) {
+            const parts = rawName.split(/\s+/);
+            if (parts.length === 4) {
+                formalName = `${parts[0]} ${parts[1]} ${parts[2].charAt(0).toUpperCase()}. ${parts[3]}`;
+            } else if (parts.length === 3) {
+                if (/^[A-Z]\.?$/i.test(parts[1])) {
+                    formalName = `${parts[0]} ${parts[1].replace('.', '').toUpperCase()}. ${parts[2]}`;
+                } else {
+                    formalName = `${parts[0]} ${parts[1].charAt(0).toUpperCase()}. ${parts[2]}`;
+                }
+            }
+        }
+
         const userInfo = {
             id: user.id,
             email: user.email || profile?.email || '',
-            name: profile?.name || profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+            name: formalName || rawName,
+            full_name: formalName || rawName,
+            first_name: firstName,
+            middle_name: middleName,
+            last_name: lastName,
             role: role || user.user_metadata?.role || profile?.role || 'Faculty',
             profileCompleted: profile ? Boolean(profile.profile_completed) : Boolean(user.user_metadata?.profile_completed ?? true),
             mustChangePassword: profile ? Boolean(profile.must_change_password) : Boolean(user.user_metadata?.must_change_password ?? false),

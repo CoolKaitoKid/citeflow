@@ -296,6 +296,171 @@
         setNotifications(list);
     }
 
+    /* ── Global CITE-Flow Modal / Dialog System ──────────────────────── */
+    let dialogResolve = null;
+
+    function detectDialogType(title, message) {
+        const text = `${title} ${message}`.toLowerCase();
+        if (/success|saved|updated|created|submitted|approved|completed|registered|verified|restored/i.test(text)) return 'success';
+        if (/error|failed|unable|cannot|rejected|exceed|not found|denied/i.test(text)) return 'error';
+        if (/invalid|warning|warn|due|past|attention|notice|required|caution|overlap/i.test(text)) return 'warning';
+        return 'info';
+    }
+
+    function ensureDialogDOM() {
+        let root = document.getElementById('citeflow-dialog-root');
+        if (root) return root;
+
+        root = document.createElement('div');
+        root.id = 'citeflow-dialog-root';
+        root.innerHTML = `
+            <div id="citeflow-dialog-backdrop" class="hidden fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-200">
+                <div id="citeflow-dialog-card" class="bg-white rounded-[2rem] w-full max-w-md shadow-2xl border border-slate-100 p-6 sm:p-7 text-center transform transition-all duration-200 scale-95 opacity-0">
+                    <div id="citeflow-dialog-icon-container" class="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center mb-4 transition-colors"></div>
+                    <h3 id="citeflow-dialog-title" class="text-lg font-bold text-slate-900 leading-snug"></h3>
+                    <div id="citeflow-dialog-message" class="text-sm text-slate-600 mt-2.5 leading-relaxed whitespace-pre-line text-left sm:text-center"></div>
+                    <div class="mt-6 flex items-center justify-center gap-3">
+                        <button id="citeflow-dialog-cancel-btn" type="button" class="hidden px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer">Cancel</button>
+                        <button id="citeflow-dialog-confirm-btn" type="button" class="w-full py-2.5 px-6 rounded-xl font-semibold text-sm text-white bg-[#621708] hover:bg-[#8c2a10] transition-colors shadow-sm cursor-pointer">OK</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(root);
+
+        const backdrop = document.getElementById('citeflow-dialog-backdrop');
+        const card = document.getElementById('citeflow-dialog-card');
+        const confirmBtn = document.getElementById('citeflow-dialog-confirm-btn');
+        const cancelBtn = document.getElementById('citeflow-dialog-cancel-btn');
+
+        function closeDialog(result) {
+            card.classList.remove('scale-100', 'opacity-100');
+            card.classList.add('scale-95', 'opacity-0');
+            backdrop.classList.add('opacity-0');
+            setTimeout(() => {
+                backdrop.classList.add('hidden');
+                backdrop.classList.remove('opacity-0');
+                if (dialogResolve) {
+                    const cb = dialogResolve;
+                    dialogResolve = null;
+                    cb(result);
+                }
+            }, 180);
+        }
+
+        confirmBtn.addEventListener('click', () => closeDialog(true));
+        cancelBtn.addEventListener('click', () => closeDialog(false));
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) closeDialog(false);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (backdrop.classList.contains('hidden')) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeDialog(false);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                closeDialog(true);
+            }
+        });
+
+        return root;
+    }
+
+    function showDialog(options = {}) {
+        let title = options.title;
+        let message = '';
+        let type = options.type;
+        let confirmText = options.confirmText || 'OK';
+        let cancelText = options.cancelText || null;
+
+        if (typeof options === 'string') {
+            message = options;
+        } else if (options && typeof options === 'object') {
+            message = options.message || '';
+        }
+
+        if (!type) {
+            type = detectDialogType(title || '', message);
+        }
+        if (!title) {
+            const defaults = {
+                success: 'Success',
+                error: 'Error',
+                warning: 'Notice',
+                info: 'Information'
+            };
+            title = defaults[type] || 'Notice';
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => showDialog(options));
+            return Promise.resolve(true);
+        }
+
+        ensureDialogDOM();
+
+        const backdrop = document.getElementById('citeflow-dialog-backdrop');
+        const card = document.getElementById('citeflow-dialog-card');
+        const iconContainer = document.getElementById('citeflow-dialog-icon-container');
+        const titleEl = document.getElementById('citeflow-dialog-title');
+        const messageEl = document.getElementById('citeflow-dialog-message');
+        const confirmBtn = document.getElementById('citeflow-dialog-confirm-btn');
+        const cancelBtn = document.getElementById('citeflow-dialog-cancel-btn');
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        confirmBtn.textContent = confirmText;
+
+        if (cancelText) {
+            cancelBtn.textContent = cancelText;
+            cancelBtn.classList.remove('hidden');
+            confirmBtn.classList.remove('w-full');
+            confirmBtn.classList.add('flex-1');
+            cancelBtn.classList.add('flex-1');
+        } else {
+            cancelBtn.classList.add('hidden');
+            confirmBtn.classList.add('w-full');
+            confirmBtn.classList.remove('flex-1');
+            cancelBtn.classList.remove('flex-1');
+        }
+
+        const icons = {
+            success: {
+                bg: 'bg-emerald-50 text-emerald-600 border border-emerald-200',
+                svg: `<svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>`
+            },
+            error: {
+                bg: 'bg-red-50 text-red-600 border border-red-200',
+                svg: `<svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`
+            },
+            warning: {
+                bg: 'bg-amber-50 text-amber-600 border border-amber-200',
+                svg: `<svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`
+            },
+            info: {
+                bg: 'bg-rose-50 text-[#621708] border border-rose-200',
+                svg: `<svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`
+            }
+        };
+
+        const config = icons[type] || icons.info;
+        iconContainer.className = `w-14 h-14 rounded-2xl mx-auto flex items-center justify-center mb-4 transition-colors ${config.bg}`;
+        iconContainer.innerHTML = config.svg;
+
+        backdrop.classList.remove('hidden');
+        requestAnimationFrame(() => {
+            card.classList.remove('scale-95', 'opacity-0');
+            card.classList.add('scale-100', 'opacity-100');
+            confirmBtn.focus();
+        });
+
+        return new Promise(resolve => {
+            dialogResolve = resolve;
+        });
+    }
+
     window.CiteFlowUI = {
         setTheme: function (hexColor) {
             saveTheme(hexColor);
@@ -314,8 +479,39 @@
         routeFor: function (relativePath) {
             const clean = String(relativePath || '').replace(/^\/+/, '');
             return clean.split('/').pop() || clean;
+        },
+        dialog: showDialog,
+        alert: function (message, type, title) {
+            return showDialog({ message, type, title });
+        },
+        confirm: function (message, title) {
+            return showDialog({ message, title: title || 'Confirmation', cancelText: 'Cancel', confirmText: 'Confirm' });
+        },
+        confirmClear: function (options = {}) {
+            if (typeof window.showClearConfirmModal === 'function') {
+                return window.showClearConfirmModal(options);
+            }
+            return showDialog({
+                message: typeof options === 'string' ? options : (options.message || 'Are you sure you want to clear all fields? This will reset your entries and clear the saved draft.'),
+                title: (options && options.title) || 'Clear Form Fields?',
+                type: 'warning',
+                cancelText: 'Cancel',
+                confirmText: (options && options.confirmText) || 'Clear All'
+            });
         }
     };
+
+    window.showNoticeModal = showDialog;
+    window.showSuccessModal = (msg, title) => showDialog({ message: msg, title: title || 'Success', type: 'success' });
+    window.showErrorModal = (msg, title) => showDialog({ message: msg, title: title || 'Error', type: 'error' });
+    window.showWarningModal = (msg, title) => showDialog({ message: msg, title: title || 'Notice', type: 'warning' });
+
+    // Polyfill window.alert to render our custom modal dialog consistently across all pages!
+    if (typeof window !== 'undefined') {
+        window.alert = function (msg) {
+            return showDialog(msg);
+        };
+    }
 
     // Global Flatpickr Integration for ALL date inputs across CiteFlow
     (function initCiteFlowDatePickers() {

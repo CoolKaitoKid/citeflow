@@ -1044,17 +1044,49 @@
         const rows = (Array.isArray(payload) ? payload : [payload]).filter(Boolean);
         if (!rows.length) return true;
 
-        let { error } = await sb.from('wf_notifications').insert(rows);
-        if (error && /recipient_auth_user_id|column|schema|cache/i.test(error.message || '')) {
-            const fallback = rows.map((row) => {
-                const next = { ...row };
-                delete next.recipient_auth_user_id;
+        const validTypes = new Set(['task', 'submission', 'review', 'comment', 'system']);
+        const sanitized = rows.map((r) => {
+            const row = { ...r };
+            if (!validTypes.has(row.type)) {
+                row.type = 'review';
+            }
+            if (row.is_read == null) {
+                row.is_read = false;
+            }
+            return row;
+        });
+
+        let { error } = await sb.from('wf_notifications').insert(sanitized);
+        if (error) {
+            console.warn('CiteFlowWorkflow.createWorkflowNotification first attempt:', error?.message || error);
+            // Fallback 1: remove optional fields like title, link, recipient_auth_user_id
+            const fallback = sanitized.map((row) => {
+                const next = {
+                    type: row.type || 'review',
+                    message: row.message || '',
+                    is_read: false
+                };
+                if (row.faculty_id != null) next.faculty_id = row.faculty_id;
+                if (row.task_id != null) next.task_id = row.task_id;
                 return next;
             });
-            ({ error } = await sb.from('wf_notifications').insert(fallback));
+            const res2 = await sb.from('wf_notifications').insert(fallback);
+            if (res2.error) {
+                console.warn('CiteFlowWorkflow.createWorkflowNotification fallback 1 error:', res2.error?.message || res2.error);
+                // Fallback 2: minimal payload
+                const minimal = sanitized.map((row) => ({
+                    type: 'review',
+                    message: row.message || '',
+                    is_read: false
+                }));
+                const res3 = await sb.from('wf_notifications').insert(minimal);
+                if (res3.error) {
+                    console.error('CiteFlowWorkflow.createWorkflowNotification failed:', res3.error?.message || res3.error);
+                    return false;
+                }
+            }
         }
-        if (error) console.error('CiteFlowWorkflow.createWorkflowNotification:', error);
-        return !error;
+        return true;
     }
 
     async function loadActiveDelegatedAccess(sb) {
@@ -1911,6 +1943,24 @@
         let update = { updated_at: now };
         let notifMessage = '';
 
+        // Resolve target faculty ID and report period details
+        let targetFacultyId = facultyId;
+        let periodStr = '';
+        try {
+            const { data: rep } = await sb
+                .from('accomplishment_report_submissions')
+                .select('faculty_id, period_start, period_end')
+                .eq('id', reportId)
+                .single();
+            if (rep) {
+                targetFacultyId = targetFacultyId || rep.faculty_id;
+                if (rep.period_start && rep.period_end) {
+                    const fmt = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    periodStr = ` (${fmt(rep.period_start)} – ${fmt(rep.period_end)})`;
+                }
+            }
+        } catch (_) {}
+
         if (isChairRole) {
             // Chairperson actions
             if (action === 'approve') {
@@ -1919,21 +1969,21 @@
                 update.chair_reviewed_by_id = actorId;
                 update.chair_reviewed_at = now;
                 update.chair_remarks = remarks || null;
-                notifMessage = `Your accomplishment report has been certified by Chairperson ${actorName}.`;
+                notifMessage = `Your accomplishment report${periodStr} has been certified by Chairperson ${actorName}.`;
             } else if (action === 'revision') {
                 update.status = 'revision';
                 update.chair_reviewed_by = actorName;
                 update.chair_reviewed_by_id = actorId;
                 update.chair_reviewed_at = now;
                 update.chair_remarks = remarks || 'Please revise and resubmit.';
-                notifMessage = `Your accomplishment report was returned for revision by ${actorName}. Remarks: ${remarks || 'Please revise and resubmit.'}`;
+                notifMessage = `Your accomplishment report${periodStr} was returned for revision by ${actorName}. Remarks: ${remarks || 'Please revise and resubmit.'}`;
             } else if (action === 'reject') {
                 update.status = 'rejected';
                 update.chair_reviewed_by = actorName;
                 update.chair_reviewed_by_id = actorId;
                 update.chair_reviewed_at = now;
                 update.chair_remarks = remarks || 'Report declined.';
-                notifMessage = `Your accomplishment report was declined by ${actorName}.`;
+                notifMessage = `Your accomplishment report${periodStr} was declined by ${actorName}.`;
             }
         } else {
             // Dean / Admin actions
@@ -1943,21 +1993,21 @@
                 update.dean_reviewed_by_id = actorId;
                 update.dean_reviewed_at = now;
                 update.dean_remarks = remarks || null;
-                notifMessage = `Your accomplishment report has been fully approved by ${actorName}.`;
+                notifMessage = `Your accomplishment report${periodStr} has been fully approved by ${actorName}.`;
             } else if (action === 'revision') {
                 update.status = 'revision';
                 update.dean_reviewed_by = actorName;
                 update.dean_reviewed_by_id = actorId;
                 update.dean_reviewed_at = now;
                 update.dean_remarks = remarks || 'Please revise and resubmit.';
-                notifMessage = `Your accomplishment report was returned for revision by ${actorName}. Remarks: ${remarks || 'Please revise and resubmit.'}`;
+                notifMessage = `Your accomplishment report${periodStr} was returned for revision by ${actorName}. Remarks: ${remarks || 'Please revise and resubmit.'}`;
             } else if (action === 'reject') {
                 update.status = 'rejected';
                 update.dean_reviewed_by = actorName;
                 update.dean_reviewed_by_id = actorId;
                 update.dean_reviewed_at = now;
                 update.dean_remarks = remarks || 'Report declined.';
-                notifMessage = `Your accomplishment report was declined by ${actorName}.`;
+                notifMessage = `Your accomplishment report${periodStr} was declined by ${actorName}.`;
             }
         }
 
@@ -1969,13 +2019,13 @@
         if (error) throw error;
 
         // Send notification to the faculty member
-        if (facultyId && notifMessage) {
+        if (targetFacultyId && notifMessage) {
             await createWorkflowNotification(sb, {
-                faculty_id: facultyId,
-                type: 'accomplishment_report',
-                title: 'Accomplishment Report Update',
+                faculty_id: targetFacultyId,
+                type: 'review',
                 message: notifMessage,
-                is_read: false
+                is_read: false,
+                link: 'faculty-profile.html#accomplishments-subs'
             });
         }
 
