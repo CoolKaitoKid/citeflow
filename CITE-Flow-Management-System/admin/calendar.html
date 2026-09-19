@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
-    <meta name="cite-cal-build" content="2026-09-05-leave-span-days">
+    <meta name="cite-cal-build" content="2026-09-19-calendar-unlimited-storage-resumable">
     <title>Calendar - CITE-Flow</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="nav.css">
     <link rel="stylesheet" href="../shared/skeleton.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tus-js-client@3/dist/tus.min.js"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
     <script src="../shared/calendar-notifications.js?v=10"></script>
@@ -34,6 +35,27 @@
         body, button, input:not(.csc-line):not(.csc-check), select, textarea {
             font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         }
+
+                .more-link{
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 1px 3px;
+            color: #2563eb;
+            font-weight: 700;
+            display: inline-block;
+            text-align: left;
+            border-radius: 4px;
+            transition: all 0.12s ease;
+        }
+        .more-link:hover{
+            color: #1d4ed8;
+            text-decoration: underline;
+            background: #eff6ff;
+        }
+
+
         input, select, textarea, button { color-scheme: light; }
         input[type="date"], input[type="datetime-local"], input[type="time"] {
             -webkit-appearance: none;
@@ -166,27 +188,74 @@
         .mini-day:hover{background:#f1f5f9}
         .mini-day.active{background:#621708;color:#fff}
         .mini-day.has:after{content:'';position:absolute;bottom:3px;left:50%;width:4px;height:4px;background:#b45309;border-radius:999px;transform:translateX(-50%)}
-        .pill{
-            display:block;
-            width:100%;
-            min-width:0;
-            border-radius:6px;
-            padding:2px 4px;
-            margin-top:2px;
-            font-size:9.5px;
-            line-height:1.2;
-            text-align:left;
-            border:1px solid transparent;
-            cursor:pointer;
-            overflow:hidden;
-            text-overflow:ellipsis;
-            white-space:nowrap;
-            transition:all 0.12s ease;
-        }
-        @media (min-width:640px){
-            .pill{border-radius:8px;padding:3px 5px;font-size:10px}
-        }
-        .pill:hover{filter:brightness(.95);transform:translateY(-0.5px)}
+          .pill {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border-radius: 6px;
+    padding: 3px 5px;
+    margin-top: 2px;
+    text-align: left;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    box-sizing: border-box;
+}
+@media (min-width: 640px) {
+    .pill { border-radius: 7px; padding: 3px 6px; }
+}
+.pill:hover { filter: brightness(.95); transform: translateY(-0.5px); }
+
+.pill-title {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@media (min-width: 640px) {
+    .pill-title { font-size: 10px; }
+}
+
+.pill-sub {
+    display: block;
+    font-size: 8.5px;
+    font-weight: 500;
+    line-height: 1.2;
+    opacity: 0.85;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 1px;
+}
+@media (min-width: 640px) {
+    .pill-sub { font-size: 9px; }
+}
+
+#selected-day-panel { scroll-margin-top: 6rem; }
+
+.more-link {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 1px 3px;
+    color: var(--cite-theme) !important;
+    font-weight: 700;
+    display: inline-block;
+    text-align: left;
+    border-radius: 4px;
+    transition: all 0.12s ease;
+}
+.more-link:hover {
+    color: var(--cite-theme) !important;
+    text-decoration: underline;
+    background: #eff6ff;
+}
+        .event-leave{background:#fffbeb;color:#b45309;border-color:#fde68a}
+        .event-leave .pill-sub{color:#b45309}
         #selected-day-panel{scroll-margin-top:6rem}
         .event-meeting{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
         .event-seminar{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
@@ -390,6 +459,10 @@
             background: #cbd5e1;
             border-radius: 4px;
         }
+        #calendar-message-modal.hidden{display:none!important}
+        #calendar-message-modal{align-items:center}
+        .calendar-message-card{animation:calendarMessageIn .16s ease-out}
+        @keyframes calendarMessageIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
     </style>
     <style id="cite-cal-compact">
     select:not([multiple]) {
@@ -612,6 +685,74 @@
     </main>
 </div>
 
+<div id="calendar-message-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[4000] p-4">
+    <div class="calendar-message-card bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100">
+        <div class="p-5 sm:p-6">
+            <div class="flex items-start gap-3">
+                <div id="calendar-message-icon" class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h3 id="calendar-message-title" class="text-base font-bold text-slate-950">Done</h3>
+                    <p id="calendar-message-text" class="text-sm text-slate-600 mt-1 leading-relaxed"></p>
+                </div>
+                <button type="button" onclick="closeCalendarMessage()" class="icon-btn shrink-0" aria-label="Close">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex justify-end mt-5">
+                <button type="button" onclick="closeCalendarMessage()" class="px-5 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-sm font-semibold">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CITE-FLOW CUSTOM MODAL SYSTEM (REPLACES BROWSER ALERT & CONFIRM) -->
+
+<!-- 1. Notification / Status Modal (Replaces browser alert) -->
+<div id="calendar-message-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[4000] p-4">
+    <div class="calendar-message-card bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100">
+        <div class="p-5 sm:p-6">
+            <div class="flex items-start gap-3.5">
+                <div id="calendar-message-icon" class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 text-base">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h3 id="calendar-message-title" class="text-base font-bold text-slate-950">Done</h3>
+                    <p id="calendar-message-text" class="text-sm text-slate-600 mt-1 leading-relaxed"></p>
+                </div>
+                <button type="button" onclick="closeCalendarMessage()" class="icon-btn shrink-0" aria-label="Close">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex justify-end mt-5 pt-1">
+                <button type="button" onclick="closeCalendarMessage()" class="px-5 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. Confirmation Action Modal (Replaces browser confirm) -->
+<div id="calendar-confirm-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[4100] p-4">
+    <div class="calendar-message-card bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100">
+        <div class="p-5 sm:p-6">
+            <div class="flex items-start gap-3.5">
+                <div id="calendar-confirm-icon" class="w-11 h-11 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center shrink-0 text-base">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h3 id="calendar-confirm-title" class="text-base font-bold text-slate-950">Confirm Action</h3>
+                    <p id="calendar-confirm-text" class="text-sm text-slate-600 mt-1 leading-relaxed">Are you sure you want to proceed?</p>
+                </div>
+            </div>
+            <div class="flex justify-end items-center gap-2.5 mt-6 pt-1">
+                <button type="button" id="calendar-confirm-cancel-btn" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs sm:text-sm font-semibold transition-colors">Cancel</button>
+                <button type="button" id="calendar-confirm-ok-btn" class="px-5 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="add-event-modal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-[2500] p-3 sm:p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3 bg-slate-50/50">
@@ -714,16 +855,18 @@
             </section>
 
             <section class="cite-form-section">
-                <p class="cite-form-kicker">Attachments</p>
+                <p class="cite-form-kicker">Attachments & Link</p>
                 <div class="cite-form-row two">
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Memo file</label>
-                        <p class="text-[11px] text-slate-500 mb-1.5">Provide memo files or links.</p>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Memo file (Stored in DB / Storage)</label>
+                        <p class="text-[11px] text-slate-500 mb-1.5">Attach documents, PDFs, memos, or images (select multiple or large files).</p>
                         <input type="file" id="modal-files" multiple>
+                        <div id="modal-picked-preview" class="hidden mt-2 text-[11px] text-slate-600 font-medium"></div>
                         <div id="modal-existing-files" class="hidden mt-2 space-y-1.5"></div>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Link</label>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5">External Link (Stored in DB)</label>
+                        <p class="text-[11px] text-slate-500 mb-1.5">Google Drive, OneDrive, meeting link, or website.</p>
                         <input id="modal-external-link" type="url" placeholder="https://..." class="modal-field">
                     </div>
                 </div>
@@ -801,7 +944,7 @@
                 <div id="detail-link-box">
                     <div class="text-xs font-medium text-slate-500 mb-1">Link</div>
                     <div id="detail-link-empty" class="text-xs text-slate-400 italic">No link on this schedule.</div>
-                    <a id="detail-link" href="#" target="_blank" rel="noopener" class="hidden text-sm text-slate-700 hover:underline break-all"></a>
+                    <a id="detail-link" href="#" target="_blank" rel="noopener" class="hidden text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline break-all inline-flex items-center gap-1.5"></a>
                 </div>
                 <div>
                     <div class="text-xs font-medium text-slate-500 mb-1">Notes</div>
@@ -1064,6 +1207,85 @@ function parseDateKey(value){
     const text=String(value||'').slice(0,10);
     return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
 }
+
+
+// Shows status or feedback modal (replaces alert)
+function showCalendarMessage(title, text, type = 'success') {
+    const modal = document.getElementById('calendar-message-modal');
+    const titleEl = document.getElementById('calendar-message-title');
+    const textEl = document.getElementById('calendar-message-text');
+    const icon = document.getElementById('calendar-message-icon');
+    if (!modal) return;
+    titleEl.textContent = title || 'Notice';
+    textEl.textContent = text || '';
+    const styles = {
+        success: ['bg-emerald-50', 'text-emerald-700', 'fa-check'],
+        error: ['bg-red-50', 'text-red-700', 'fa-xmark'],
+        info: ['bg-sky-50', 'text-sky-700', 'fa-circle-info'],
+        warning: ['bg-amber-50', 'text-amber-700', 'fa-triangle-exclamation']
+    };
+    const chosen = styles[type] || styles.success;
+    icon.className = 'w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-base ' + chosen[0] + ' ' + chosen[1];
+    icon.innerHTML = '<i class="fa-solid ' + chosen[2] + '"></i>';
+    modal.classList.remove('hidden');
+}
+
+function closeCalendarMessage() {
+    const modal = document.getElementById('calendar-message-modal');
+    if (modal) modal.classList.add('hidden');
+}
+window.showCalendarMessage = showCalendarMessage;
+window.closeCalendarMessage = closeCalendarMessage;
+
+// Custom asynchronous confirmation modal (replaces window.confirm)
+function showCalendarConfirm(title, text, options = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('calendar-confirm-modal');
+        const titleEl = document.getElementById('calendar-confirm-title');
+        const textEl = document.getElementById('calendar-confirm-text');
+        const icon = document.getElementById('calendar-confirm-icon');
+        const okBtn = document.getElementById('calendar-confirm-ok-btn');
+        const cancelBtn = document.getElementById('calendar-confirm-cancel-btn');
+
+        if (!modal) {
+            resolve(window.confirm(text || title));
+            return;
+        }
+
+        titleEl.textContent = title || 'Confirm Action';
+        textEl.textContent = text || 'Are you sure you want to proceed?';
+        okBtn.textContent = options.confirmText || 'Confirm';
+        cancelBtn.textContent = options.cancelText || 'Cancel';
+
+        if (options.danger) {
+            okBtn.className = 'px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors';
+            icon.className = 'w-11 h-11 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center shrink-0 text-base';
+            icon.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+        } else {
+            okBtn.className = 'px-5 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors';
+            icon.className = 'w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 text-base';
+            icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+        }
+
+        const cleanup = () => {
+            modal.classList.add('hidden');
+            okBtn.onclick = null;
+            cancelBtn.onclick = null;
+        };
+
+        okBtn.onclick = () => { cleanup(); resolve(true); };
+        cancelBtn.onclick = () => { cleanup(); resolve(false); };
+        modal.classList.remove('hidden');
+    });
+}
+window.showCalendarConfirm = showCalendarConfirm;
+
+// Override browser alert with custom modal design
+window.alert = function(msg) {
+    showCalendarMessage('Notice', String(msg), 'info');
+};
+
+
 function eachDateKey(start,end){
     const from=parseDateKey(start);
     const to=parseDateKey(end)||from;
@@ -1112,21 +1334,48 @@ function formatLeaveRangeLabel(start,end){
     if(from===to) return longDate(from);
     return `${longDate(from)} – ${longDate(to)}`;
 }
+
+// Clean notes by removing technical CITEFLOW_MEDIA metadata
 function cleanNotes(text){
-    return String(text||'').replace(/\s*CITEFLOW_MEDIA:\s*\{[\s\S]*$/,'').trim();
+    return String(text||'').replace(/\s*CITEFLOW_MEDIA:\s*\{[\s\S]*$/i,'').trim();
 }
+
+// Extract embedded media metadata stored in DB notes (guaranteed persistence)
+function extractMediaFromNotes(text){
+    if(!text || typeof text !== 'string') return null;
+    const m = text.match(/CITEFLOW_MEDIA:\s*(\{[\s\S]*\})$/i);
+    if(m && m[1]){
+        try { return JSON.parse(m[1]); } catch(_) {}
+    }
+    return null;
+}
+
+// Extract external link from table columns or embedded notes
+function parseExternalLink(row){
+    if(!row) return '';
+    const col = String(row.external_link || row.link_url || row.event_link || '').trim();
+    if(col) return col;
+    const meta = extractMediaFromNotes(row.notes);
+    if(meta && (meta.external_link || meta.link_url)){
+        return String(meta.external_link || meta.link_url).trim();
+    }
+    return '';
+}
+
+// Extract attachments from database columns or embedded notes
 function parseAttachments(row){
     const list=[];
     const add=items=>{
         (items||[]).forEach(item=>{
             if(!item) return;
-            if(typeof item==='string') list.push({ name:'Attachment', url:item, type:'', bucket:'', path:'' });
+            if(typeof item==='string') list.push({ name:'Attachment', url:item, type:'', bucket:'', path:'', size: 0 });
             else list.push({
                 name: item.name || item.file_name || 'Attachment',
                 url: item.url || item.publicUrl || '',
                 type: item.type || item.mime || item.mime_type || '',
                 bucket: item.bucket || item.storage_bucket || '',
-                path: item.path || item.storage_path || ''
+                path: item.path || item.storage_path || '',
+                size: item.size || 0
             });
         });
     };
@@ -1138,7 +1387,15 @@ function parseAttachments(row){
             if(Array.isArray(parsed)) add(parsed);
         } catch(_) {}
     }
-    if(row && row.attachment_url) add([{ name: row.attachment_name || 'Attachment', url: row.attachment_url, type: row.attachment_type || '' }]);
+    if(row && row.attachment_url) add([{ name: row.attachment_name || 'Attachment', url: row.attachment_url, type: row.attachment_type || '', size: row.attachment_size || 0 }]);
+    
+    // Check embedded media in notes (fail-safe database storage)
+    if(row && row.notes){
+        const meta = extractMediaFromNotes(row.notes);
+        if(meta && Array.isArray(meta.attachments)) add(meta.attachments);
+        else if(meta && meta.attachment_url) add([{ name: meta.attachment_name||'Attachment', url: meta.attachment_url }]);
+    }
+
     const seen=new Set();
     return list.filter(item=>{
         if(!item.url || seen.has(item.url)) return false;
@@ -1146,89 +1403,49 @@ function parseAttachments(row){
         return true;
     });
 }
-const SCHEDULE_FILE_BUCKETS=['leave-attachments','calendar-attachments'];
+
+const SCHEDULE_FILE_BUCKETS=['calendar-attachments','leave-attachments'];
+
 function safeFileName(name){
     return String(name||'file').replace(/[^\w.\-]+/g,'_').slice(0,80) || 'file';
 }
-async function resolveMediaUrl(item){
-    if(item && item.bucket && item.path){
-        const signed=await supabaseClient.storage.from(item.bucket).createSignedUrl(item.path, 60*60*24*7);
-        if(signed?.data?.signedUrl) return signed.data.signedUrl;
-    }
-    return item && item.url ? item.url : '';
+
+function getFileIcon(filename, type){
+    const fn=String(filename||'').toLowerCase();
+    const tp=String(type||'').toLowerCase();
+    if(fn.endsWith('.pdf') || tp.includes('pdf')) return 'fa-solid fa-file-pdf text-red-600';
+    if(fn.endsWith('.doc') || fn.endsWith('.docx') || tp.includes('word') || tp.includes('officedocument')) return 'fa-solid fa-file-word text-blue-600';
+    if(fn.endsWith('.xls') || fn.endsWith('.xlsx') || fn.endsWith('.csv') || tp.includes('sheet')) return 'fa-solid fa-file-excel text-emerald-600';
+    if(/\.(png|jpe?g|gif|webp|svg)$/i.test(fn) || tp.startsWith('image/')) return 'fa-solid fa-file-image text-purple-600';
+    return 'fa-solid fa-file-lines text-amber-700';
 }
-async function writeScheduleManifest(eventId, attachments, externalLink){
-    const id=String(eventId||'');
-    if(!id) return null;
-    const body=JSON.stringify({
-        attachments: attachments||[],
-        external_link: String(externalLink||'').trim()
-    });
-    const file=new Blob([body], { type:'application/json' });
-    const path=`schedule-files/${id}/_manifest.json`;
-    for(const bucket of SCHEDULE_FILE_BUCKETS){
-        await supabaseClient.storage.from(bucket).remove([path]);
-        const { error } = await supabaseClient.storage.from(bucket).upload(path, file, { upsert:true, contentType:'application/json' });
-        if(!error) return { bucket, path };
-    }
-    return null;
+
+function safeFormatSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
-async function readScheduleManifest(eventId){
-    const id=String(eventId||'');
-    if(!id) return null;
-    for(const bucket of SCHEDULE_FILE_BUCKETS){
-        const path=`schedule-files/${id}/_manifest.json`;
-        let url='';
-        const signed=await supabaseClient.storage.from(bucket).createSignedUrl(path, 60*60*24);
-        if(signed?.data?.signedUrl) url=signed.data.signedUrl;
-        if(!url){
-            const pub=supabaseClient.storage.from(bucket).getPublicUrl(path);
-            url=pub?.data?.publicUrl||'';
-        }
-        if(!url) continue;
-        try {
-            const res=await fetch(url, { cache:'no-store' });
-            if(!res.ok) continue;
-            const json=await res.json();
-            if(json && (json.attachments || json.external_link || json.externalLink)) return json;
-        } catch(_) {}
-    }
-    return null;
-}
-async function hydrateScheduleMedia(e){
-    if(!e || e.isLeave) return e;
-    const fromRow=parseAttachments(e);
-    const colLink=String(e.externalLink||e.external_link||e.link_url||'').trim();
-    if(fromRow.length || colLink){
-        e.attachments=fromRow.length?fromRow:(e.attachments||[]);
-        e.externalLink=colLink;
-        e.attachmentUrl=e.attachments[0]?.url||e.attachmentUrl||'';
-        return e;
-    }
-    const man=await readScheduleManifest(e.realId||e.id);
-    if(!man) return e;
-    e.attachments=parseAttachments(man);
-    e.externalLink=String(man.external_link||man.externalLink||'').trim();
-    e.attachmentUrl=e.attachments[0]?.url||'';
-    return e;
-}
+window.formatFileSize = safeFormatSize;
+
 function fileCardHtml(f){
     const url=f.url||'';
     const name=esc(f.name||'Attachment');
     const isImg=/\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(url) || String(f.type||'').startsWith('image/');
-    const preview=isImg?`<img src="${esc(url)}" alt="${name}" class="mt-2 max-h-52 w-full object-contain rounded-xl border border-slate-100 bg-white">`:'';
-    return `<a href="${esc(url)}" target="_blank" rel="noopener" class="block px-4 py-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs font-bold hover:bg-amber-100"><i class="fa-solid fa-file-arrow-down mr-2"></i>${name}${preview}</a>`;
+    const iconClass=getFileIcon(f.name, f.type);
+    const sizeBadge = f.size ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100/90 text-amber-900 shrink-0 font-medium">${safeFormatSize(f.size)}</span>` : '';
+    const preview=isImg?`<img src="${esc(url)}" alt="${name}" loading="lazy" class="mt-2 max-h-52 w-full object-contain rounded-xl border border-slate-100 bg-white">`:'';
+    return `<a href="${esc(url)}" target="_blank" rel="noopener" class="block px-4 py-2.5 bg-amber-50/70 border border-amber-200/80 text-slate-800 rounded-xl text-xs font-bold hover:bg-amber-100/80 transition-all shadow-sm"><div class="flex items-center gap-2 min-w-0"><i class="${iconClass} text-sm shrink-0"></i><span class="truncate flex-1">${name}</span>${sizeBadge}<i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-400 shrink-0"></i></div>${preview}</a>`;
 }
-async function renderDetailMedia(e){
-    const files=e.attachments && e.attachments.length ? e.attachments : (e.attachmentUrl ? [{ name:'Attachment', url:e.attachmentUrl }] : []);
+
+// Instant synchronous rendering for media (0ms delay when viewing details)
+function renderDetailMedia(e){
+    const files=(e.attachments && e.attachments.length)?e.attachments:(e.attachmentUrl?[{ name:'Attachment', url:e.attachmentUrl }]:[]);
     const filesList=document.getElementById('detail-files-list');
     if(filesList){
         if(files.length){
-            const resolved=await Promise.all(files.map(async f=>{
-                const url=await resolveMediaUrl(f);
-                return { ...f, url };
-            }));
-            filesList.innerHTML=resolved.map(fileCardHtml).join('');
+            filesList.innerHTML=files.map(fileCardHtml).join('');
         } else {
             filesList.innerHTML='<div class="text-xs text-slate-400 italic">No files on this schedule.</div>';
         }
@@ -1240,38 +1457,55 @@ async function renderDetailMedia(e){
         if(raw){
             const href=/^https?:\/\//i.test(raw)?raw:`https://${raw}`;
             linkEl.href=href;
-            linkEl.textContent=raw;
+            linkEl.innerHTML=`<i class="fa-solid fa-arrow-up-right-from-square text-xs mr-1"></i><span class="truncate">${esc(raw)}</span>`;
             linkEl.classList.remove('hidden');
             if(linkEmpty) linkEmpty.classList.add('hidden');
         } else {
             linkEl.classList.add('hidden');
             linkEl.removeAttribute('href');
-            linkEl.textContent='';
+            linkEl.innerHTML='';
             if(linkEmpty) linkEmpty.classList.remove('hidden');
         }
     }
 }
+
 function getMiddleInitial(middleName){
     const trimmed=String(middleName||'').trim();
     if(!trimmed) return '';
     const letter=trimmed.replace(/[^A-Za-z]/g,'').charAt(0);
     return letter?`${letter.toUpperCase()}.`:'';
 }
+
 function leaveCalendarEntries(leave){
-    const row=hydrateLeaveRow(leave);
-    const start=parseDateKey(row.start_date);
-    const end=parseDateKey(row.end_date)||start;
-    const duration=formatLeaveDuration(start,end);
-    const rangeLabel=formatLeaveRangeLabel(start,end);
-    const workLabel=formatLeaveWorkingDaysLabel(start,end);
-    const attachments=parseAttachments(row);
-    return eachDateKey(start,end).map((date,index)=>({
-        id: index===0 ? `leave-${row.id}` : `leave-${row.id}-${date}`,
+    const row = hydrateLeaveRow(leave);
+    const start = parseDateKey(row.start_date);
+    const end = parseDateKey(row.end_date) || start;
+    const duration = formatLeaveDuration(start, end);
+    const rangeLabel = formatLeaveRangeLabel(start, end);
+    const workLabel = formatLeaveWorkingDaysLabel(start, end);
+    const attachments = parseAttachments(row);
+    const facultyName = row.faculty_name || [row.last_name, row.first_name].filter(Boolean).join(', ') || 'Faculty';
+    const leaveType = row.leave_type || row.others_specify || 'Leave';
+    const statusRaw = String(row.status || 'Pending').trim();
+    const status = statusRaw ? (statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1).toLowerCase()) : 'Pending';
+    
+    // Line 1: Vacation Leave (Pending)
+    const leaveGridTitle = `${leaveType} (${status})`;
+    const tooltip = `${facultyName} — ${leaveType} (${status})\n${duration}\n${row.office_department || ''}`;
+
+    return eachDateKey(start, end).map((date, index) => ({
+        id: index === 0 ? `leave-${row.id}` : `leave-${row.id}-${date}`,
         realId: row.id,
-        title: `Leave: ${row.faculty_name || [row.last_name, row.first_name].filter(Boolean).join(', ')} (${row.leave_type||'Leave'})`,
+        title: `Leave: ${facultyName} (${leaveType})`,
+        gridTitle: leaveGridTitle,   // <-- Line 1
+        gridSub: duration,           // <-- Line 2: Sep 4 – Sep 6 • 3 working days
+        tooltip,
+        facultyName,
+        leaveType,
+        leaveStatus: status,
         date,
         startAt: `${start}T08:00:00`,
-        endAt: `${end||start}T17:00:00`,
+        endAt: `${end || start}T17:00:00`,
         time: duration,
         detailTime: `${rangeLabel} • ${workLabel}`,
         type: 'leave',
@@ -1282,10 +1516,11 @@ function leaveCalendarEntries(leave){
         attachmentUrl: attachments[0]?.url || row.attachment_url || '',
         attachments,
         isLeave: true,
-        leavePrimary: index===0,
+        leavePrimary: index === 0,
         leaveRecord: row
     }));
 }
+
 function scheduleCalendarEntries(r){
     const s=new Date(r.start_at);
     const e=r.end_at?new Date(r.end_at):addH(s,1);
@@ -1296,7 +1531,7 @@ function scheduleCalendarEntries(r){
     const span=days===1?(r.all_day?'whole':`${time(s)} - ${time(e)}`):`${days} days`;
     const rangeLabel=formatLeaveRangeLabel(startKey,endKey);
     const attachments=parseAttachments(r);
-    const externalLink=String(r.external_link||r.link_url||r.event_link||'').trim();
+    const externalLink=parseExternalLink(r);
     return keys.map((date,index)=>({
         id: index===0 ? ('event-'+r.id) : (`event-${r.id}-${date}`),
         realId: r.id,
@@ -1323,6 +1558,7 @@ function scheduleCalendarEntries(r){
         isLeave: false
     }));
 }
+
 function normalize(r){
     let s=new Date(r.start_at),e=r.end_at?new Date(r.end_at):addH(s,1);
     const days=eachDateKey(key(s),key(e)).length||1;
@@ -1335,7 +1571,7 @@ function normalize(r){
         allDay:!!r.all_day, requiresFeedback:!!r.requires_feedback,
         feedbackInstructions:r.feedback_instructions||'',
         attachments: parseAttachments(r),
-        externalLink: String(r.external_link||r.link_url||r.event_link||'').trim()
+        externalLink: parseExternalLink(r)
     };
 }
 
@@ -1455,17 +1691,32 @@ function renderGrid(){
     for(let d=1;d<=days;d++){
         let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         let des=daysOn(dk).slice().sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
+        
+        // Changed onclick from openAddEventModal to selectDate:
         h+=`<div class="day-cell bg-white p-1 sm:p-1.5 ${dk===selectedDate?'selected':''}" onclick="selectDate('${dk}')">`+
            `<div class="flex items-center justify-between mb-0.5 min-w-0">`+
            `<span class="day-num ${dk===today?'today':''}">${d}</span>`+
            `${des.length?`<span class="text-[8.5px] sm:text-[9.5px] font-bold text-slate-400 bg-slate-100 px-1 py-0.2 rounded-full">${des.length}</span>`:''}`+
            `</div>`+
-           `<div class="space-y-0.5 flex-1 min-w-0 flex flex-col justify-start overflow-y-auto max-h-[70px] sm:max-h-[85px] pr-0.5">`;
-        des.forEach(e=>{
-            h+=`<button type="button" onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}" title="${esc(e.title)} (${esc(e.time)})">`+
-               `<span class="block font-bold truncate">${esc(e.title)}</span>`+
+           `<div class="space-y-1 flex-1 min-w-0 flex flex-col justify-start overflow-y-auto max-h-[75px] sm:max-h-[92px] pr-0.5">`;
+        
+        const maxVisible = (window.innerWidth && window.innerWidth < 640) ? 1 : 2;
+        const visibleEvents = des.slice(0, maxVisible);
+        const moreCount = des.length - maxVisible;
+
+        visibleEvents.forEach(e=>{
+            const gTitle = esc(e.gridTitle || e.title);
+            const gSub = esc(e.gridSub || e.time || '');
+            const tip = esc(e.tooltip || `${e.title} (${e.time})`);
+            h+=`<button type="button" onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}" title="${tip}">`+
+               `<span class="pill-title">${gTitle}</span>`+
+               (gSub ? `<span class="pill-sub">${gSub}</span>` : '')+
                `</button>`;
         });
+
+        if (moreCount > 0) {
+            h+=`<button type="button" onclick="event.stopPropagation();showAllForDate('${dk}')" class="more-link mt-1 text-[9.5px] sm:text-[10.5px] font-bold text-blue-600 hover:text-blue-800 hover:underline px-1 py-0.5 leading-none transition-colors block text-left cursor-pointer" title="View all ${des.length} events for ${longDate(dk)}">+${moreCount} more</button>`;
+        }
         h+='</div></div>';
     }
     let rem=(first+days)%7;if(rem)for(let i=rem;i<7;i++)h+='<div class="day-cell bg-slate-50/50"></div>';
@@ -1511,12 +1762,24 @@ function renderSelected(){
     let ds=daysOn(selectedDate).slice().sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
     document.getElementById('selected-events').innerHTML=ds.length?ds.map(e=>card(e)).join(''):'<div class="text-xs text-slate-500 border border-dashed rounded-xl p-4 text-center">No schedules for this date.</div>';
 }
+function selectDate(d){
+    selectedDate = d;
+    let a = d.split('-').map(Number);
+    currentYear = a[0];
+    currentMonth = a[1] - 1;
+    renderCalendar();
+}
 
-function selectDate(d){selectedDate=d;let a=d.split('-').map(Number);currentYear=a[0];currentMonth=a[1]-1;renderCalendar()}
 function showAllForDate(d){
     selectDate(d);
-    const panel=document.getElementById('selected-day-panel');
-    if(panel) panel.scrollIntoView({ behavior:'smooth', block:'start' });
+    const panel = document.getElementById('selected-day-panel');
+    if(panel) {
+        panel.scrollIntoView({ behavior:'smooth', block:'center' });
+        panel.classList.add('ring-4', 'ring-[#621708]/20', 'border-[#621708]', 'transition-all', 'duration-300');
+        setTimeout(() => {
+            panel.classList.remove('ring-4', 'ring-[#621708]/20', 'border-[#621708]');
+        }, 1400);
+    }
 }
 function prevMonth(){currentMonth--;if(currentMonth<0){currentMonth=11;currentYear--}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}
 function nextMonth(){currentMonth++;if(currentMonth>11){currentMonth=0;currentYear++}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}
@@ -1527,16 +1790,249 @@ function renderExistingFiles(list){
     if(!box) return;
     if(!list || !list.length){ box.classList.add('hidden'); box.innerHTML=''; return; }
     box.classList.remove('hidden');
-    box.innerHTML='<div class="text-[11px] font-semibold text-slate-500 mb-1">Already attached</div>'+list.map((f,i)=>`<div class="flex items-center gap-2"><a href="${esc(f.url)}" target="_blank" rel="noopener" class="min-w-0 flex-1 text-[11px] text-[#621708] font-semibold truncate"><i class="fa-solid fa-paperclip mr-1"></i>${esc(f.name||'Attachment')}</a><button type="button" onclick="removeExistingFile(${i})" class="text-[11px] font-bold text-slate-400 hover:text-red-600">Remove</button></div>`).join('');
+    box.innerHTML='<div class="text-[11px] font-semibold text-slate-500 mb-1">Attached in database:</div>'+list.map((f,i)=>`<div class="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-slate-50 border border-slate-100"><a href="${esc(f.url)}" target="_blank" rel="noopener" class="min-w-0 flex-1 text-[11px] text-[#621708] font-semibold truncate hover:underline"><i class="fa-solid fa-paperclip mr-1.5"></i>${esc(f.name||'Attachment')}</a><button type="button" onclick="removeExistingFile(${i})" class="text-[11px] font-bold text-red-500 hover:text-red-700 px-1">Remove</button></div>`).join('');
 }
 function removeExistingFile(index){
     currentEventAttachments.splice(index,1);
     renderExistingFiles(currentEventAttachments);
 }
 
+// ============================================================================
+// MULTI-FILE ACCUMULATOR & PREVIEW ENGINE
+// Allows selecting multiple files at once or consecutively with size displays
+// ============================================================================
+let pendingUploadFiles = [];
+
+function renderPendingUploadFiles() {
+    const prev = document.getElementById('modal-picked-preview');
+    if (!prev) return;
+    if (!pendingUploadFiles.length) {
+        prev.classList.add('hidden');
+        prev.innerHTML = '';
+        return;
+    }
+    prev.classList.remove('hidden');
+    const totalBytes = pendingUploadFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+    let html = `
+        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 mt-2">
+            <div class="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                <span><i class="fa-solid fa-paperclip text-[#621708] mr-1"></i> ${pendingUploadFiles.length} file(s) selected (${safeFormatSize(totalBytes)})</span>
+                <button type="button" onclick="clearAllPendingFiles()" class="text-slate-400 hover:text-red-600 text-[10px] font-semibold">Clear all</button>
+            </div>
+            <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+    `;
+    pendingUploadFiles.forEach((file, idx) => {
+        const iconClass = getFileIcon(file.name, file.type);
+        html += `
+            <div class="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-white border border-slate-100 text-xs">
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <i class="${iconClass} text-xs shrink-0"></i>
+                    <span class="truncate font-medium text-slate-800" title="${esc(file.name)}">${esc(file.name)}</span>
+                    <span class="text-[10px] text-slate-400 shrink-0 font-normal">(${safeFormatSize(file.size)})</span>
+                </div>
+                <button type="button" onclick="removePendingFile(${idx})" class="text-slate-400 hover:text-red-600 text-xs px-1 shrink-0" title="Remove file">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        `;
+    });
+    html += `</div></div>`;
+    prev.innerHTML = html;
+}
+
+function removePendingFile(idx) {
+    pendingUploadFiles.splice(idx, 1);
+    renderPendingUploadFiles();
+}
+window.removePendingFile = removePendingFile;
+
+function clearAllPendingFiles() {
+    pendingUploadFiles = [];
+    const input = document.getElementById('modal-files');
+    if (input) input.value = '';
+    renderPendingUploadFiles();
+}
+window.clearAllPendingFiles = clearAllPendingFiles;
+
+// Show preview of picked files & accumulate multiple files
+const filesInput = document.getElementById('modal-files');
+if(filesInput){
+    filesInput.addEventListener('change', function(){
+        if(this.files && this.files.length > 0){
+            Array.from(this.files).forEach(f => {
+                if (!pendingUploadFiles.some(p => p.name === f.name && p.size === f.size)) {
+                    pendingUploadFiles.push(f);
+                }
+            });
+            this.value = '';
+            renderPendingUploadFiles();
+        }
+    });
+}
+
+function showCalendarMessage(title,text,type='success') {
+    const modal=document.getElementById('calendar-message-modal');
+    const titleEl=document.getElementById('calendar-message-title');
+    const textEl=document.getElementById('calendar-message-text');
+    const icon=document.getElementById('calendar-message-icon');
+    if(!modal) return;
+    titleEl.textContent=title||'Done';
+    textEl.textContent=text||'';
+    const styles={
+        success:['bg-emerald-50','text-emerald-700','fa-check'],
+        error:['bg-red-50','text-red-700','fa-xmark'],
+        info:['bg-sky-50','text-sky-700','fa-circle-info']
+    };
+    const chosen=styles[type]||styles.success;
+    icon.className='w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 '+chosen[0]+' '+chosen[1];
+    icon.innerHTML='<i class="fa-solid '+chosen[2]+'"></i>';
+    modal.classList.remove('hidden');
+}
+function closeCalendarMessage(){
+    const modal=document.getElementById('calendar-message-modal');
+    if(modal) modal.classList.add('hidden');
+}
+function syncScheduleDateFromValue(value){
+    if(!value) return;
+    const datePart=String(value).slice(0,10);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(datePart)){
+        selectedDate=datePart;
+        const parts=datePart.split('-').map(Number);
+        currentYear=parts[0];
+        currentMonth=parts[1]-1;
+    }
+}
+function setupScheduleDateAutoDisplay(){
+    const start = document.getElementById('modal-start-time');
+    const end = document.getElementById('modal-end-time');
+    const from = document.getElementById('modal-all-day-date');
+    const to = document.getElementById('modal-all-day-end');
+
+    // 1. Click anywhere on the box to show the popup
+    [start, end, from, to].forEach(el => {
+        if (!el || el.dataset.clickPickerBound) return;
+        el.dataset.clickPickerBound = '1';
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', function() {
+            try {
+                if (typeof this.showPicker === 'function') this.showPicker();
+            } catch(e) {}
+        });
+    });
+
+    // 2. Automatically close the popup when any date is clicked
+    const enableAutoCloseOnDateClick = (el, onDateSelected) => {
+        if (!el || el.dataset.autoCloseBound) return;
+        el.dataset.autoCloseBound = '1';
+
+        let lastDate = (el.value || '').slice(0, 10);
+        const captureCurrentDate = () => {
+            lastDate = (el.value || '').slice(0, 10);
+        };
+        el.addEventListener('focus', captureCurrentDate);
+        el.addEventListener('click', captureCurrentDate);
+
+        el.addEventListener('input', function() {
+            const newDate = (this.value || '').slice(0, 10);
+            // Detect if a date on the calendar was clicked
+            if (newDate && newDate !== lastDate) {
+                lastDate = newDate;
+                if (typeof onDateSelected === 'function') {
+                    onDateSelected(newDate);
+                }
+                // Automatically dismiss/close the popup immediately
+                setTimeout(() => {
+                    this.blur();
+                }, 80);
+            }
+        });
+    };
+
+    // Auto-close 'Starts' when date is clicked & auto-update 'Ends'
+    enableAutoCloseOnDateClick(start, () => {
+        syncScheduleDateFromValue(start.value);
+        if (start.value && end) {
+            const d = new Date(start.value);
+            if (!Number.isNaN(d.getTime())) {
+                d.setHours(d.getHours() + 1);
+                end.value = localDT(d);
+                end.min = start.value;
+            }
+        }
+        renderCalendar();
+    });
+
+    // Auto-close 'Ends' when date is clicked
+    enableAutoCloseOnDateClick(end, () => {
+        syncScheduleDateFromValue(start?.value || end.value);
+        renderCalendar();
+    });
+
+    // Auto-close 'From' & 'To' on whole-day dates
+    enableAutoCloseOnDateClick(from, () => {
+        syncScheduleDateFromValue(from.value);
+        if (to && from.value) {
+            to.value = from.value;
+            to.min = from.value;
+        }
+        renderCalendar();
+    });
+
+    enableAutoCloseOnDateClick(to, () => {
+        syncScheduleDateFromValue(from?.value || to.value);
+        renderCalendar();
+    });
+
+    // Manual time changes (if user clicks an hour or minute directly)
+    if(start && !start.dataset.dateBound){
+        start.dataset.dateBound = '1';
+        start.addEventListener('change', function(){
+            syncScheduleDateFromValue(this.value);
+            if(this.value && end){
+                const d = new Date(this.value);
+                if(!Number.isNaN(d.getTime())){
+                    d.setHours(d.getHours() + 1);
+                    end.value = localDT(d);
+                    end.min = this.value;
+                }
+            }
+            renderCalendar();
+        });
+    }
+    if(end && !end.dataset.dateBound){
+        end.dataset.dateBound = '1';
+        end.addEventListener('change', function(){
+            syncScheduleDateFromValue(start?.value || this.value);
+            renderCalendar();
+        });
+    }
+    if(from && !from.dataset.dateBound){
+        from.dataset.dateBound = '1';
+        from.addEventListener('change', function(){
+            syncScheduleDateFromValue(this.value);
+            if(to && this.value){
+                to.value = this.value;
+                to.min = this.value;
+            }
+            renderCalendar();
+        });
+    }
+    if(to && !to.dataset.dateBound){
+        to.dataset.dateBound = '1';
+        to.addEventListener('change', function(){
+            if(from && from.value) syncScheduleDateFromValue(from.value);
+            else syncScheduleDateFromValue(this.value);
+            renderCalendar();
+        });
+    }
+}
+
 function openAddEventModal(edit=null,d=null){
     isEditing=!!edit;
     currentEventAttachments = edit?.attachments ? [...edit.attachments] : (edit?.attachmentUrl ? [{ name:'Attachment', url:edit.attachmentUrl }] : []);
+    pendingUploadFiles = [];
+    const prev = document.getElementById('modal-picked-preview');
+    if(prev) { prev.classList.add('hidden'); prev.innerHTML=''; }
     document.getElementById('modal-title').textContent=isEditing?'Edit Schedule':'Create Schedule';
     document.getElementById('save-button').textContent=isEditing?'Save Changes':'Create Schedule';
     let bd=d||selectedDate,st=new Date(`${bd}T09:00:00`),en=addH(st,1);
@@ -1564,83 +2060,373 @@ function openAddEventModal(edit=null,d=null){
     document.getElementById('modal-files').value='';
     renderExistingFiles(currentEventAttachments);
     toggleModalAllDay();
+    setupScheduleDateAutoDisplay();
     document.getElementById('add-event-modal').classList.remove('hidden');
 }
-function closeAddEventModal(){document.getElementById('add-event-modal').classList.add('hidden');isEditing=false;currentEventAttachments=[];}
+function closeAddEventModal(){
+    document.getElementById('add-event-modal').classList.add('hidden');
+    isEditing=false;
+    currentEventAttachments=[];
+    pendingUploadFiles=[];
+    const prev = document.getElementById('modal-picked-preview');
+    if(prev) { prev.classList.add('hidden'); prev.innerHTML=''; }
+}
 function toggleModalAllDay(){let a=document.getElementById('modal-all-day').checked;document.getElementById('modal-time-fields').classList.toggle('hidden',a);document.getElementById('modal-date-only').classList.toggle('hidden',!a)}
 
-async function uploadCalendarFiles(fileList, eventId){
-    const files=Array.from(fileList||[]);
-    const uploaded=[];
-    const folder=eventId ? `schedule-files/${eventId}` : `schedule-files/pending`;
-    for(const file of files){
-        const path=`${folder}/${Date.now()}-${safeFileName(file.name)}`;
-        let ok=null;
-        for(const bucket of SCHEDULE_FILE_BUCKETS){
-            const { error } = await supabaseClient.storage.from(bucket).upload(path, file, { upsert:false });
-            if(!error){
-                const { data: pub } = supabaseClient.storage.from(bucket).getPublicUrl(path);
-                ok={ name:file.name, url:pub?.publicUrl||'', type:file.type||'', bucket, path };
-                break;
+// ============================================================================
+// ATTACHMENT UPLOAD & STORAGE ENGINE
+// Supports unlimited / large files up to 50MB (Supabase Free limit) & beyond
+// 1. Dual-Bucket fail-safe: tries 'calendar-attachments' then 'leave-attachments'
+// 2. Dual-Protocol upload:
+//    - Standard Supabase Storage upload (fast, reliable up to 50MB)
+//    - TUS Resumable chunked upload (6MB chunks, supports large files/resuming)
+// 3. Multi-file accumulator: pick multiple files together or consecutively
+// 4. Clean user notes: zero metadata strings polluting notes
+// ============================================================================
+
+async function uploadCalendarFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return { uploaded: [], failed: [] };
+
+    const anonKey = (typeof window.SUPABASE_ANON_KEY !== 'undefined' && window.SUPABASE_ANON_KEY)
+        || (typeof SUPABASE_ANON_KEY !== 'undefined' ? SUPABASE_ANON_KEY : '')
+        || window.supabaseClient?.rest?.headers?.apikey
+        || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI5NjAzODksImV4cCI6MjA1ODUzNjM4OX0.wzGQAIYouiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+
+    const supabaseUrl = window.supabaseClient?.supabaseUrl || 'https://uforealazougjckepggc.supabase.co';
+    const projectId = supabaseUrl.replace(/^https?:\/\//, '').split('.')[0] || 'uforealazougjckepggc';
+
+    // Candidate buckets in priority order: calendar-attachments, fallback to leave-attachments
+    const candidateBuckets = ['calendar-attachments', 'leave-attachments'];
+
+    function fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function getTusClient() {
+        if (window.tus && typeof window.tus.Upload === 'function') return window.tus;
+        return new Promise((resolve) => {
+            const existing = document.querySelector('script[src*="tus-js-client"]');
+            if (existing) {
+                existing.addEventListener('load', () => resolve(window.tus || null), { once: true });
+                existing.addEventListener('error', () => resolve(null), { once: true });
+                setTimeout(() => resolve(window.tus || null), 1200);
+            } else {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/tus-js-client@3/dist/tus.min.js';
+                s.onload = () => resolve(window.tus || null);
+                s.onerror = () => resolve(null);
+                document.head.appendChild(s);
+                setTimeout(() => resolve(window.tus || null), 1500);
+            }
+        });
+    }
+
+    async function uploadWithTus(file, path, targetBucket, fileIdx = 0, totalFiles = 1) {
+        const tusLib = await getTusClient();
+        if (!tusLib || typeof tusLib.Upload !== 'function') {
+            throw new Error('Resumable upload client is not ready.');
+        }
+
+        const { data: sessionData } = await window.supabaseClient.auth.getSession();
+        const token = sessionData?.session?.access_token || anonKey;
+
+        return new Promise((resolve, reject) => {
+            const upload = new tusLib.Upload(file, {
+                endpoint: `https://${projectId}.storage.supabase.co/storage/v1/upload/resumable`,
+                retryDelays: [0, 2000, 5000, 10000],
+                headers: {
+                    authorization: `Bearer ${token}`,
+                    apikey: anonKey,
+                    'x-upsert': 'true'
+                },
+                uploadDataDuringCreation: false,
+                removeFingerprintOnSuccess: true,
+                metadata: {
+                    bucketName: targetBucket,
+                    objectName: path,
+                    contentType: file.type || 'application/octet-stream',
+                    cacheControl: '3600'
+                },
+                chunkSize: 6 * 1024 * 1024,
+                onProgress: (bytesUploaded, bytesTotal) => {
+                    const pct = Math.round((bytesUploaded / bytesTotal) * 100);
+                    const mbUp = (bytesUploaded / 1024 / 1024).toFixed(1);
+                    const mbTotal = (bytesTotal / 1024 / 1024).toFixed(1);
+                    const msgEl = document.getElementById('calendar-message-text');
+                    const prefix = totalFiles > 1 ? `Uploading file ${fileIdx + 1} of ${totalFiles}: "${file.name}"` : `Uploading "${file.name}"`;
+                    if (msgEl) msgEl.textContent = `${prefix} — ${pct}% (${mbUp} / ${mbTotal} MB)…`;
+                },
+                onError: (error) => {
+                    console.warn(`TUS upload to "${targetBucket}" failed:`, error);
+                    reject(error);
+                },
+                onSuccess: () => {
+                    const publicResult = window.supabaseClient.storage.from(targetBucket).getPublicUrl(path);
+                    resolve({
+                        name: file.name,
+                        url: publicResult.data.publicUrl,
+                        type: file.type || 'application/octet-stream',
+                        bucket: targetBucket,
+                        path,
+                        size: file.size
+                    });
+                }
+            });
+            upload.start();
+        });
+    }
+
+    async function uploadOne(file, fileIdx = 0, totalFiles = 1) {
+        const ext = file.name.split('.').pop() || 'bin';
+        const uuid = (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+            ? globalThis.crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `schedule-files/${uuid}-${safeName}`;
+
+        const msgEl = document.getElementById('calendar-message-text');
+        const prefix = totalFiles > 1 ? `File ${fileIdx + 1} of ${totalFiles}: "${file.name}"` : `"${file.name}"`;
+        let lastError = null;
+
+        // 1. Try standard Supabase Storage upload across candidate buckets (fast, supports up to 50MB!)
+        for (const b of candidateBuckets) {
+            try {
+                if (msgEl) msgEl.textContent = `Uploading ${prefix} (${safeFormatSize(file.size)}) to storage…`;
+                const result = await window.supabaseClient.storage
+                    .from(b)
+                    .upload(path, file, {
+                        contentType: file.type || 'application/octet-stream',
+                        upsert: true
+                    });
+
+                if (!result.error) {
+                    const publicResult = window.supabaseClient.storage.from(b).getPublicUrl(path);
+                    return {
+                        name: file.name,
+                        url: publicResult.data.publicUrl,
+                        type: file.type || 'application/octet-stream',
+                        bucket: b,
+                        path,
+                        size: file.size
+                    };
+                }
+                lastError = result.error;
+                console.warn(`Standard upload to bucket "${b}" failed:`, result.error);
+            } catch (err) {
+                lastError = err;
+                console.warn(`Standard upload exception on bucket "${b}":`, err);
             }
         }
-        if(ok && ok.url) uploaded.push(ok);
-        else console.warn('Unable to upload', file.name);
-    }
-    return uploaded;
-}
-async function saveCalendarEvent(payload, realId){
-    let current={...payload};
-    for(let i=0;i<16;i++){
-        const query = realId
-            ? supabaseClient.from('calendar_events').update(current).eq('id', realId).select().single()
-            : supabaseClient.from('calendar_events').insert(current).select().single();
-        const { data, error } = await query;
-        if(!error) return { data, error:null };
-        const msg=String(error.message||error.details||error.hint||'');
-        if(/invalid input syntax|malformed|json/i.test(msg) && Array.isArray(current.attachments)){
-            current.attachments=JSON.stringify(current.attachments);
-            continue;
+
+        // 2. Try TUS chunked resumable upload at direct storage endpoint across buckets
+        for (const b of candidateBuckets) {
+            try {
+                if (msgEl) msgEl.textContent = `Uploading ${prefix} (${safeFormatSize(file.size)}) via resumable chunking…`;
+                return await uploadWithTus(file, path, b, fileIdx, totalFiles);
+            } catch (tusErr) {
+                lastError = tusErr;
+                console.warn(`TUS upload to bucket "${b}" failed:`, tusErr);
+            }
         }
-        const m=msg.match(/Could not find the '([^']+)' column/i)
-            || msg.match(/column "([^"]+)" of relation "calendar_events"/i)
-            || msg.match(/column "([^"]+)"/i);
-        if(!m) return { data:null, error };
-        delete current[m[1]];
+
+        // 3. Fallback to direct Base64 Data URL ONLY for small files (<= 4MB)
+        if (file.size <= 4 * 1024 * 1024) {
+            try {
+                if (msgEl) msgEl.textContent = `Saving ${prefix} directly in database…`;
+                const dataUrl = await fileToDataUrl(file);
+                return {
+                    name: file.name,
+                    url: dataUrl,
+                    type: file.type || 'application/octet-stream',
+                    bucket: 'database-direct',
+                    path: file.name,
+                    size: file.size
+                };
+            } catch (dataErr) {
+                console.error('Data URL fallback failed:', dataErr);
+            }
+        }
+
+        const friendlyMsg = lastError?.message || 'Storage bucket permissions error';
+        throw new Error(`Upload failed for "${file.name}" (${safeFormatSize(file.size)}): ${friendlyMsg}. If file is very large or bucket is locked, you can also paste a Google Drive/OneDrive link into External Link.`);
     }
-    return { data:null, error:{ message:'Unable to save schedule.' } };
+
+    const results = [];
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+            results.push({ ok: true, item: await uploadOne(file, i, files.length) });
+        } catch (error) {
+            results.push({ ok: false, name: file.name, error });
+        }
+    }
+
+    return {
+        uploaded: results.filter(r => r.ok).map(r => r.item),
+        failed: results.filter(r => !r.ok)
+    };
 }
 
-async function saveEventFromModal(){
-    let title = document.getElementById('modal-event-title').value.trim();
-    if(!title) return alert('Please enter an event title.');
+// Robust calendar event saver with schema fallback
+async function saveCalendarEvent(payload, realId) {
+    let current = { ...payload };
+    for (let i = 0; i < 16; i++) {
+        try {
+            const query = realId && isEditing
+                ? supabaseClient.from('calendar_events').update(current).eq('id', realId).select().maybeSingle()
+                : supabaseClient.from('calendar_events').insert(current).select().maybeSingle();
 
-    let all = document.getElementById('modal-all-day').checked;
+            const { data, error } = await query;
+            if (!error) return { data: data || { ...current, id: realId }, error: null };
+
+            const msg = String(error.message || error.details || error.hint || '');
+            if (/invalid input syntax|malformed|json/i.test(msg) && Array.isArray(current.attachments)) {
+                current.attachments = JSON.stringify(current.attachments);
+                continue;
+            }
+
+            const m = msg.match(/Could not find the '([^']+)' column/i)
+                || msg.match(/column "([^\\"]+)" of relation "calendar_events"/i)
+                || msg.match(/column "([^\\"]+)"/i);
+
+            if (m && m[1]) {
+                delete current[m[1]];
+                continue;
+            }
+
+            // Fallback for strict RLS where insert is permitted but select is restricted
+            if (/row-level security|permission|PGRST116/i.test(msg)) {
+                const blindQuery = realId && isEditing
+                    ? supabaseClient.from('calendar_events').update(current).eq('id', realId)
+                    : supabaseClient.from('calendar_events').insert(current);
+                const blindRes = await blindQuery;
+                if (!blindRes.error) {
+                    return { data: { ...current, id: realId }, error: null };
+                }
+            }
+
+            return { data: null, error };
+        } catch (err) {
+            console.error('saveCalendarEvent error:', err);
+            return { data: null, error: err };
+        }
+    }
+    return { data: null, error: { message: 'Unable to save schedule to database.' } };
+}
+
+// Clean updater without appending CITEFLOW_MEDIA to notes
+async function updateCalendarEventMedia(eventId, attachments, baseNotes, externalLink) {
+    if (!eventId) return { ok: false, error: { message: 'Missing calendar event ID.' } };
+
+    const media = Array.isArray(attachments) ? attachments : [];
+    const current = {
+        attachments: media,
+        attachment_url: media[0]?.url || '',
+        attachment_name: media[0]?.name || '',
+        notes: cleanNotes(baseNotes), // Clean notes only!
+        external_link: externalLink || '',
+        link_url: externalLink || ''
+    };
+
+    const { data, error } = await supabaseClient
+        .from('calendar_events')
+        .update(current)
+        .eq('id', eventId)
+        .select()
+        .single();
+
+    return { ok: !error, data, error };
+}
+
+// ============================================================================
+// MAIN MODAL SAVE HANDLER
+// ============================================================================
+
+async function saveEventFromModal() {
+    const title = document.getElementById('modal-event-title').value.trim();
+    if (!title) return showCalendarMessage('Missing event title', 'Please enter an event title.', 'error');
+
+    const all = document.getElementById('modal-all-day').checked;
     let start, end;
-
-    if(all){
-        let d = document.getElementById('modal-all-day-date').value;
-        let d2 = document.getElementById('modal-all-day-end').value || d;
-        if(!d) return alert('Please select a date.');
-        if(d2 < d) return alert('End date cannot be earlier than the start date.');
+    if (all) {
+        const d = document.getElementById('modal-all-day-date').value;
+        const d2 = document.getElementById('modal-all-day-end').value || d;
+        if (!d) return showCalendarMessage('Date required', 'Please select a date.', 'error');
+        if (d2 < d) return showCalendarMessage('Invalid dates', 'End date cannot be earlier than the start date.', 'error');
         start = new Date(`${d}T00:00:00`).toISOString();
         end = new Date(`${d2}T23:59:59`).toISOString();
+        selectedDate = d;
     } else {
-        let s = document.getElementById('modal-start-time').value;
-        let e = document.getElementById('modal-end-time').value;
-        if(!s || !e) return alert('Please provide start and end time.');
-        if(new Date(e) <= new Date(s)) return alert('End time must be later than start time.');
+        const s = document.getElementById('modal-start-time').value;
+        const e = document.getElementById('modal-end-time').value;
+        if (!s || !e) return showCalendarMessage('Date and time required', 'Please provide start and end time.', 'error');
+        if (new Date(e) <= new Date(s)) return showCalendarMessage('Invalid time', 'End time must be later than the start time.', 'error');
         start = new Date(s).toISOString();
         end = new Date(e).toISOString();
+        syncScheduleDateFromValue(s);
     }
 
-    const saveBtn=document.getElementById('save-button');
-    saveBtn.disabled=true;
-    saveBtn.textContent='Saving...';
-    const externalLink=document.getElementById('modal-external-link').value.trim();
-    const pickedFiles=document.getElementById('modal-files').files;
-    let visibilityScope = document.getElementById('modal-visibility').value;
-    let payload = {
+    const saveBtn = document.getElementById('save-button');
+    if (saveBtn.dataset.busy === '1') return;
+    saveBtn.dataset.busy = '1';
+    saveBtn.disabled = true;
+
+    // Use accumulated pending files or fallback to input files
+    const fileInput = document.getElementById('modal-files');
+    const inputFiles = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+    const filesToUpload = pendingUploadFiles.length > 0 ? [...pendingUploadFiles] : inputFiles;
+
+    const externalLink = document.getElementById('modal-external-link').value.trim();
+    const visibilityScope = document.getElementById('modal-visibility').value;
+    const action = (isEditing && currentDetailEventId) ? 'update' : 'create';
+    let realUUID = null;
+    if (action === 'update') {
+        realUUID = String(currentDetailEventId).replace(/^event-/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    }
+
+    // 1. Clean user notes
+    const cleanUserNotes = cleanNotes(document.getElementById('modal-notes').value);
+    const existingAttachments = [...(currentEventAttachments || [])];
+
+    // Check user session
+    let saveUser = currentUser;
+    try {
+        const userRes = await supabaseClient.auth.getUser();
+        if (!userRes.error && userRes.data?.user) {
+            saveUser = userRes.data.user;
+            currentUser = saveUser;
+        }
+    } catch (_) {}
+
+    // 2. Upload attachments with button feedback (no premature modal)
+    let uploadedFiles = [];
+    if (filesToUpload && filesToUpload.length > 0) {
+        saveBtn.textContent = filesToUpload.length > 1 ? `Uploading ${filesToUpload.length} files…` : 'Uploading attachment…';
+        const uploadResult = await uploadCalendarFiles(filesToUpload);
+
+        if (uploadResult.failed.length > 0 && uploadResult.uploaded.length === 0) {
+            saveBtn.dataset.busy = '0';
+            saveBtn.disabled = false;
+            saveBtn.textContent = action === 'update' ? 'Save Changes' : 'Create Schedule';
+            const details = uploadResult.failed.map(f => `${f.name}: ${f.error?.message}`).join('\n');
+            return showCalendarMessage('Attachment upload failed', details, 'error');
+        }
+        uploadedFiles = uploadResult.uploaded;
+    }
+
+    const finalAttachments = [...existingAttachments, ...uploadedFiles];
+    const primaryUrl = finalAttachments[0]?.url || '';
+    const primaryName = finalAttachments[0]?.name || '';
+
+    // 3. Save to database
+    saveBtn.textContent = action === 'update' ? 'Saving changes…' : 'Creating schedule…';
+    const payload = {
         title,
         event_type: document.getElementById('modal-event-type').value,
         location: document.getElementById('modal-location').value.trim() || 'TBA',
@@ -1651,61 +2437,73 @@ async function saveEventFromModal(){
         priority: document.getElementById('modal-priority').value,
         visibility: visibilityLabel(visibilityScope),
         visibility_scope: visibilityScope,
-        notes: cleanNotes(document.getElementById('modal-notes').value),
+        notes: cleanUserNotes,
         requires_feedback: document.getElementById('modal-requires-feedback').checked,
         feedback_instructions: document.getElementById('modal-feedback-instructions').value.trim(),
-        created_by: currentUser?.id || null,
-        created_by_name: currentUser?.email || null
-    };
-
-    let action = 'create';
-    let realUUID = null;
-    if(isEditing && currentDetailEventId) {
-        realUUID = String(currentDetailEventId).replace(/^event-/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '');
-        action = 'update';
-    }
-    const res = await saveCalendarEvent(payload, realUUID);
-    if(res.error){
-        saveBtn.disabled=false;
-        saveBtn.textContent=isEditing?'Save Changes':'Create Schedule';
-        console.error('Save Error:', res.error);
-        return alert('Unable to save event: ' + res.error.message);
-    }
-
-    const eventId=res.data?.id || realUUID;
-    saveBtn.textContent='Uploading files...';
-    const newFiles=await uploadCalendarFiles(pickedFiles, eventId);
-    if((pickedFiles||[]).length && !newFiles.length){
-        saveBtn.disabled=false;
-        saveBtn.textContent=isEditing?'Save Changes':'Create Schedule';
-        return alert('Schedule saved, but the files could not be uploaded.');
-    }
-    const attachments=[...(currentEventAttachments||[]), ...newFiles];
-    await writeScheduleManifest(eventId, attachments, externalLink);
-    await saveCalendarEvent({
-        attachments,
-        attachment_url: attachments[0]?.url || '',
-        attachment_name: attachments[0]?.name || '',
+        created_by: saveUser?.id || null,
+        created_by_name: saveUser?.email || saveUser?.user_metadata?.email || '',
+        attachments: finalAttachments,
+        attachment_url: primaryUrl,
+        attachment_name: primaryName,
         external_link: externalLink,
         link_url: externalLink
-    }, eventId);
+    };
 
-    saveBtn.disabled=false;
-    saveBtn.textContent=isEditing?'Save Changes':'Create Schedule';
+    const res = await saveCalendarEvent(payload, realUUID);
+    if (res.error) {
+        saveBtn.dataset.busy = '0';
+        saveBtn.disabled = false;
+        saveBtn.textContent = action === 'update' ? 'Save Changes' : 'Create Schedule';
+        console.error('Save Error:', res.error);
+        return showCalendarMessage('Unable to save schedule', res.error.message || 'Please try again.', 'error');
+    }
 
-    await notifyFaculty(res.data, action);
+    const savedEvent = res.data || { ...payload, id: realUUID };
+    const savedId = savedEvent.id || realUUID;
+
+    // 4. Update UI immediately
+    if (savedId) {
+        const freshRow = {
+            ...savedEvent,
+            id: savedId,
+            attachments: finalAttachments,
+            attachment_url: primaryUrl,
+            attachment_name: primaryName,
+            external_link: externalLink,
+            link_url: externalLink
+        };
+        events = events.filter(e => String(e.realId) !== String(savedId));
+        events = events.concat(scheduleCalendarEntries(freshRow));
+        events.sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+        rebuildEventIndex();
+        renderCalendar();
+    }
+
+    // Reset pending files and form state
+    pendingUploadFiles = [];
+    if (fileInput) fileInput.value = '';
+    const prev = document.getElementById('modal-picked-preview');
+    if (prev) { prev.classList.add('hidden'); prev.innerHTML = ''; }
+
+    saveBtn.dataset.busy = '0';
+    saveBtn.disabled = false;
+    saveBtn.textContent = action === 'update' ? 'Save Changes' : 'Create Schedule';
     closeAddEventModal();
     closeDetailModal();
-    await loadAllAdminData();
 
-    if(visibilityScope === 'admin_only'){
-        alert(action === 'update' ? 'Schedule updated.' : 'Schedule created.');
-    } else {
-        alert(action === 'update'
-            ? 'Schedule updated. Faculty were notified.'
-            : 'Schedule created. Faculty were notified.');
-    }
+    // 5. Show EXACTLY ONE modal: "Schedule is created"
+    const titleText = action === 'update' ? 'Schedule is updated' : 'Schedule is created';
+    const successMsg = finalAttachments.length > 0
+        ? `The schedule and ${finalAttachments.length} file attachment(s) were saved successfully.`
+        : 'The schedule was saved successfully.';
+
+    showCalendarMessage(titleText, successMsg, 'success');
+    loadAllAdminData().catch(() => {});
 }
+window.openAddEventModal = openAddEventModal;
+window.closeAddEventModal = closeAddEventModal;
+window.toggleModalAllDay = toggleModalAllDay;
+window.saveEventFromModal = saveEventFromModal;
 
 function leaveDbId(value){
     let id = String(value || '');
@@ -1713,6 +2511,7 @@ function leaveDbId(value){
     if (id.startsWith('leave-')) id = id.slice(6);
     return id;
 }
+
 function parseFormData(value){
     if (!value) return {};
     if (typeof value === 'object') return value;
@@ -1831,10 +2630,11 @@ function findEvent(id){
         || String(x.id).replace(/^event-|^leave-/,'')===String(id).replace(/^event-|^leave-/,''));
 }
 
-async function showEventDetails(id){
+// Fast instant rendering of event details
+function showEventDetails(id){
     currentDetailEventId=id;
     let e=findEvent(id);
-    if(!e)return;
+    if(!e) return;
 
     const isLeave=!!e.isLeave;
     const scheduleFields=document.getElementById('detail-schedule-fields');
@@ -1860,13 +2660,16 @@ async function showEventDetails(id){
     document.getElementById('detail-repeat').textContent=e.repeat || 'Never';
     document.getElementById('detail-invitees').textContent=visibilityLabel(e.visibility);
     document.getElementById('detail-notes').textContent=cleanNotes(e.notes)||'No notes provided.';
-    if(!isLeave) await hydrateScheduleMedia(e);
+
+    // Immediate fast render of files and link
     renderDetailMedia(e);
 
     if(isLeave){
         let row = e.leaveRecord ? hydrateLeaveRow(e.leaveRecord) : null;
         if(!row && e.realId){
-            try { row = await fetchLeaveRow(e.realId); } catch (_) { row = null; }
+            fetchLeaveRow(e.realId).then(r => {
+                if(r) { e.leaveRecord = r; fillViewLeaveForm(r); }
+            }).catch(()=>{});
         }
         row = row || hydrateLeaveRow({});
         e.leaveRecord = row;
@@ -1915,7 +2718,6 @@ async function editCurrentEvent(){
     const res = await supabaseClient.from('calendar_events').select('*').eq('id', e.realId).single();
     if(res.data) {
         const row=normalize(res.data);
-        await hydrateScheduleMedia(row);
         openAddEventModal(row, null);
         currentDetailEventId = 'event-' + e.realId;
         isEditing = true;
@@ -1923,12 +2725,23 @@ async function editCurrentEvent(){
 }
 
 async function removeCurrentEvent(){
-    let e=findEvent(currentDetailEventId);
-    if(!e) return;
-    if(e.isLeave) return;
-    if(!confirm('Are you sure you want to delete this event?')) return;
-    let {error}=await supabaseClient.from('calendar_events').delete().eq('id', e.realId);
-    if(error){console.error(error);return alert('Unable to delete entry.')}
+    let e = findEvent(currentDetailEventId);
+    if(!e || e.isLeave) return;
+    
+    // Custom styled confirmation modal
+    const confirmed = await showCalendarConfirm(
+        'Delete Event',
+        `Are you sure you want to delete "${e.title}"? This entry will be permanently removed from the calendar.`,
+        { confirmText: 'Delete Entry', cancelText: 'Cancel', danger: true }
+    );
+    if(!confirmed) return;
+
+    let {error} = await supabaseClient.from('calendar_events').delete().eq('id', e.realId);
+    if(error){
+        console.error(error);
+        return showCalendarMessage('Unable to delete entry', 'An error occurred while attempting to delete the entry. Please try again.', 'error');
+    }
+    
     await notifyFaculty({
         id: e.realId,
         title: e.title,
@@ -1937,8 +2750,10 @@ async function removeCurrentEvent(){
         start_at: e.startAt,
         location: e.location
     }, 'delete');
+    
     closeDetailModal();
     await loadAllAdminData();
+    showCalendarMessage('Schedule deleted', 'The schedule entry has been removed successfully.', 'info');
 }
 
 function formatFullName(f,l,fb){return [f,l].filter(Boolean).join(' ').trim()||fb||'Unknown User'}
@@ -2306,7 +3121,6 @@ function pdfDrawMonthGrid(doc, startY, layout){
     const weeks=pdfMonthWeeks();
     const numWeeks=Math.max(weeks.length, 5);
     
-    // GUARANTEE: All weeks fit 100% on Page 1 without splitting
     const availH=L.contentBottom - startY - headerH;
     const rowH=Math.min(availH / numWeeks, 32);
     
@@ -2387,10 +3201,8 @@ function drawCalendarPdf(doc, portalLabel, banners){
     doc.setTextColor(100,116,139);
     doc.text(portalLabel+'  ·  every schedule shown', L.pageW-L.margin, titleY, { align:'right' });
     
-    // 1. BUONG KALENDARYO BUWAN SA PAGE 1
     pdfDrawMonthGrid(doc, titleY+3.5, L);
     
-    // 2. DETALYADONG TALAAN SA PAGE 2
     doc.addPage();
     let y=L.slimTop+5;
     doc.setFont('helvetica','bold');
@@ -2430,12 +3242,12 @@ function drawCalendarPdf(doc, portalLabel, banners){
 
 function exportCalendarPDF() {
     if(!window.jspdf || !window.jspdf.jsPDF){
-        loadPdfLibs().then(function(){ exportCalendarPDF(); }).catch(function(){ alert('Unable to load PDF exporter. Check your connection and try again.'); });
+        loadPdfLibs().then(function(){ exportCalendarPDF(); }).catch(function(){ showCalendarMessage('Unable to export PDF','Unable to load the PDF exporter. Check your connection and try again.','error'); });
         return;
     }
     const { jsPDF } = window.jspdf;
     const banners = window.__citePdfBanners || { seal:'', bagong:'', footer:'' };
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
     drawCalendarPdf(doc, 'Admin Calendar', banners);
     doc.save(`CITE-Flow-Admin-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
 }
@@ -2477,8 +3289,16 @@ function exportCalendarPDF() {
     if (selects) document.body.appendChild(selects);
     if (compact) document.body.appendChild(compact);
     if (main) main.classList.remove('main-content');
+    setupScheduleDateAutoDisplay();
     if (typeof bootAdminCalendar === 'function') bootAdminCalendar();
 })();
+
+// Final explicit bindings for calendar modal controls.
+window.openAddEventModal = openAddEventModal;
+window.closeAddEventModal = closeAddEventModal;
+window.toggleModalAllDay = toggleModalAllDay;
+window.saveEventFromModal = saveEventFromModal;
+
 </script>
 </body>
 </html>
