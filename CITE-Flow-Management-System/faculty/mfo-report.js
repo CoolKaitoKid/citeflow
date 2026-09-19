@@ -315,7 +315,11 @@
         reviewerActor: null,
         sourceWarning: '',
         sourceErrors: [],
-        autoSummary: null
+        autoSummary: null,
+        // Set when initialization could not build the editing context. While
+        // this is set the page renders a hard failure screen instead of an
+        // editor, so a missing packet can never look like a usable report.
+        initFailure: null
     };
 
     function db() {
@@ -345,6 +349,24 @@
         state.busy = false;
         state.busyLabel = '';
         render();
+    }
+
+    /**
+     * The packet every write path needs.
+     *
+     * Without this, a report whose packet was never created reached
+     * saveTable()/updatePacket() and failed with "Cannot read properties of
+     * null (reading 'id')" — a message that names neither the missing object
+     * nor the database error that caused it. Throwing here keeps the real
+     * cause in front of the user.
+     */
+    function requirePacket() {
+        if (state.packet?.id) return state.packet;
+        const failure = state.initFailure;
+        const cause = failure?.error?.message ? ` The report could not be opened: ${failure.error.message}` : '';
+        throw new Error(
+            `No MFO report record exists for this account yet, so nothing was saved.${cause}`
+        );
     }
 
     function toast(message, type) {
@@ -397,6 +419,27 @@
         return fallback || msg || 'Something went wrong. Please try again.';
     }
 
+    function mfoDiagnosticError(error) {
+        return {
+            message: error?.message || null,
+            code: error?.code || null,
+            details: error?.details || null,
+            hint: error?.hint || null,
+            status: error?.status || error?.statusCode || null
+        };
+    }
+
+    function logMfoDiagnostic(operation, response, context) {
+        const error = response?.error || null;
+        console.info(`[MFO Init Trace] ${operation}`, {
+            ...context,
+            response: response
+                ? { data: response.data ?? null, error: mfoDiagnosticError(error) }
+                : null
+        });
+        if (error) console.error(`[MFO Init Trace] ${operation} failed`, mfoDiagnosticError(error), error);
+    }
+
     async function ensureAuthSession() {
         const client = db();
         if (!client?.auth?.getSession) return null;
@@ -429,28 +472,70 @@
     }
 
     async function requireLiveSession() {
-        const client = db();
-        console.info('[AUTH TRACE] BEFORE MFO SESSION CHECK', {
-            hasClient: !!client,
-            guardState: global.CiteFlowAuthGuard?.state || null,
-            guardHasSession: !!global.CiteFlowAuthGuard?.session,
-            guardHasUser: !!global.CiteFlowAuthGuard?.user
-        });
-        const session = await ensureAuthSession();
-        console.info('[AUTH TRACE] AFTER GET SESSION', {
-            hasSession: !!session,
-            hasUser: !!session?.user,
-            authUserId: session?.user?.id || null,
-            expiresAt: session?.expires_at || null
-        });
-        if (session?.user?.id && session?.access_token) {
-            state.user = session.user;
-            state.session = session;
-            return session;
-        }
-        console.error('[MFO] write blocked: no live JWT', await authSnapshot());
-        throw new Error('Your session expired. Please sign in again.');
+    const client = db();
+
+    console.info('[AUTH TRACE] BEFORE MFO SESSION CHECK', {
+        hasClient: !!client,
+        guardState: global.CiteFlowAuthGuard?.state || null,
+        guardHasSession: !!global.CiteFlowAuthGuard?.session,
+        guardHasUser: !!global.CiteFlowAuthGuard?.user
+    });
+
+    // Give the existing auth/session system a few chances to respond.
+    // This prevents slow internet from being mistaken for a real logout.
+    let session = null;
+    let lastError = null;
+    const existingSession = state.session;
+    const existingExpiresAt = Number(existingSession?.expires_at || 0);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (existingSession?.user?.id && existingSession?.access_token
+        && (!existingExpiresAt || existingExpiresAt > nowSec + 15)) {
+        state.user = existingSession.user;
+        return existingSession;
     }
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            session = await ensureAuthSession();
+
+            if (session?.user?.id && session?.access_token) {
+                state.user = session.user;
+                state.session = session;
+
+                console.info('[AUTH TRACE] MFO SESSION READY', {
+                    attempt,
+                    authUserId: session.user.id,
+                    expiresAt: session.expires_at || null
+                });
+
+                return session;
+            }
+        } catch (error) {
+            lastError = error;
+            console.warn(`[AUTH TRACE] MFO session check attempt ${attempt} failed`, error);
+        }
+
+        // Small delay before retrying.
+        if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+
+    console.info('[AUTH TRACE] AFTER MFO SESSION RETRIES', {
+        hasSession: !!session,
+        hasUser: !!session?.user,
+        authUserId: session?.user?.id || null,
+        expiresAt: session?.expires_at || null
+    });
+
+    console.error('[MFO] write blocked: no live JWT', await authSnapshot());
+
+    if (lastError) {
+        console.error('[MFO] session check failed after retries', lastError);
+    }
+
+    throw new Error('Your session expired. Please sign in again.');
+}
 
     async function logWriteAccess(reason) {
         try {
@@ -487,41 +572,82 @@
     }
 
     /**
+     * Which public.faculty rows carry this email address.
+     *
+     * public.mfo_owns_faculty_id() accepts a row whose email OR existing_email
+     * matches the login. Matching only `email` here rejected logins whose
+     * faculty row carries the address in existing_email — the database would
+     * have accepted them, so the page refused a report the server allowed.
+     */
+    async function loadFacultyByEmail(email) {
+        const client = db();
+        const [byEmail, byExisting] = await Promise.all([
+            client.from('faculty').select('*').ilike('email', email)
+                .order('id', { ascending: true }).limit(3),
+            client.from('faculty').select('*').ilike('existing_email', email)
+                .order('id', { ascending: true }).limit(3)
+        ]);
+        logMfoDiagnostic('faculty select by email', byEmail, { email });
+        logMfoDiagnostic('faculty select by existing_email', byExisting, { email });
+        if (byEmail.error) console.error('[MFO] faculty by email failed', mfoDiagnosticError(byEmail.error));
+        if (byExisting.error) console.error('[MFO] faculty by existing_email failed', mfoDiagnosticError(byExisting.error));
+        const merged = new Map();
+        [...(byEmail.data || []), ...(byExisting.data || [])].forEach((candidate) => merged.set(String(candidate.id), candidate));
+        return [...merged.values()];
+    }
+
+    /**
      * Resolve the same public.faculty row MFO RLS expects.
      * Prefer auth_user_id (matches SQL), never use admin UUID fallbacks.
+     *
+     * A lookup that fails outright is rethrown rather than treated as "no
+     * row": swallowing it turned a database error into a misleading
+     * "no faculty profile" message. Two rows sharing one auth_user_id is
+     * reported instead of being silently narrowed, because the server picks
+     * the owner itself (wf_link_faculty_auth_user_if_safe) and a client guess
+     * that disagrees makes mfo_ensure_faculty_packet reject the write with
+     * "Not allowed to create an MFO packet for another faculty member."
      */
     async function resolveMfoFaculty(user) {
         const client = db();
         const email = String(user?.email || '').trim().toLowerCase();
 
-        let byAuth = await client
+        const byAuth = await client
             .from('faculty')
             .select('*')
             .eq('auth_user_id', user.id)
             .order('id', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-        if (byAuth.error && !/no rows|PGRST116/i.test(byAuth.error.message || '')) {
-            console.warn('[MFO] faculty by auth_user_id', byAuth.error);
+            .limit(2);
+        logMfoDiagnostic('faculty select by auth_user_id', byAuth, { authUid: user?.id || null });
+        if (byAuth.error) {
+            console.error('[MFO] faculty lookup by auth_user_id failed', mfoDiagnosticError(byAuth.error));
+            throw byAuth.error;
         }
 
-        let row = byAuth.data || null;
+        const authRows = byAuth.data || [];
+        if (authRows.length > 1) {
+            console.error('[MFO] several public.faculty rows carry this auth_user_id', authRows.map((r) => r.id));
+            throw new Error(
+                'More than one faculty profile is linked to this sign-in, so MFO cannot choose one safely. '
+                + 'Ask an administrator to clear the duplicate faculty.auth_user_id entries.'
+            );
+        }
+
+        let row = authRows[0] || null;
         if (!row && email) {
-            const byEmail = await client
-                .from('faculty')
-                .select('*')
-                .or(`email.ilike.${email},existing_email.ilike.${email}`)
-                .order('id', { ascending: true })
-                .limit(10);
-            if (byEmail.error) console.warn('[MFO] faculty by email', byEmail.error);
-            const rows = byEmail.data || [];
-            row = rows.find((item) => String(item.auth_user_id || '') === String(user.id))
-                || rows[0]
-                || null;
+            const matches = await loadFacultyByEmail(email);
+            if (matches.length > 1) {
+                console.error('[MFO] ambiguous faculty email', email, matches.map((r) => r.id));
+                throw new Error('More than one faculty profile matches this account email. MFO cannot safely choose a profile.');
+            }
+            row = matches[0] || null;
         }
 
         if (!row) {
-            throw new Error('No matching public.faculty profile was found for this account. MFO cannot use admin-only accounts.');
+            throw new Error(
+                'No public.faculty row matches this account (checked auth_user_id, email, and existing_email). '
+                + 'MFO cannot be filed from an admin-only account.'
+            );
         }
         if (!isNumericFacultyId(row.id)) {
             throw new Error('Invalid faculty identity. MFO requires public.faculty.id (bigint), not an auth UUID.');
@@ -956,44 +1082,97 @@
         `;
     }
 
-    function prepareRenderFallback(error) {
-        const user = state.user || global.CiteFlowAuthGuard?.user || {};
-        const metadata = user.user_metadata || {};
-        state.faculty = state.faculty || {
-            id: null,
-            full_name: metadata.full_name || metadata.name || user.email || 'Faculty',
-            email: user.email || '',
-            department: metadata.department || '',
-            position: metadata.position || metadata.role || 'Faculty',
-            role: metadata.role || 'Faculty'
-        };
-        state.period = state.period || quarterPeriod(manilaNow());
-        state.files = Array.isArray(state.files) ? state.files : [];
-        state.sectionStatus = state.sectionStatus || {};
-        TABLES.forEach((def) => {
-            if (!Array.isArray(state.rows[def.table])) state.rows[def.table] = [];
-        });
-        state.sourceWarning = 'Some report data could not be loaded. The official MFO template remains available; retry loading data before saving.';
-        if (error) console.warn('[MFO] rendering with unavailable packet data:', error);
+    /**
+     * Shown when the editing context could not be built.
+     *
+     * This replaced a fallback that rendered the full editor with a null
+     * packet. That looked like a working report, so the first Save died with
+     * "Cannot read properties of null (reading 'id')" — a symptom that hid the
+     * real database error and invited someone to add a null check instead of
+     * fixing the cause. The report must not appear usable when it has no
+     * database record, so the failure, its stage, and the database's own
+     * message/code/details/hint are put on screen instead.
+     */
+    function renderInitFailure() {
+        const root = document.getElementById('mfoApp');
+        if (!root) return;
+        const failure = state.initFailure || {};
+        const error = failure.error || {};
+        const auth = failure.auth || {};
+        const rows = [
+            ['Failed at', failure.stage || 'unknown stage'],
+            ['Message', error.message || '(no message)'],
+            ['Code', error.code || '—'],
+            ['Details', error.details || '—'],
+            ['Hint', error.hint || '—'],
+            ['HTTP status', error.status != null ? String(error.status) : '—'],
+            ['Signed in', auth.hasUser ? `yes (${auth.authUserId || 'unknown id'})` : 'no'],
+            ['JWT present', auth.jwtPresent ? 'yes' : 'no'],
+            ['Faculty id resolved', auth.facultyId != null ? String(auth.facultyId) : 'not resolved'],
+            ['Recorded at', failure.at || '—']
+        ];
+        root.innerHTML = `
+            <div class="mb-4">
+                <a href="submissions.html" class="text-sm font-bold text-[#621708]">← Back to Submissions</a>
+                <div class="cite-kicker mt-3">MFO Report</div>
+                <h1 class="cite-title">The MFO report could not be opened</h1>
+            </div>
+            <section class="surface rounded-[16px] p-5 mb-4 border border-rose-200">
+                <p class="text-sm text-slate-700 mb-3">
+                    Your MFO report has no database record yet, so the editor was not opened.
+                    Nothing has been lost and nothing was saved. This is the database's own
+                    response for the first operation that failed.
+                </p>
+                <table class="w-full text-sm">
+                    <tbody>
+                        ${rows.map(([label, value]) => `
+                            <tr class="align-top border-t border-slate-100">
+                                <th class="text-left font-bold text-slate-500 py-2 pr-4 w-44">${esc(label)}</th>
+                                <td class="py-2 font-mono text-[12px] text-slate-900 break-words">${esc(value)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div class="flex flex-col sm:flex-row gap-2 mt-4">
+                    <button type="button" class="cite-action-primary" onclick="window.location.reload()">Retry</button>
+                    <button type="button" class="cite-action" onclick="window.location.href='submissions.html'">Back to Submissions</button>
+                </div>
+                <p class="text-xs text-slate-500 mt-3">
+                    The same detail is in the browser console under
+                    “MFO Init Trace — ORIGINAL initialization failure”.
+                </p>
+            </section>`;
     }
 
     async function init() {
         const root = document.getElementById('mfoApp');
         console.info('[AUTH TRACE] MFO PAGE LOAD');
+        let initStage = 'start';
         try {
+            initStage = 'create-client';
             state.db = db();
             if (!state.db) throw new Error('Database client is not available.');
 
+            initStage = 'auth-guard-ready';
             if (global.CiteFlowAuthGuard?.ready) {
                 await global.CiteFlowAuthGuard.ready;
             }
 
-            const session = await ensureAuthSession();
+            initStage = 'ensure-auth-session';
+            const session = await requireLiveSession();
+            console.info('[MFO Init Trace] ensureAuthSession response', {
+                hasSession: !!session,
+                hasUser: !!session?.user,
+                authUid: session?.user?.id || null,
+                hasAccessToken: !!session?.access_token,
+                expiresAt: session?.expires_at || null
+            });
             if (!(session?.user?.id && session?.access_token)) {
                 throw new Error('Your session expired. Please sign in again.');
             }
-            state.user = session.user;
+            initStage = 'load-sidebar';
             if (typeof global.loadSidebar === 'function') await global.loadSidebar();
+            initStage = 'link-faculty-auth';
             await linkFacultyAuthIfSafe();
 
             // Reviewer route: same renderer, read-only, reading the author's
@@ -1005,17 +1184,52 @@
                 return;
             }
 
+            initStage = 'resolve-faculty';
             state.faculty = await resolveMfoFaculty(state.user);
+            console.info('[MFO Init Trace] resolveMfoFaculty success', {
+                authUid: state.user?.id || null,
+                facultyId: state.faculty?.id || null,
+                facultyAuthUserId: state.faculty?.auth_user_id || null,
+                facultyEmail: state.faculty?.email || null
+            });
 
+            initStage = 'resolve-context';
             await resolveContext();
+            initStage = 'ensure-packet';
             await ensurePacket();
+            console.info('[MFO Init Trace] ensurePacket success', {
+                facultyId: state.faculty?.id || null,
+                taskId: state.task?.id || null,
+                packetId: state.packet?.id || null,
+                submissionId: state.submission?.id || null
+            });
+            initStage = 'load-packet-data';
             await loadPacketData();
+            initStage = 'suggest-from-system';
             await suggestFromSystem();
+            initStage = 'render';
             state.locked = computeLocked();
             render();
         } catch (error) {
+            let auth = null;
+            try { auth = await authSnapshot(); } catch (_) {}
+            console.error('[MFO Init Trace] ORIGINAL initialization failure', {
+                stage: initStage,
+                error: mfoDiagnosticError(error),
+                stack: error?.stack || null,
+                auth,
+                facultyId: state.faculty?.id || null,
+                taskId: state.task?.id || null,
+                packetId: state.packet?.id || null,
+                submissionId: state.submission?.id || null
+            }, error);
             if (root) {
-                prepareRenderFallback(error);
+                state.initFailure = {
+                    stage: initStage,
+                    error: mfoDiagnosticError(error),
+                    auth,
+                    at: new Date().toISOString()
+                };
                 render();
             }
         }
@@ -1161,11 +1375,18 @@
         const params = new URLSearchParams(window.location.search);
         const requestedTaskId = params.get('task');
 
-        const [{ data: configs }, assigned, catalog] = await Promise.all([
+        console.info('[MFO Init Trace] resolveContext start', {
+            facultyId,
+            requestedTaskId: requestedTaskId || null
+        });
+        const [configs, assigned, catalog] = await Promise.all([
             client.from('wf_report_configs').select('*'),
             global.CiteFlowWorkflow.loadFacultyAssignedTasks(facultyId),
             client.from('mfo_section_catalog').select('*').order('sort_order', { ascending: true })
         ]);
+        logMfoDiagnostic('wf_report_configs select', configs, { facultyId });
+        logMfoDiagnostic('loadFacultyAssignedTasks', assigned, { facultyId });
+        logMfoDiagnostic('mfo_section_catalog select', catalog, { facultyId });
         if (assigned.error) console.warn('[MFO] assigned tasks', assigned.error);
         if (catalog.error) console.warn('[MFO] section catalog', catalog.error);
         state.catalog = catalog.data || [];
@@ -1174,7 +1395,7 @@
             if (row?.title) def.title = catalogTitle(def.code, def.title);
         });
 
-        state.configs = configs || [];
+        state.configs = configs.data || [];
         const mfoConfigs = state.configs.filter((row) => isMfoSource(row));
         const tasks = assigned.tasks || [];
         let task = null;
@@ -1182,6 +1403,7 @@
             task = tasks.find((row) => String(row.id) === String(requestedTaskId)) || null;
             if (!task) {
                 const fetched = await client.from('wf_tasks').select('*').eq('id', requestedTaskId).maybeSingle();
+                logMfoDiagnostic('requested wf_tasks select', fetched, { facultyId, requestedTaskId });
                 if (fetched.data && isMfoSource(fetched.data)) task = fetched.data;
             }
         }
@@ -1193,6 +1415,14 @@
             mfoTasks.sort((a, b) => new Date(b.created_at || b.due_at || 0) - new Date(a.created_at || a.due_at || 0));
             task = mfoTasks[0] || null;
         }
+
+        console.info('[MFO Init Trace] task resolution', {
+            facultyId,
+            requestedTaskId: requestedTaskId || null,
+            resolvedTaskId: task?.id || null,
+            assignedTaskCount: tasks.length,
+            mfoConfigCount: mfoConfigs.length
+        });
 
         if (task) {
             state.task = task;
@@ -1215,6 +1445,11 @@
         }
 
         const existingPackets = await client.from('mfo_packets').select('*').eq('faculty_id', facultyId);
+        logMfoDiagnostic('mfo_packets select existing faculty rows', existingPackets, {
+            facultyId,
+            taskId: state.task?.id || null,
+            period: state.period
+        });
         if (existingPackets.error) console.warn('[MFO] packet list', existingPackets.error);
         const mine = existingPackets.data || [];
         const byRequestedTask = state.task
@@ -1222,6 +1457,13 @@
             : null;
         const byPeriod = mine.find((row) => periodsMatch(row, state.period));
         const resume = byRequestedTask || byPeriod || null;
+        console.info('[MFO Init Trace] existing packet resolution', {
+            facultyId,
+            taskId: state.task?.id || null,
+            foundByRequestedTask: !!byRequestedTask,
+            foundByPeriod: !!byPeriod,
+            existingPacketId: resume?.id || null
+        });
         if (resume) {
             state.packet = resume;
             if (resume.period_label) state.period.period_label = resume.period_label;
@@ -1289,6 +1531,12 @@
         const faculty = state.faculty;
         const period = state.period;
 
+        console.info('[MFO Init Trace] createFallbackTask start', {
+            facultyId: faculty?.id || null,
+            taskId: state.task?.id || null,
+            period
+        });
+
         // wf_tasks INSERT is reserved for final approvers by the
         // wf_tasks_admin_write policy: administrators publish the reporting
         // task and faculty report against it. Faculty attempting the insert
@@ -1324,6 +1572,7 @@
         if (state.config?.id) row.report_config_id = state.config.id;
 
         let result = await client.from('wf_tasks').insert(row).select('*').single();
+        logMfoDiagnostic('wf_tasks fallback insert', result, { facultyId: faculty.id });
         if (result.error) {
             const slim = {
                 title: row.title,
@@ -1332,6 +1581,7 @@
                 created_by_name: faculty.full_name
             };
             result = await client.from('wf_tasks').insert(slim).select('*').single();
+            logMfoDiagnostic('wf_tasks fallback slim insert', result, { facultyId: faculty.id });
         }
         if (result.error) {
             console.warn('[MFO] wf_tasks insert rejected', result.error, await authSnapshot());
@@ -1344,6 +1594,10 @@
             faculty_id: faculty.id,
             assigned_by_name: faculty.full_name
         });
+        logMfoDiagnostic('wf_task_assignments fallback insert', assignment, {
+            facultyId: faculty.id,
+            taskId: state.task?.id || null
+        });
         if (assignment.error && !/duplicate|unique/i.test(assignment.error.message || '')) {
             await client.from('wf_task_assignments').insert({
                 task_id: state.task.id,
@@ -1353,6 +1607,37 @@
         return true;
     }
 
+    /**
+     * True only when the database really does not expose the function.
+     *
+     * The previous test included the bare word "function", which also matches
+     * "permission denied for function mfo_ensure_faculty_packet". A genuine
+     * EXECUTE denial was therefore read as "the RPC is not deployed" and the
+     * page silently switched to a direct insert, hiding an authorization
+     * problem behind a different code path. Only the not-found shapes count.
+     */
+    function isMissingRpcError(error) {
+        if (!error) return false;
+        const message = String(error.message || '');
+        const code = String(error.code || '');
+        if (code === 'PGRST202' || code === '42883') return true;
+        if (/permission denied/i.test(message)) return false;
+        return /could not find the function|no matches were found in the schema cache|does not exist/i.test(message);
+    }
+
+    /**
+     * The exact reason packet creation failed, in a form worth showing.
+     * Supabase returns these four fields separately, and the hint frequently
+     * carries the actionable part.
+     */
+    function describePacketFailure(error) {
+        const parts = [String(error?.message || 'unknown error')];
+        if (error?.code) parts.push(`code ${error.code}`);
+        if (error?.details) parts.push(`details: ${error.details}`);
+        if (error?.hint) parts.push(`hint: ${error.hint}`);
+        return parts.join(' · ');
+    }
+
     async function ensurePacket() {
         const client = db();
         const faculty = state.faculty;
@@ -1360,11 +1645,17 @@
         const task = state.task;
         const period = state.period;
 
-        // Same recovery as every other write: adopt AuthGuard tokens onto
-        // the shared client before mfo_packets INSERT. A bare getSession()
-        // here used to throw "Not authenticated" while the page was already
-        // past requireLiveSession().
-        await requireLiveSession();
+        console.info('[MFO Init Trace] ensurePacket start', {
+            facultyId,
+            taskId: task?.id || null,
+            existingPacketId: state.packet?.id || null,
+            existingSubmissionId: state.submission?.id || null,
+            period
+        });
+
+        // Reuse the session already validated by requireLiveSession(). Reading
+        // auth again here can briefly return no session during a slow refresh.
+        const session = await requireLiveSession();
 
         if (task?.id) {
             const existingSub = await client
@@ -1373,6 +1664,7 @@
                 .eq('task_id', task.id)
                 .eq('faculty_id', facultyId)
                 .maybeSingle();
+            logMfoDiagnostic('wf_submissions select existing draft', existingSub, { facultyId, taskId: task.id });
             if (existingSub.error && !/no rows|PGRST116/i.test(existingSub.error.message || '')) {
                 console.warn('[MFO] submission lookup', existingSub.error);
             }
@@ -1386,6 +1678,7 @@
                 .eq('faculty_id', facultyId)
                 .eq('task_id', task.id)
                 .maybeSingle();
+            logMfoDiagnostic('mfo_packets select by task', byTask, { facultyId, taskId: task.id });
             if (byTask.error && !/no rows|PGRST116/i.test(byTask.error.message || '')) {
                 throw byTask.error;
             }
@@ -1394,6 +1687,7 @@
 
         if (!state.packet) {
             const listed = await client.from('mfo_packets').select('*').eq('faculty_id', facultyId);
+            logMfoDiagnostic('mfo_packets select before ensure', listed, { facultyId });
             state.packet = (listed.data || []).find((row) => periodsMatch(row, period)) || null;
         }
 
@@ -1413,32 +1707,53 @@
                 p_submission_id: state.submission?.id || null
             };
 
-            const rpcSession = (await client.auth.getSession())?.data?.session || null;
             console.info('[MFO] packet RPC auth state', {
-                hasSession: !!rpcSession,
-                hasUser: !!rpcSession?.user,
-                jwtPresent: !!rpcSession?.access_token,
-                authUserId: rpcSession?.user?.id || null,
-                expiresAt: rpcSession?.expires_at || null,
+                hasSession: !!session,
+                hasUser: !!session?.user,
+                jwtPresent: !!session?.access_token,
+                authUserId: session?.user?.id || null,
+                expiresAt: session?.expires_at || null,
                 facultyId
             });
-            if (!rpcSession?.user?.id || !rpcSession?.access_token) {
+            if (!session?.user?.id || !session?.access_token) {
                 throw new Error('Your session expired. Please sign in again.');
             }
             let created = await client.rpc('mfo_ensure_faculty_packet', rpcPayload);
-            if (created.error && /could not find|PGRST202|function|schema cache/i.test(created.error.message || '')) {
-                console.warn('[MFO] mfo_ensure_faculty_packet RPC missing — falling back to owned insert');
+            logMfoDiagnostic('mfo_ensure_faculty_packet RPC', created, {
+                facultyId,
+                taskId: task?.id || null,
+                packetIdBeforeCall: state.packet?.id || null,
+                hasAuthenticatedSession: !!session?.user?.id && !!session?.access_token,
+                authUid: session?.user?.id || null,
+                rpcPayload
+            });
+            if (isMissingRpcError(created.error)) {
+                console.warn('[MFO] mfo_ensure_faculty_packet is not deployed — falling back to an owned mfo_packets insert.', mfoDiagnosticError(created.error));
                 created = null;
             } else if (created.error) {
+                // Logged in full, then rethrown untouched: this is the real
+                // reason the report could not be opened and the page now shows
+                // it instead of a null dereference later on.
+                console.error('[MFO] mfo_ensure_faculty_packet failed', {
+                    request: 'rpc/mfo_ensure_faculty_packet',
+                    payload: rpcPayload,
+                    error: mfoDiagnosticError(created.error),
+                    authUid: session?.user?.id || null
+                });
                 try {
                     const debug = await client.rpc('mfo_debug_ownership', { p_faculty_id: facultyId });
                     console.error('[MFO] ownership debug', debug.data || debug.error);
                 } catch (debugErr) {
                     console.warn('[MFO] ownership debug unavailable', debugErr);
                 }
-                throw created.error;
+                throw new Error(`The MFO report could not be created: ${describePacketFailure(created.error)}`);
             } else if (created.data) {
                 state.packet = Array.isArray(created.data) ? created.data[0] : created.data;
+            } else {
+                console.error('[MFO] mfo_ensure_faculty_packet returned no row and no error', {
+                    request: 'rpc/mfo_ensure_faculty_packet',
+                    payload: rpcPayload
+                });
             }
 
             if (!state.packet) {
@@ -1458,6 +1773,11 @@
                     submission_id: state.submission?.id || null
                 };
                 let direct = await client.from('mfo_packets').insert(insert).select('*').single();
+                logMfoDiagnostic('mfo_packets direct insert fallback', direct, {
+                    facultyId,
+                    taskId: task?.id || null,
+                    insert
+                });
                 if (direct.error && /column|schema cache|report_config|academic_year|semester|quarter/i.test(direct.error.message || '')) {
                     const slim = {
                         task_id: insert.task_id,
@@ -1470,6 +1790,11 @@
                         packet_state: 'draft'
                     };
                     direct = await client.from('mfo_packets').insert(slim).select('*').single();
+                    logMfoDiagnostic('mfo_packets direct slim insert fallback', direct, {
+                        facultyId,
+                        taskId: task?.id || null,
+                        insert: slim
+                    });
                 }
                 if (direct.error) {
                     if (/duplicate|unique/i.test(direct.error.message || '')) {
@@ -1493,6 +1818,11 @@
 
         if (state.packet && task?.id && !state.packet.task_id) {
             const linked = await client.from('mfo_packets').update({ task_id: task.id }).eq('id', state.packet.id).eq('faculty_id', facultyId).select('*').maybeSingle();
+            logMfoDiagnostic('mfo_packets link task update', linked, {
+                facultyId,
+                packetId: state.packet.id,
+                taskId: task.id
+            });
             if (linked.data) state.packet = linked.data;
             else state.packet.task_id = task.id;
         }
@@ -1505,15 +1835,38 @@
                 approval_stage: mfoApprovalStage()
             };
             const saved = await client.from('wf_submissions').upsert(draft, { onConflict: 'task_id,faculty_id' }).select('*').single();
+            logMfoDiagnostic('wf_submissions draft upsert', saved, {
+                facultyId,
+                taskId: task.id,
+                packetId: state.packet?.id || null,
+                draft
+            });
             if (saved.error) {
                 console.warn('[MFO] draft submission', saved.error);
             } else {
                 state.submission = saved.data;
                 if (state.packet && !state.packet.submission_id) {
-                    await client.from('mfo_packets').update({ submission_id: saved.data.id }).eq('id', state.packet.id).eq('faculty_id', facultyId);
+                    const linked = await client.from('mfo_packets').update({ submission_id: saved.data.id }).eq('id', state.packet.id).eq('faculty_id', facultyId).select('*').maybeSingle();
+                    logMfoDiagnostic('mfo_packets link submission update', linked, {
+                        facultyId,
+                        packetId: state.packet.id,
+                        submissionId: saved.data.id
+                    });
                     state.packet.submission_id = saved.data.id;
                 }
             }
+        }
+
+        // Guarantee the invariant the rest of the module relies on. Reaching
+        // here without a packet used to be possible (RPC returned no row, or
+        // the direct insert reported a duplicate that the re-read could not
+        // find), and the failure only surfaced later as a null dereference in
+        // saveTable()/updatePacket().
+        if (!state.packet?.id) {
+            throw new Error(
+                'The MFO report record could not be created or found for this faculty account, so the editor was not opened. '
+                + 'Nothing was saved.'
+            );
         }
     }
 
@@ -1555,9 +1908,18 @@
             files = await client
                 .from('wf_submission_files')
                 .select('*')
-                .or(`mfo_packet_id.eq.${packetId},submission_id.eq.${state.packet.submission_id}`);
+                .or(`mfo_packet_id.eq.${packetId},submission_id.eq.${state.packet.submission_id}`)
+                .order('mfo_sort_order', { ascending: true, nullsFirst: false })
+                .order('created_at', { ascending: true, nullsFirst: false })
+                .order('id', { ascending: true });
         } else {
-            files = await client.from('wf_submission_files').select('*').eq('mfo_packet_id', packetId);
+            files = await client
+                .from('wf_submission_files')
+                .select('*')
+                .eq('mfo_packet_id', packetId)
+                .order('mfo_sort_order', { ascending: true, nullsFirst: false })
+                .order('created_at', { ascending: true, nullsFirst: false })
+                .order('id', { ascending: true });
         }
         if (files.error) console.warn('[MFO] evidence files', files.error);
         state.files = files.data || [];
@@ -1868,11 +2230,8 @@
     }
 
     function payloadFromRow(def, row, index) {
-        const packetId = state.packet?.id;
+        const packetId = requirePacket().id;
         const facultyId = Number(state.faculty?.id);
-        if (!packetId) {
-            throw new Error('Unable to save MFO rows because the packet id is missing.');
-        }
         if (!Number.isFinite(facultyId)) {
             throw new Error('Unable to save MFO rows because faculty.id is not numeric.');
         }
@@ -1942,10 +2301,11 @@
     /** Update the packet row, dropping optional columns this deployment lacks. */
     async function updatePacket(payload) {
         const client = db();
+        const packet = requirePacket();
         const run = (data) => client.from('mfo_packets')
             .update(data)
-            .eq('id', state.packet.id)
-            .eq('faculty_id', state.faculty.id)
+            .eq('id', packet.id)
+            .eq('faculty_id', packet.faculty_id)
             .select('*')
             .maybeSingle();
 
@@ -2009,7 +2369,7 @@
 
     async function saveTable(def) {
         const client = db();
-        const packetId = state.packet.id;
+        const packetId = requirePacket().id;
         const rows = state.rows[def.table] || [];
         const existingRows = await loadExistingChildRows(def, packetId);
         const keep = [];
@@ -2105,6 +2465,7 @@
         if (!beginBusy('Saving…')) return;
         try {
             await requireLiveSession();
+            requirePacket();
             await logWriteAccess('save-draft');
             await updatePacket({
                 packet_state: statusLabel() === 'Returned for Revision' ? 'revision' : 'draft',
@@ -2146,7 +2507,8 @@
 
     async function writeSnapshot(reason, lifecycle) {
         const client = db();
-        const version = Number(state.packet.current_version || 0) + 1;
+        const packet = requirePacket();
+        const version = Number(packet.current_version || 0) + 1;
         const payload = {
             header: {
                 faculty_id: state.faculty.id,
@@ -2163,7 +2525,7 @@
             payload.sections[def.table] = state.rows[def.table] || [];
         });
         const { error } = await client.from('mfo_snapshots').insert({
-            packet_id: state.packet.id,
+            packet_id: packet.id,
             version_no: version,
             lifecycle_state: lifecycle,
             snapshot_reason: reason,
@@ -2203,6 +2565,7 @@
         if (!beginBusy('Submitting…')) return;
         try {
             await requireLiveSession();
+            requirePacket();
             await logWriteAccess('submit');
             await saveDraftInternal(true);
             const client = db();
@@ -2274,6 +2637,7 @@
 
     async function saveDraftInternal(forSubmit) {
         await requireLiveSession();
+        requirePacket();
         await updatePacket({
             period_label: state.period.period_label,
             reporting_year: state.period.reporting_year,
@@ -2322,9 +2686,10 @@
                 toast('Could not open a submission record for this report. Please reload and try again.', 'error');
                 return;
             }
+            const packet = requirePacket();
             const recordId = index >= 0 ? state.rows[table]?.[index]?.id : null;
             const safeName = file.name.replace(/[^\w.\-]+/g, '_');
-            const path = `${state.faculty.id}/${state.task.id}/${state.packet.id}/${Date.now()}-${safeName}`;
+            const path = `${state.faculty.id}/${state.task.id}/${packet.id}/${Date.now()}-${safeName}`;
             const uploaded = await db().storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type || undefined });
             if (uploaded.error) throw uploaded.error;
             const pub = db().storage.from(BUCKET).getPublicUrl(path);
@@ -2339,7 +2704,7 @@
                 mfo_section: code,
                 mfo_indicator: TABLES.find((d) => d.code === code)?.title || null,
                 mfo_record_id: isUuid(recordId) ? recordId : null,
-                mfo_packet_id: state.packet.id
+                mfo_packet_id: packet.id
             };
             await insertEvidenceFileOrCleanUp(row, path);
             toast('Documentation attached.');
@@ -2679,8 +3044,9 @@
         if (!state.submission?.id) {
             throw new Error('Could not open a submission record for this report. Please reload and try again.');
         }
+        const packet = requirePacket();
         const safeName = file.name.replace(/[^\w.\-]+/g, '_');
-        const path = `${state.faculty.id}/${state.task.id}/${state.packet.id}/photos/${Date.now()}-${safeName}`;
+        const path = `${state.faculty.id}/${state.task.id}/${packet.id}/photos/${Date.now()}-${safeName}`;
         const uploaded = await db().storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type || undefined });
         if (uploaded.error) throw uploaded.error;
         const pub = db().storage.from(BUCKET).getPublicUrl(path);
@@ -2695,18 +3061,19 @@
             file_path: path,
             mfo_section: sectionCode,
             mfo_indicator: indicator,
-            mfo_record_id: isUuid(recordId) ? recordId : null,
+            mfo_record_id: null,
             mfo_documentation_id: isUuid(recordId) ? recordId : null,
             mfo_sort_order: (state.files || []).filter(
-                (item) => String(item.mfo_record_id || '') === String(recordId)
+                (item) => String(item.mfo_documentation_id || '') === String(recordId)
             ).length,
-            mfo_packet_id: state.packet.id
+            mfo_packet_id: packet.id
         };
         await insertEvidenceFileOrCleanUp(row, path);
     }
 
     async function removePhotoDoc(docIndex) {
         if (state.locked || state.busy) return;
+        requirePacket();
         const row = state.rows.mfo_documentation_items?.[docIndex];
         if (!row) return;
         if (!window.confirm('Remove this photo documentation entry and its photos?')) return;
@@ -2714,7 +3081,15 @@
         try {
             const recordId = isUuid(row.id) ? row.id : null;
             if (recordId) {
-                const linked = state.files.filter((file) => String(file.mfo_record_id || '') === String(recordId));
+                // Photos added through the photo modal carry
+                // mfo_documentation_id; uploads made from a record's "Add File"
+                // carry mfo_record_id. Matching only one of the two left the
+                // other orphaned in wf_submission_files and in Storage after
+                // "Remove entry".
+                const linked = state.files.filter((file) => (
+                    String(file.mfo_documentation_id || '') === String(recordId)
+                    || String(file.mfo_record_id || '') === String(recordId)
+                ));
                 for (const file of linked) {
                     await removeFile(file.id, { nested: true });
                 }
@@ -3261,7 +3636,7 @@
      * header row above a single all-N/A row so the structure survives.
      */
     function canEditOfficialForm() {
-        return !!state.previewOpen && !state.locked && !state.reviewerMode && !state.printingOfficial;
+        return !state.locked && !state.reviewerMode && !state.printingOfficial;
     }
 
     function officialNaMark(code) {
@@ -3711,7 +4086,15 @@
 
     function render() {
         const root = document.getElementById('mfoApp');
-        if (!root || !state.faculty) return;
+        if (!root) return;
+        // The failure screen outranks every other view. Rendering the editor
+        // without a packet is what made this page look usable while nothing
+        // could actually be saved.
+        if (state.initFailure) {
+            renderInitFailure();
+            return;
+        }
+        if (!state.faculty) return;
         if (state.previewOpen) {
             renderPreview();
             return;
