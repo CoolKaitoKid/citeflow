@@ -815,16 +815,62 @@
                         <input type="datetime-local" id="modal-end-time" class="modal-field">
                     </div>
                 </div>
-                <div id="modal-date-only" class="hidden cite-form-row two">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">From</label>
-                        <input type="date" id="modal-all-day-date" class="modal-field">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">To</label>
-                        <input type="date" id="modal-all-day-end" class="modal-field">
-                    </div>
-                </div>
+                <!-- WHOLE DAY DATE SELECTION (From & To with Custom Chromium-Style Calendar Popup) -->
+<div id="modal-date-only" class="hidden relative">
+    <div class="cite-form-row two">
+        <div class="relative">
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">From</label>
+            <div class="relative flex items-center">
+                <input type="text" id="modal-all-day-date" readonly placeholder="YYYY-MM-DD" class="modal-field cursor-pointer pr-9" onclick="openCiteDatePicker('modal-all-day-date', event)">
+                <button type="button" onclick="openCiteDatePicker('modal-all-day-date', event)" class="absolute right-3 text-slate-400 hover:text-slate-600 flex items-center justify-center" title="Select date">
+                    <i class="fa-regular fa-calendar text-sm"></i>
+                </button>
+            </div>
+        </div>
+        <div class="relative">
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">To</label>
+            <div class="relative flex items-center">
+                <input type="text" id="modal-all-day-end" readonly placeholder="YYYY-MM-DD" class="modal-field cursor-pointer pr-9" onclick="openCiteDatePicker('modal-all-day-end', event)">
+                <button type="button" onclick="openCiteDatePicker('modal-all-day-end', event)" class="absolute right-3 text-slate-400 hover:text-slate-600 flex items-center justify-center" title="Select date">
+                    <i class="fa-regular fa-calendar text-sm"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Chromium-Style Calendar Popup matching media_1789821894948.png -->
+    <div id="cite-datepicker-popup" class="hidden absolute z-[3500] bg-white rounded-lg shadow-2xl border border-slate-300 p-3.5 w-[266px] select-none text-slate-900" style="top:0; left:0;">
+        <!-- Header: Month Year + Up / Down thin arrows -->
+        <div class="flex items-center justify-between mb-3 px-1">
+            <div class="flex items-center gap-1 font-bold text-[14px] text-black cursor-default select-none">
+                <span id="cdp-month-year">September 2026</span>
+                <span class="text-[10px] ml-0.5">▼</span>
+            </div>
+            <div class="flex items-center gap-1 text-slate-800">
+                <button type="button" onclick="cdpPrevMonth(event)" class="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 text-slate-700 transition-colors" title="Previous month">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-5 5m5-5l5 5"/></svg>
+                </button>
+                <button type="button" onclick="cdpNextMonth(event)" class="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 text-slate-700 transition-colors" title="Next month">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m0 0l-5-5m5 5l5-5"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Days of Week: Saturday (Sa) is 100% visible and unclipped -->
+        <div class="grid grid-cols-7 text-center text-[13px] font-normal text-slate-800 mb-2">
+            <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+        </div>
+
+        <!-- 42-day Calendar Grid -->
+        <div id="cdp-grid" class="grid grid-cols-7 gap-y-1 text-center text-[13px]"></div>
+
+        <!-- Footer: Clear & Today -->
+        <div class="flex items-center justify-between mt-3 pt-2 text-[13px]">
+            <button type="button" onclick="cdpClear(event)" class="text-[#0075ff] hover:underline px-1 py-0.5 font-normal">Clear</button>
+            <button type="button" onclick="cdpToday(event)" class="text-[#0075ff] hover:underline px-1 py-0.5 font-normal">Today</button>
+        </div>
+    </div>
+</div>
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1.5">Repeat</label>
                     <select id="modal-repeat" class="modal-field">
@@ -858,14 +904,14 @@
                 <p class="cite-form-kicker">Attachments & Link</p>
                 <div class="cite-form-row two">
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Memo file (Stored in DB / Storage)</label>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Memo file </label>
                         <p class="text-[11px] text-slate-500 mb-1.5">Attach documents, PDFs, memos, or images (select multiple or large files).</p>
                         <input type="file" id="modal-files" multiple>
                         <div id="modal-picked-preview" class="hidden mt-2 text-[11px] text-slate-600 font-medium"></div>
                         <div id="modal-existing-files" class="hidden mt-2 space-y-1.5"></div>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">External Link (Stored in DB)</label>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5">External Link </label>
                         <p class="text-[11px] text-slate-500 mb-1.5">Google Drive, OneDrive, meeting link, or website.</p>
                         <input id="modal-external-link" type="url" placeholder="https://..." class="modal-field">
                     </div>
@@ -1208,6 +1254,263 @@ function parseDateKey(value){
     return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
 }
 
+// ============================================================================
+// CUSTOM CHROMIUM-STYLE DATE PICKER ENGINE FOR WHOLE-DAY EVENTS
+// Pixel-identical to Chromium classic native datepicker (media_1789821894948.png)
+// ============================================================================
+let cdpActiveInputId = null;
+let cdpViewYear = 2026;
+let cdpViewMonth = 8; // 0-indexed: 8 is September
+
+function openCiteDatePicker(inputId, evt) {
+    if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+    cdpActiveInputId = inputId;
+    const input = document.getElementById(inputId);
+    const popup = document.getElementById('cite-datepicker-popup');
+    if (!input || !popup) return;
+
+    let val = input.value;
+    if (!val && inputId === 'modal-all-day-end') {
+        val = document.getElementById('modal-all-day-date')?.value;
+    }
+    if (!val) {
+        val = (typeof selectedDate !== 'undefined' && selectedDate) ? selectedDate : new Date().toISOString().slice(0, 10);
+    }
+
+    const parts = val.split('-').map(Number);
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        cdpViewYear = parts[0];
+        cdpViewMonth = parts[1] - 1;
+    } else {
+        const now = new Date();
+        cdpViewYear = now.getFullYear();
+        cdpViewMonth = now.getMonth();
+    }
+
+    renderCiteDatePicker();
+
+    // Position popup directly underneath whichever input was clicked
+    const container = document.getElementById('modal-date-only');
+    if (container) {
+        const inputRect = input.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        let leftPos = inputRect.left - containerRect.left;
+        if (leftPos + 266 > containerRect.width) {
+            leftPos = Math.max(0, containerRect.width - 266);
+        }
+        popup.style.top = (inputRect.bottom - containerRect.top + 4) + 'px';
+        popup.style.left = Math.max(0, leftPos) + 'px';
+    }
+
+    popup.classList.remove('hidden');
+}
+window.openCiteDatePicker = openCiteDatePicker;
+
+function closeCiteDatePicker() {
+    const popup = document.getElementById('cite-datepicker-popup');
+    if (popup) popup.classList.add('hidden');
+    cdpActiveInputId = null;
+}
+window.closeCiteDatePicker = closeCiteDatePicker;
+
+function cdpPrevMonth(evt) {
+    if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+    cdpViewMonth--;
+    if (cdpViewMonth < 0) {
+        cdpViewMonth = 11;
+        cdpViewYear--;
+    }
+    renderCiteDatePicker();
+}
+window.cdpPrevMonth = cdpPrevMonth;
+
+function cdpNextMonth(evt) {
+    if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+    cdpViewMonth++;
+    if (cdpViewMonth > 11) {
+        cdpViewMonth = 0;
+        cdpViewYear++;
+    }
+    renderCiteDatePicker();
+}
+window.cdpNextMonth = cdpNextMonth;
+
+function cdpToday(evt) {
+    if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    cdpSelectDate(`${y}-${m}-${d}`);
+}
+window.cdpToday = cdpToday;
+
+function cdpClear(evt) {
+    if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+    if (cdpActiveInputId) {
+        const input = document.getElementById(cdpActiveInputId);
+        if (input) {
+            input.value = '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+    closeCiteDatePicker();
+}
+window.cdpClear = cdpClear;
+
+// Click date -> populate input, sync dates, and immediately auto-close
+function cdpSelectDate(dateStr) {
+    if (!cdpActiveInputId) return;
+    const input = document.getElementById(cdpActiveInputId);
+    if (input) {
+        input.value = dateStr;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Auto-sync between From & To
+    if (cdpActiveInputId === 'modal-all-day-date') {
+        const toInput = document.getElementById('modal-all-day-end');
+        if (toInput) {
+            if (!toInput.value || toInput.value < dateStr) {
+                toInput.value = dateStr;
+                toInput.dispatchEvent(new Event('input', { bubbles: true }));
+                toInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            toInput.min = dateStr;
+        }
+        if (typeof syncScheduleDateFromValue === 'function') {
+            syncScheduleDateFromValue(dateStr);
+        }
+    } else if (cdpActiveInputId === 'modal-all-day-end') {
+        const fromInput = document.getElementById('modal-all-day-date');
+        if (fromInput && (!fromInput.value || fromInput.value > dateStr)) {
+            fromInput.value = dateStr;
+            fromInput.dispatchEvent(new Event('input', { bubbles: true }));
+            fromInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (typeof syncScheduleDateFromValue === 'function') {
+            syncScheduleDateFromValue(fromInput?.value || dateStr);
+        }
+    }
+
+    if (typeof renderCalendar === 'function') {
+        renderCalendar();
+    }
+
+    // Instant auto-close upon clicking any date
+    closeCiteDatePicker();
+}
+window.cdpSelectDate = cdpSelectDate;
+
+function renderCiteDatePicker() {
+    const titleEl = document.getElementById('cdp-month-year');
+    const gridEl = document.getElementById('cdp-grid');
+    if (!titleEl || !gridEl) return;
+
+    const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    titleEl.textContent = `${monthNames[cdpViewMonth]} ${cdpViewYear}`;
+
+    let selectedVal = '';
+    if (cdpActiveInputId) {
+        selectedVal = document.getElementById(cdpActiveInputId)?.value || '';
+    }
+
+    const todayDate = new Date();
+    const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+
+    const firstDay = new Date(cdpViewYear, cdpViewMonth, 1).getDay();
+    const daysInMonth = new Date(cdpViewYear, cdpViewMonth + 1, 0).getDate();
+    const daysInPrevMonth = new Date(cdpViewYear, cdpViewMonth, 0).getDate();
+
+    let cells = '';
+
+    // Trailing days from previous month (muted text)
+    for (let i = firstDay - 1; i >= 0; i--) {
+        const prevDay = daysInPrevMonth - i;
+        const prevMonthNum = cdpViewMonth === 0 ? 12 : cdpViewMonth;
+        const prevYearNum = cdpViewMonth === 0 ? cdpViewYear - 1 : cdpViewYear;
+        const dtStr = `${prevYearNum}-${String(prevMonthNum).padStart(2, '0')}-${String(prevDay).padStart(2, '0')}`;
+        const isSel = (dtStr === selectedVal);
+
+        cells += `
+            <button type="button" onclick="cdpSelectDate('${dtStr}')"
+                class="w-[32px] h-[32px] mx-auto flex items-center justify-center rounded text-[13px] font-normal transition-colors
+                ${isSel ? 'bg-[#0075ff] text-white font-bold border border-black shadow-sm' : 'text-[#767676] hover:bg-slate-100 hover:text-slate-900'}">
+                ${prevDay}
+            </button>
+        `;
+    }
+
+    // Days of current month
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dtStr = `${cdpViewYear}-${String(cdpViewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const isSel = (dtStr === selectedVal);
+        const isToday = (dtStr === todayStr);
+
+        let cellClass = 'w-[32px] h-[32px] mx-auto flex items-center justify-center rounded text-[13px] transition-colors ';
+        if (isSel) {
+            // Chromium classic solid blue square with black border
+            cellClass += 'bg-[#0075ff] text-white font-bold border border-black shadow-sm';
+        } else if (isToday) {
+            cellClass += 'text-[#0075ff] font-bold border border-[#0075ff] hover:bg-blue-50';
+        } else {
+            cellClass += 'text-[#111111] font-normal hover:bg-slate-100 hover:text-black';
+        }
+
+        cells += `
+            <button type="button" onclick="cdpSelectDate('${dtStr}')" class="${cellClass}">
+                ${day}
+            </button>
+        `;
+    }
+
+    // Leading days from next month to form 6 complete rows (42 cells)
+    const totalRendered = firstDay + daysInMonth;
+    const targetTotal = 42;
+    const remaining = targetTotal - totalRendered;
+    for (let nextDay = 1; nextDay <= remaining; nextDay++) {
+        const nextMonthNum = cdpViewMonth === 11 ? 1 : cdpViewMonth + 2;
+        const nextYearNum = cdpViewMonth === 11 ? cdpViewYear + 1 : cdpViewYear;
+        const dtStr = `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
+        const isSel = (dtStr === selectedVal);
+
+        cells += `
+            <button type="button" onclick="cdpSelectDate('${dtStr}')"
+                class="w-[32px] h-[32px] mx-auto flex items-center justify-center rounded text-[13px] font-normal transition-colors
+                ${isSel ? 'bg-[#0075ff] text-white font-bold border border-black shadow-sm' : 'text-[#767676] hover:bg-slate-100 hover:text-slate-900'}">
+                ${nextDay}
+            </button>
+        `;
+    }
+
+    gridEl.innerHTML = cells;
+}
+window.renderCiteDatePicker = renderCiteDatePicker;
+
+// Close when clicking outside or pressing Escape
+document.addEventListener('click', (e) => {
+    const popup = document.getElementById('cite-datepicker-popup');
+    if (!popup || popup.classList.contains('hidden')) return;
+
+    if (popup.contains(e.target) ||
+        e.target.id === 'modal-all-day-date' ||
+        e.target.id === 'modal-all-day-end' ||
+        e.target.closest('#modal-all-day-date') ||
+        e.target.closest('#modal-all-day-end')) {
+        return;
+    }
+    closeCiteDatePicker();
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeCiteDatePicker();
+});
 
 // Shows status or feedback modal (replaces alert)
 function showCalendarMessage(title, text, type = 'success') {
