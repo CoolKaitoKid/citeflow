@@ -463,15 +463,19 @@ async function loadFacultyNavigation() {
 }
 
 async function facultyLogout() {
+    console.warn('[AUTH TRACE] FACULTY LOGOUT requested');
     try {
         if (window.CiteFlowAuth) {
             await window.CiteFlowAuth.logout();
             return;
         }
         if (window.supabaseClient && window.supabaseClient.auth) {
+            console.warn('[AUTH TRACE] FACULTY LOGOUT fallback signOut');
             await window.supabaseClient.auth.signOut();
         }
-    } catch (_) {}
+    } catch (error) {
+        console.error('[AUTH TRACE] FACULTY LOGOUT failed', error);
+    }
     window.location.href = "../login.html";
 }
 
@@ -525,9 +529,11 @@ async function refreshFacultyChairReviewNav(options = {}) {
             syncFacultyChairReviewNav(window.CiteFlowChairReview?.access === true);
             return;
         }
-        const user = window.CiteFlowAuth?.getFreshSession
-            ? (await window.CiteFlowAuth.getFreshSession(sb))?.user
-            : (await sb.auth.getSession())?.data?.session?.user;
+        const guardedSession = window.CiteFlowAuthGuard?.session;
+        const user = guardedSession?.user
+            || (window.CiteFlowAuth?.getFreshSession
+                ? (await window.CiteFlowAuth.getFreshSession(sb))?.user
+                : (await sb.auth.getSession())?.data?.session?.user);
         if (!user) {
             if (attempt < 4) {
                 setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 400);

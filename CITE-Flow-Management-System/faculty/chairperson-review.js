@@ -143,8 +143,10 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             };
         }).filter((row) => {
             if (!review.access) return false;
-            const target = targetFaculty(row);
-            return isFacultyInChairScope(target);
+            // wf_list_chairperson_submissions() is the authoritative,
+            // server-scoped queue. Browser RLS may hide the grant row that
+            // authorized it, so do not apply a second incomplete scope filter.
+            return true;
         });
 
         const arRows = (review.arSubmissions || []).map((ar) => {
@@ -184,6 +186,11 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const helper = wf();
         if (!helper || !review.access) return false;
         if (helper.canReviewAsChairperson(row, global.currentFaculty, targetFaculty(row), reviewContext(row.task))) {
+            return true;
+        }
+        // The row came from the authoritative Chairperson queue RPC, which
+        // already enforced grant, department, and workflow-stage scope.
+        if (!row.is_ar && helper.isPendingChairpersonReview(row, row.config, row.task)) {
             return true;
         }
         const target = targetFaculty(row);
@@ -559,6 +566,36 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             </article>`;
     }
 
+    /**
+     * Mirrors isMfoSource() in faculty/mfo-report.js so both pages agree on
+     * what counts as an MFO submission.
+     */
+    function submissionIsMfo(row) {
+        const helper = wf();
+        if (helper?.resolveDocumentCategory?.(row?.config) === 'MFO') return true;
+        if (helper?.resolveDocumentCategory?.(row?.task) === 'MFO') return true;
+        const blob = [row?.config?.report_name, row?.task_title, row?.task?.title]
+            .join(' ').toLowerCase();
+        return /\bmfo\b|major final output|accomplishment report/.test(blob);
+    }
+
+    /**
+     * Read-only view of the submitted MFO.
+     *
+     * This reuses the reviewer route that already exists in
+     * faculty/mfo-report.js (?view=review&submission=…), which renders the
+     * official template, refuses every write, and offers Approve / Request
+     * Revision / Decline. Without this link the Chairperson could only review
+     * the raw attachment list, and that reviewer mode had no entry point from
+     * the Chairperson side at all.
+     */
+    function mfoReportLink(row) {
+        if (!row?.id || !submissionIsMfo(row)) return '';
+        return `<a class="chair-btn-secondary inline-flex items-center" `
+            + `href="mfo-report.html?view=review&submission=${encodeURIComponent(row.id)}" `
+            + `target="_blank" rel="noopener"><i class="fa-solid fa-file-lines mr-1"></i> Open MFO Report</a>`;
+    }
+
     function renderCard(row) {
         if (row.is_ar) {
             return renderArCard(row);
@@ -573,11 +610,12 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const actions = actionable
             ? `
                 <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openView('${row.id}')">View Submission</button>
+                ${mfoReportLink(row)}
                 <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.approve('${row.id}')">Approve</button>
                 <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.openRevision('${row.id}')">Request Revision</button>
                 <button type="button" class="chair-btn-decline" onclick="CiteFlowChairReview.openDecline('${row.id}')">Decline</button>
             `
-            : `<button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openView('${row.id}')">View Submission</button>`;
+            : `<button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openView('${row.id}')">View Submission</button>${mfoReportLink(row)}`;
         return `
             <article class="surface rounded-[16px] p-5">
                 <div class="flex items-start justify-between gap-3 mb-3">
@@ -764,7 +802,21 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             client.from('accomplishment_report_submissions').select('*').order('submitted_at', { ascending: false })
         ]);
 
-        let submissionsRes = await client.from('wf_submissions').select('*');
+        let submissionsRes = await client.rpc('wf_list_chairperson_submissions');
+        console.info('[Chairperson Queue] wf_list_chairperson_submissions response:', {
+            count: Array.isArray(submissionsRes.data) ? submissionsRes.data.length : 0,
+            error: submissionsRes.error || null
+        });
+        if (submissionsRes.error) {
+            console.error('[Chairperson Queue] authoritative queue RPC failed:', {
+                message: submissionsRes.error.message || null,
+                code: submissionsRes.error.code || null,
+                details: submissionsRes.error.details || null,
+                hint: submissionsRes.error.hint || null
+            });
+            submissionsRes = await client.from('wf_submissions').select('*');
+            console.warn('[Chairperson Queue] direct submissions query used only after RPC failure:', submissionsRes.error || null);
+        }
 
         const failed = [facultyRes, tasksRes, submissionsRes, grantsRes, configsRes].find((result) => result.error);
         if (failed?.error) {
@@ -796,18 +848,6 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             position: global.currentFaculty?.position
         });
         console.warn('[Chairperson File Debug] grants:', JSON.stringify(review.grants, null, 2));
-
-        if (!(submissionsRes.data || []).length) {
-            const listed = await client.rpc('wf_list_chairperson_submissions');
-            console.warn('[Chairperson File Debug] RPC submissions:', listed.data);
-            console.warn('[Chairperson File Debug] RPC submissions error:', listed.error);
-            if (listed.error) {
-                console.warn('[Chairperson File Debug] Run admin/FIX-chairperson-queue-NOW.sql if this RPC is missing or still returns [].');
-            }
-            if (!listed.error && Array.isArray(listed.data) && listed.data.length) {
-                submissionsRes = listed;
-            }
-        }
 
         const versionRes = await client.rpc('wf_chairperson_sql_version');
         review.sqlVersion = typeof versionRes.data === 'string'
@@ -933,7 +973,15 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const row = review.submissions.find((item) => String(item.id) === String(review.revisionId));
         const comment = String(document.getElementById('chairRevisionRemarks')?.value || '').trim();
         if (!row) return;
-        const action = review.actionMode === 'decline' ? 'rejected' : 'revision';
+        let action;
+        if (review.actionMode === 'revision') {
+            action = 'revision';
+        } else if (review.actionMode === 'decline') {
+            action = 'rejected';
+        } else {
+            toast('Unable to submit review: choose Request Revision or Decline and try again.', 'error');
+            return;
+        }
         if (!comment) {
             toast(action === 'rejected'
                 ? 'Please provide a reason before declining this submission.'
@@ -978,6 +1026,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             <p class="text-sm text-slate-500 mt-2">Submitted ${esc(formatWhen(row.submitted_at))}</p>
             <p class="text-sm text-slate-700 mt-2"><span class="font-semibold">Status:</span> ${esc(stage)}</p>
             <div class="mt-4">${renderFiles(row.files)}</div>
+            ${mfoReportLink(row) ? `<div class="flex flex-wrap gap-2 mt-4">${mfoReportLink(row)}</div>` : ''}
             ${isPending(row) ? `<div class="flex flex-wrap gap-2 mt-5">
                 <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.closeView(); CiteFlowChairReview.approve('${row.id}')">Approve</button>
                 <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.closeView(); CiteFlowChairReview.openRevision('${row.id}')">Request Revision</button>

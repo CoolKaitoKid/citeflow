@@ -1100,11 +1100,23 @@
 
     async function currentUserHasChairpersonGrant(sb, faculty, user) {
         const client = sb || getSupabaseClient();
-        const session = client ? await getFreshSession(client) : null;
-        let clientSession = null;
-        try {
-            clientSession = (await client?.auth?.getSession())?.data?.session || null;
-        } catch (_) {}
+        chairGrantServerAnswer = null;
+        let session = null;
+        if (client) {
+            const guard = global.CiteFlowAuthGuard;
+            if (guard?.ready && guard.state === guard.AuthState?.INITIALIZING) {
+                await guard.ready;
+            }
+            if (global.CiteFlowAuth?.waitForSession) {
+                session = await global.CiteFlowAuth.waitForSession({
+                    timeoutMs: 8000,
+                    client
+                });
+            } else {
+                session = (await client.auth?.getSession?.())?.data?.session || null;
+            }
+        }
+        const clientSession = session;
         const authUser = clientSession?.user || null;
         const isChair = isChairperson(faculty);
         const isAdmin = isWorkflowAdmin(faculty);
@@ -1168,41 +1180,25 @@
                 console.info('[Chairperson Access Debug]', debug);
                 return false;
             }
+            if (rpc.error) {
+                console.error('CiteFlowWorkflow: chairperson grant RPC failed:', {
+                    message: rpc.error.message || null,
+                    code: rpc.error.code || null,
+                    details: rpc.error.details || null,
+                    hint: rpc.error.hint || null
+                });
+                debug.shouldShow = false;
+                console.info('[Chairperson Access Debug]', debug);
+                return false;
+            }
         } catch (error) {
             debug.rpcError = error?.message || String(error);
+            console.error('CiteFlowWorkflow: chairperson grant RPC threw:', error);
+            debug.shouldShow = false;
+            console.info('[Chairperson Access Debug]', debug);
+            return false;
         }
-
-        // UI convenience fallback only when the RPC is unavailable.
-        let grants = [];
-        const filters = [];
-        if (faculty.id != null) filters.push(`grantee_faculty_id.eq.${faculty.id}`);
-        if (faculty.auth_user_id || authUser?.id) {
-            filters.push(`grantee_auth_user_id.eq.${faculty.auth_user_id || authUser.id}`);
-        }
-
-        const targeted = filters.length
-            ? await client.from('wf_delegated_access').select('*').or(filters.join(','))
-            : { data: [], error: null };
-        const visible = await client.from('wf_delegated_access').select('*');
-        debug.grantError = targeted.error?.message || visible.error?.message || null;
-        grants = [...(targeted.data || []), ...(visible.data || [])]
-            .filter((grant, index, list) => grant && list.findIndex((row) => String(row.id) === String(grant.id)) === index)
-            .filter((grant) => grantIsActive(grant));
-
-        const matched = getChairpersonGrant(faculty, grants)
-            || grants.find((grant) => grantMatchesChairperson(grant, {
-                ...faculty,
-                auth_user_id: faculty.auth_user_id || authUser?.id || null,
-                email: faculty.email || authUser?.email || null
-            }))
-            || null;
-
-        debug.grantFound = !!matched;
-        debug.grantId = matched?.id || null;
-        debug.grantActive = !!(matched && grantIsActive(matched));
-        debug.shouldShow = !!matched;
-        console.info('[Chairperson Access Debug]', debug);
-        return !!matched;
+        return false;
     }
 
     function formatApprovalStage(stage) {

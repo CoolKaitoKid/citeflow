@@ -16,9 +16,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js?v=auth-session-4"></script>
-    <script src="../shared/auth.js?v=auth-nav-2"></script>
+    <script src="../shared/auth.js?v=auth-nav-3"></script>
     <script src="../shared/workflow.js?v=auth-session-4"></script>
-    <script src="../shared/auth-guard.js?v=auth-nav-2"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-3"></script>
     <script src="../shared/system-ui.js" defer></script>
     <script src="../shared/cite-settings.js" defer></script>
     <script src="chairperson-review.js?v=sub-load-1" defer></script>
@@ -2719,9 +2719,27 @@ function isMfoTask(task) {
     return /\bmfo\b|major final output|accomplishment report/.test(blob);
 }
 
-function openMfoReport(taskId) {
-    const query = taskId ? `?task=${encodeURIComponent(taskId)}` : '';
-    window.location.href = `mfo-report.html${query}`;
+async function openMfoReport(taskId) {
+    const normalizedTaskId = String(taskId || '').trim();
+    const validTaskId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedTaskId)
+        ? normalizedTaskId
+        : '';
+    if (!validTaskId) {
+        console.error('[MFO TRACE] Refusing to open MFO with invalid task UUID', { taskId });
+        return;
+    }
+    const query = `?task=${encodeURIComponent(validTaskId)}`;
+    console.info('[AUTH TRACE] SUBMISSIONS -> MFO', {
+        taskId: validTaskId,
+        sessionUserId: window.CiteFlowAuthGuard?.user?.id || null,
+        authGuardState: window.CiteFlowAuthGuard?.state || null,
+        href: `mfo-report.html${query}`
+    });
+    const guard = window.CiteFlowAuthGuard;
+    if (guard?.ready && guard.state === guard.AuthState?.INITIALIZING) {
+        await guard.ready;
+    }
+    window.location.assign(`mfo-report.html${query}`);
 }
 
 function openTask(taskId) {
@@ -6299,6 +6317,49 @@ async function submitTask(taskId) {
 
         }
 
+        let diagnosticAuthUser = null;
+        let diagnosticAuthError = null;
+        let diagnosticSession = null;
+        let diagnosticWorkflowFaculty = null;
+        try {
+            const authResult = await db.auth.getUser();
+            diagnosticAuthUser = authResult?.data?.user || null;
+            diagnosticAuthError = authResult?.error?.message || null;
+        } catch (authError) {
+            diagnosticAuthError = authError?.message || String(authError);
+        }
+        try {
+            diagnosticSession = (await db.auth.getSession())?.data?.session || null;
+        } catch (sessionError) {
+            console.warn('[Faculty Resubmit Diagnostic] Session lookup failed:', sessionError);
+        }
+        try {
+            if (window.CiteFlowWorkflow?.getCurrentFaculty) {
+                diagnosticWorkflowFaculty = await window.CiteFlowWorkflow.getCurrentFaculty(
+                    currentUser || diagnosticAuthUser
+                );
+            }
+        } catch (facultyError) {
+            console.warn('[Faculty Resubmit Diagnostic] Workflow faculty lookup failed:', facultyError);
+        }
+        console.info('[Faculty Resubmit Diagnostic] Before wf_submissions.upsert', {
+            taskId,
+            facultyId: faculty?.id ?? null,
+            existingSubmissionId: existingSubmission?.id ?? null,
+            existingSubmissionFacultyId: existingSubmission?.faculty_id ?? null,
+            existingSubmissionStatus: existingSubmission?.status ?? null,
+            existingSubmissionApprovalStage: existingSubmission?.approval_stage ?? null,
+            approvalStage,
+            payload,
+            authUser: diagnosticAuthUser,
+            authError: diagnosticAuthError,
+            sessionUser: diagnosticSession?.user || null,
+            currentFaculty: currentFaculty || window.currentFaculty || null,
+            currentUser: currentUser || window.currentUser || null,
+            workflowFaculty: diagnosticWorkflowFaculty,
+            authGuardUser: window.CiteFlowAuthGuard?.user || null,
+            authGuardFaculty: window.CiteFlowAuthGuard?.faculty || null
+        });
 
         const {
             data: savedSubmission,
@@ -6316,6 +6377,10 @@ async function submitTask(taskId) {
                 .select('id')
                 .single();
 
+        console.info('[Faculty Resubmit Diagnostic] After wf_submissions.upsert', {
+            savedSubmission,
+            saveError
+        });
 
         if (saveError) {
             throw saveError;

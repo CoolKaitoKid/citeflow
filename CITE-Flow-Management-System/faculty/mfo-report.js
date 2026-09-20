@@ -5,6 +5,17 @@
 (function initCiteFlowMfoFaculty(global) {
     'use strict';
 
+    window.addEventListener('error', (event) => {
+        console.error('[MFO TRACE] JavaScript error before navigation', event.error || event.message, {
+            source: event.filename || null,
+            line: event.lineno || null,
+            column: event.colno || null
+        });
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+        console.error('[MFO TRACE] Unhandled promise rejection', event.reason);
+    });
+
     const BUCKET = 'wf-submissions';
     const MAX_FILE_BYTES = 10 * 1024 * 1024;
     const ALLOWED_EXT = /\.(pdf|png|jpe?g|webp|gif|doc|docx|xls|xlsx)$/i;
@@ -443,99 +454,35 @@
     async function ensureAuthSession() {
         const client = db();
         if (!client?.auth?.getSession) return null;
-        if (global.CiteFlowAuth?.getFreshSession) {
-            return global.CiteFlowAuth.getFreshSession(client);
+        const guard = global.CiteFlowAuthGuard;
+        if (guard?.ready && guard.state === guard.AuthState?.INITIALIZING) {
+            await guard.ready;
         }
-        if (global.CiteFlowWorkflow?.getFreshSession) {
-            return global.CiteFlowWorkflow.getFreshSession(client);
-        }
-        const { data: { session }, error } = await client.auth.getSession();
-        if (error || !session?.user) return null;
-        const expiresAt = Number(session.expires_at || 0);
-        const nowSec = Math.floor(Date.now() / 1000);
-        if (expiresAt && expiresAt <= nowSec + 15) {
-            if (global.CiteFlowAuth?.refreshSessionShared) {
-                const shared = await global.CiteFlowAuth.refreshSessionShared(client);
-                return shared?.user ? shared : session;
-            }
-            const refreshed = await client.auth.refreshSession();
-            if (refreshed.error || !refreshed.data?.session?.user) return session;
-            console.info('[AUTH TRACE] AFTER REFRESH', {
-                hasSession: !!refreshed.data.session,
-                hasUser: !!refreshed.data.session?.user,
-                authUserId: refreshed.data.session?.user?.id || null,
-                expiresAt: refreshed.data.session?.expires_at || null
+        const stored = await client.auth.getSession();
+        if (stored.data?.session?.user?.id && stored.data.session.access_token) {
+            console.info('[AUTH TRACE] MFO SESSION AFTER LOAD', {
+                userId: stored.data.session.user.id,
+                authGuardState: guard?.state || null,
+                source: 'shared-client'
             });
-            return refreshed.data.session;
+            return stored.data.session;
         }
-        return session;
+        return null;
     }
 
     async function requireLiveSession() {
-    const client = db();
+        const client = db();
+        const session = await ensureAuthSession();
 
-    console.info('[AUTH TRACE] BEFORE MFO SESSION CHECK', {
-        hasClient: !!client,
-        guardState: global.CiteFlowAuthGuard?.state || null,
-        guardHasSession: !!global.CiteFlowAuthGuard?.session,
-        guardHasUser: !!global.CiteFlowAuthGuard?.user
-    });
-
-    // Give the existing auth/session system a few chances to respond.
-    // This prevents slow internet from being mistaken for a real logout.
-    let session = null;
-    let lastError = null;
-    const existingSession = state.session;
-    const existingExpiresAt = Number(existingSession?.expires_at || 0);
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (existingSession?.user?.id && existingSession?.access_token
-        && (!existingExpiresAt || existingExpiresAt > nowSec + 15)) {
-        state.user = existingSession.user;
-        return existingSession;
-    }
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-            session = await ensureAuthSession();
-
-            if (session?.user?.id && session?.access_token) {
-                state.user = session.user;
-                state.session = session;
-
-                console.info('[AUTH TRACE] MFO SESSION READY', {
-                    attempt,
-                    authUserId: session.user.id,
-                    expiresAt: session.expires_at || null
-                });
-
-                return session;
-            }
-        } catch (error) {
-            lastError = error;
-            console.warn(`[AUTH TRACE] MFO session check attempt ${attempt} failed`, error);
+        if (session?.user?.id && session?.access_token) {
+            state.user = session.user;
+            state.session = session;
+            return session;
         }
 
-        // Small delay before retrying.
-        if (attempt < 3) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+        console.error('[MFO] write blocked: no live JWT', await authSnapshot());
+        throw new Error('Your session expired. Please sign in again.');
     }
-
-    console.info('[AUTH TRACE] AFTER MFO SESSION RETRIES', {
-        hasSession: !!session,
-        hasUser: !!session?.user,
-        authUserId: session?.user?.id || null,
-        expiresAt: session?.expires_at || null
-    });
-
-    console.error('[MFO] write blocked: no live JWT', await authSnapshot());
-
-    if (lastError) {
-        console.error('[MFO] session check failed after retries', lastError);
-    }
-
-    throw new Error('Your session expired. Please sign in again.');
-}
 
     async function logWriteAccess(reason) {
         try {
@@ -1146,7 +1093,13 @@
 
     async function init() {
         const root = document.getElementById('mfoApp');
-        console.info('[AUTH TRACE] MFO PAGE LOAD');
+        const requestedTaskId = new URLSearchParams(window.location.search).get('task');
+        console.info('[AUTH TRACE] MFO PAGE LOAD', {
+            href: window.location.href,
+            taskId: requestedTaskId || null,
+            authGuardState: global.CiteFlowAuthGuard?.state || null,
+            hasGuardSession: !!global.CiteFlowAuthGuard?.session
+        });
         let initStage = 'start';
         try {
             initStage = 'create-client';
@@ -1171,9 +1124,14 @@
                 throw new Error('Your session expired. Please sign in again.');
             }
             initStage = 'load-sidebar';
-            if (typeof global.loadSidebar === 'function') await global.loadSidebar();
+            const sidebarPromise = typeof global.loadSidebar === 'function'
+                ? Promise.resolve().then(() => global.loadSidebar()).catch((error) => {
+                    console.error('[MFO] Sidebar failed to load', error);
+                })
+                : Promise.resolve();
             initStage = 'link-faculty-auth';
             await linkFacultyAuthIfSafe();
+            void sidebarPromise;
 
             // Reviewer route: same renderer, read-only, reading the author's
             // packet instead of the signed-in user's. Access is decided by
@@ -1374,6 +1332,7 @@
         const facultyId = state.faculty.id;
         const params = new URLSearchParams(window.location.search);
         const requestedTaskId = params.get('task');
+        const hasRequestedTask = Boolean(requestedTaskId);
 
         console.info('[MFO Init Trace] resolveContext start', {
             facultyId,
@@ -1404,10 +1363,17 @@
             if (!task) {
                 const fetched = await client.from('wf_tasks').select('*').eq('id', requestedTaskId).maybeSingle();
                 logMfoDiagnostic('requested wf_tasks select', fetched, { facultyId, requestedTaskId });
-                if (fetched.data && isMfoSource(fetched.data)) task = fetched.data;
+                const fetchedIsMfo = fetched.data && (
+                    isMfoSource(fetched.data)
+                    || mfoConfigs.some((cfg) => String(cfg.id) === String(fetched.data.report_config_id))
+                );
+                if (fetchedIsMfo) task = fetched.data;
             }
         }
         if (!task) {
+            if (hasRequestedTask) {
+                throw new Error(`The requested MFO task is not available: ${requestedTaskId}`);
+            }
             const mfoTasks = tasks.filter((row) => {
                 if (isMfoSource(row)) return true;
                 return mfoConfigs.some((cfg) => String(cfg.id) === String(row.report_config_id));
@@ -1455,7 +1421,9 @@
         const byRequestedTask = state.task
             ? mine.find((row) => String(row.task_id) === String(state.task.id))
             : null;
-        const byPeriod = mine.find((row) => periodsMatch(row, state.period));
+        const byPeriod = hasRequestedTask
+            ? null
+            : mine.find((row) => periodsMatch(row, state.period));
         const resume = byRequestedTask || byPeriod || null;
         console.info('[MFO Init Trace] existing packet resolution', {
             facultyId,
@@ -1653,9 +1621,19 @@
             period
         });
 
-        // Reuse the session already validated by requireLiveSession(). Reading
-        // auth again here can briefly return no session during a slow refresh.
+        // Use the session recovered by the shared auth client immediately
+        // before the packet RPC. Do not replace it with a second raw read,
+        // which can briefly be empty while Supabase completes a refresh.
         const session = await requireLiveSession();
+        state.session = session;
+        if (!session?.user?.id || !session?.access_token) {
+            throw new Error('Your session expired. Please sign in again.');
+        }
+        console.info('[MFO] shared RPC auth state', {
+            sessionExists: true,
+            authUid: session.user.id,
+            sameClient: client === db()
+        });
 
         if (task?.id) {
             const existingSub = await client
@@ -1713,11 +1691,16 @@
                 jwtPresent: !!session?.access_token,
                 authUserId: session?.user?.id || null,
                 expiresAt: session?.expires_at || null,
-                facultyId
+                facultyId,
+                mfoEnsureFacultyPacketCalled: false
             });
             if (!session?.user?.id || !session?.access_token) {
                 throw new Error('Your session expired. Please sign in again.');
             }
+            console.info('[MFO] mfo_ensure_faculty_packet called', {
+                sessionExists: !!session,
+                authUid: session.user.id
+            });
             let created = await client.rpc('mfo_ensure_faculty_packet', rpcPayload);
             logMfoDiagnostic('mfo_ensure_faculty_packet RPC', created, {
                 facultyId,
@@ -1922,7 +1905,45 @@
                 .order('id', { ascending: true });
         }
         if (files.error) console.warn('[MFO] evidence files', files.error);
-        state.files = files.data || [];
+
+        // Older evidence rows may have been linked only to the documentation
+        // or source record, without carrying the packet/submission id. Read
+        // those existing rows as well; this does not widen access because all
+        // queries still run through the authenticated RLS policies.
+        const linkedIds = [
+            ...(state.rows.mfo_documentation_items || []).map((row) => row.id),
+            ...TABLES
+                .filter((def) => def.table !== 'mfo_documentation_items')
+                .flatMap((def) => (state.rows[def.table] || []).map((row) => row.id))
+        ].filter((id) => isUuid(id));
+        const linkedEvidence = [];
+        const documentationIds = (state.rows.mfo_documentation_items || [])
+            .map((row) => row.id)
+            .filter((id) => isUuid(id));
+        const linkedQueries = [];
+        if (documentationIds.length) {
+            linkedQueries.push(
+                client.from('wf_submission_files').select('*')
+                    .in('mfo_documentation_id', documentationIds)
+            );
+        }
+        if (linkedIds.length) {
+            linkedQueries.push(
+                client.from('wf_submission_files').select('*')
+                    .in('mfo_record_id', linkedIds)
+            );
+        }
+        const linkedResults = await Promise.all(linkedQueries);
+        linkedResults.forEach((result) => {
+            if (result.error) console.warn('[MFO] linked evidence files', result.error);
+            linkedEvidence.push(...(result.data || []));
+        });
+        const uniqueFiles = new Map();
+        [...(files.data || []), ...linkedEvidence].forEach((file) => {
+            const key = String(file.id || `${file.storage_path || file.file_path || ''}:${file.file_name || ''}`);
+            if (key) uniqueFiles.set(key, file);
+        });
+        state.files = [...uniqueFiles.values()];
         await hydrateFileDisplayUrls(state.files);
     }
 
@@ -2207,6 +2228,46 @@
         }
     }
 
+    async function diagnoseSectionStatusInsert(code) {
+        const client = db();
+        const packetId = state.packet?.id || null;
+        const facultyId = Number(state.faculty?.id);
+        let packetLookup = { data: null, error: new Error('No packet id') };
+        let ownership = null;
+        try {
+            if (packetId && client) {
+                packetLookup = await client.from('mfo_packets').select('id, faculty_id').eq('id', packetId).maybeSingle();
+                const debug = await client.rpc('mfo_debug_write_access', { p_packet_id: packetId });
+                ownership = debug.data || { error: mfoDiagnosticError(debug.error) };
+            }
+        } catch (error) {
+            ownership = ownership || { error: mfoDiagnosticError(error) };
+        }
+
+        const packetFacultyId = packetLookup.data?.faculty_id ?? null;
+        const failedConditions = [];
+        if (!ownership || ownership.auth_uid == null) failedConditions.push('auth.uid() is null');
+        if (packetLookup.error || !packetLookup.data) failedConditions.push('mfo_packets row unavailable');
+        if (packetFacultyId !== null && Number(packetFacultyId) !== facultyId) {
+            failedConditions.push('packet faculty_id does not match state faculty_id');
+        }
+        if (ownership?.owns_packet_faculty === false) failedConditions.push('mfo_owns_faculty_id(packet.faculty_id) is false');
+        if (ownership?.can_write_row === false) failedConditions.push('mfo_can_write_row(packet_id, null) is false');
+
+        console.info('[MFO] section-status RLS diagnostic', {
+            sectionCode: code,
+            packetId,
+            facultyId,
+            packetFacultyId,
+            packetFacultyMatchesFaculty: packetFacultyId !== null && Number(packetFacultyId) === facultyId,
+            authUid: ownership?.auth_uid || null,
+            ownsFaculty: ownership?.owns_packet_faculty ?? null,
+            canWriteRow: ownership?.can_write_row ?? null,
+            packetLookupError: mfoDiagnosticError(packetLookup.error),
+            failedConditions
+        });
+    }
+
     function updateOfficialCell(table, index, key, input) {
         updateRow(table, index, key, input);
         if (table === 'mfo_documentation_items' && key === 'title') {
@@ -2264,6 +2325,15 @@
             if (key === 'faculty_id') value = facultyId;
             payload[key] = value;
         });
+        if (def.table === 'mfo_pi7_trainings') {
+            const existingSortOrder = Number(row.sort_order);
+            payload.sort_order = Number.isFinite(existingSortOrder)
+                && row.sort_order !== null
+                && row.sort_order !== undefined
+                && row.sort_order !== ''
+                ? existingSortOrder
+                : index;
+        }
         if (def.table === 'mfo_extension_trainings' && !payload.manhours_formula) {
             payload.manhours_formula = 'hours_x_beneficiaries';
         }
@@ -2298,16 +2368,73 @@
         return copy;
     }
 
+    async function logBrowserRequestAuth(operation, client, payload) {
+        let session = null;
+        let sessionError = null;
+        try {
+            const result = await client.auth.getSession();
+            session = result?.data?.session || null;
+            sessionError = result?.error || null;
+        } catch (error) {
+            sessionError = error;
+        }
+        const authorization = client?.rest?.headers?.get?.('Authorization') || '';
+        console.info(`[MFO REQUEST TRACE] ${operation}`, {
+            clientIsShared: client === db(),
+            clientIsWindowShared: client === global.supabaseClient,
+            authGuardState: global.CiteFlowAuthGuard?.state || null,
+            guardUserId: global.CiteFlowAuthGuard?.user?.id || null,
+            sessionExists: !!session,
+            sessionUserId: session?.user?.id || null,
+            sessionAccessTokenExists: !!session?.access_token,
+            sessionError: sessionError ? mfoDiagnosticError(sessionError) : null,
+            authorizationHeaderExists: Boolean(authorization),
+            authorizationHeaderIsBearer: /^Bearer\s+\S+$/i.test(authorization),
+            payload: {
+                packet_id: payload?.packet_id || null,
+                faculty_id: payload?.faculty_id ?? null,
+                rowId: payload?.id || null
+            }
+        });
+    }
+
     /** Update the packet row, dropping optional columns this deployment lacks. */
     async function updatePacket(payload) {
         const client = db();
         const packet = requirePacket();
-        const run = (data) => client.from('mfo_packets')
-            .update(data)
+        const run = async (data) => {
+            await logBrowserRequestAuth('mfo_packets UPDATE before request', client, {
+                ...data,
+                packet_id: packet.id,
+                faculty_id: packet.faculty_id
+            });
+            return client.from('mfo_packets')
+                .update(data)
+                .eq('id', packet.id)
+                .eq('faculty_id', packet.faculty_id)
+                .select('*')
+                .maybeSingle();
+        };
+
+        const { data: preflightData, error: preflightError } = await client
+            .from('mfo_packets')
+            .select('id, faculty_id')
             .eq('id', packet.id)
-            .eq('faculty_id', packet.faculty_id)
-            .select('*')
             .maybeSingle();
+        console.log('[MFO] update preflight', {
+            localPacketId: packet.id,
+            localFacultyId: packet.faculty_id,
+            dbPacket: preflightData ?? null,
+            preflightError: preflightError
+                ? {
+                    message: preflightError.message ?? null,
+                    code: preflightError.code ?? null,
+                    details: preflightError.details ?? null,
+                    hint: preflightError.hint ?? null,
+                    status: preflightError.status ?? null
+                }
+                : null
+        });
 
         let result = await run(stripUnsupported(payload));
         for (let attempt = 0; attempt < OPTIONAL_COLUMNS.length && result.error; attempt += 1) {
@@ -2317,12 +2444,24 @@
             unsupportedColumns.add(column);
             result = await run(stripUnsupported(payload));
         }
+        console.log('[MFO] mfo_packets update result', {
+            data: result.data ?? null,
+            error: result.error
+                ? {
+                    message: result.error.message ?? null,
+                    code: result.error.code ?? null,
+                    details: result.error.details ?? null,
+                    hint: result.error.hint ?? null,
+                    status: result.error.status ?? null
+                }
+                : null,
+            status: result.status ?? null,
+            statusText: result.statusText ?? null
+        });
         if (result.error) throw result.error;
-        if (!result.data) {
-            throw new Error('The report was not updated. Reload the page and try again.');
-        }
-        state.packet = { ...state.packet, ...result.data };
-        return result.data;
+        const updatedPacket = result.data || stripUnsupported(payload);
+        state.packet = { ...state.packet, ...updatedPacket };
+        return updatedPacket;
     }
 
     function childSelectColumns(def) {
@@ -2376,9 +2515,88 @@
         const usedIds = new Set();
 
         async function write(payload, rowId) {
-            const run = (data) => (rowId
-                ? client.from(def.table).update(data).eq('id', rowId).eq('packet_id', packetId).select('id').single()
-                : client.from(def.table).insert(data).select('id').single());
+            const run = async (data) => {
+                await logBrowserRequestAuth(
+                    rowId
+                        ? 'mfo_pi7_trainings UPDATE before request'
+                        : 'mfo_pi7_trainings INSERT before request',
+                    client,
+                    data
+                );
+                if (!rowId && def.table === 'mfo_pi7_trainings') {
+                    const debugResult = await client.rpc(
+                        'mfo_debug_write_access',
+                        { p_packet_id: packetId }
+                    );
+                    console.info('[MFO] mfo_debug_write_access immediately before PI7 INSERT', {
+                        data: debugResult.data ?? null,
+                        error: debugResult.error
+                            ? {
+                                message: debugResult.error.message ?? null,
+                                code: debugResult.error.code ?? null,
+                                details: debugResult.error.details ?? null,
+                                hint: debugResult.error.hint ?? null,
+                                status: debugResult.error.status ?? null
+                            }
+                            : null,
+                        auth_uid: debugResult.data?.auth_uid ?? null,
+                        packet_id: debugResult.data?.packet_id ?? packetId,
+                        packet_faculty_id: debugResult.data?.packet_faculty_id ?? null,
+                        owns_packet_faculty: debugResult.data?.owns_packet_faculty ?? null,
+                        can_write_packet: debugResult.data?.can_write_packet ?? null,
+                        can_write_row: debugResult.data?.can_write_row ?? null
+                    });
+                }
+                return rowId
+                    ? client.from(def.table).update(data).eq('id', rowId).eq('packet_id', packetId).select('id').single()
+                    : client.from(def.table).insert(data).select('id').single();
+            };
+
+            if (!rowId && def.table === 'mfo_pi7_trainings') {
+                let packetLookup = { data: null, error: null };
+                let ownership = null;
+                let ownsFacultyResult = null;
+                let finalApproverResult = null;
+                const facultyId = Number(state.faculty?.id);
+                try {
+                    packetLookup = await client
+                        .from('mfo_packets')
+                        .select('faculty_id')
+                        .eq('id', packetId)
+                        .maybeSingle();
+                    const [ownershipDebug, ownsFaculty, finalApprover] = await Promise.all([
+                        client.rpc('mfo_debug_write_access', { p_packet_id: packetId }),
+                        client.rpc('mfo_owns_faculty_id', { p_faculty_id: facultyId }),
+                        client.rpc('wf_is_final_approver')
+                    ]);
+                    ownership = ownershipDebug.data || null;
+                    ownsFacultyResult = ownsFaculty.data ?? null;
+                    finalApproverResult = finalApprover.data ?? null;
+                } catch (_) {}
+                const packetFacultyId = packetLookup.data?.faculty_id ?? null;
+                const authUid = ownership?.auth_uid || state.user?.id || null;
+                console.info('[MFO] mfo_pi7_trainings insert diagnostic', {
+                    packetId,
+                    facultyId,
+                    authUid,
+                    ownsFaculty: ownsFacultyResult,
+                    finalApprover: finalApproverResult,
+                    canWritePacket: ownership?.can_write_packet ?? null,
+                    canWriteRow: ownership?.can_write_row ?? null,
+                    packetFacultyId,
+                    packetFacultyMatchesFaculty: packetFacultyId !== null
+                        && Number(packetFacultyId) === facultyId,
+                    packetLookupError: packetLookup.error
+                        ? {
+                            message: packetLookup.error.message ?? null,
+                            code: packetLookup.error.code ?? null,
+                            details: packetLookup.error.details ?? null,
+                            hint: packetLookup.error.hint ?? null,
+                            status: packetLookup.error.status ?? null
+                        }
+                        : null
+                });
+            }
 
             let result = await run(stripUnsupported(payload));
             // Retry while the database reports optional columns we can drop.
@@ -2435,8 +2653,10 @@
             if (updated.error) throw updated.error;
             saved = updated.data;
         } else {
+            await diagnoseSectionStatusInsert(code);
             const upserted = await client.from('mfo_section_status').upsert(payload, { onConflict: 'packet_id,section_code' }).select('*').maybeSingle();
             if (upserted.error && !/no unique|on conflict/i.test(upserted.error.message || '')) {
+                await diagnoseSectionStatusInsert(code);
                 const inserted = await client.from('mfo_section_status').insert(payload).select('*').maybeSingle();
                 if (inserted.error) throw inserted.error;
                 saved = inserted.data;
@@ -4206,5 +4426,9 @@
         }
     };
 
-    window.addEventListener('load', init);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init, { once: true });
+    } else {
+        init();
+    }
 })(window);

@@ -95,6 +95,12 @@
     }
 
     function redirectToLogin(prefix) {
+        console.warn('[AUTH TRACE] REDIRECT TO LOGIN', {
+            path: window.location.pathname,
+            search: window.location.search || '',
+            guardState,
+            reason: 'no confirmed session'
+        });
         finish(AuthState.UNAUTHENTICATED);
         window.location.replace(buildLoginRedirect(prefix));
     }
@@ -133,7 +139,7 @@
             guardState = AuthState.INITIALIZING;
             guardApi.state = AuthState.INITIALIZING;
 
-            let activeSession = await restoreSession(sb);
+            const activeSession = await restoreSession(sb);
 
             console.info('[AUTH TRACE] AUTH GUARD', {
                 hasSession: !!activeSession,
@@ -188,9 +194,13 @@
             if (facultyAuthFailed) {
                 const refreshed = window.CiteFlowAuth?.refreshSessionShared
                     ? await window.CiteFlowAuth.refreshSessionShared(sb)
-                    : (await sb.auth.refreshSession())?.data?.session || null;
+                    : null;
                 if (!refreshed?.user) {
-                    if (await redirectExpiredSession()) return;
+                    if (activeSession?.user) {
+                        console.warn('Auth Guard: refresh failed, retaining the existing authenticated session.');
+                    } else if (await redirectExpiredSession()) {
+                        return;
+                    }
                 }
                 // JWT refreshed — continue with existing user; do not treat RLS/data errors as logout.
             } else if (facultyLookup.error) {

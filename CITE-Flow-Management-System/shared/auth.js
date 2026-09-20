@@ -893,12 +893,16 @@ window.CiteFlowAuth = (function () {
      */
     async function logout() {
         const sb = getClient();
+        console.warn('[AUTH TRACE] SIGN OUT requested', {
+            path: window.location.pathname,
+            userId: (await currentStoredSession(sb))?.user?.id || null
+        });
         clearUserCache();
         if (sb) {
             try {
                 await sb.auth.signOut();
             } catch (e) {
-                console.warn("SignOut notice:", e);
+                console.error('[AUTH TRACE] SIGN OUT failed', e);
             }
         }
         const isSub = window.location.pathname.toLowerCase().includes('/admin/') || window.location.pathname.toLowerCase().includes('/faculty/');
@@ -1044,6 +1048,7 @@ window.CiteFlowAuth = (function () {
 
         refreshInFlight = (async () => {
             try {
+                console.info('[AUTH TRACE] SESSION REFRESH start');
                 const { data, error } = await client.auth.refreshSession();
                 if (error) {
                     if (isRateLimited(error)) {
@@ -1051,15 +1056,19 @@ window.CiteFlowAuth = (function () {
                         console.warn('CiteFlowAuth: token refresh is rate limited. Continuing with the session already held.');
                         return (await currentStoredSession(client)) || lastKnownSession;
                     }
-                    console.warn('CiteFlowAuth: token refresh failed.', error);
+                    console.warn('[AUTH TRACE] SESSION REFRESH failed', error);
                     return (await currentStoredSession(client)) || lastKnownSession;
                 }
+                console.info('[AUTH TRACE] SESSION REFRESH success', {
+                    userId: data?.session?.user?.id || null,
+                    expiresAt: data?.session?.expires_at || null
+                });
                 return data?.session || null;
             } catch (error) {
                 if (isRateLimited(error)) {
                     refreshBlockedUntil = Date.now() + REFRESH_COOLDOWN_MS;
                 }
-                console.warn('CiteFlowAuth: token refresh threw.', error);
+                console.warn('[AUTH TRACE] SESSION REFRESH threw', error);
                 return (await currentStoredSession(client)) || lastKnownSession;
             } finally {
                 refreshInFlight = null;
