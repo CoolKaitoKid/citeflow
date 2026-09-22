@@ -2621,10 +2621,16 @@ function switchAccomplishmentSubView(subview) {
 async function loadFacultyProfile() {
     let authUser = null;
 
+    if (window.CiteFlowAuthGuard?.ready) {
+        try { await window.CiteFlowAuthGuard.ready; } catch (_) {}
+    }
+
     try {
-        const { data: sessionData } = await supabaseClient.auth.getSession();
-        if (sessionData?.session?.user) {
-            authUser = sessionData.session.user;
+        const session = window.CiteFlowAuth?.ensureActiveSession
+            ? await window.CiteFlowAuth.ensureActiveSession(supabaseClient)
+            : (await supabaseClient.auth.getSession())?.data?.session;
+        if (session?.user) {
+            authUser = session.user;
         }
     } catch (_) {}
 

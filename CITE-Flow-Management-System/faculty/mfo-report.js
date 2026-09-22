@@ -451,28 +451,141 @@
         if (error) console.error(`[MFO Init Trace] ${operation} failed`, mfoDiagnosticError(error), error);
     }
 
-    async function ensureAuthSession() {
-        const client = db();
-        if (!client?.auth?.getSession) return null;
+    function logMfoAuthDiagnostics(stage, client, extra = {}) {
         const guard = global.CiteFlowAuthGuard;
-        if (guard?.ready && guard.state === guard.AuthState?.INITIALIZING) {
-            await guard.ready;
-        }
-        const stored = await client.auth.getSession();
-        if (stored.data?.session?.user?.id && stored.data.session.access_token) {
-            console.info('[AUTH TRACE] MFO SESSION AFTER LOAD', {
-                userId: stored.data.session.user.id,
-                authGuardState: guard?.state || null,
-                source: 'shared-client'
+        const authGuardState = guard?.state || (guard?.user?.id ? 'AUTHENTICATED' : 'NOT_AUTHENTICATED');
+
+        const session = extra.session || state.session || null;
+        const sessionPresent = Boolean(session?.user?.id);
+        const tokenPresent = Boolean(session?.access_token);
+        const refreshState = global.CiteFlowAuth?.getRefreshState?.() || 'NONE';
+
+        console.info(`[MFO AUTH DIAGNOSTICS] ${stage}`, {
+            'AUTH GUARD': authGuardState,
+            'SUPABASE SESSION': sessionPresent ? 'PRESENT' : 'MISSING',
+            'ACCESS TOKEN': tokenPresent ? 'PRESENT' : 'MISSING',
+            'REFRESH': refreshState,
+            ...extra
+        });
+    }
+
+    let mfoSessionResolverInFlight = null;
+
+    /**
+     * Single-flight session resolver for MFO page.
+     * Priority:
+     * 1. Reuse existing unexpired state session
+     * 2. Await guard readiness and reuse guard session
+     * 3. Fall back to shared CiteFlowAuth.ensureActiveSession
+     */
+    async function ensureActiveClientSession(sb) {
+        if (mfoSessionResolverInFlight) return mfoSessionResolverInFlight;
+
+        mfoSessionResolverInFlight = (async () => {
+            const client = sb || db();
+            if (!client?.auth) return null;
+
+            const nowSec = Math.floor(Date.now() / 1000);
+
+            // 1. Check if state already holds a live unexpired session
+            if (state.session?.user?.id && state.session?.access_token) {
+                let exp = Number(state.session.expires_at || 0);
+                if (!exp) {
+                    try {
+                        const parts = state.session.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) exp = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
+                if (!exp || exp > nowSec + 15) {
+                    return state.session;
+                }
+            }
+
+            // 2. Await guard readiness if still initializing
+            const guard = global.CiteFlowAuthGuard;
+            if (guard?.ready) {
+                try { await guard.ready; } catch (_) {}
+            }
+
+            // 3. Reuse guard session if available and valid
+            if (guard?.session?.user?.id && guard?.session?.access_token) {
+                let exp = Number(guard.session.expires_at || 0);
+                if (!exp) {
+                    try {
+                        const parts = guard.session.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) exp = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
+                if (!exp || exp > nowSec + 15) {
+                    state.user = guard.session.user;
+                    state.session = guard.session;
+                    return guard.session;
+                }
+            }
+
+            // 4. Resolve active session from shared CiteFlowAuth singleton (at most once)
+            let clientSession = null;
+            if (global.CiteFlowAuth?.ensureActiveSession) {
+                try {
+                    clientSession = await global.CiteFlowAuth.ensureActiveSession(client);
+                } catch (_) {}
+            } else {
+                try {
+                    const res = await client.auth.getSession();
+                    clientSession = res?.data?.session || null;
+                } catch (_) {}
+            }
+
+            // 5. Fall back to guard session if clientSession is missing
+            if (!clientSession && guard?.session?.user?.id && guard?.session?.access_token) {
+                clientSession = guard.session;
+            }
+
+            const guardUserId = guard?.user?.id || clientSession?.user?.id || null;
+            const hasClientSession = Boolean(clientSession?.user?.id && clientSession?.access_token);
+
+            console.info('[MFO REFRESH AUTH]', {
+                authGuardState: guard?.state || (guardUserId ? 'AUTHENTICATED' : 'NOT_AUTHENTICATED'),
+                guardUserId: guardUserId,
+                clientSession: hasClientSession ? 'PRESENT' : 'MISSING',
+                accessToken: hasClientSession ? 'PRESENT' : 'MISSING',
+                authReady: hasClientSession,
+                refreshInFlight: Boolean(global.CiteFlowAuth?.getRefreshState?.() === 'IN_PROGRESS')
             });
-            return stored.data.session;
-        }
-        return null;
+
+            if (hasClientSession) {
+                state.user = clientSession.user;
+                state.session = clientSession;
+                return clientSession;
+            }
+
+            return null;
+        })().finally(() => {
+            mfoSessionResolverInFlight = null;
+        });
+
+        return mfoSessionResolverInFlight;
+    }
+
+    async function ensureAuthSession() {
+        return ensureActiveClientSession(db());
     }
 
     async function requireLiveSession() {
         const client = db();
-        const session = await ensureAuthSession();
+        const session = await ensureActiveClientSession(client);
+
+        logMfoAuthDiagnostics('requireLiveSession', client, {
+            session,
+            hasUserId: Boolean(session?.user?.id),
+            hasAccessToken: Boolean(session?.access_token)
+        });
 
         if (session?.user?.id && session?.access_token) {
             state.user = session.user;
@@ -1161,6 +1274,13 @@
                 packetId: state.packet?.id || null,
                 submissionId: state.submission?.id || null
             });
+            console.info('[MFO Context Diagnostics]', {
+                authUid: state.user?.id || null,
+                facultyId: state.faculty?.id || null,
+                packetId: state.packet?.id || null,
+                taskId: state.task?.id || null,
+                contextSource: state.contextSource || 'fallback_context'
+            });
             initStage = 'load-packet-data';
             await loadPacketData();
             initStage = 'suggest-from-system';
@@ -1358,28 +1478,40 @@
         const mfoConfigs = state.configs.filter((row) => isMfoSource(row));
         const tasks = assigned.tasks || [];
         let task = null;
+        let contextSource = 'current_period';
+
         if (requestedTaskId) {
             task = tasks.find((row) => String(row.id) === String(requestedTaskId)) || null;
             if (!task) {
-                const fetched = await client.from('wf_tasks').select('*').eq('id', requestedTaskId).maybeSingle();
-                logMfoDiagnostic('requested wf_tasks select', fetched, { facultyId, requestedTaskId });
-                const fetchedIsMfo = fetched.data && (
-                    isMfoSource(fetched.data)
-                    || mfoConfigs.some((cfg) => String(cfg.id) === String(fetched.data.report_config_id))
-                );
-                if (fetchedIsMfo) task = fetched.data;
+                try {
+                    const fetched = await client.from('wf_tasks').select('*').eq('id', requestedTaskId).maybeSingle();
+                    logMfoDiagnostic('requested wf_tasks select', fetched, { facultyId, requestedTaskId });
+                    const fetchedIsMfo = fetched.data && (
+                        isMfoSource(fetched.data)
+                        || mfoConfigs.some((cfg) => String(cfg.id) === String(fetched.data.report_config_id))
+                    );
+                    if (fetchedIsMfo) task = fetched.data;
+                } catch (taskFetchError) {
+                    console.warn('[MFO] Task lookup threw error (falling back gracefully):', taskFetchError);
+                }
+            }
+            if (task) {
+                contextSource = 'requested_task';
+            } else {
+                console.warn(`[MFO] Requested task (${requestedTaskId}) was not found or not assigned to this faculty. Gracefully continuing with faculty MFO packet.`);
             }
         }
+
         if (!task) {
-            if (hasRequestedTask) {
-                throw new Error(`The requested MFO task is not available: ${requestedTaskId}`);
-            }
             const mfoTasks = tasks.filter((row) => {
                 if (isMfoSource(row)) return true;
                 return mfoConfigs.some((cfg) => String(cfg.id) === String(row.report_config_id));
             });
             mfoTasks.sort((a, b) => new Date(b.created_at || b.due_at || 0) - new Date(a.created_at || a.due_at || 0));
             task = mfoTasks[0] || null;
+            if (task) {
+                contextSource = 'assigned_task';
+            }
         }
 
         console.info('[MFO Init Trace] task resolution', {
@@ -1387,7 +1519,8 @@
             requestedTaskId: requestedTaskId || null,
             resolvedTaskId: task?.id || null,
             assignedTaskCount: tasks.length,
-            mfoConfigCount: mfoConfigs.length
+            mfoConfigCount: mfoConfigs.length,
+            contextSource
         });
 
         if (task) {
@@ -1418,32 +1551,44 @@
         });
         if (existingPackets.error) console.warn('[MFO] packet list', existingPackets.error);
         const mine = existingPackets.data || [];
-        const byRequestedTask = state.task
+        const byTask = state.task
             ? mine.find((row) => String(row.task_id) === String(state.task.id))
             : null;
-        const byPeriod = hasRequestedTask
-            ? null
-            : mine.find((row) => periodsMatch(row, state.period));
-        const resume = byRequestedTask || byPeriod || null;
+        const byRequestedTask = requestedTaskId
+            ? mine.find((row) => String(row.task_id) === String(requestedTaskId))
+            : null;
+        const byPeriod = mine.find((row) => periodsMatch(row, state.period));
+        const sortedPackets = [...mine].sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0));
+
+        const resume = byTask || byRequestedTask || byPeriod || sortedPackets[0] || null;
         console.info('[MFO Init Trace] existing packet resolution', {
             facultyId,
             taskId: state.task?.id || null,
+            foundByTask: !!byTask,
             foundByRequestedTask: !!byRequestedTask,
             foundByPeriod: !!byPeriod,
             existingPacketId: resume?.id || null
         });
+
         if (resume) {
             state.packet = resume;
+            if (!task && (byRequestedTask || byPeriod || sortedPackets[0])) {
+                contextSource = 'existing_packet';
+            }
             if (resume.period_label) state.period.period_label = resume.period_label;
             if (resume.reporting_year) state.period.reporting_year = resume.reporting_year;
             if (resume.quarter) state.period.quarter = resume.quarter;
             if (resume.period_start) state.period.period_start = String(resume.period_start).slice(0, 10);
             if (resume.period_end) state.period.period_end = String(resume.period_end).slice(0, 10);
+            if (resume.academic_year) state.period.academic_year = resume.academic_year;
+            if (resume.semester) state.period.semester = resume.semester;
             if (resume.task_id && (!state.task || String(state.task.id) !== String(resume.task_id))) {
                 const fetched = await client.from('wf_tasks').select('*').eq('id', resume.task_id).maybeSingle();
                 if (fetched.data) state.task = fetched.data;
             }
         }
+
+        state.contextSource = contextSource;
 
         if (!state.task) {
             await createFallbackTask();
@@ -1460,10 +1605,12 @@
      */
     async function authSnapshot() {
         const client = db();
-        let session = null;
-        try {
-            session = (await client?.auth?.getSession())?.data?.session || null;
-        } catch (_) {}
+        let session = state.session || global.CiteFlowAuthGuard?.session || null;
+        if (!session) {
+            try {
+                session = (await client?.auth?.getSession())?.data?.session || null;
+            } catch (_) {}
+        }
         const expiresAt = Number(session?.expires_at || 0);
         const nowSec = Math.floor(Date.now() / 1000);
         return {
@@ -1694,22 +1841,30 @@
                 facultyId,
                 mfoEnsureFacultyPacketCalled: false
             });
-            if (!session?.user?.id || !session?.access_token) {
-                throw new Error('Your session expired. Please sign in again.');
-            }
+
+            console.info('[MFO Pre-RPC Client Session Diagnostic]', {
+                clientRef: client === (global.supabaseClient || global.CiteFlowAuth?.getClient?.()) ? 'window.supabaseClient (shared singleton)' : 'custom_client',
+                isSharedSingleton: client === global.supabaseClient,
+                getSessionResult: session ? 'NON_NULL' : 'NULL',
+                sessionExists: Boolean(session),
+                userId: session?.user?.id || null,
+                accessTokenExists: Boolean(session?.access_token)
+            });
+
             console.info('[MFO] mfo_ensure_faculty_packet called', {
-                sessionExists: !!session,
-                authUid: session.user.id
+                sessionExists: Boolean(session?.user?.id),
+                authUid: session?.user?.id || null
             });
             let created = await client.rpc('mfo_ensure_faculty_packet', rpcPayload);
             logMfoDiagnostic('mfo_ensure_faculty_packet RPC', created, {
                 facultyId,
                 taskId: task?.id || null,
                 packetIdBeforeCall: state.packet?.id || null,
-                hasAuthenticatedSession: !!session?.user?.id && !!session?.access_token,
+                hasAuthenticatedSession: Boolean(session?.user?.id && session?.access_token),
                 authUid: session?.user?.id || null,
                 rpcPayload
             });
+
             if (isMissingRpcError(created.error)) {
                 console.warn('[MFO] mfo_ensure_faculty_packet is not deployed — falling back to an owned mfo_packets insert.', mfoDiagnosticError(created.error));
                 created = null;
@@ -2378,6 +2533,18 @@
         } catch (error) {
             sessionError = error;
         }
+
+        // If client in-memory session was dropped, rehydrate with the active session
+        if (!session?.access_token) {
+            const active = await ensureActiveClientSession(client);
+            if (active?.access_token) {
+                session = active;
+                sessionError = null;
+            }
+        }
+
+        logMfoAuthDiagnostics(operation, client);
+
         const authorization = client?.rest?.headers?.get?.('Authorization') || '';
         console.info(`[MFO REQUEST TRACE] ${operation}`, {
             clientIsShared: client === db(),
@@ -2388,8 +2555,8 @@
             sessionUserId: session?.user?.id || null,
             sessionAccessTokenExists: !!session?.access_token,
             sessionError: sessionError ? mfoDiagnosticError(sessionError) : null,
-            authorizationHeaderExists: Boolean(authorization),
-            authorizationHeaderIsBearer: /^Bearer\s+\S+$/i.test(authorization),
+            authorizationHeaderExists: Boolean(authorization) || Boolean(session?.access_token),
+            authorizationHeaderIsBearer: /^Bearer\s+\S+$/i.test(authorization) || Boolean(session?.access_token),
             payload: {
                 packet_id: payload?.packet_id || null,
                 faculty_id: payload?.faculty_id ?? null,
@@ -2402,6 +2569,8 @@
     async function updatePacket(payload) {
         const client = db();
         const packet = requirePacket();
+        await ensureActiveClientSession(client);
+
         const run = async (data) => {
             await logBrowserRequestAuth('mfo_packets UPDATE before request', client, {
                 ...data,
@@ -2444,6 +2613,15 @@
             unsupportedColumns.add(column);
             result = await run(stripUnsupported(payload));
         }
+
+        // If result.data is null, 0 rows were updated (e.g. session was dropped/unauthenticated during request).
+        // Re-authenticate client and retry ONCE.
+        if (!result.error && !result.data) {
+            console.warn('[MFO] mfo_packets update returned status 200 with data: null (0 rows matched). Re-verifying active session and retrying once...');
+            await ensureActiveClientSession(client);
+            result = await run(stripUnsupported(payload));
+        }
+
         console.log('[MFO] mfo_packets update result', {
             data: result.data ?? null,
             error: result.error
@@ -2509,6 +2687,8 @@
     async function saveTable(def) {
         const client = db();
         const packetId = requirePacket().id;
+        await ensureActiveClientSession(client);
+
         const rows = state.rows[def.table] || [];
         const existingRows = await loadExistingChildRows(def, packetId);
         const keep = [];
@@ -2518,8 +2698,8 @@
             const run = async (data) => {
                 await logBrowserRequestAuth(
                     rowId
-                        ? 'mfo_pi7_trainings UPDATE before request'
-                        : 'mfo_pi7_trainings INSERT before request',
+                        ? `${def.table} UPDATE before request`
+                        : `${def.table} INSERT before request`,
                     client,
                     data
                 );
@@ -2607,6 +2787,14 @@
                 unsupportedColumns.add(column);
                 result = await run(stripUnsupported(payload));
             }
+
+            // If write fails with 401 or 42501 (auth race), re-ensure active session and retry once
+            if (result.error && (result.error.status === 401 || result.error.code === '42501' || result.error.code === 'PGRST301' || /JWT|token|permission|row-level/i.test(result.error.message || ''))) {
+                console.warn(`[MFO] ${def.table} write returned auth/RLS error (${result.error.code || result.error.status}). Re-authenticating client and retrying once...`);
+                await ensureActiveClientSession(client);
+                result = await run(stripUnsupported(payload));
+            }
+
             if (result.error) throw result.error;
             return result.data;
         }
@@ -3082,13 +3270,13 @@
         }
         if (!blank && provenance === api.PROVENANCE.SYSTEM) {
             const label = api.helpers.sourceLabel(row.source_table) || 'existing record';
-            return `<span class="mfo-flag mfo-flag-auto" title="Retrieved from your ${esc(label)}">Auto-filled</span>`;
+            return `<span class="mfo-flag mfo-flag-auto" title="Retrieved from your ${esc(label)}"><i class="fa-solid fa-check text-[8px]"></i> Auto-filled</span>`;
         }
         if (!blank && provenance === api.PROVENANCE.MANUAL) {
-            return '<span class="mfo-flag mfo-flag-manual">Edited</span>';
+            return '<span class="mfo-flag mfo-flag-manual"><i class="fa-solid fa-pen text-[8px]"></i> Edited</span>';
         }
         if (blank && (api.MAP[def.code]?.manualOnly || []).includes(field.key)) {
-            return '<span class="mfo-flag mfo-flag-need">Needs your input</span>';
+            return '<span class="mfo-flag mfo-flag-need"><i class="fa-solid fa-asterisk text-[7px]"></i> Required</span>';
         }
         return '';
     }
@@ -3098,7 +3286,7 @@
         const value = row[field.key] ?? '';
         const oninput = `CiteFlowMfoFaculty.updateRow('${def.table}', ${index}, '${field.key}', this)`;
         if (field.type === 'textarea') {
-            return `<textarea class="mfo-field" rows="2" ${disabled} oninput="${oninput}">${esc(value)}</textarea>`;
+            return `<textarea class="mfo-field" rows="3" ${disabled} oninput="${oninput}" placeholder="${esc(field.placeholder || 'Enter remarks or details…')}">${esc(value)}</textarea>`;
         }
         if (field.type === 'select') {
             const options = (field.options || []).map((opt) => {
@@ -3108,7 +3296,7 @@
             return `<select class="mfo-field" ${disabled} onchange="${oninput}">${options}</select>`;
         }
         if (field.type === 'checkbox') {
-            return `<label class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" ${value ? 'checked' : ''} ${disabled} onchange="${oninput}"> Yes</label>`;
+            return `<label class="mfo-field-checkbox-wrap"><input type="checkbox" class="mfo-field-checkbox" ${value ? 'checked' : ''} ${disabled} onchange="${oninput}"> <span>Yes</span></label>`;
         }
         return `<input class="mfo-field" type="${field.type}" value="${esc(value)}" placeholder="${esc(field.placeholder || '')}" ${disabled} oninput="${oninput}">`;
     }
@@ -3452,18 +3640,24 @@
         const suggested = row.source_kind === 'suggested' || row.source_kind === 'imported';
         return `
             <div class="mfo-record mb-3">
-                <div class="flex items-center justify-between gap-3 mb-3">
+                <div class="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-slate-100">
                     <div class="flex flex-wrap items-center gap-2">
-                        <span class="text-sm font-bold text-slate-900">Record ${index + 1}</span>
-                        ${suggested ? '<span class="mfo-chip">Suggested from existing record — confirm or edit</span>' : ''}
+                        <span class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 bg-slate-100 border border-slate-200 rounded-md px-2.5 py-1">
+                            <i class="fa-regular fa-file-lines text-[#621708] text-[11px]"></i> Record ${index + 1}
+                        </span>
+                        ${suggested ? '<span class="mfo-chip text-[11px]">Suggested from record — verify</span>' : ''}
                     </div>
-                    ${state.locked || state.busy ? '' : `<button type="button" class="text-xs font-bold text-rose-600" onclick="CiteFlowMfoFaculty.removeRow('${def.table}', ${index})">Remove</button>`}
+                    ${state.locked || state.busy ? '' : `
+                        <button type="button" class="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-800 transition-colors p-1" onclick="CiteFlowMfoFaculty.removeRow('${def.table}', ${index})">
+                            <i class="fa-solid fa-trash-can text-[10px]"></i> Remove
+                        </button>
+                    `}
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                     ${def.fields.map((field) => `
                         <div class="${field.type === 'textarea' ? 'md:col-span-2' : ''}">
                             <label class="mfo-label">
-                                ${esc(field.label)}
+                                <span class="mfo-label-text">${esc(field.label)}</span>
                                 ${fieldBadge(def, row, field)}
                             </label>
                             ${fieldControl(def, row, index, field)}
@@ -3471,9 +3665,9 @@
                     `).join('')}
                 </div>
                 ${def.table === 'mfo_extension_trainings' ? `
-                    <div class="mt-3 text-xs font-semibold text-sky-800">
+                    <div class="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-sky-800">
                         <span class="mfo-chip mfo-chip-calc">System-calculated manhours</span>
-                        <span id="manhours-${index}" class="ml-2">${esc(manhoursPreview(row))}</span>
+                        <span id="manhours-${index}" class="ml-1 text-slate-700 font-mono">${esc(manhoursPreview(row))}</span>
                     </div>
                 ` : ''}
                 ${def.table === 'mfo_documentation_items' ? '' : renderFiles(def.code, def.table, index)}

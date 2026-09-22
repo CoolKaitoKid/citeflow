@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -4869,10 +4869,10 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
             nextStatus = 'approved';
         }
     } else if (newStatus === 'revision') {
-        nextStage = 'revision';
+        nextStage = stage === 'final_approver' ? 'final_approver' : 'chairperson';
         nextStatus = 'revision';
     } else if (newStatus === 'rejected') {
-        nextStage = 'declined';
+        nextStage = stage === 'final_approver' ? 'final_approver' : 'chairperson';
         nextStatus = 'rejected';
     }
 
@@ -5091,11 +5091,19 @@ function isExpiredJwtResult(result) {
 
 async function ensureFreshAuthSession() {
     if (!db?.auth) return false;
+    if (window.CiteFlowAuth?.ensureActiveSession) {
+        const session = await window.CiteFlowAuth.ensureActiveSession(db);
+        return Boolean(session?.user && session?.access_token);
+    }
     const { data: { session } } = await db.auth.getSession();
     if (!session?.user) return false;
     const expiresAt = Number(session.expires_at || 0);
     const nowSec = Math.floor(Date.now() / 1000);
     if (expiresAt && expiresAt <= nowSec + 15) {
+        if (window.CiteFlowAuth?.refreshSessionShared) {
+            const shared = await window.CiteFlowAuth.refreshSessionShared(db);
+            return Boolean(shared?.user);
+        }
         const { data, error } = await db.auth.refreshSession();
         return Boolean(data?.session && !error);
     }
@@ -5154,8 +5162,10 @@ async function fetchAllData(isRetry) {
     const hardError = Object.entries(required).find(([, r]) => r.error);
     if (hardError) {
         if (!isRetry && isExpiredJwtResult(hardError[1])) {
-            const { data, error } = await db.auth.refreshSession();
-            if (data?.session && !error) {
+            const session = window.CiteFlowAuth?.refreshSessionShared
+                ? await window.CiteFlowAuth.refreshSessionShared(db)
+                : (await db.auth.refreshSession())?.data?.session;
+            if (session?.user) {
                 return fetchAllData(true);
             }
             await redirectToLoginAfterExpiry();

@@ -790,25 +790,31 @@
     }
 
     async function getFreshSession(sb) {
-        if (global.CiteFlowAuth?.getFreshSession) {
-            return global.CiteFlowAuth.getFreshSession(sb || getSupabaseClient());
-        }
         const client = sb || getSupabaseClient();
         if (!client) return null;
+        if (global.CiteFlowAuthGuard?.session?.user && global.CiteFlowAuthGuard?.session?.access_token) {
+            const exp = Number(global.CiteFlowAuthGuard.session.expires_at || 0);
+            const nowSec = Math.floor(Date.now() / 1000);
+            if (!exp || exp > nowSec + 15) {
+                return global.CiteFlowAuthGuard.session;
+            }
+        }
+        if (global.CiteFlowAuth?.ensureActiveSession) {
+            return global.CiteFlowAuth.ensureActiveSession(client);
+        }
+        if (global.CiteFlowAuth?.getFreshSession) {
+            return global.CiteFlowAuth.getFreshSession(client);
+        }
         const { data: { session }, error } = await client.auth.getSession();
         if (error || !session?.user) return null;
         const expiresAt = Number(session.expires_at || 0);
         const nowSec = Math.floor(Date.now() / 1000);
-        if (expiresAt && expiresAt > nowSec + 15) return session;
-        // Share one refresh across the page; concurrent refreshes race on the
-        // rotating refresh token and trip the endpoint rate limit.
+        if (expiresAt && expiresAt > nowSec + 30) return session;
         if (global.CiteFlowAuth?.refreshSessionShared) {
             const shared = await global.CiteFlowAuth.refreshSessionShared(client);
             return shared?.user ? shared : session;
         }
-        const refreshed = await client.auth.refreshSession();
-        if (refreshed.error || !refreshed.data?.session?.user) return session;
-        return refreshed.data.session;
+        return session;
     }
 
     async function getCurrentUser() {
@@ -1035,58 +1041,69 @@
     }
 
     async function logActivity(sb, payload) {
-        const { error } = await sb.from('wf_activity_log').insert(payload);
-        if (error) console.error('CiteFlowWorkflow.logActivity:', error);
-        return !error;
+        if (!sb || !payload) return false;
+        try {
+            const row = {
+                action: String(payload.action || 'activity'),
+                actor_name: payload.actor_name || null,
+                target: payload.target || null,
+                log_type: payload.log_type || 'system'
+            };
+            const { error } = await sb.from('wf_activity_log').insert(row);
+            if (error) console.warn('CiteFlowWorkflow.logActivity:', error?.message || error);
+            return !error;
+        } catch (err) {
+            console.warn('CiteFlowWorkflow.logActivity threw:', err);
+            return false;
+        }
     }
 
     async function createWorkflowNotification(sb, payload) {
+        if (!sb) return false;
         const rows = (Array.isArray(payload) ? payload : [payload]).filter(Boolean);
         if (!rows.length) return true;
 
         const validTypes = new Set(['task', 'submission', 'review', 'comment', 'system']);
         const sanitized = rows.map((r) => {
-            const row = { ...r };
-            if (!validTypes.has(row.type)) {
-                row.type = 'review';
-            }
-            if (row.is_read == null) {
-                row.is_read = false;
-            }
+            const type = validTypes.has(r.type) ? r.type : 'review';
+            const row = {
+                type,
+                message: String(r.message || ''),
+                is_read: r.is_read === true
+            };
+            if (r.faculty_id != null) row.faculty_id = r.faculty_id;
+            if (r.task_id != null) row.task_id = r.task_id;
+            if (r.submission_id != null) row.submission_id = r.submission_id;
+            if (r.title != null) row.title = String(r.title);
             return row;
         });
 
-        let { error } = await sb.from('wf_notifications').insert(sanitized);
-        if (error) {
-            console.warn('CiteFlowWorkflow.createWorkflowNotification first attempt:', error?.message || error);
-            // Fallback 1: remove optional fields like title, link, recipient_auth_user_id
-            const fallback = sanitized.map((row) => {
-                const next = {
-                    type: row.type || 'review',
-                    message: row.message || '',
-                    is_read: false
-                };
-                if (row.faculty_id != null) next.faculty_id = row.faculty_id;
-                if (row.task_id != null) next.task_id = row.task_id;
-                return next;
-            });
-            const res2 = await sb.from('wf_notifications').insert(fallback);
-            if (res2.error) {
-                console.warn('CiteFlowWorkflow.createWorkflowNotification fallback 1 error:', res2.error?.message || res2.error);
-                // Fallback 2: minimal payload
-                const minimal = sanitized.map((row) => ({
-                    type: 'review',
-                    message: row.message || '',
-                    is_read: false
-                }));
-                const res3 = await sb.from('wf_notifications').insert(minimal);
-                if (res3.error) {
-                    console.error('CiteFlowWorkflow.createWorkflowNotification failed:', res3.error?.message || res3.error);
+        try {
+            const { error } = await sb.from('wf_notifications').insert(sanitized);
+            if (error) {
+                console.warn('CiteFlowWorkflow.createWorkflowNotification first attempt:', error?.message || error);
+                // Fallback attempt: minimal core notification payload
+                const fallback = sanitized.map((row) => {
+                    const next = {
+                        type: row.type || 'review',
+                        message: row.message || '',
+                        is_read: false
+                    };
+                    if (row.faculty_id != null) next.faculty_id = row.faculty_id;
+                    if (row.task_id != null) next.task_id = row.task_id;
+                    return next;
+                });
+                const res2 = await sb.from('wf_notifications').insert(fallback);
+                if (res2.error) {
+                    console.warn('CiteFlowWorkflow.createWorkflowNotification fallback error:', res2.error?.message || res2.error);
                     return false;
                 }
             }
+            return true;
+        } catch (err) {
+            console.warn('CiteFlowWorkflow.createWorkflowNotification threw:', err);
+            return false;
         }
-        return true;
     }
 
     async function loadActiveDelegatedAccess(sb) {
@@ -1354,11 +1371,11 @@
                 actorRoleLabel = actorRole === 'chairperson' ? 'CHAIRPERSON' : 'FINAL APPROVER';
             }
         } else if (action === 'revision') {
-            nextStage = APPROVAL_STAGES.REVISION;
+            nextStage = stage === APPROVAL_STAGES.FINAL ? APPROVAL_STAGES.FINAL : APPROVAL_STAGES.CHAIRPERSON;
             nextStatus = 'revision';
             historyAction = stage === APPROVAL_STAGES.FINAL ? 'final_revision' : 'chairperson_revision';
         } else if (action === 'rejected') {
-            nextStage = APPROVAL_STAGES.DECLINED;
+            nextStage = stage === APPROVAL_STAGES.FINAL ? APPROVAL_STAGES.FINAL : APPROVAL_STAGES.CHAIRPERSON;
             nextStatus = 'rejected';
             historyAction = stage === APPROVAL_STAGES.FINAL ? 'final_declined' : 'chairperson_declined';
         }
@@ -1518,6 +1535,11 @@
         }
 
         const transition = computeReviewTransition(submission, action, actorFaculty, config, task);
+        console.info('[Workflow Review Debug]', {
+            current_approval_stage: stage,
+            review_action: action,
+            next_approval_stage: transition.nextStage
+        });
         const update = buildReviewUpdate(transition, comment, actorName, submission);
 
         const written = await updateSubmissionStrict(sb, submissionId, update);
@@ -2030,8 +2052,7 @@
             actor_name: actorName,
             action: `accomplishment_report_${action}`,
             target: `Report #${reportId}`,
-            log_type: 'accomplishment_report',
-            details: remarks || `${actorRole} ${action}d accomplishment report`
+            log_type: 'accomplishment_report'
         });
 
         return update;

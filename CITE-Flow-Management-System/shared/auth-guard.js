@@ -148,7 +148,7 @@
                 expiresAt: activeSession?.expires_at || null
             });
 
-            if (!activeSession?.user) {
+            if (!activeSession?.user || !activeSession?.access_token) {
                 console.warn('Auth Guard: Session restoration finished with no authenticated user.');
                 redirectToLogin(prefix);
                 return;
@@ -192,17 +192,32 @@
                 || String(facultyLookup.error.message || '').toLowerCase().includes('jwt expired')
             );
             if (facultyAuthFailed) {
-                const refreshed = window.CiteFlowAuth?.refreshSessionShared
-                    ? await window.CiteFlowAuth.refreshSessionShared(sb)
-                    : null;
+                const nowSec = Math.floor(Date.now() / 1000);
+                let exp = Number(activeSession?.expires_at || 0);
+                if (!exp && activeSession?.access_token) {
+                    try {
+                        const parts = activeSession.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) exp = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
+                let refreshed = null;
+                // Only attempt refresh if session is truly expired or near expiry
+                if (!exp || exp <= nowSec + 30) {
+                    refreshed = window.CiteFlowAuth?.refreshSessionShared
+                        ? await window.CiteFlowAuth.refreshSessionShared(sb)
+                        : null;
+                }
                 if (!refreshed?.user) {
                     if (activeSession?.user) {
-                        console.warn('Auth Guard: refresh failed, retaining the existing authenticated session.');
+                        console.warn('Auth Guard: refresh skipped/failed, retaining the existing authenticated session.');
                     } else if (await redirectExpiredSession()) {
                         return;
                     }
                 }
-                // JWT refreshed — continue with existing user; do not treat RLS/data errors as logout.
+                // JWT verified/refreshed — continue with existing user; do not treat RLS/data errors as logout.
             } else if (facultyLookup.error) {
                 // Authorization/data error ≠ logged out.
                 console.warn('Auth Guard: faculty lookup error (not treating as logout):', facultyLookup.error);
@@ -323,20 +338,23 @@
     async function restoreSession(sb) {
         if (!sb?.auth) return null;
 
-        if (window.CiteFlowAuth?.getFreshSession) {
-            const fresh = await window.CiteFlowAuth.getFreshSession(sb);
-            if (fresh?.user) return fresh;
+        if (window.CiteFlowAuth?.ensureActiveSession) {
+            const active = await window.CiteFlowAuth.ensureActiveSession(sb);
+            if (active?.user && active?.access_token) return active;
+        } else if (window.CiteFlowAuth?.rehydrateClientSession) {
+            const rehydrated = await window.CiteFlowAuth.rehydrateClientSession(sb);
+            if (rehydrated?.user && rehydrated?.access_token) return rehydrated;
         } else if (window.CiteFlowAuth?.waitForSession) {
             const waited = await window.CiteFlowAuth.waitForSession({ timeoutMs: 8000, client: sb });
-            if (waited?.user) return waited;
+            if (waited?.user && waited?.access_token) return waited;
         }
 
-        for (let attempt = 0; attempt < 6; attempt += 1) {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
             try {
                 const { data } = await sb.auth.getSession();
-                if (data?.session?.user) return data.session;
+                if (data?.session?.user && data?.session?.access_token) return data.session;
             } catch (_) {}
-            await delay(250 * (attempt + 1));
+            await delay(200 * (attempt + 1));
         }
         return null;
     }

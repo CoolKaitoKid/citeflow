@@ -910,50 +910,86 @@ window.CiteFlowAuth = (function () {
     }
 
     /**
+     * Look up the complete persisted Supabase session JSON directly from localStorage.
+     */
+    function getPersistedSupabaseSession() {
+        try {
+            const keys = Object.keys(localStorage);
+            const sbKey = keys.find((k) => (k.startsWith('sb-') && k.endsWith('-auth-token')) || k.includes('auth-token') || k === 'supabase.auth.token');
+            if (!sbKey) return null;
+            let raw = localStorage.getItem(sbKey);
+            if (!raw) return null;
+            if (typeof raw === 'string' && raw.startsWith('cf_enc_v2::') && window.CiteFlowStorageCipher?.decrypt) {
+                raw = window.CiteFlowStorageCipher.decrypt(raw);
+            }
+            let parsed = null;
+            try {
+                parsed = JSON.parse(raw);
+            } catch (_) {
+                return null;
+            }
+            if (parsed && typeof parsed === 'object') {
+                if (parsed.access_token && parsed.refresh_token) {
+                    return parsed;
+                }
+                if (parsed.currentSession?.access_token && parsed.currentSession?.refresh_token) {
+                    return parsed.currentSession;
+                }
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    /**
+     * Safe session getter using the shared Supabase client.
+     */
+    async function rehydrateClientSession(sb) {
+        const client = sb || getClient();
+        if (!client?.auth) return null;
+        return currentStoredSession(client);
+    }
+
+    /**
      * Wait until Supabase has restored (or confirmed absence of) a session.
      * Distinguishes AUTH_INITIALIZING from AUTH_UNAUTHENTICATED.
      */
     async function waitForSessionInternal(options = {}) {
         const sb = options.client || getClient();
-        if (!sb) return null;
-        const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 8000;
+        if (!sb?.auth) return null;
+        const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 6000;
 
         try {
             const first = await currentStoredSession(sb);
-            if (first?.user) {
+            if (first?.user && first?.access_token) {
                 return first;
             }
         } catch (_) {}
 
-        async function readStoredSession() {
-            return currentStoredSession(sb);
-        }
-
         return new Promise((resolve) => {
             let settled = false;
             let subscription = null;
+            let pollTimer = null;
 
             const finish = (session) => {
                 if (settled) return;
                 settled = true;
+                if (pollTimer) clearInterval(pollTimer);
                 try { subscription?.unsubscribe?.(); } catch (_) {}
+                if (session?.user && session?.access_token) {
+                    lastKnownSession = session;
+                }
                 resolve(session || null);
             };
 
             try {
                 const result = sb.auth.onAuthStateChange((event, session) => {
-                    if (session?.user) {
+                    if (session?.user && session?.access_token) {
                         finish(session);
                         return;
                     }
-                    // INITIAL_SESSION / SIGNED_OUT can fire before storage is
-                    // readable, or when a failed setSession clears memory.
-                    // Only finish early when a user is present. The timeout
-                    // is the sole "no session" path, so navigation is not
-                    // forced to login during restore.
-                    if (event === 'INITIAL_SESSION') {
-                        readStoredSession().then((stored) => {
-                            if (stored?.user) finish(stored);
+                    if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                        currentStoredSession(sb).then((stored) => {
+                            if (stored?.user && stored?.access_token) finish(stored);
                         }).catch(() => {});
                     }
                 });
@@ -963,13 +999,24 @@ window.CiteFlowAuth = (function () {
                 return;
             }
 
-            // INITIAL_SESSION may already have fired before this listener attached.
-            readStoredSession().then((stored) => {
-                if (stored?.user) finish(stored);
-            }).catch(() => {});
+            // Fast periodic check in case onAuthStateChange fired before listener was attached
+            let pollCount = 0;
+            pollTimer = setInterval(() => {
+                pollCount += 1;
+                currentStoredSession(sb).then((stored) => {
+                    if (stored?.user && stored?.access_token) {
+                        finish(stored);
+                    } else if (pollCount > 30) {
+                        if (pollTimer) clearInterval(pollTimer);
+                    }
+                }).catch(() => {});
+            }, 100);
 
-            // Safety bound only — primary signal is INITIAL_SESSION / getSession.
-            setTimeout(() => finish(null), timeoutMs);
+            setTimeout(() => {
+                currentStoredSession(sb).then((stored) => {
+                    finish(stored || null);
+                }).catch(() => finish(null));
+            }, timeoutMs);
         });
     }
 
@@ -988,21 +1035,16 @@ window.CiteFlowAuth = (function () {
     /**
      * Token refresh is shared across the whole page.
      *
-     * Several modules independently decide the token looks stale — the auth
-     * guard, workflow, the sidebar's chairperson check, and each feature page.
-     * Supabase rotates the refresh token on every use, so two concurrent
-     * refreshes make the second one present an already-consumed token, and a
-     * burst of those trips the endpoint rate limit and returns 429 to
-     * everything on the page.
-     *
-     * So: concurrent callers share one in-flight refresh, and a 429 starts a
-     * cooldown during which we keep using the session we already hold rather
-     * than hammering the endpoint.
+     * Priority:
+     * 1. Valid existing session -> use immediately
+     * 2. Missing/expired session with refresh token -> single-flight refresh
+     * 3. Refresh already in progress -> await existing promise
+     * 4. 429 -> backoff without recursive refresh loops (60s cooldown)
      */
     const REFRESH_COOLDOWN_MS = 60000;
     let refreshInFlight = null;
     let refreshBlockedUntil = 0;
-    let freshSessionInFlight = null;
+    let refreshState = 'NONE'; // 'NONE' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
     let sessionWaitInFlight = null;
     let lastKnownSession = null;
 
@@ -1014,62 +1056,115 @@ window.CiteFlowAuth = (function () {
             || message.includes('too many requests');
     }
 
+    function getRefreshState() {
+        return refreshState;
+    }
+
+    function getLastKnownSession() {
+        return lastKnownSession;
+    }
+
     async function currentStoredSession(client) {
-        if (client?._citeFlowSessionReadInFlight) return client._citeFlowSessionReadInFlight;
-        client._citeFlowSessionReadInFlight = (async () => {
+        const sb = client || getClient();
+        if (!sb?.auth) return null;
+        if (sb._citeFlowSessionReadInFlight) return sb._citeFlowSessionReadInFlight;
+        sb._citeFlowSessionReadInFlight = (async () => {
             try {
-                const { data } = await client.auth.getSession();
+                const { data } = await sb.auth.getSession();
                 const session = data?.session || null;
-                if (session?.user?.id && session?.access_token) lastKnownSession = session;
-                return session;
+                if (session?.user?.id && session?.access_token) {
+                    lastKnownSession = session;
+                    return session;
+                }
+                return null;
             } catch (_) {
                 return null;
             } finally {
-                client._citeFlowSessionReadInFlight = null;
+                sb._citeFlowSessionReadInFlight = null;
             }
         })();
         try {
-            return await client._citeFlowSessionReadInFlight;
+            return await sb._citeFlowSessionReadInFlight;
         } catch (_) { return null; }
     }
+
+    let freshSessionInFlight = null;
 
     /**
      * Refresh the session at most once at a time. Returns the best session
      * available, which may be the existing one when a refresh is not possible.
      */
-    async function refreshSessionShared(sb) {
+    async function refreshSessionShared(sb, force = false) {
         const client = sb || getClient();
         if (!client?.auth?.refreshSession) return null;
 
-        if (Date.now() < refreshBlockedUntil) {
-            return (await currentStoredSession(client)) || lastKnownSession;
+        // Inspect client session first. If client has no refresh token, do NOT call refreshSession()!
+        const existing = (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
+        if (!existing?.refresh_token && !force) {
+            console.warn('[AUTH TRACE] refreshSessionShared skipped: No refresh token on client.');
+            return (existing?.access_token && existing?.user) ? existing : null;
         }
+
+        // If session is still valid for > 30 seconds and not forced, reuse it without hitting auth endpoint
+        const nowSec = Math.floor(Date.now() / 1000);
+        let expiresAt = Number(existing?.expires_at || 0);
+        if (!expiresAt && existing?.access_token) {
+            try {
+                const parts = existing.access_token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                    if (payload?.exp) expiresAt = Number(payload.exp);
+                }
+            } catch (_) {}
+        }
+        if (!force && expiresAt && expiresAt > nowSec + 30) {
+            return existing;
+        }
+
+        // If a refresh is already in flight, await that exact promise
         if (refreshInFlight) return refreshInFlight;
 
+        // 429 cooldown: do not hammer endpoint if recently rate-limited
+        if (Date.now() < refreshBlockedUntil) {
+            refreshState = 'FAILED';
+            return (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
+        }
+
         refreshInFlight = (async () => {
+            refreshState = 'IN_PROGRESS';
             try {
                 console.info('[AUTH TRACE] SESSION REFRESH start');
+                console.trace('[AUTH TRACE] SESSION REFRESH caller stack');
                 const { data, error } = await client.auth.refreshSession();
                 if (error) {
+                    refreshState = 'FAILED';
                     if (isRateLimited(error)) {
                         refreshBlockedUntil = Date.now() + REFRESH_COOLDOWN_MS;
                         console.warn('CiteFlowAuth: token refresh is rate limited. Continuing with the session already held.');
-                        return (await currentStoredSession(client)) || lastKnownSession;
+                    } else {
+                        console.warn('[AUTH TRACE] SESSION REFRESH failed', error);
                     }
-                    console.warn('[AUTH TRACE] SESSION REFRESH failed', error);
-                    return (await currentStoredSession(client)) || lastKnownSession;
+                    return (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
+                }
+                refreshState = 'COMPLETED';
+                const session = data?.session || null;
+                if (session?.user?.id && session?.access_token) {
+                    lastKnownSession = session;
                 }
                 console.info('[AUTH TRACE] SESSION REFRESH success', {
-                    userId: data?.session?.user?.id || null,
-                    expiresAt: data?.session?.expires_at || null
+                    userId: session?.user?.id || null,
+                    expiresAt: session?.expires_at || null
                 });
-                return data?.session || null;
+                return session || lastKnownSession || window.CiteFlowAuthGuard?.session;
             } catch (error) {
+                refreshState = 'FAILED';
                 if (isRateLimited(error)) {
                     refreshBlockedUntil = Date.now() + REFRESH_COOLDOWN_MS;
+                    console.warn('CiteFlowAuth: token refresh is rate limited (threw). Continuing with existing session.');
+                } else {
+                    console.warn('[AUTH TRACE] SESSION REFRESH threw', error);
                 }
-                console.warn('[AUTH TRACE] SESSION REFRESH threw', error);
-                return (await currentStoredSession(client)) || lastKnownSession;
+                return (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
             } finally {
                 refreshInFlight = null;
             }
@@ -1087,47 +1182,93 @@ window.CiteFlowAuth = (function () {
         return stored?.user ? stored : null;
     }
 
-    async function getFreshSession(sb) {
+    /**
+     * Ensure the shared Supabase client has an active, valid session ready for requests.
+     * Priority:
+     * 1. If client already holds a valid unexpired session, reuse it immediately.
+     * 2. If client is restoring session on page load/refresh, await waitForSession.
+     * 3. If valid session is near expiry (< 15s) and has refresh token, trigger single-flight refreshSessionShared.
+     */
+    async function ensureActiveSession(sb) {
         const client = sb || getClient();
         if (!client) return null;
 
         if (freshSessionInFlight) return freshSessionInFlight;
 
         freshSessionInFlight = (async () => {
-            const storedNow = await currentStoredSession(client);
-            const usable = storedNow?.user ? storedNow : lastKnownSession;
-            if (usable?.user) {
-                const expiresAt = Number(usable.expires_at || 0);
-                const nowSec = Math.floor(Date.now() / 1000);
+            const nowSec = Math.floor(Date.now() / 1000);
+
+            // 1. Check if client already holds a live, unexpired session in its internal state
+            const stored = await currentStoredSession(client);
+            if (stored?.user?.id && stored?.access_token) {
+                let expiresAt = Number(stored.expires_at || 0);
+                if (!expiresAt) {
+                    try {
+                        const parts = stored.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) expiresAt = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
                 if (!expiresAt || expiresAt > nowSec + 15) {
-                    lastKnownSession = usable;
-                    return usable;
+                    lastKnownSession = stored;
+                    return stored;
                 }
             }
 
+            // 2. Await the client's session restoration (handles page load / storage rehydration)
             if (!sessionWaitInFlight) {
                 sessionWaitInFlight = waitForSession({ timeoutMs: 8000, client })
                     .finally(() => { sessionWaitInFlight = null; });
             }
             const waited = await sessionWaitInFlight;
-            if (!waited?.user) return usable?.user ? usable : null;
-
-            // Supabase auto-refreshes normal sessions. Only use the shared
-            // explicit refresh when the returned session is actually near end.
-            const expiresAt = Number(waited.expires_at || 0);
-            const nowSec = Math.floor(Date.now() / 1000);
-            if (!expiresAt || expiresAt > nowSec + 15) {
-                lastKnownSession = waited;
-                return waited;
+            if (waited?.user?.id && waited?.access_token) {
+                let expiresAt = Number(waited.expires_at || 0);
+                if (!expiresAt) {
+                    try {
+                        const parts = waited.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) expiresAt = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
+                if (!expiresAt || expiresAt > nowSec + 15) {
+                    lastKnownSession = waited;
+                    return waited;
+                }
             }
 
-            const refreshed = await refreshSessionShared(client);
-            if (refreshed?.user) {
-                lastKnownSession = refreshed;
-                return refreshed;
+            // 3. Only refresh if the session is EXPIRED or within 15s of expiry AND has a refresh token
+            const candidate = waited || stored || lastKnownSession || window.CiteFlowAuthGuard?.session;
+            if (candidate?.refresh_token && candidate?.user) {
+                let expiresAt = Number(candidate.expires_at || 0);
+                if (!expiresAt && candidate.access_token) {
+                    try {
+                        const parts = candidate.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) expiresAt = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
+                const isNearExpiry = Boolean(expiresAt && expiresAt <= nowSec + 15);
+                if (isNearExpiry) {
+                    const refreshed = await refreshSessionShared(client);
+                    if (refreshed?.user?.id && refreshed?.access_token) {
+                        lastKnownSession = refreshed;
+                        return refreshed;
+                    }
+                }
             }
 
-            return waited.user ? waited : (usable?.user ? usable : null);
+            // 4. Return valid session if held
+            if (waited?.user?.id && waited?.access_token) return waited;
+            if (stored?.user?.id && stored?.access_token) return stored;
+            if (candidate?.user?.id && candidate?.access_token) return candidate;
+
+            return null;
         })();
 
         try {
@@ -1135,6 +1276,33 @@ window.CiteFlowAuth = (function () {
         } finally {
             freshSessionInFlight = null;
         }
+    }
+
+    async function getFreshSession(sb) {
+        const client = sb || getClient();
+        if (!client) return null;
+        return ensureActiveSession(client);
+    }
+
+    function getDiagnosticSummary(sb) {
+        const client = sb || getClient();
+        const guard = window.CiteFlowAuthGuard;
+        const authGuardState = (guard?.state === 'AUTHENTICATED' || guard?.user?.id)
+            ? 'AUTHENTICATED'
+            : (guard?.state || 'NOT_AUTHENTICATED');
+
+        let clientSession = null;
+        try {
+            const { data } = client.auth ? client.auth.getSession() : { data: null };
+            clientSession = data?.session || null;
+        } catch (_) {}
+
+        return {
+            'AUTH GUARD': authGuardState,
+            'SUPABASE SESSION': clientSession ? 'PRESENT' : 'MISSING',
+            'ACCESS TOKEN': clientSession?.access_token ? 'PRESENT' : 'MISSING',
+            'REFRESH': refreshState
+        };
     }
 
     function isSafeInternalNext(nextPath) {
@@ -1171,8 +1339,14 @@ window.CiteFlowAuth = (function () {
         getSession,
         waitForSession,
         getFreshSession,
+        ensureActiveSession,
+        rehydrateClientSession,
+        getPersistedSupabaseSession,
         adoptSession,
         refreshSessionShared,
+        getRefreshState,
+        getLastKnownSession,
+        getDiagnosticSummary,
         ensureSharedClient,
         resolvePostLoginDestination,
         isSafeInternalNext,

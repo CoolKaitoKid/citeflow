@@ -1400,14 +1400,13 @@ async function requireFacultyAuth() {
             window.location.replace(`../login.html?next=${next}`);
             return false;
         }
-        if (window.CiteFlowAuthGuard.state === 'AUTH_INITIALIZING') {
-            console.warn('[Auth] Session restoration is still in progress; waiting for a live session.');
-        }
     }
 
-    const session = window.CiteFlowAuth?.getFreshSession
-        ? await window.CiteFlowAuth.getFreshSession(db)
-        : (await db.auth.getSession()).data?.session;
+    const session = window.CiteFlowAuth?.ensureActiveSession
+        ? await window.CiteFlowAuth.ensureActiveSession(db)
+        : (window.CiteFlowAuth?.getFreshSession
+            ? await window.CiteFlowAuth.getFreshSession(db)
+            : (await db.auth.getSession()).data?.session);
 
     if (!session?.user) {
         if (window.CiteFlowAuthGuard?.state === 'AUTHENTICATED' && window.CiteFlowAuthGuard.user) {
@@ -1415,8 +1414,12 @@ async function requireFacultyAuth() {
             authChecked = true;
             return true;
         }
-        const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
-        window.location.replace(`../login.html?next=${next}`);
+        if (window.CiteFlowAuthGuard?.state === 'AUTH_UNAUTHENTICATED') {
+            const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
+            window.location.replace(`../login.html?next=${next}`);
+            return false;
+        }
+        console.warn('[Submissions] Session restoration in progress; waiting without hard redirect.');
         return false;
     }
 
@@ -6322,9 +6325,11 @@ async function submitTask(taskId) {
         let diagnosticSession = null;
         let diagnosticWorkflowFaculty = null;
         try {
-            const authResult = await db.auth.getUser();
-            diagnosticAuthUser = authResult?.data?.user || null;
-            diagnosticAuthError = authResult?.error?.message || null;
+            const authSession = window.CiteFlowAuth?.ensureActiveSession
+                ? await window.CiteFlowAuth.ensureActiveSession(db)
+                : (await db.auth.getSession())?.data?.session;
+            diagnosticAuthUser = authSession?.user || null;
+            diagnosticSession = authSession || null;
         } catch (authError) {
             diagnosticAuthError = authError?.message || String(authError);
         }
@@ -6531,9 +6536,7 @@ async function submitTask(taskId) {
                 action: existingSubmission ? 'Resubmitted task' : 'Submitted task',
                 actor_name: faculty.full_name,
                 target: task.title,
-                log_type: 'submission',
-                task_id: taskId,
-                submission_id: submissionId
+                log_type: 'submission'
             });
             if (activityResult.error) {
                 console.warn('Activity log could not be created:', activityResult.error);

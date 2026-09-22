@@ -242,49 +242,55 @@ function updateFacultyNavProfile(profileData) {
 
     // Always fetch fresh profile from Supabase if auth is available and we don't have explicit first_name + last_name
     if (window.supabaseClient && window.supabaseClient.auth && (!profileData || !profileData.first_name || !profileData.last_name)) {
-        window.supabaseClient.auth.getUser().then(async ({ data }) => {
-            const user = data?.user;
-            if (user) {
-                const meta = user.user_metadata || {};
-                let photoUrl = meta.profile_photo_url || meta.avatar_url;
-                let firstName = meta.first_name;
-                let middleName = meta.middle_name;
-                let lastName = meta.last_name;
-                let position = meta.position || meta.role;
-                let department = meta.department;
-                let fullName = meta.full_name || meta.name;
+        (async () => {
+            try {
+                const session = window.CiteFlowAuthGuard?.session
+                    || (window.CiteFlowAuth?.ensureActiveSession
+                        ? await window.CiteFlowAuth.ensureActiveSession(window.supabaseClient)
+                        : (await window.supabaseClient.auth.getSession())?.data?.session);
+                const user = session?.user || window.CiteFlowAuthGuard?.user;
+                if (user) {
+                    const meta = user.user_metadata || {};
+                    let photoUrl = meta.profile_photo_url || meta.avatar_url;
+                    let firstName = meta.first_name;
+                    let middleName = meta.middle_name;
+                    let lastName = meta.last_name;
+                    let position = meta.position || meta.role;
+                    let department = meta.department;
+                    let fullName = meta.full_name || meta.name;
 
-                try {
-                    const { data: facultyRecord } = await window.supabaseClient
-                        .from('faculty')
-                        .select('profile_photo_url, full_name, first_name, middle_name, last_name, position, department, name')
-                        .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`)
-                        .maybeSingle();
-                    if (facultyRecord) {
-                        if (facultyRecord.profile_photo_url) photoUrl = facultyRecord.profile_photo_url;
-                        if (facultyRecord.first_name) firstName = facultyRecord.first_name;
-                        if (facultyRecord.middle_name) middleName = facultyRecord.middle_name;
-                        if (facultyRecord.last_name) lastName = facultyRecord.last_name;
-                        if (facultyRecord.position) position = facultyRecord.position;
-                        if (facultyRecord.department) department = facultyRecord.department;
-                        if (facultyRecord.full_name) fullName = facultyRecord.full_name;
-                    }
-                } catch (_) {}
+                    try {
+                        const { data: facultyRecord } = await window.supabaseClient
+                            .from('faculty')
+                            .select('profile_photo_url, full_name, first_name, middle_name, last_name, position, department, name')
+                            .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`)
+                            .maybeSingle();
+                        if (facultyRecord) {
+                            if (facultyRecord.profile_photo_url) photoUrl = facultyRecord.profile_photo_url;
+                            if (facultyRecord.first_name) firstName = facultyRecord.first_name;
+                            if (facultyRecord.middle_name) middleName = facultyRecord.middle_name;
+                            if (facultyRecord.last_name) lastName = facultyRecord.last_name;
+                            if (facultyRecord.position) position = facultyRecord.position;
+                            if (facultyRecord.department) department = facultyRecord.department;
+                            if (facultyRecord.full_name) fullName = facultyRecord.full_name;
+                        }
+                    } catch (_) {}
 
-                renderFacultyNavData({
-                    first_name: firstName,
-                    middle_name: middleName,
-                    last_name: lastName,
-                    full_name: fullName,
-                    name: fullName,
-                    role: position || 'Faculty Member',
-                    position: position || 'Faculty Member',
-                    department: department || 'CITE Faculty',
-                    profile_photo_url: photoUrl,
-                    email: user.email
-                });
-            }
-        }).catch(() => {});
+                    renderFacultyNavData({
+                        first_name: firstName,
+                        middle_name: middleName,
+                        last_name: lastName,
+                        full_name: fullName,
+                        name: fullName,
+                        role: position || 'Faculty Member',
+                        position: position || 'Faculty Member',
+                        department: department || 'CITE Faculty',
+                        profile_photo_url: photoUrl,
+                        email: user.email
+                    });
+                }
+            } catch (_) {}
+        })();
     }
 
     if (profileData) {
@@ -755,8 +761,9 @@ async function loadFacultyNavNotifications() {
     const sb = window.supabaseClient;
     if (!sb?.auth) return;
 
-    const { data: sessionData } = await sb.auth.getSession();
-    const user = sessionData?.session?.user;
+    const user = window.CiteFlowAuthGuard?.user
+        || window.CiteFlowAuthGuard?.session?.user
+        || (await sb.auth.getSession())?.data?.session?.user;
     if (!user) return;
 
     await ensureCiteFlowSettings();

@@ -514,22 +514,25 @@ async function requireFacultyAuth() {
             window.location.replace(`../login.html?next=${next}`);
             return false;
         }
-        if (window.CiteFlowAuthGuard.state === 'AUTH_INITIALIZING') {
-            console.warn('[Auth] Session restoration is still in progress; waiting for a live session.');
-        }
     }
 
-    const session = window.CiteFlowAuth?.getFreshSession
-        ? await window.CiteFlowAuth.getFreshSession(db)
-        : (await db.auth.getSession()).data?.session;
+    const session = window.CiteFlowAuth?.ensureActiveSession
+        ? await window.CiteFlowAuth.ensureActiveSession(db)
+        : (window.CiteFlowAuth?.getFreshSession
+            ? await window.CiteFlowAuth.getFreshSession(db)
+            : (await db.auth.getSession()).data?.session);
     if (!session?.user) {
         if (window.CiteFlowAuthGuard?.state === 'AUTHENTICATED' && window.CiteFlowAuthGuard.user) {
             currentUser = window.CiteFlowAuthGuard.user;
             authChecked = true;
             return true;
         }
-        const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
-        window.location.replace(`../login.html?next=${next}`);
+        if (window.CiteFlowAuthGuard?.state === 'AUTH_UNAUTHENTICATED') {
+            const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
+            window.location.replace(`../login.html?next=${next}`);
+            return false;
+        }
+        console.warn('[StatusTracking] Session restoration in progress; waiting without hard redirect.');
         return false;
     }
 
