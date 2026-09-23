@@ -605,8 +605,182 @@
     </div>
 </div>
 
+<!-- CUSTOM IN-APP MODAL FOR WINDOW.ALERT & CONFIRM -->
+<div id="cite-alert-modal" class="hidden fixed inset-0 modal-backdrop z-[9999] items-center justify-center p-4 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-[2rem] max-w-sm w-full p-6 shadow-2xl transform transition-all border border-slate-100 flex flex-col items-center text-center my-auto">
+        <div id="cite-alert-icon" class="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 text-xl"></div>
+        <h3 id="cite-alert-title" class="text-base sm:text-lg font-bold text-slate-950 mb-1.5">Notice</h3>
+        <p id="cite-alert-message" class="text-xs sm:text-sm text-slate-500 leading-relaxed mb-6 break-words max-h-60 overflow-y-auto w-full"></p>
+        <div id="cite-alert-actions" class="flex gap-2.5 w-full">
+            <button id="cite-alert-cancel" type="button" class="hidden flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs sm:text-sm font-semibold transition active:scale-95">Cancel</button>
+            <button id="cite-alert-confirm" type="button" class="flex-1 py-2.5 px-4 rounded-xl text-white text-xs sm:text-sm font-semibold shadow-sm transition hover:opacity-90 active:scale-95" style="background-color: var(--cite-theme, #621708);" data-theme-primary="true">OK</button>
+        </div>
+    </div>
+</div>
+
 <script src="../shared/system-ui.js"></script>
 <script>
+// ==========================================
+// Custom In-App Modal for window.alert & confirm
+// ==========================================
+function showAppAlert(message, title = 'Notice', type = 'info') {
+    return new Promise((resolve) => {
+        let modal = document.getElementById('cite-alert-modal');
+        if (!modal) {
+            if (window._nativeAlert) {
+                window._nativeAlert(message);
+            } else {
+                console.warn('Alert:', message);
+            }
+            return resolve();
+        }
+
+        const icon = document.getElementById('cite-alert-icon');
+        const titleEl = document.getElementById('cite-alert-title');
+        const msgEl = document.getElementById('cite-alert-message');
+        const cancelBtn = document.getElementById('cite-alert-cancel');
+        const confirmBtn = document.getElementById('cite-alert-confirm');
+
+        if (cancelBtn) cancelBtn.classList.add('hidden');
+
+        const lowerMsg = String(message ?? '').toLowerCase();
+        const effectiveType = type !== 'info' ? type : (
+            lowerMsg.includes('error') || lowerMsg.includes('failed') || lowerMsg.includes('unable') || lowerMsg.includes('invalid') ? 'error' :
+            lowerMsg.includes('success') || lowerMsg.includes('copied') || lowerMsg.includes('created') || lowerMsg.includes('updated') ? 'success' :
+            lowerMsg.includes('please') || lowerMsg.includes('warning') || lowerMsg.includes('not found') || lowerMsg.includes('required') ? 'warning' : 'info'
+        );
+
+        let modalTitle = title;
+        if (modalTitle === 'Notice' || !modalTitle) {
+            if (effectiveType === 'error') modalTitle = 'Notice';
+            else if (effectiveType === 'success') modalTitle = 'Success';
+            else if (effectiveType === 'warning') modalTitle = 'Attention';
+            else modalTitle = 'Notice';
+        }
+
+        if (titleEl) titleEl.textContent = modalTitle;
+        if (msgEl) msgEl.textContent = String(message ?? '');
+
+        if (confirmBtn) {
+            confirmBtn.textContent = 'OK';
+            confirmBtn.style.backgroundColor = 'var(--cite-theme, #621708)';
+        }
+
+        if (icon) {
+            if (effectiveType === 'error') {
+                icon.className = 'w-12 h-12 rounded-2xl flex items-center justify-center mb-4 text-xl bg-red-100 text-red-600';
+                icon.innerHTML = '<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+            } else if (effectiveType === 'success') {
+                icon.className = 'w-12 h-12 rounded-2xl flex items-center justify-center mb-4 text-xl bg-emerald-100 text-emerald-600';
+                icon.innerHTML = '<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+            } else if (effectiveType === 'warning') {
+                icon.className = 'w-12 h-12 rounded-2xl flex items-center justify-center mb-4 text-xl bg-amber-100 text-amber-600';
+                icon.innerHTML = '<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+            } else {
+                icon.className = 'w-12 h-12 rounded-2xl flex items-center justify-center mb-4 text-xl bg-blue-100 text-blue-600';
+                icon.innerHTML = '<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+            }
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        const closeModal = () => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            if (confirmBtn) confirmBtn.onclick = null;
+            modal.onclick = null;
+            document.removeEventListener('keydown', onKeydown);
+            resolve();
+        };
+
+        const onKeydown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Enter') {
+                closeModal();
+            }
+        };
+
+        if (confirmBtn) confirmBtn.onclick = closeModal;
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+        document.addEventListener('keydown', onKeydown, { once: true });
+    });
+}
+
+function showAppConfirm(message, title = 'Confirm Action', confirmText = 'Confirm', cancelText = 'Cancel') {
+    return new Promise((resolve) => {
+        let modal = document.getElementById('cite-alert-modal');
+        if (!modal) {
+            return resolve(window._nativeConfirm ? window._nativeConfirm(message) : true);
+        }
+
+        const icon = document.getElementById('cite-alert-icon');
+        const titleEl = document.getElementById('cite-alert-title');
+        const msgEl = document.getElementById('cite-alert-message');
+        const cancelBtn = document.getElementById('cite-alert-cancel');
+        const confirmBtn = document.getElementById('cite-alert-confirm');
+
+        if (titleEl) titleEl.textContent = title;
+        if (msgEl) msgEl.textContent = String(message ?? '');
+
+        if (cancelBtn) {
+            cancelBtn.textContent = cancelText;
+            cancelBtn.classList.remove('hidden');
+        }
+
+        if (confirmBtn) {
+            confirmBtn.textContent = confirmText;
+            confirmBtn.style.backgroundColor = 'var(--cite-theme, #621708)';
+        }
+
+        if (icon) {
+            icon.className = 'w-12 h-12 rounded-2xl flex items-center justify-center mb-4 text-xl bg-amber-100 text-amber-700';
+            icon.innerHTML = '<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        const finish = (result) => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            if (cancelBtn) {
+                cancelBtn.classList.add('hidden');
+                cancelBtn.onclick = null;
+            }
+            if (confirmBtn) confirmBtn.onclick = null;
+            modal.onclick = null;
+            document.removeEventListener('keydown', onKeydown);
+            resolve(result);
+        };
+
+        const onKeydown = (e) => {
+            if (e.key === 'Escape') finish(false);
+            if (e.key === 'Enter') finish(true);
+        };
+
+        if (cancelBtn) cancelBtn.onclick = () => finish(false);
+        if (confirmBtn) confirmBtn.onclick = () => finish(true);
+        modal.onclick = (e) => {
+            if (e.target === modal) finish(false);
+        };
+        document.addEventListener('keydown', onKeydown);
+    });
+}
+
+if (!window._nativeAlert) {
+    window._nativeAlert = window.alert ? window.alert.bind(window) : console.log;
+}
+if (!window._nativeConfirm) {
+    window._nativeConfirm = window.confirm ? window.confirm.bind(window) : () => true;
+}
+window.alert = function(msg, title = 'Notice') {
+    return showAppAlert(String(msg ?? ''), title);
+};
+window.showAppAlert = showAppAlert;
+window.showAppConfirm = showAppConfirm;
+
 const SUPABASE_URL='https://uforealazougjckepggc.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
 const supabaseClient=window.supabaseClient;
@@ -947,7 +1121,7 @@ async function saveUserChanges(){
 async function deleteUser(source,id){
     let u=allUsers.find(x=>x.source===source&&String(x.id)===String(id));
     if(!u)return;
-    if(!confirm(`Delete ${u.name} from the user list? This removes the profile record, not the Supabase Auth account.`))return;
+    if(!await showAppConfirm(`Delete ${u.name} from the user list? This removes the profile record.`, 'Confirm Action', 'OK', 'Cancel'))return;
     let res=await supabaseClient.from(source).delete().eq('id',id);
     if(res.error){
         console.error(res.error);
