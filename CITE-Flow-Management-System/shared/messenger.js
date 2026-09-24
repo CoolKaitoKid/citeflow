@@ -3593,15 +3593,13 @@ window.CiteFlowMessenger = (function () {
             case 'open':
                 activateConversation(conv, State.isExpanded);
                 break;
-            case 'mute':
+                        case 'mute':
                 if (State.mutedConvoIds.has(convoId)) {
                     State.mutedConvoIds.delete(convoId);
                     saveMutedState();
-                    showCustomToast('Notifications unmuted for this chat');
                 } else {
                     State.mutedConvoIds.add(convoId);
                     saveMutedState();
-                    showCustomToast('Notifications muted for this chat');
                 }
                 break;
             case 'rename':
@@ -3638,7 +3636,7 @@ window.CiteFlowMessenger = (function () {
                 renderConversationList("");
                 renderExpandedConvoList();
                 updateUnreadBadge();
-                showCustomToast('Chat moved to Archive');
+                showCustomToast('');
                 break;
             case 'unarchive':
                 State.archivedConvoIds.delete(String(convoId));
@@ -3652,7 +3650,7 @@ window.CiteFlowMessenger = (function () {
                 renderConversationList("");
                 renderExpandedConvoList();
                 updateUnreadBadge();
-                showCustomToast('Chat restored from Archive');
+                showCustomToast('');
                 break;
             case 'delete':
                 const confirmed = await CiteFlowModal.confirm(
@@ -3673,7 +3671,7 @@ window.CiteFlowMessenger = (function () {
                     renderConversationList("");
                     renderExpandedConvoList();
                     updateUnreadBadge();
-                    showCustomToast('Chat moved to Archive');
+                    showCustomToast('');
                 }
                 break;
             case 'report':
@@ -3853,7 +3851,7 @@ window.CiteFlowMessenger = (function () {
         renderExpandedConvoList();
     }
 
-    function closeExpandedView() {
+        function closeExpandedView() {
         State.isExpanded = false;
         const expEl = document.getElementById("msgrExpanded");
         if (expEl) expEl.style.display = "none";
@@ -3865,6 +3863,19 @@ window.CiteFlowMessenger = (function () {
         State.selectedMessageId = null;
         State.remoteTypers = new Map();
         teardownMessageChannel();
+
+        // 1. Reset expanded view chat placeholders for next time
+        const expPlaceholder = document.getElementById("msgrExpChatPlaceholder");
+        const expActive = document.getElementById("msgrExpChatActive");
+        if (expPlaceholder) expPlaceholder.style.display = "flex";
+        if (expActive) expActive.style.display = "none";
+
+        // 2. Hide chat overlay so the Chats list is visible (Image 2)
+        document.getElementById("msgrChat")?.classList.remove("show");
+
+        // 3. Open the side panel and render the Chats list
+        openPanel();
+        renderConversationList(getConvoSearchFilter());
     }
 
     function renderExpandedConvoList() {
