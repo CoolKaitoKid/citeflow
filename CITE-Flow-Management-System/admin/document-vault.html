@@ -126,8 +126,17 @@
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .context-menu { position: absolute; right: 12px; top: 48px; min-width: 180px; z-index: 30; }
         .color-choice.active { outline: 3px solid rgba(98, 23, 8, 0.22); outline-offset: 3px; }
-        .drop-zone { border: 2px dashed #d1d5db; transition: all 0.2s ease; }
-        .drop-zone.drag-over { border-color: #621708; background: rgba(98, 23, 8, 0.04); }
+        .drop-zone { border: 2px dashed #cbd5e1; background: #f8fafc; transition: all 0.2s ease; cursor: pointer; }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: #621708; background: rgba(98, 23, 8, 0.04); transform: scale(1.005); }
+        .upload-file-item { transition: all 0.15s ease; }
+        .upload-file-item:hover { background: #f8fafc; }
+        .color-chip { width: 32px; height: 32px; border-radius: 9999px; transition: transform 0.15s ease, box-shadow 0.15s ease; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border: 2px solid transparent; }
+        .color-chip:hover { transform: scale(1.12); }
+        .color-chip.active { border-color: #ffffff; box-shadow: 0 0 0 3px #621708; transform: scale(1.12); }
+        .icon-chip { width: 44px; height: 44px; border-radius: 12px; background: #f1f5f9; color: #475569; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer; transition: all 0.15s ease; border: 1.5px solid transparent; }
+        .icon-chip:hover { background: #e2e8f0; color: #1e293b; transform: translateY(-1px); }
+        .icon-chip.active { background: rgba(98, 23, 8, 0.08); color: #621708; border-color: #621708; font-weight: bold; }
+        .badge-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
 
         /* Compact layout refinements */
         main { font-size: 14px; }
@@ -391,122 +400,252 @@
 
 <!-- Folder Editor Modal -->
 <div id="folder-editor-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
-    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
-        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center flex-shrink-0">
-            <div>
-                <h3 id="folder-editor-title" class="text-lg sm:text-xl font-extrabold text-slate-900">New Folder</h3>
-                <p class="text-xs sm:text-sm text-slate-500">Manage folder details and appearance.</p>
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-lg overflow-hidden max-h-[92vh] flex flex-col my-auto shadow-2xl border border-slate-100">
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div id="folder-editor-header-icon" class="w-10 h-10 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-lg shrink-0">
+                    <i class="fa-solid fa-folder-plus"></i>
+                </div>
+                <div>
+                    <h3 id="folder-editor-title" class="text-lg font-extrabold text-slate-900 leading-snug">New Folder</h3>
+                    <p class="text-xs text-slate-500">Configure folder name, appearance, and description.</p>
+                </div>
             </div>
-            <button onclick="closeFolderEditor()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-500 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            <button onclick="closeFolderEditor()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
+
+        <!-- Body -->
+        <div class="p-6 space-y-5 overflow-y-auto flex-1 max-h-[calc(90vh-140px)]">
             <input type="hidden" id="edit-folder-id">
-            <div>
-                <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">Folder Name</label>
-                <input id="edit-folder-name" type="text" class="w-full border border-slate-200 rounded-2xl px-4 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]" placeholder="e.g. TOS">
-            </div>
-            <div>
-                <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">Description</label>
-                <textarea id="edit-folder-description" class="w-full border border-slate-200 rounded-2xl px-4 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]" rows="3" placeholder="Optional description"></textarea>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">Icon</label>
-                    <select id="edit-folder-icon" class="w-full border border-slate-200 rounded-2xl px-3 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]">
-                        <option value="fa-folder">Folder</option>
-                        <option value="fa-folder-open">Open Folder</option>
-                        <option value="fa-file-lines">Documents</option>
-                        <option value="fa-graduation-cap">Academic</option>
-                        <option value="fa-book">Book</option>
-                        <option value="fa-clipboard-list">Checklist</option>
-                        <option value="fa-landmark">Official</option>
-                    </select>
+
+            <!-- Live Preview Card -->
+            <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 flex items-center gap-4">
+                <div id="folder-live-preview-icon" class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0 transition-all duration-200" style="background-color: rgba(107, 33, 168, 0.12); color: #6b21a8;">
+                    <i class="fa-solid fa-folder"></i>
                 </div>
-                <div>
-                    <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">Color</label>
-                    <select id="edit-folder-color" class="w-full border border-slate-200 rounded-2xl px-3 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]">
-                        <option value="#6b21a8">Purple</option>
-                        <option value="#2563eb">Blue</option>
-                        <option value="#059669">Green</option>
-                        <option value="#dc2626">Red</option>
-                        <option value="#d97706">Amber</option>
-                        <option value="#0891b2">Cyan</option>
-                        <option value="#475569">Slate</option>
-                    </select>
+                <div class="min-w-0 flex-1">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Live Preview</div>
+                    <div id="folder-live-preview-name" class="font-extrabold text-base text-slate-900 truncate">New Folder</div>
+                    <div id="folder-live-preview-desc" class="text-xs text-slate-500 truncate mt-0.5">No description provided</div>
+                </div>
+            </div>
+
+            <!-- Folder Name -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Folder Name <span class="text-red-500">*</span></label>
+                <div class="relative">
+                    <input id="edit-folder-name" type="text" oninput="updateFolderLivePreview()" class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#621708] focus:ring-2 focus:ring-[#621708]/10 transition-all" placeholder="e.g. CURRICULUM_MATERIALS">
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Description <span class="text-slate-400 font-normal lowercase">(optional)</span></label>
+                <textarea id="edit-folder-description" oninput="updateFolderLivePreview()" class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-[#621708] focus:ring-2 focus:ring-[#621708]/10 transition-all" rows="2" placeholder="Brief note about the contents of this folder..."></textarea>
+            </div>
+
+            <!-- Color Palette Selector -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Folder Accent Color</label>
+                <input type="hidden" id="edit-folder-color" value="#6b21a8">
+                <div class="flex flex-wrap gap-2.5 items-center p-3 rounded-2xl bg-slate-50 border border-slate-100" id="folder-color-chips">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Icon Grid Selector -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Folder Icon</label>
+                <input type="hidden" id="edit-folder-icon" value="fa-folder">
+                <div class="grid grid-cols-5 gap-2 p-3 rounded-2xl bg-slate-50 border border-slate-100" id="folder-icon-chips">
+                    <!-- Populated by JS -->
                 </div>
             </div>
         </div>
-        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2.5 flex-shrink-0">
-            <button onclick="closeFolderEditor()" class="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
-            <button onclick="saveFolder()" class="px-5 py-2.5 rounded-xl bg-[#621708] hover:bg-[#8c2a10] text-white text-xs sm:text-sm font-bold">Save Folder</button>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
+            <button onclick="closeFolderEditor()" class="px-5 py-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs sm:text-sm font-bold text-slate-600 transition-colors">Cancel</button>
+            <button onclick="saveFolder()" class="px-6 py-2.5 rounded-xl bg-[#621708] hover:bg-[#8c2a10] text-white text-xs sm:text-sm font-bold transition-all shadow-sm flex items-center gap-2">
+                <i class="fa-solid fa-check"></i> Save Folder
+            </button>
         </div>
     </div>
 </div>
 
-<!-- Upload Modal -->
+<!-- Enhanced Main Upload Modal -->
 <div id="main-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
-    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col my-auto">
-        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center flex-shrink-0">
-            <div>
-                <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Upload Documents</h3>
-                <p class="text-xs sm:text-sm text-slate-500">Choose files and destination folder.</p>
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-xl overflow-hidden max-h-[92vh] flex flex-col my-auto shadow-2xl border border-slate-100">
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-lg shrink-0">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-extrabold text-slate-900 leading-snug">Upload Documents</h3>
+                    <p class="text-xs text-slate-500">Stage files, select destination, and upload securely.</p>
+                </div>
             </div>
-            <button onclick="hideMainUploadModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-500 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            <button onclick="hideMainUploadModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
-            <div id="main-drop-zone" class="drop-zone rounded-2xl p-6 text-center">
-                <i class="fa-solid fa-cloud-arrow-up text-3xl sm:text-4xl text-[#621708]"></i>
-                <div class="font-extrabold text-slate-900 mt-2 text-sm sm:text-base">Select or drop files</div>
-                <p class="text-xs text-slate-500 mt-1">PDF, Word, Excel, PowerPoint, images, and text.</p>
-                <input type="file" id="main-file-input" multiple class="mt-4 block w-full text-xs sm:text-sm text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#621708] file:text-white">
-            </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-140px)]">
+            <!-- Folder Selector -->
             <div>
-                <label class="block text-xs sm:text-sm font-bold mb-1.5 text-slate-700">Upload to Folder</label>
-                <select id="doc-folder-select" class="w-full border border-slate-200 rounded-2xl px-3 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]"></select>
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">Destination Folder <span class="text-red-500">*</span></label>
+                    <button type="button" onclick="openFolderEditor()" class="text-xs font-bold text-[#621708] hover:underline flex items-center gap-1">
+                        <i class="fa-solid fa-plus text-[10px]"></i> New Folder
+                    </button>
+                </div>
+                <select id="doc-folder-select" class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:border-[#621708] focus:ring-2 focus:ring-[#621708]/10 transition-all"></select>
+            </div>
+
+            <!-- Drag & Drop Zone -->
+            <div id="main-drop-zone" onclick="document.getElementById('main-file-input').click()" class="drop-zone rounded-2xl p-7 text-center border-2 border-dashed border-slate-200 bg-slate-50/60 hover:bg-[#621708]/5 hover:border-[#621708] transition-all group cursor-pointer">
+                <div class="w-14 h-14 mx-auto rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-2xl text-[#621708] group-hover:scale-110 transition-transform mb-3">
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                </div>
+                <div class="font-extrabold text-slate-800 text-sm sm:text-base">Drag & drop files here, or <span class="text-[#621708] underline">browse</span></div>
+                <p class="text-xs text-slate-400 mt-1">Supports PDF, DOCX, XLSX, PPTX, JPG, PNG, TXT, ZIP</p>
+                <div class="flex flex-wrap items-center justify-center gap-1.5 mt-3.5">
+                    <span class="badge-pill bg-red-50 text-red-600 border border-red-100"><i class="fa-solid fa-file-pdf text-[10px]"></i> PDF</span>
+                    <span class="badge-pill bg-blue-50 text-blue-600 border border-blue-100"><i class="fa-solid fa-file-word text-[10px]"></i> Word</span>
+                    <span class="badge-pill bg-emerald-50 text-emerald-600 border border-emerald-100"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</span>
+                    <span class="badge-pill bg-amber-50 text-amber-600 border border-amber-100"><i class="fa-solid fa-file-powerpoint text-[10px]"></i> PPT</span>
+                    <span class="badge-pill bg-purple-50 text-purple-600 border border-purple-100"><i class="fa-solid fa-file-image text-[10px]"></i> Images</span>
+                </div>
+                <input type="file" id="main-file-input" multiple onchange="handleMainFilesSelected(this.files)" class="hidden">
+            </div>
+
+            <!-- Staged Files Preview List -->
+            <div id="upload-staged-section" class="hidden space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-check text-[#621708]"></i> Selected Files (<span id="upload-staged-count">0</span>)
+                    </span>
+                    <button type="button" onclick="clearStagedUploadFiles()" class="text-xs text-red-600 hover:text-red-700 font-semibold hover:underline">
+                        Clear all
+                    </button>
+                </div>
+                <div id="upload-staged-list" class="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100 bg-white border border-slate-100 rounded-2xl p-2.5">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Upload Progress State -->
+            <div id="upload-progress-container" class="hidden p-4 rounded-2xl bg-amber-50 border border-amber-200">
+                <div class="flex items-center justify-between text-xs font-bold text-amber-900 mb-2">
+                    <span id="upload-progress-status" class="flex items-center gap-2">
+                        <i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i> Uploading files to bucket...
+                    </span>
+                    <span id="upload-progress-percent">0%</span>
+                </div>
+                <div class="w-full bg-amber-200/70 h-2.5 rounded-full overflow-hidden">
+                    <div id="upload-progress-bar" class="bg-[#621708] h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
             </div>
         </div>
-        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-2.5 flex-shrink-0">
-            <button onclick="hideMainUploadModal()" class="flex-1 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
-            <button onclick="uploadMainFiles()" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold">Upload</button>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 flex-shrink-0">
+            <button onclick="hideMainUploadModal()" id="upload-cancel-btn" class="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-600 transition-colors">Cancel</button>
+            <button onclick="uploadMainFiles()" id="upload-submit-btn" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Start Upload
+            </button>
         </div>
     </div>
 </div>
 
+<!-- Quick Upload Modal (Current Folder) -->
 <div id="simple-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
-    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col my-auto">
-        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-            <div>
-                <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Add Documents</h3>
-                <p class="text-xs sm:text-sm text-slate-500">Upload files to the current folder.</p>
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-lg overflow-hidden max-h-[92vh] flex flex-col my-auto shadow-2xl border border-slate-100">
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-lg shrink-0">
+                    <i class="fa-solid fa-folder-arrow-up"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-extrabold text-slate-900 leading-snug">Add Documents</h3>
+                    <p id="simple-upload-subtitle" class="text-xs text-slate-500">Upload directly to this folder.</p>
+                </div>
             </div>
-            <button onclick="hideSimpleUploadModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-500 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            <button onclick="hideSimpleUploadModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div class="p-5 sm:p-6">
-            <input type="file" id="simple-file-input" multiple class="block w-full text-xs sm:text-sm text-slate-500 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#621708] file:text-white">
+
+        <!-- Body -->
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-140px)]">
+            <div id="simple-drop-zone" onclick="document.getElementById('simple-file-input').click()" class="drop-zone rounded-2xl p-7 text-center border-2 border-dashed border-slate-200 bg-slate-50/60 hover:bg-[#621708]/5 hover:border-[#621708] transition-all group cursor-pointer">
+                <div class="w-14 h-14 mx-auto rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-2xl text-[#621708] group-hover:scale-110 transition-transform mb-3">
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                </div>
+                <div class="font-extrabold text-slate-800 text-sm sm:text-base">Drag & drop files here, or <span class="text-[#621708] underline">browse</span></div>
+                <p class="text-xs text-slate-400 mt-1">Files will be added directly to the active folder</p>
+                <input type="file" id="simple-file-input" multiple onchange="handleSimpleFilesSelected(this.files)" class="hidden">
+            </div>
+
+            <!-- Staged List for Simple Modal -->
+            <div id="simple-staged-section" class="hidden space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-check text-[#621708]"></i> Selected Files (<span id="simple-staged-count">0</span>)
+                    </span>
+                    <button type="button" onclick="clearStagedUploadFiles()" class="text-xs text-red-600 hover:text-red-700 font-semibold hover:underline">
+                        Clear all
+                    </button>
+                </div>
+                <div id="simple-staged-list" class="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100 bg-white border border-slate-100 rounded-2xl p-2.5"></div>
+            </div>
+
+            <!-- Simple Upload Progress -->
+            <div id="simple-progress-container" class="hidden p-4 rounded-2xl bg-amber-50 border border-amber-200">
+                <div class="flex items-center justify-between text-xs font-bold text-amber-900 mb-2">
+                    <span id="simple-progress-status" class="flex items-center gap-2">
+                        <i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i> Uploading files...
+                    </span>
+                    <span id="simple-progress-percent">0%</span>
+                </div>
+                <div class="w-full bg-amber-200/70 h-2.5 rounded-full overflow-hidden">
+                    <div id="simple-progress-bar" class="bg-[#621708] h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
         </div>
-        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-2.5">
-            <button onclick="hideSimpleUploadModal()" class="flex-1 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
-            <button onclick="uploadToCurrentFolder()" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold">Upload</button>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 flex-shrink-0">
+            <button onclick="hideSimpleUploadModal()" id="simple-cancel-btn" class="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-600 transition-colors">Cancel</button>
+            <button onclick="uploadToCurrentFolder()" id="simple-submit-btn" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Upload
+            </button>
         </div>
     </div>
 </div>
 
 <div id="move-docs-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
-    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col my-auto">
-        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-            <div>
-                <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Move documents</h3>
-                <p class="text-xs sm:text-sm text-slate-500">Choose a destination folder.</p>
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col my-auto shadow-2xl border border-slate-100">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0">
+                    <i class="fa-solid fa-folder-tree"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-extrabold text-slate-900">Move Documents</h3>
+                    <p class="text-xs text-slate-500">Choose a destination folder.</p>
+                </div>
             </div>
-            <button onclick="hideMoveDocsModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-500 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            <button onclick="hideMoveDocsModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div class="p-5 sm:p-6">
-            <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">Move to</label>
-            <select id="move-target-folder" class="w-full border border-slate-200 rounded-2xl px-3 py-2.5 sm:py-3 text-sm focus:outline-none focus:border-[#621708]"></select>
+        <div class="p-6">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Destination Folder</label>
+            <select id="move-target-folder" class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#621708] focus:ring-2 focus:ring-[#621708]/10 transition-all"></select>
         </div>
-        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-2.5">
-            <button onclick="hideMoveDocsModal()" class="flex-1 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
-            <button onclick="confirmMoveDocuments()" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold">Move</button>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+            <button onclick="hideMoveDocsModal()" class="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
+            <button onclick="confirmMoveDocuments()" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm">Move</button>
         </div>
     </div>
 </div>
@@ -568,7 +707,10 @@
 <div id="documentToast" class="document-toast"><i class="fa-solid fa-circle-check"></i><span id="documentToastText">Done</span></div>
 <script>
 const STORAGE_BUCKET = 'documents';
-const supabaseClient = window.supabaseClient;
+function getVaultClient(){
+    return window.supabaseClient || (typeof supabaseClient !== 'undefined' ? supabaseClient : null);
+}
+let supabaseClient = window.supabaseClient;
 let hasPromptedForApiKey = false;
 let folders = [];
 let documents = [];
@@ -580,8 +722,41 @@ let currentPreviewDocument = null;
 let currentPreviewAccess = null;
 let vaultFolderSort = { key: 'name', dir: 'asc' };
 let vaultDocSort = { key: 'date', dir: 'desc' };
+const FOLDERS_CACHE_KEY = 'citeflow_vault_folders_cache_v1';
+const FOLDER_DOCS_CACHE = new Map();
+let isVaultLoading = false;
 
-function ensureSupabaseReady(){ if(!supabaseClient){ console.warn('Supabase is not initialized.'); return false; } return true; }
+function restoreCachedFolders(){
+    try {
+        const cached = sessionStorage.getItem(FOLDERS_CACHE_KEY);
+        if(!cached) return false;
+        const parsed = JSON.parse(cached);
+        if(Array.isArray(parsed.folders) && parsed.folders.length){
+            folders = parsed.folders;
+            const statFolders = document.getElementById('stat-folders');
+            const statDocs = document.getElementById('stat-documents');
+            if(statFolders) statFolders.textContent = folders.length;
+            if(statDocs) statDocs.textContent = parsed.totalDocs || 0;
+            renderFolders();
+            return true;
+        }
+    } catch(e) {
+        console.warn('Vault cache restoration failed:', e);
+    }
+    return false;
+}
+
+function ensureSupabaseReady(){ 
+    if(!supabaseClient && window.supabaseClient){
+        supabaseClient = window.supabaseClient;
+    }
+    const client = getVaultClient();
+    if(!client){ 
+        console.warn('Supabase is not initialized.'); 
+        return false; 
+    } 
+    return true; 
+}
 function isInvalidApiKeyError(error){
     if(!error) return false;
     const msg = String(error.message || '').toLowerCase();
@@ -623,10 +798,37 @@ function normalizeIcon(value){ return value || 'fa-folder'; }
 function escapeHtml(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
 function jsArg(value){ return JSON.stringify(String(value ?? '')); }
 function selectedKey(value){ return String(value ?? ''); }
-function isSelected(value){ return selectedDocs.has(selectedKey(value)); }
-function sanitizeFileName(name){ return String(name || 'file').replace(/[^\w.\- ]+/g,'_').replace(/\s+/g,'_'); }
-function buildFilePath(folderId, originalName){ return `${folderId}/${Date.now()}-${sanitizeFileName(originalName)}`; }
-function formatFileSize(bytes){ if(!bytes) return '—'; const sizes=['B','KB','MB','GB']; const i=Math.min(Math.floor(Math.log(bytes)/Math.log(1024)), sizes.length-1); return Math.round(bytes/Math.pow(1024,i)*100)/100+' '+sizes[i]; }
+function isSelected(id){ return selectedDocs.has(selectedKey(id)); }
+function sanitizeFileName(name){
+    const clean = String(name || 'file')
+        .replace(/[^\w.\-]+/g, '_')
+        .replace(/_{2,}/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return clean || 'document';
+}
+function buildFilePath(folderId, originalName){
+    const safeFolder = String(folderId || 'vault').replace(/[^\w\-]+/g, '_');
+    return `${safeFolder}/${Date.now()}_${sanitizeFileName(originalName)}`;
+}
+function resolveVaultUploadContentType(file){
+    const raw = String(file?.type || '').trim().split(';')[0].trim();
+    if (/^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*$/.test(raw)) return raw;
+    const name = String(file?.name || '').toLowerCase();
+    if (name.endsWith('.pdf')) return 'application/pdf';
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+    if (name.endsWith('.gif')) return 'image/gif';
+    if (name.endsWith('.webp')) return 'image/webp';
+    if (name.endsWith('.doc')) return 'application/msword';
+    if (name.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (name.endsWith('.xls')) return 'application/vnd.ms-excel';
+    if (name.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (name.endsWith('.ppt')) return 'application/vnd.ms-powerpoint';
+    if (name.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (name.endsWith('.txt')) return 'text/plain';
+    if (name.endsWith('.zip')) return 'application/zip';
+    return 'application/octet-stream';
+}
 function formatDriveDate(value){
     if(!value) return '';
     const d=new Date(value);
@@ -678,15 +880,94 @@ function setFolderDescription(folder){
     if(text){ descEl.textContent=text; descEl.classList.remove('hidden'); }
     else { descEl.textContent=''; descEl.classList.add('hidden'); }
 }
+function formatFileSize(bytes){
+    const num = Number(bytes);
+    if (!Number.isFinite(num) || num <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.min(Math.floor(Math.log(num) / Math.log(1024)), units.length - 1);
+    if (i === 0) return `${num} B`;
+    return `${(num / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
 function getFileExtension(filename){ return String(filename || '').split('.').pop().toLowerCase(); }
 function getFileTypeLabel(filename,mimeType=''){ const ext=getFileExtension(filename); return ext ? ext.toUpperCase() : (mimeType || 'FILE'); }
 function getFileIconClass(filename,mimeType=''){ const ext=getFileExtension(filename); const type=String(mimeType||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'fa-file-pdf'; if(['doc','docx'].includes(ext)||type.includes('word')) return 'fa-file-word'; if(['xls','xlsx','csv'].includes(ext)||type.includes('spreadsheet')||type.includes('excel')) return 'fa-file-excel'; if(['ppt','pptx'].includes(ext)||type.includes('presentation')||type.includes('powerpoint')) return 'fa-file-powerpoint'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'fa-file-image'; if(['zip','rar','7z'].includes(ext)) return 'fa-file-zipper'; if(['txt','md'].includes(ext)||type.includes('text')) return 'fa-file-lines'; return 'fa-file-lines'; }
 function getFilePreviewKind(doc){ const ext=getFileExtension(doc.name); const type=String(doc.mime_type||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'direct'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'direct'; if(['txt','md','csv'].includes(ext)||type.includes('text')) return 'direct'; if(['doc','docx','xls','xlsx','ppt','pptx'].includes(ext)) return 'office'; return 'direct'; }
 function showDocumentToast(message, icon='fa-circle-check'){ const toast=document.getElementById('documentToast'); const text=document.getElementById('documentToastText'); if(!toast||!text) return; toast.querySelector('i').className=`fa-solid ${icon}`; text.textContent=message; toast.classList.add('show'); clearTimeout(window.__documentToastTimer); window.__documentToastTimer=setTimeout(()=>toast.classList.remove('show'),2600); }
 
-async function refreshVault(){ await loadFolders(); renderFolders(); if(currentFolderId){ await loadDocumentsByFolder(currentFolderId); renderFolderDocuments(); } }
-async function loadFolders(){ if(!ensureSupabaseReady()) return; const {data:folderData,error:folderError}=await supabaseClient.from('folders').select('*').order('name'); if(folderError){ if(await recoverFromInvalidApiKey(folderError)) return; console.error(folderError); alert('Error loading folders: '+folderError.message); return; } const {data:documentData,error:documentError}=await supabaseClient.from('documents').select('*'); if(documentError){ if(await recoverFromInvalidApiKey(documentError)) return; console.error(documentError); allDocuments=[]; folders=folderData||[]; document.getElementById('stat-folders').textContent=folders.length; document.getElementById('stat-documents').textContent='0'; return; } allDocuments=documentData||[]; const countMap=allDocuments.reduce((acc,doc)=>{ acc[doc.folder_id]=(acc[doc.folder_id]||0)+1; return acc; },{}); folders=(folderData||[]).map(folder=>({...folder, color: normalizeColor(folder.color), icon: normalizeIcon(folder.icon), count: countMap[folder.id]||0})); document.getElementById('stat-folders').textContent=folders.length; document.getElementById('stat-documents').textContent=allDocuments.length; }
-async function loadDocumentsByFolder(folderId){ if(!ensureSupabaseReady()) return; const {data,error}=await supabaseClient.from('documents').select('*').eq('folder_id',folderId).order('uploaded_at',{ascending:false}); if(error){ console.error(error); documents=[]; } else documents=data||[]; }
+async function refreshVault(){
+    await loadFolders();
+    renderFolders();
+    if(currentFolderId){
+        await loadDocumentsByFolder(currentFolderId);
+        renderFolderDocuments();
+    }
+}
+
+async function loadFolders(){
+    if(!ensureSupabaseReady()) return;
+    try {
+        // Parallel queries: Folders list + lightweight doc counts (only id, folder_id)
+        const [folderRes, docRes] = await Promise.all([
+            supabaseClient.from('folders').select('id, name, description, icon, color, created_at, updated_at').order('name'),
+            supabaseClient.from('documents').select('id, folder_id')
+        ]);
+
+        if(folderRes.error){
+            if(await recoverFromInvalidApiKey(folderRes.error)) return;
+            console.error('Folders load error:', folderRes.error);
+            alert('Error loading folders: ' + folderRes.error.message);
+            return;
+        }
+
+        const folderData = folderRes.data || [];
+        const docData = docRes.data || [];
+
+        const countMap = docData.reduce((acc, doc) => {
+            acc[doc.folder_id] = (acc[doc.folder_id] || 0) + 1;
+            return acc;
+        }, {});
+
+        folders = folderData.map(folder => ({
+            ...folder,
+            color: normalizeColor(folder.color),
+            icon: normalizeIcon(folder.icon),
+            count: countMap[folder.id] || 0
+        }));
+
+        const statFolders = document.getElementById('stat-folders');
+        const statDocs = document.getElementById('stat-documents');
+        if(statFolders) statFolders.textContent = folders.length;
+        if(statDocs) statDocs.textContent = docData.length;
+
+        // Persist in session cache for 0ms instant render on return visits
+        try {
+            sessionStorage.setItem(FOLDERS_CACHE_KEY, JSON.stringify({
+                folders: folders,
+                totalDocs: docData.length,
+                timestamp: Date.now()
+            }));
+        } catch(e) {}
+    } catch(err) {
+        console.error('Failed to load folders:', err);
+    }
+}
+
+async function loadDocumentsByFolder(folderId){
+    if(!ensureSupabaseReady()) return;
+    const { data, error } = await supabaseClient
+        .from('documents')
+        .select('id, name, folder_id, file_path, mime_type, size_bytes, uploaded_at')
+        .eq('folder_id', folderId)
+        .order('uploaded_at', { ascending: false });
+
+    if(error){
+        console.error('Error loading documents for folder:', error);
+        if(!FOLDER_DOCS_CACHE.has(String(folderId))) documents = [];
+    } else {
+        documents = data || [];
+        FOLDER_DOCS_CACHE.set(String(folderId), documents);
+    }
+}
 
 function renderFolders(){
     const container=document.getElementById('folders-grid');
@@ -750,7 +1031,42 @@ function openFolderMenu(id){ document.querySelectorAll('.context-menu').forEach(
 function openDocMenu(id){ document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')); document.getElementById(`doc-menu-${id}`)?.classList.toggle('hidden'); }
 document.addEventListener('click',()=>document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')));
 
-async function openFolder(folderId){ currentFolderId=folderId; selectedDocs.clear(); updateActionBar(); const folder=folders.find(f=>String(f.id)===String(folderId)); if(!folder) return; document.getElementById('main-view').classList.add('hidden'); document.getElementById('folder-view').classList.remove('hidden'); document.getElementById('folder-icon').innerHTML=`<i class="fa-solid ${folder.icon}"></i>`; document.getElementById('folder-icon').style.color=folder.color; document.getElementById('folder-icon').style.backgroundColor=`${folder.color}16`; document.getElementById('folder-title').textContent=formatVaultFolderName(folder.name); setFolderDescription(folder); const searchEl=document.getElementById('folder-search'); if(searchEl) searchEl.value=''; await loadDocumentsByFolder(folderId); document.getElementById('folder-count').textContent=`${documents.length} document${documents.length!==1?'s':''}`; setFolderView(currentFolderView, false); renderFolderDocuments(); window.scrollTo({top:0,behavior:'smooth'}); }
+async function openFolder(folderId){
+    currentFolderId=folderId;
+    selectedDocs.clear();
+    updateActionBar();
+    const folder=folders.find(f=>String(f.id)===String(folderId));
+    if(!folder) return;
+    document.getElementById('main-view').classList.add('hidden');
+    document.getElementById('folder-view').classList.remove('hidden');
+    document.getElementById('folder-icon').innerHTML=`<i class="fa-solid ${folder.icon}"></i>`;
+    document.getElementById('folder-icon').style.color=folder.color;
+    document.getElementById('folder-icon').style.backgroundColor=`${folder.color}16`;
+    document.getElementById('folder-title').textContent=formatVaultFolderName(folder.name);
+    setFolderDescription(folder);
+    const searchEl=document.getElementById('folder-search');
+    if(searchEl) searchEl.value='';
+
+    // Instant render if cached
+    if(FOLDER_DOCS_CACHE.has(String(folderId))){
+        documents = FOLDER_DOCS_CACHE.get(String(folderId));
+        document.getElementById('folder-count').textContent=`${documents.length} document${documents.length!==1?'s':''}`;
+        renderFolderDocuments();
+    } else {
+        document.getElementById('folder-documents-container').innerHTML=`
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="skeleton-card"><div class="skeleton-text" style="width:60%"></div></div>
+                <div class="skeleton-card"><div class="skeleton-text" style="width:60%"></div></div>
+                <div class="skeleton-card"><div class="skeleton-text" style="width:60%"></div></div>
+            </div>`;
+    }
+
+    await loadDocumentsByFolder(folderId);
+    document.getElementById('folder-count').textContent=`${documents.length} document${documents.length!==1?'s':''}`;
+    setFolderView(currentFolderView, false);
+    renderFolderDocuments();
+    window.scrollTo({top:0,behavior:'smooth'});
+}
 function goBackToMain(){ document.getElementById('folder-view').classList.add('hidden'); document.getElementById('main-view').classList.remove('hidden'); currentFolderId=null; selectedDocs.clear(); updateActionBar(); }
 function editCurrentFolder(){ if(currentFolderId) openFolderEditor(currentFolderId); }
 async function deleteCurrentFolder(){ if(currentFolderId) await deleteFolderById(currentFolderId); }
@@ -828,38 +1144,456 @@ function renderTileDoc(doc){
     return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow flex gap-3 items-start"><input type="checkbox" class="doc-checkbox absolute top-3 right-3" ${isSelected(doc.id)?'checked':''} onchange='toggleSelect(${jsArg(doc.id)})'><div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-slate-100 text-[#621708] flex items-center justify-center text-xl sm:text-2xl shrink-0"><i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i></div><div class="flex-1 min-w-0 pr-6"><div class="font-extrabold text-xs sm:text-sm text-slate-900 truncate">${escapeHtml(doc.name)}</div><div class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 truncate">${docMeta(doc)}</div><div class="flex flex-wrap gap-1.5 sm:gap-2 mt-2.5 sm:mt-3"><button onclick='viewDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-lg font-bold text-slate-700"><i class="fa-solid fa-eye mr-1"></i>Preview</button><button onclick='downloadDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-lg font-bold"><i class="fa-solid fa-download mr-1"></i>Download</button><button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs border border-red-200 hover:bg-red-50 text-red-600 rounded-lg font-bold"><i class="fa-solid fa-trash-can"></i></button></div></div></div>`;
 }
 
+// Folder Appearance Configurations
+const FOLDER_COLORS = [
+    { value: '#6b21a8', label: 'Purple' },
+    { value: '#2563eb', label: 'Blue' },
+    { value: '#059669', label: 'Emerald' },
+    { value: '#dc2626', label: 'Crimson' },
+    { value: '#d97706', label: 'Amber' },
+    { value: '#0891b2', label: 'Cyan' },
+    { value: '#475569', label: 'Slate' },
+    { value: '#e11d48', label: 'Rose' }
+];
+
+const FOLDER_ICONS = [
+    { value: 'fa-folder', label: 'Folder' },
+    { value: 'fa-folder-open', label: 'Open Folder' },
+    { value: 'fa-file-lines', label: 'Documents' },
+    { value: 'fa-graduation-cap', label: 'Academic' },
+    { value: 'fa-book', label: 'Book' },
+    { value: 'fa-clipboard-list', label: 'Checklist' },
+    { value: 'fa-landmark', label: 'Official' },
+    { value: 'fa-box-archive', label: 'Archive' },
+    { value: 'fa-shield-halved', label: 'Security' },
+    { value: 'fa-award', label: 'Awards' }
+];
+
+let stagedUploadFiles = [];
+
+function initFolderEditorPickers(){
+    const colorContainer = document.getElementById('folder-color-chips');
+    const iconContainer = document.getElementById('folder-icon-chips');
+    if(colorContainer){
+        colorContainer.innerHTML = FOLDER_COLORS.map(c => `
+            <button type="button" class="color-chip" data-color="${c.value}" style="background-color: ${c.value};" onclick="selectFolderColor('${c.value}')" title="${c.label}"></button>
+        `).join('');
+    }
+    if(iconContainer){
+        iconContainer.innerHTML = FOLDER_ICONS.map(i => `
+            <button type="button" class="icon-chip" data-icon="${i.value}" onclick="selectFolderIcon('${i.value}')" title="${i.label}">
+                <i class="fa-solid ${i.value}"></i>
+            </button>
+        `).join('');
+    }
+}
+
+function selectFolderColor(color){
+    document.getElementById('edit-folder-color').value = color;
+    document.querySelectorAll('.color-chip').forEach(el => {
+        el.classList.toggle('active', el.dataset.color === color);
+    });
+    updateFolderLivePreview();
+}
+
+function selectFolderIcon(icon){
+    document.getElementById('edit-folder-icon').value = icon;
+    document.querySelectorAll('.icon-chip').forEach(el => {
+        el.classList.toggle('active', el.dataset.icon === icon);
+    });
+    updateFolderLivePreview();
+}
+
+function updateFolderLivePreview(){
+    const name = document.getElementById('edit-folder-name')?.value.trim() || 'New Folder';
+    const desc = document.getElementById('edit-folder-description')?.value.trim() || 'No description provided';
+    const color = document.getElementById('edit-folder-color')?.value || '#6b21a8';
+    const icon = document.getElementById('edit-folder-icon')?.value || 'fa-folder';
+
+    const iconEl = document.getElementById('folder-live-preview-icon');
+    const nameEl = document.getElementById('folder-live-preview-name');
+    const descEl = document.getElementById('folder-live-preview-desc');
+
+    if(iconEl){
+        iconEl.innerHTML = `<i class="fa-solid ${icon}"></i>`;
+        iconEl.style.backgroundColor = `${color}20`;
+        iconEl.style.color = color;
+    }
+    if(nameEl) nameEl.textContent = formatVaultFolderName(name);
+    if(descEl) descEl.textContent = desc;
+}
+
 function openFolderEditor(folderId=null){
-    const folder=folderId?folders.find(f=>String(f.id)===String(folderId)):null;
-    document.getElementById('folder-editor-title').textContent=folder?'Edit Folder':'New Folder';
-    document.getElementById('edit-folder-id').value=folder?.id||'';
-    document.getElementById('edit-folder-name').value=folder?.name||'';
-    document.getElementById('edit-folder-description').value=folder?.description||'';
-    document.getElementById('edit-folder-icon').value=folder?.icon||'fa-folder';
-    document.getElementById('edit-folder-color').value=folder?.color||'#6b21a8';
+    initFolderEditorPickers();
+    const folder = folderId ? folders.find(f => String(f.id) === String(folderId)) : null;
+    document.getElementById('folder-editor-title').textContent = folder ? 'Edit Folder' : 'New Folder';
+    document.getElementById('edit-folder-id').value = folder?.id || '';
+    document.getElementById('edit-folder-name').value = folder?.name || '';
+    document.getElementById('edit-folder-description').value = folder?.description || '';
+    
+    const color = folder?.color || '#6b21a8';
+    const icon = folder?.icon || 'fa-folder';
+    selectFolderColor(color);
+    selectFolderIcon(icon);
+
     document.getElementById('folder-editor-modal').classList.remove('hidden');
     document.getElementById('folder-editor-modal').classList.add('flex');
-    refreshCompactSelect(document.getElementById('edit-folder-icon'));
-    refreshCompactSelect(document.getElementById('edit-folder-color'));
 }
-function closeFolderEditor(){ document.getElementById('folder-editor-modal').classList.add('hidden'); document.getElementById('folder-editor-modal').classList.remove('flex'); }
-async function saveFolder(){ if(!ensureSupabaseReady()) return; const id=document.getElementById('edit-folder-id').value; const payload={ name: document.getElementById('edit-folder-name').value.trim().toUpperCase(), description: document.getElementById('edit-folder-description').value.trim(), icon: document.getElementById('edit-folder-icon').value, color: document.getElementById('edit-folder-color').value }; if(!payload.name){ alert('Please enter a folder name.'); return; } const existing=folders.find(f=>f.name.toUpperCase()===payload.name && String(f.id)!==String(id)); if(existing){ alert('A folder with this name already exists.'); return; } const result=id? await supabaseClient.from('folders').update(payload).eq('id',id) : await supabaseClient.from('folders').insert(payload); if(result.error){ console.error(result.error); alert('Unable to save folder: '+result.error.message); return; } closeFolderEditor(); await loadFolders(); renderFolders(); if(currentFolderId && String(currentFolderId)===String(id)){ await openFolder(currentFolderId); } showDocumentToast('Folder saved.'); }
-async function deleteFolderById(folderId){ if(!ensureSupabaseReady()) return; const folder=folders.find(f=>String(f.id)===String(folderId)); if(!folder) return; const docs=allDocuments.filter(d=>String(d.folder_id)===String(folderId)); const message=docs.length?`Delete folder "${folder.name}" and its ${docs.length} document(s)? This cannot be undone.`:`Delete folder "${folder.name}"?`; if(!confirm(message)) return; for(const doc of docs){ await removeStorageObject(doc); } const {error:docErr}=await supabaseClient.from('documents').delete().eq('folder_id',folderId); if(docErr){ console.error(docErr); alert('Unable to delete folder documents: '+docErr.message); return; } const {error}=await supabaseClient.from('folders').delete().eq('id',folderId); if(error){ console.error(error); alert('Unable to delete folder: '+error.message); return; } if(String(currentFolderId)===String(folderId)) goBackToMain(); await loadFolders(); renderFolders(); showDocumentToast('Folder deleted.'); }
+
+function closeFolderEditor(){
+    document.getElementById('folder-editor-modal').classList.add('hidden');
+    document.getElementById('folder-editor-modal').classList.remove('flex');
+}
+
+async function saveFolder(){
+    if(!ensureSupabaseReady()) return;
+    const id = document.getElementById('edit-folder-id').value;
+    const payload = {
+        name: document.getElementById('edit-folder-name').value.trim().toUpperCase(),
+        description: document.getElementById('edit-folder-description').value.trim(),
+        icon: document.getElementById('edit-folder-icon').value || 'fa-folder',
+        color: document.getElementById('edit-folder-color').value || '#6b21a8'
+    };
+    if(!payload.name){
+        alert('Please enter a folder name.');
+        return;
+    }
+    const existing = folders.find(f => f.name.toUpperCase() === payload.name && String(f.id) !== String(id));
+    if(existing){
+        alert('A folder with this name already exists.');
+        return;
+    }
+    const result = id 
+        ? await supabaseClient.from('folders').update(payload).eq('id', id)
+        : await supabaseClient.from('folders').insert(payload);
+
+    if(result.error){
+        console.error(result.error);
+        alert('Unable to save folder: ' + result.error.message);
+        return;
+    }
+    closeFolderEditor();
+    await loadFolders();
+    renderFolders();
+    if(currentFolderId && String(currentFolderId) === String(id)){
+        await openFolder(currentFolderId);
+    }
+    showDocumentToast('Folder saved.');
+}
+
+async function deleteFolderById(folderId){
+    if(!ensureSupabaseReady()) return;
+    const folder = folders.find(f => String(f.id) === String(folderId));
+    if(!folder) return;
+    
+    // Fetch only documents belonging to this specific folder for storage cleanup
+    const { data: docsInFolder } = await supabaseClient.from('documents').select('id, file_path, name').eq('folder_id', folderId);
+    const docs = docsInFolder || [];
+    const message = docs.length 
+        ? `Delete folder "${folder.name}" and its ${docs.length} document(s)? This cannot be undone.`
+        : `Delete folder "${folder.name}"?`;
+    if(!confirm(message)) return;
+    for(const doc of docs){
+        await removeStorageObject(doc);
+    }
+    const { error: docErr } = await supabaseClient.from('documents').delete().eq('folder_id', folderId);
+    if(docErr){
+        console.error(docErr);
+        alert('Unable to delete folder documents: ' + docErr.message);
+        return;
+    }
+    const { error } = await supabaseClient.from('folders').delete().eq('id', folderId);
+    if(error){
+        console.error(error);
+        alert('Unable to delete folder: ' + error.message);
+        return;
+    }
+    FOLDER_DOCS_CACHE.delete(String(folderId));
+    if(String(currentFolderId) === String(folderId)) goBackToMain();
+    await loadFolders();
+    renderFolders();
+    showDocumentToast('Folder deleted.');
+}
+
+// Staged File Handling for Uploads
+function handleMainFilesSelected(fileList){
+    if(!fileList || !fileList.length) return;
+    addFilesToStaged(fileList, 'main');
+}
+
+function handleSimpleFilesSelected(fileList){
+    if(!fileList || !fileList.length) return;
+    addFilesToStaged(fileList, 'simple');
+}
+
+function addFilesToStaged(fileList, modalType){
+    for(let i = 0; i < fileList.length; i++){
+        const f = fileList[i];
+        // Prevent exact duplicates in queue
+        const exists = stagedUploadFiles.some(existing => existing.name === f.name && existing.size === f.size);
+        if(!exists) stagedUploadFiles.push(f);
+    }
+    renderStagedUploadFiles(modalType);
+}
+
+function removeStagedFile(index, modalType){
+    stagedUploadFiles.splice(index, 1);
+    renderStagedUploadFiles(modalType);
+}
+
+function clearStagedUploadFiles(){
+    stagedUploadFiles = [];
+    const mainInput = document.getElementById('main-file-input');
+    const simpleInput = document.getElementById('simple-file-input');
+    if(mainInput) mainInput.value = '';
+    if(simpleInput) simpleInput.value = '';
+    renderStagedUploadFiles('main');
+    renderStagedUploadFiles('simple');
+}
+
+function renderStagedUploadFiles(modalType='main'){
+    const prefix = modalType === 'simple' ? 'simple' : 'upload';
+    const section = document.getElementById(`${prefix}-staged-section`);
+    const countEl = document.getElementById(`${prefix}-staged-count`);
+    const listEl = document.getElementById(`${prefix}-staged-list`);
+
+    if(!section || !countEl || !listEl) return;
+
+    if(!stagedUploadFiles.length){
+        section.classList.add('hidden');
+        listEl.innerHTML = '';
+        countEl.textContent = '0';
+        return;
+    }
+
+    section.classList.remove('hidden');
+    countEl.textContent = stagedUploadFiles.length;
+    listEl.innerHTML = stagedUploadFiles.map((file, idx) => `
+        <div class="upload-file-item flex items-center justify-between py-2 px-2.5 rounded-xl">
+            <div class="flex items-center gap-3 min-w-0 flex-1 mr-2">
+                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-sm shrink-0" style="color: ${getFileIconColor(file.name, file.type)};">
+                    <i class="fa-solid ${getFileIconClass(file.name, file.type)}"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs font-bold text-slate-800 truncate">${escapeHtml(file.name)}</div>
+                    <div class="text-[10px] text-slate-400 font-medium">${formatFileSize(file.size)}</div>
+                </div>
+            </div>
+            <button type="button" onclick="removeStagedFile(${idx}, '${modalType}')" class="w-7 h-7 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors text-xs" title="Remove file">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    `).join('');
+}
 
 function showMainUploadModal(){
-    const select=document.getElementById('doc-folder-select');
-    select.innerHTML='<option value="">Choose folder</option>'+folders.map(f=>`<option value="${f.id}" ${String(f.id)===String(currentFolderId)?'selected':''}>${escapeHtml(formatVaultFolderName(f.name))}</option>`).join('');
+    const select = document.getElementById('doc-folder-select');
+    select.innerHTML = '<option value="">Choose folder</option>' + folders.map(f => 
+        `<option value="${f.id}" ${String(f.id) === String(currentFolderId) ? 'selected' : ''}>${escapeHtml(formatVaultFolderName(f.name))}</option>`
+    ).join('');
+    clearStagedUploadFiles();
+    hideUploadProgress('main');
     document.getElementById('main-upload-modal').classList.remove('hidden');
     document.getElementById('main-upload-modal').classList.add('flex');
     refreshCompactSelect(select);
 }
-function hideMainUploadModal(){ document.getElementById('main-upload-modal').classList.add('hidden'); document.getElementById('main-upload-modal').classList.remove('flex'); document.getElementById('main-file-input').value=''; }
-function showSimpleUploadModal(){ document.getElementById('simple-upload-modal').classList.remove('hidden'); document.getElementById('simple-upload-modal').classList.add('flex'); }
-function hideSimpleUploadModal(){ document.getElementById('simple-upload-modal').classList.add('hidden'); document.getElementById('simple-upload-modal').classList.remove('flex'); document.getElementById('simple-file-input').value=''; }
-async function uploadFilesToFolder(files, folderId){ if(!ensureSupabaseReady()) return; if(!files.length){ alert('Please select at least one file.'); return; } if(!folderId){ alert('Please select a folder.'); return; } for(const file of files){ const filePath=buildFilePath(folderId,file.name); const {error:uploadError}=await supabaseClient.storage.from(STORAGE_BUCKET).upload(filePath,file,{upsert:false,contentType:file.type||undefined}); if(uploadError){ console.error(uploadError); alert(`Failed to upload "${file.name}": ${uploadError.message}`); continue; } const {error:insertError}=await supabaseClient.from('documents').insert({name:file.name,folder_id:folderId,file_path:filePath,mime_type:file.type,size_bytes:file.size}); if(insertError){ console.error(insertError); alert(`Uploaded file but failed saving record for "${file.name}": ${insertError.message}`); } } showDocumentToast('Upload complete.'); await refreshVault(); }
-async function uploadMainFiles(){ const files=document.getElementById('main-file-input').files; const folderId=parseInt(document.getElementById('doc-folder-select').value); await uploadFilesToFolder(files,folderId); hideMainUploadModal(); }
-async function uploadToCurrentFolder(){ const files=document.getElementById('simple-file-input').files; await uploadFilesToFolder(files,currentFolderId); hideSimpleUploadModal(); }
 
-async function removeStorageObject(doc){ const paths=getCandidatePaths(doc.file_path, doc); for(const path of paths){ await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]); } }
+function hideMainUploadModal(){
+    document.getElementById('main-upload-modal').classList.add('hidden');
+    document.getElementById('main-upload-modal').classList.remove('flex');
+    clearStagedUploadFiles();
+    hideUploadProgress('main');
+}
+
+function showSimpleUploadModal(){
+    const activeFolder = folders.find(f => String(f.id) === String(currentFolderId));
+    const subtitle = document.getElementById('simple-upload-subtitle');
+    if(subtitle && activeFolder) {
+        subtitle.textContent = `Upload to folder: ${formatVaultFolderName(activeFolder.name)}`;
+    }
+    clearStagedUploadFiles();
+    hideUploadProgress('simple');
+    document.getElementById('simple-upload-modal').classList.remove('hidden');
+    document.getElementById('simple-upload-modal').classList.add('flex');
+}
+
+function hideSimpleUploadModal(){
+    document.getElementById('simple-upload-modal').classList.add('hidden');
+    document.getElementById('simple-upload-modal').classList.remove('flex');
+    clearStagedUploadFiles();
+    hideUploadProgress('simple');
+}
+
+function setUploadProgress(modalType, current, total, fileName=''){
+    const prefix = modalType === 'simple' ? 'simple' : 'upload';
+    const container = document.getElementById(`${prefix}-progress-container`);
+    const statusEl = document.getElementById(`${prefix}-progress-status`);
+    const percentEl = document.getElementById(`${prefix}-progress-percent`);
+    const barEl = document.getElementById(`${prefix}-progress-bar`);
+    const submitBtn = document.getElementById(modalType === 'simple' ? 'simple-submit-btn' : 'upload-submit-btn');
+    const cancelBtn = document.getElementById(modalType === 'simple' ? 'simple-cancel-btn' : 'upload-cancel-btn');
+
+    if(container) container.classList.remove('hidden');
+    if(submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+    if(cancelBtn) {
+        cancelBtn.disabled = true;
+        cancelBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    if(statusEl) statusEl.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i> Uploading file ${current} of ${total}: ${escapeHtml(fileName)}`;
+    if(percentEl) percentEl.textContent = `${pct}%`;
+    if(barEl) barEl.style.width = `${pct}%`;
+}
+
+function hideUploadProgress(modalType){
+    const prefix = modalType === 'simple' ? 'simple' : 'upload';
+    const container = document.getElementById(`${prefix}-progress-container`);
+    const submitBtn = document.getElementById(modalType === 'simple' ? 'simple-submit-btn' : 'upload-submit-btn');
+    const cancelBtn = document.getElementById(modalType === 'simple' ? 'simple-cancel-btn' : 'upload-cancel-btn');
+
+    if(container) container.classList.add('hidden');
+    if(submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+    if(cancelBtn) {
+        cancelBtn.disabled = false;
+        cancelBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+}
+
+async function vaultStorageRequest(action, { path, file, contentType } = {}){
+    const client = window.supabaseClient || getVaultClient();
+    if(!client?.auth?.getSession) throw new Error('Supabase client is not available. Please refresh the page.');
+    if (window.CiteFlowAuthGuard?.ready) await window.CiteFlowAuthGuard.ready;
+
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if(sessionError || !accessToken) throw new Error('Your session expired. Please sign in again.');
+
+    const anonKey = window.__SUPABASE_ANON__ || supabaseConfig?.anonKey;
+    if(!anonKey) throw new Error('Supabase client is not available. Please refresh the page.');
+
+    const headers = {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey
+    };
+    let body;
+    if(action === 'upload'){
+        const form = new FormData();
+        form.append('action', 'upload');
+        form.append('path', path);
+        form.append('contentType', contentType || file?.type || 'application/octet-stream');
+        form.append('file', file, file?.name || 'upload');
+        body = form;
+    } else {
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({ action, path });
+    }
+
+    const response = await fetch('https://uforealazougjckepggc.supabase.co/functions/v1/document-vault', {
+        method: 'POST',
+        headers,
+        body
+    });
+    if(!response.ok){
+        let message = 'Document Vault storage failed.';
+        try {
+            const payload = await response.json();
+            if(payload?.error) message = payload.error;
+        } catch(_) {}
+        throw new Error(message);
+    }
+    if(action === 'download'){
+        const blob = await response.blob();
+        if(blob instanceof Blob) return { blob };
+        throw new Error('Document Vault download failed.');
+    }
+    const data = await response.json();
+    if(data?.error) throw new Error(data.error);
+    return data;
+}
+async function uploadFilesToFolder(files, folderId, modalType='main'){
+    if(!ensureSupabaseReady()) return;
+    const client = getVaultClient();
+    if(!client){
+        alert('Supabase client is not available. Please refresh the page.');
+        return;
+    }
+    if(!files || !files.length){
+        alert('Please select or drop at least one file.');
+        return;
+    }
+    if(!folderId){
+        alert('Please choose a destination folder.');
+        return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for(let i = 0; i < files.length; i++){
+        const file = files[i];
+        setUploadProgress(modalType, i + 1, files.length, file.name);
+
+        const filePath = buildFilePath(folderId, file.name);
+        const contentType = resolveVaultUploadContentType(file);
+
+        try {
+            await vaultStorageRequest('upload', { path: filePath, file, contentType });
+        } catch(uploadError) {
+            console.error('Document Vault upload error:', uploadError);
+            alert(`Failed to upload "${file.name}":\n\n${uploadError.message || 'Upload failed'}`);
+            failCount++;
+            continue;
+        }
+
+        // 2. Insert record into database table
+        const { error: insertError } = await client.from('documents').insert({
+            name: file.name,
+            folder_id: folderId,
+            file_path: filePath,
+            mime_type: contentType,
+            size_bytes: file.size
+        });
+
+        if(insertError){
+            console.error('Database insert error:', insertError);
+            alert(`Uploaded file to storage, but failed to save database record for "${file.name}":\n${insertError.message}`);
+            failCount++;
+        } else {
+            successCount++;
+        }
+    }
+
+    hideUploadProgress(modalType);
+
+    if(modalType === 'simple') hideSimpleUploadModal();
+    else hideMainUploadModal();
+
+    if(successCount > 0){
+        showDocumentToast(`Uploaded ${successCount} document${successCount !== 1 ? 's' : ''}.`);
+        await refreshVault();
+    }
+}
+
+async function uploadMainFiles(){
+    const folderSelect = document.getElementById('doc-folder-select');
+    const folderId = folderSelect?.value || null;
+    const files = stagedUploadFiles.length ? stagedUploadFiles : document.getElementById('main-file-input')?.files;
+    await uploadFilesToFolder(files, folderId, 'main');
+}
+
+async function uploadToCurrentFolder(){
+    const files = stagedUploadFiles.length ? stagedUploadFiles : document.getElementById('simple-file-input')?.files;
+    await uploadFilesToFolder(files, currentFolderId, 'simple');
+}
+
+async function removeStorageObject(doc){ const paths=getCandidatePaths(doc.file_path, doc); for(const path of paths){ try { await vaultStorageRequest('delete', { path }); return; } catch(err) { console.warn('Document Vault delete attempt failed:', path, err); } } }
 async function deleteSingleDocument(id){ const doc=documents.find(d=>String(d.id)===String(id)); if(!doc) return; if(!confirm(`Delete "${doc.name}"?`)) return; await removeStorageObject(doc); const {error}=await supabaseClient.from('documents').delete().eq('id',id); if(error){ alert('Unable to delete document: '+error.message); return; } await refreshVault(); showDocumentToast('Document deleted.'); }
 async function deleteSelectedDocuments(){
     if(!selectedDocs.size) return;
@@ -929,26 +1663,16 @@ async function resolveDocumentAccessUrl(doc, expiresInSeconds=3600, download=fal
     if(!doc?.file_path) return null;
     if(isExternalUrl(doc.file_path)) return {url:doc.file_path,path:doc.file_path,revoke:null};
     const paths=getCandidatePaths(doc.file_path, doc);
-    console.log('Trying document paths:', {bucket:STORAGE_BUCKET, databaseFilePath:doc.file_path, candidatePaths:paths});
     let lastError=null;
     for(const path of paths){
-        const options=download ? {download: doc.name || true} : undefined;
-        const {data,error}=await supabaseClient.storage.from(STORAGE_BUCKET).createSignedUrl(path,expiresInSeconds,options);
-        if(!error&&data?.signedUrl) return {url:data.signedUrl,path,revoke:null};
-        lastError=error||lastError;
-    }
-    if(!download){
-        for(const path of paths){
-            const {data,error}=await supabaseClient.storage.from(STORAGE_BUCKET).download(path);
-            if(!error&&data){
-                const url=URL.createObjectURL(data);
+        try {
+            const result=await vaultStorageRequest('download', { path });
+            if(result?.blob){
+                const url=URL.createObjectURL(result.blob);
                 return {url,path,revoke:()=>URL.revokeObjectURL(url)};
             }
-            lastError=error||lastError;
-        }
-        for(const path of paths){
-            const {data}=supabaseClient.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-            if(data?.publicUrl) return {url:data.publicUrl,path,revoke:null};
+        } catch(err) {
+            lastError=err;
         }
     }
     console.error('Document access failed:', {doc,paths,lastError});
@@ -963,8 +1687,12 @@ async function resolveDocumentBlob(doc){
     }
     const paths=getCandidatePaths(doc.file_path, doc);
     for(const path of paths){
-        const {data,error}=await supabaseClient.storage.from(STORAGE_BUCKET).download(path);
-        if(!error&&data) return data;
+        try {
+            const result=await vaultStorageRequest('download', { path });
+            if(result?.blob) return result.blob;
+        } catch(err) {
+            console.warn('Document Vault download attempt failed:', path, err);
+        }
     }
     return null;
 }
@@ -1040,7 +1768,45 @@ async function downloadDocument(id){
 }
 async function downloadCurrentPreviewDocument(){ if(currentPreviewDocument) await downloadDocument(currentPreviewDocument.id); }
 
-function setupDropZone(){ const dz=document.getElementById('main-drop-zone'); if(!dz) return; ['dragenter','dragover'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.add('drag-over'); })); ['dragleave','drop'].forEach(evt=>dz.addEventListener(evt,e=>{ e.preventDefault(); dz.classList.remove('drag-over'); })); dz.addEventListener('drop',e=>{ const input = document.getElementById('main-file-input'); if(input) input.files=e.dataTransfer.files; }); }
+function setupDropZone(){
+    const mainDz = document.getElementById('main-drop-zone');
+    if(mainDz){
+        ['dragenter','dragover'].forEach(evt => mainDz.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            mainDz.classList.add('drag-over');
+        }));
+        ['dragleave','drop'].forEach(evt => mainDz.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            mainDz.classList.remove('drag-over');
+        }));
+        mainDz.addEventListener('drop', e => {
+            if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+                handleMainFilesSelected(e.dataTransfer.files);
+            }
+        });
+    }
+
+    const simpleDz = document.getElementById('simple-drop-zone');
+    if(simpleDz){
+        ['dragenter','dragover'].forEach(evt => simpleDz.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            simpleDz.classList.add('drag-over');
+        }));
+        ['dragleave','drop'].forEach(evt => simpleDz.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            simpleDz.classList.remove('drag-over');
+        }));
+        simpleDz.addEventListener('drop', e => {
+            if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+                handleSimpleFilesSelected(e.dataTransfer.files);
+            }
+        });
+    }
+}
 
 function closeAllCompactSelects(exceptPanel) {
     document.querySelectorAll('.compact-select-panel').forEach((panel) => {
@@ -1158,15 +1924,116 @@ document.addEventListener('keydown',e=>{
     hideSimpleUploadModal();
     hideMoveDocsModal();
 });
-window.addEventListener('load', async () => {
+async function runDocumentVaultDiagnostic() {
+    try {
+        const client = getVaultClient() || window.supabaseClient;
+        if (!client || !client.auth) {
+            console.warn('[DOCUMENT VAULT AUTH] Supabase client or auth not available');
+            return;
+        }
+
+        // 1. Call client.auth.getSession()
+        const { data: sessionData, error: sessionError } = await client.auth.getSession();
+        const session = sessionData?.session;
+        const hasSession = Boolean(session);
+        const authUid = session?.user?.id || null;
+        const email = session?.user?.email || null;
+
+        // 2. Log ONLY: [DOCUMENT VAULT AUTH] -> hasSession, authUid, email, sessionError
+        console.log('[DOCUMENT VAULT AUTH]', {
+            hasSession,
+            authUid,
+            email,
+            sessionError: sessionError ? (sessionError.message || sessionError) : null
+        });
+
+        // 3. If a session exists, query public.admin_profiles using session.user.id
+        let adminProfile = null;
+        let adminError = null;
+        if (session?.user?.id) {
+            const profileRes = await client
+                .from('admin_profiles')
+                .select('id,email,role')
+                .eq('id', session.user.id)
+                .maybeSingle();
+            adminProfile = profileRes.data || null;
+            adminError = profileRes.error ? (profileRes.error.message || profileRes.error) : null;
+        }
+
+        // 4. Log: [DOCUMENT VAULT ADMIN PROFILE] -> adminProfile, adminError
+        console.log('[DOCUMENT VAULT ADMIN PROFILE]', {
+            adminProfile,
+            adminError
+        });
+
+        // 5. Also call: client.rpc('is_document_vault_admin')
+        let checkData = null;
+        let checkError = null;
+        try {
+            const rpcRes = await client.rpc('is_document_vault_admin');
+            checkData = rpcRes.data;
+            checkError = rpcRes.error ? (rpcRes.error.message || rpcRes.error) : null;
+        } catch(e) {
+            checkError = e.message || String(e);
+        }
+
+        // Log: [DOCUMENT VAULT ADMIN CHECK] -> data, error
+        console.log('[DOCUMENT VAULT ADMIN CHECK]', {
+            data: checkData,
+            error: checkError
+        });
+
+        // 6. Check storage bucket metadata
+        try {
+            const { data: bucketData, error: bucketError } = await client.storage.getBucket(STORAGE_BUCKET);
+            console.log('[DOCUMENT VAULT BUCKET INFO]', {
+                bucketData,
+                bucketError: bucketError ? (bucketError.message || bucketError) : null
+            });
+        } catch(bErr) {
+            console.warn('[DOCUMENT VAULT BUCKET INFO ERROR]:', bErr.message);
+        }
+
+        // 7. List all buckets visible to current session
+        try {
+            const { data: allBuckets, error: listError } = await client.storage.listBuckets();
+            console.log('[DOCUMENT VAULT LIST BUCKETS]', {
+                allBuckets: allBuckets ? allBuckets.map(b => ({ id: b.id, name: b.name, public: b.public })) : null,
+                listError: listError ? listError.message : null
+            });
+        } catch(lErr) {
+            console.warn('[DOCUMENT VAULT LIST BUCKETS ERROR]:', lErr.message);
+        }
+    } catch(err) {
+        console.error('Error during Document Vault diagnostic:', err);
+    }
+}
+window.runDocumentVaultDiagnostic = runDocumentVaultDiagnostic;
+
+async function initVaultApp() {
+    // 1. Instant Cache Render: paint folders and stats immediately (0ms wait for user)
+    restoreCachedFolders();
     setupDropZone();
     initCompactSelects();
+    setFolderView(currentFolderView, false);
+
+    // 2. Run Document Vault diagnostic using existing Supabase client/session
+    runDocumentVaultDiagnostic();
+
+    // 3. Parallel Background tasks: non-blocking sidebar load + fresh vault sync
     if (typeof loadSidebar === 'function') {
-        try { await loadSidebar(); } catch (err) { console.warn(err); }
+        loadSidebar().catch(err => console.warn('Sidebar background load error:', err));
     }
+
+    // 4. Fetch fresh database data in parallel and update UI
     await refreshVault();
-    setFolderView(currentFolderView,false);
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initVaultApp);
+} else {
+    initVaultApp();
+}
 </script>
 <script src="../shared/system-ui.js"></script>
 <script src="engagement-logger.js"></script>

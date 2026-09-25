@@ -8,6 +8,9 @@ window.CiteFlowAuth = (function () {
             persistSession: true,
             autoRefreshToken: true,
             detectSessionInUrl: true
+        },
+        storage: {
+            useNewHostname: true
         }
     };
 
@@ -16,6 +19,7 @@ window.CiteFlowAuth = (function () {
      */
     function getClient() {
         if (window.supabaseClient) {
+            installSessionGuard(window.supabaseClient);
             return window.supabaseClient;
         }
         if (window.supabase && typeof window.supabase.createClient === 'function' && window.__SUPABASE_URL__ && window.__SUPABASE_ANON__) {
@@ -24,6 +28,7 @@ window.CiteFlowAuth = (function () {
                 window.__SUPABASE_ANON__,
                 AUTH_CLIENT_OPTIONS
             );
+            installSessionGuard(window.supabaseClient);
             return window.supabaseClient;
         }
         console.error("CiteFlowAuth: Supabase client is not initialized.");
@@ -1064,13 +1069,133 @@ window.CiteFlowAuth = (function () {
         return lastKnownSession;
     }
 
+    function readOriginalSession(client) {
+        const read = client?._citeFlowOriginalGetSession || client?.auth?.getSession?.bind(client.auth);
+        return read ? read() : Promise.resolve({ data: { session: null } });
+    }
+
+    function tokenExpiry(session) {
+        let expiresAt = Number(session?.expires_at || 0);
+        if (!expiresAt && session?.access_token) {
+            try {
+                const parts = session.access_token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                    if (payload?.exp) expiresAt = Number(payload.exp);
+                }
+            } catch (_) {}
+        }
+        return expiresAt;
+    }
+
+    function oversizedMetadataKeys(session) {
+        const meta = session?.user?.user_metadata || {};
+        const clear = {};
+        Object.keys(meta).forEach((key) => {
+            const value = meta[key];
+            if (typeof value === 'string' && value.startsWith('data:') && value.length > 512) {
+                clear[key] = null;
+            }
+        });
+        return clear;
+    }
+
+    /**
+     * A data-URL stored in user_metadata is copied into every access token.
+     * Supabase then sends that token as Authorization, and the storage gateway
+     * rejects the oversized header. Refresh with the refresh token only, clear
+     * those fields, then refresh once more so the client holds a normal token.
+     */
+    async function recoverOversizedSession(client) {
+        const sb = client || getClient();
+        if (!sb?.auth || sb._citeFlowRecoverInFlight) return sb?._citeFlowRecoverInFlight || null;
+        sb._citeFlowRecoverInFlight = (async () => {
+            sb._citeFlowGuardBusy = true;
+            const { data } = await readOriginalSession(sb);
+            const existing = data?.session || null;
+            if (!existing?.refresh_token) return existing;
+            const oversized = (existing.access_token || '').length > 8000 || Object.keys(oversizedMetadataKeys(existing)).length > 0;
+            if (!oversized) return existing;
+
+            const response = await fetch(`${window.__SUPABASE_URL__}/auth/v1/token?grant_type=refresh_token`, {
+                method: 'POST',
+                headers: {
+                    apikey: window.__SUPABASE_ANON__,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ refresh_token: existing.refresh_token })
+            });
+            const body = await response.json().catch(() => null);
+            if (!response.ok || !body?.access_token || !body?.refresh_token) return existing;
+
+            const applied = await sb.auth.setSession({
+                access_token: body.access_token,
+                refresh_token: body.refresh_token
+            });
+            let session = applied?.data?.session || null;
+            const clear = oversizedMetadataKeys(session);
+            if (Object.keys(clear).length) {
+                const updated = await sb.auth.updateUser({ data: clear });
+                if (!updated?.error && body.refresh_token) {
+                    const again = await fetch(`${window.__SUPABASE_URL__}/auth/v1/token?grant_type=refresh_token`, {
+                        method: 'POST',
+                        headers: {
+                            apikey: window.__SUPABASE_ANON__,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ refresh_token: body.refresh_token })
+                    });
+                    const next = await again.json().catch(() => null);
+                    if (again.ok && next?.access_token && next?.refresh_token) {
+                        const replaced = await sb.auth.setSession({
+                            access_token: next.access_token,
+                            refresh_token: next.refresh_token
+                        });
+                        session = replaced?.data?.session || session;
+                    }
+                }
+            }
+            if (session?.user?.id && session?.access_token) lastKnownSession = session;
+            return session;
+        })().finally(() => {
+            sb._citeFlowGuardBusy = false;
+            sb._citeFlowRecoverInFlight = null;
+        });
+        return sb._citeFlowRecoverInFlight;
+    }
+
+    function installSessionGuard(client) {
+        if (!client?.auth?.getSession || client._citeFlowOriginalGetSession) return;
+        const original = client.auth.getSession.bind(client.auth);
+        client._citeFlowOriginalGetSession = original;
+        client.auth.getSession = async () => {
+            if (client._citeFlowGuardBusy) return original();
+            client._citeFlowGuardBusy = true;
+            try {
+                const first = await original();
+                const session = first?.data?.session;
+                if (!session?.access_token) return first;
+                const needsRecovery = session.access_token.length > 8000
+                    || Object.keys(oversizedMetadataKeys(session)).length > 0;
+                if (!needsRecovery) return first;
+                const recovered = await recoverOversizedSession(client);
+                if (recovered?.access_token) {
+                    return { data: { session: recovered }, error: null };
+                }
+                return first;
+            } finally {
+                client._citeFlowGuardBusy = false;
+            }
+        };
+    }
+
     async function currentStoredSession(client) {
         const sb = client || getClient();
         if (!sb?.auth) return null;
         if (sb._citeFlowSessionReadInFlight) return sb._citeFlowSessionReadInFlight;
         sb._citeFlowSessionReadInFlight = (async () => {
             try {
-                const { data } = await sb.auth.getSession();
+                const { data } = await readOriginalSession(sb);
                 const session = data?.session || null;
                 if (session?.user?.id && session?.access_token) {
                     lastKnownSession = session;
@@ -1100,6 +1225,9 @@ window.CiteFlowAuth = (function () {
 
         // Inspect client session first. If client has no refresh token, do NOT call refreshSession()!
         const existing = (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
+        if ((existing?.access_token || '').length > 8000 || Object.keys(oversizedMetadataKeys(existing)).length) {
+            return recoverOversizedSession(client);
+        }
         if (!existing?.refresh_token && !force) {
             console.warn('[AUTH TRACE] refreshSessionShared skipped: No refresh token on client.');
             return (existing?.access_token && existing?.user) ? existing : null;
@@ -1197,6 +1325,12 @@ window.CiteFlowAuth = (function () {
 
         freshSessionInFlight = (async () => {
             const nowSec = Math.floor(Date.now() / 1000);
+            const before = await currentStoredSession(client);
+            const recovered = await recoverOversizedSession(client);
+            if ((before?.access_token || '').length > 8000 && recovered?.user?.id && recovered?.access_token && recovered.access_token.length <= 8000) {
+                lastKnownSession = recovered;
+                return recovered;
+            }
 
             // 1. Check if client already holds a live, unexpired session in its internal state
             const stored = await currentStoredSession(client);
@@ -1344,6 +1478,7 @@ window.CiteFlowAuth = (function () {
         getPersistedSupabaseSession,
         adoptSession,
         refreshSessionShared,
+        recoverOversizedSession,
         getRefreshState,
         getLastKnownSession,
         getDiagnosticSummary,

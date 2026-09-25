@@ -583,7 +583,8 @@ window.CiteFlowMessenger = (function () {
             const url = window.__SUPABASE_URL__ || DEFAULT_SUPABASE_URL;
             const key = window.__SUPABASE_ANON__ || DEFAULT_SUPABASE_ANON;
             window.supabaseClient = window.supabase.createClient(url, key, {
-                auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+                auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+                storage: { useNewHostname: true }
             });
             return window.supabaseClient;
         }

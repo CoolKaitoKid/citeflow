@@ -175,7 +175,7 @@
             try {
                 const adminLookup = await sb
                     .from('admin_profiles')
-                    .select('id, role, department')
+                    .select('id, role')
                     .eq('id', user.id)
                     .maybeSingle();
                 if (!adminLookup.error) adminProfile = adminLookup.data || null;
