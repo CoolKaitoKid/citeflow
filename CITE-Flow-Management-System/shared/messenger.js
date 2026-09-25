@@ -3671,7 +3671,7 @@ window.CiteFlowMessenger = (function () {
                     renderConversationList("");
                     renderExpandedConvoList();
                     updateUnreadBadge();
-                    showCustomToast('');
+                                       showCustomToast('');
                 }
                 break;
             case 'report':
