@@ -163,6 +163,9 @@
                     persistSession: true,
                     autoRefreshToken: true,
                     detectSessionInUrl: true
+                },
+                storage: {
+                    useNewHostname: true
                 }
             };
             window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, options);

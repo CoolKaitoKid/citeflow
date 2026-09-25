@@ -7,9 +7,9 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../shared/supabase-config.js"></script>
-    <script src="../shared/auth.js"></script>
-    <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
+    <script src="../shared/supabase-config.js?v=storage-host-1"></script>
+    <script src="../shared/auth.js?v=session-recover-1"></script>
+    <script src="../shared/auth-guard.js?v=admin-profile-dept-1"></script>
     <script src="../shared/workflow.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -1594,11 +1594,14 @@
             </div>
         </div>
 
-        <div class="border-t border-slate-100 bg-slate-50 px-7 py-5 flex justify-end gap-3 flex-shrink-0">
-            <button onclick="closeAccomplishmentModal()" class="secondary-btn">Cancel</button>
-            <button id="saveAccomplishmentBtn" onclick="saveAccomplishment()" class="primary-btn" data-theme-primary="true">
-                Save Accomplishment
-            </button>
+        <div class="border-t border-slate-100 bg-slate-50 px-7 py-5 flex items-center justify-between gap-3 flex-shrink-0">
+            <p id="accomplishmentUploadStatus" class="hidden text-sm font-medium text-slate-600" role="status" aria-live="polite"></p>
+            <div class="flex justify-end gap-3 ml-auto">
+                <button type="button" onclick="closeAccomplishmentModal()" class="secondary-btn">Cancel</button>
+                <button id="saveAccomplishmentBtn" onclick="saveAccomplishment()" class="primary-btn" data-theme-primary="true">
+                    Save Accomplishment
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1938,6 +1941,7 @@ const supabaseClient = window.supabaseClient || window.supabase.createClient(sup
 
 let currentAuthUser = null;
 let currentFaculty = null;
+let currentAdminProfileId = null;
 let teachingLoads = [];
 let researchAuthors = [];
 
@@ -2224,13 +2228,23 @@ async function uploadToStorage(bucketName, file, folderName) {
     const { error: uploadError } = await supabaseClient
         .storage
         .from(bucketName)
-        .upload(filePath, file, { cacheControl: '3600', upsert: false });
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+        });
     if (uploadError) throw uploadError;
     const { data } = supabaseClient.storage.from(bucketName).getPublicUrl(filePath);
     return {
         publicUrl: data?.publicUrl || '',
         path: filePath
     };
+}
+
+function requireAdminProfileId() {
+    if (!currentAdminProfileId) {
+        throw new Error('Admin profile record was not found for this account.');
+    }
+    return currentAdminProfileId;
 }
 
 /* ── Profile loading ─────────────────────────────────────────────── */
@@ -2315,6 +2329,8 @@ async function loadAdminProfile() {
             .maybeSingle();
         if (ap) adminProfile = ap;
     } catch (_) {}
+
+    currentAdminProfileId = adminProfile?.id || null;
 
     if (!facultyRecord) {
         const meta = currentAuthUser.user_metadata || {};
@@ -2814,9 +2830,9 @@ async function loadResearch() {
 
     try {
         const { data, error } = await supabaseClient
-            .from('faculty_research_projects')
+            .from('admin_researches')
             .select('*')
-            .eq('faculty_id', currentFaculty.id)
+            .eq('admin_profile_id', requireAdminProfileId())
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -3087,20 +3103,17 @@ async function saveResearchUpload() {
 
     try {
         // Upload any newly attached media files
+        const adminId = requireAdminProfileId();
         const uploadedMedia = [...(window.existingResearchMedia || [])];
         for (const f of selectedResearchFiles) {
-            try {
-                const up = await uploadToStorage('faculty-research', f, `admin-${currentFaculty.id}`);
-                uploadedMedia.push({
-                    name: f.name,
-                    size: f.size,
-                    type: f.type,
-                    url: up.publicUrl,
-                    path: up.path
-                });
-            } catch (err) {
-                console.warn('Failed to upload research media:', f.name, err);
-            }
+            const up = await uploadToStorage('admin-researches', f, adminId);
+            uploadedMedia.push({
+                name: f.name,
+                size: f.size,
+                type: f.type,
+                url: up.publicUrl,
+                path: up.path
+            });
         }
 
         // Support backward compatibility for legacy file_url
@@ -3119,8 +3132,12 @@ async function saveResearchUpload() {
         const metaComment = `<!-- CITEFLOW_RESEARCH_DATA:${encodeURIComponent(JSON.stringify(metaPayload))} -->`;
         const fullDescription = description ? `${description}\n\n${metaComment}` : metaComment;
 
+        if (selectedResearchFiles.length && !uploadedMedia.some(file => file.url)) {
+            throw new Error('Research files were selected, but no file URL was returned.');
+        }
+
         const payload = {
-            faculty_id: currentFaculty.id,
+            admin_profile_id: adminId,
             title,
             description: fullDescription,
             status,
@@ -3140,39 +3157,11 @@ async function saveResearchUpload() {
 
         const editId = window.currentEditingResearchId;
         if (editId) {
-            let { error } = await supabaseClient.from('faculty_research_projects').update(payload).eq('id', editId);
-            if (error && /media_files|links|column.*schema cache|schema cache/i.test(error.message || '')) {
-                console.warn('[Research Update] Retrying without media_files/links columns:', error.message);
-                const fallbackPayload = { ...payload };
-                delete fallbackPayload.media_files;
-                delete fallbackPayload.links;
-                ({ error } = await supabaseClient.from('faculty_research_projects').update(fallbackPayload).eq('id', editId));
-
-                if (error && /budget|funding_source|column.*schema cache|schema cache/i.test(error.message || '')) {
-                    console.warn('[Research Update] Retrying without budget/funding_source columns:', error.message);
-                    delete fallbackPayload.budget;
-                    delete fallbackPayload.funding_source;
-                    ({ error } = await supabaseClient.from('faculty_research_projects').update(fallbackPayload).eq('id', editId));
-                }
-            }
+            const { error } = await supabaseClient.from('admin_researches').update(payload).eq('id', editId);
             if (error) throw error;
         } else {
             payload.created_at = new Date().toISOString();
-            let { error } = await supabaseClient.from('faculty_research_projects').insert(payload);
-            if (error && /media_files|links|column.*schema cache|schema cache/i.test(error.message || '')) {
-                console.warn('[Research Save] Retrying without media_files/links columns:', error.message);
-                const fallbackPayload = { ...payload };
-                delete fallbackPayload.media_files;
-                delete fallbackPayload.links;
-                ({ error } = await supabaseClient.from('faculty_research_projects').insert(fallbackPayload));
-
-                if (error && /budget|funding_source|column.*schema cache|schema cache/i.test(error.message || '')) {
-                    console.warn('[Research Save] Retrying without budget/funding_source columns:', error.message);
-                    delete fallbackPayload.budget;
-                    delete fallbackPayload.funding_source;
-                    ({ error } = await supabaseClient.from('faculty_research_projects').insert(fallbackPayload));
-                }
-            }
+            const { error } = await supabaseClient.from('admin_researches').insert(payload);
             if (error) throw error;
         }
 
@@ -3288,9 +3277,9 @@ async function loadCategorizedDocuments(documentType, containerId, emptyMessage)
     if (!container || !currentFaculty?.id) return;
     try {
         let query = supabaseClient
-            .from('faculty_documents')
+            .from('admin_documents')
             .select('*')
-            .eq('faculty_id', currentFaculty.id);
+            .eq('admin_profile_id', requireAdminProfileId());
 
         if (documentType === 'Extension Document') {
             query = query.eq('document_type', 'Extension Document');
@@ -3362,9 +3351,9 @@ async function populateExtensionProjectDropdown() {
     if (!select || !currentFaculty?.id) return;
     try {
         const { data } = await supabaseClient
-            .from('extension_projects')
+            .from('admin_extension_projects')
             .select('id, project_title')
-            .eq('faculty_id', currentFaculty.id)
+            .eq('admin_profile_id', requireAdminProfileId())
             .order('project_title');
         select.innerHTML = '<option value="">— None —</option>' +
             (data || []).map(p => `<option value="${esc(p.id)}">${esc(p.project_title)}</option>`).join('');
@@ -3488,7 +3477,7 @@ async function openEditDocumentModal(id) {
     let doc = window.allFacultyDocumentsMap ? window.allFacultyDocumentsMap.get(String(id)) : null;
     if (!doc && id) {
         try {
-            const { data } = await supabaseClient.from('faculty_documents').select('*').eq('id', id).maybeSingle();
+            const { data } = await supabaseClient.from('admin_documents').select('*').eq('id', id).maybeSingle();
             doc = data;
         } catch (_) {}
     }
@@ -3553,7 +3542,7 @@ async function deleteDocumentRecord(id) {
     if (!ok) return;
 
     try {
-        const { error } = await supabaseClient.from('faculty_documents').delete().eq('id', id);
+        const { error } = await supabaseClient.from('admin_documents').delete().eq('id', id);
         if (error) throw error;
         closeViewDocumentModal();
         await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
@@ -3592,38 +3581,35 @@ async function saveDocumentUpload() {
     saveBtn.textContent = editId ? 'Updating...' : 'Uploading...';
 
     try {
+        const adminId = requireAdminProfileId();
         const uploadedMedia = [...(window.existingDocumentMedia || [])];
 
-        // Upload newly attached files
         for (const f of selectedDocumentFiles) {
-            try {
-                const up = await uploadToStorage('faculty-documents', f, `admin-${currentFaculty.id}`);
-                uploadedMedia.push({
-                    name: f.name,
-                    size: f.size,
-                    type: f.type,
-                    url: up.publicUrl,
-                    path: up.path
-                });
-            } catch (err) {
-                console.warn('Failed to upload file attachment:', f.name, err);
-            }
+            const up = await uploadToStorage('admin-documents', f, adminId);
+            if (!up.publicUrl) throw new Error(`Upload did not return a file URL for "${f.name}".`);
+            uploadedMedia.push({
+                name: f.name,
+                size: f.size,
+                type: f.type,
+                url: up.publicUrl,
+                path: up.path
+            });
         }
 
-        // Upload legacy single file if selected
         if (legacyFile && !selectedDocumentFiles.some(f => f.name === legacyFile.name)) {
-            try {
-                const up = await uploadToStorage('faculty-documents', legacyFile, `admin-${currentFaculty.id}`);
-                uploadedMedia.push({
-                    name: legacyFile.name,
-                    size: legacyFile.size,
-                    type: legacyFile.type,
-                    url: up.publicUrl,
-                    path: up.path
-                });
-            } catch (err) {
-                console.warn('Failed to upload legacy file:', legacyFile.name, err);
-            }
+            const up = await uploadToStorage('admin-documents', legacyFile, adminId);
+            if (!up.publicUrl) throw new Error(`Upload did not return a file URL for "${legacyFile.name}".`);
+            uploadedMedia.push({
+                name: legacyFile.name,
+                size: legacyFile.size,
+                type: legacyFile.type,
+                url: up.publicUrl,
+                path: up.path
+            });
+        }
+
+        if (!editId && !uploadedMedia.some(file => file.url)) {
+            throw new Error('A document file is required, and the upload did not return a file URL.');
         }
 
         const primaryFile = uploadedMedia[0] || null;
@@ -3638,7 +3624,7 @@ async function saveDocumentUpload() {
         const fullDescription = description ? `${description}\n\n${metaComment}` : metaComment;
 
         const payload = {
-            faculty_id: currentFaculty.id,
+            admin_profile_id: adminId,
             document_name: title,
             title: title,
             document_type: type,
@@ -3655,41 +3641,20 @@ async function saveDocumentUpload() {
         if (type === 'Extension Document' && extensionProjectId) payload.extension_project_id = extensionProjectId;
 
         if (editId) {
-            let { error } = await supabaseClient.from('faculty_documents').update(payload).eq('id', editId);
-            if (error && /media_files|column.*schema cache|schema cache/i.test(error.message || '')) {
-                console.warn('[Doc Update] Retrying without media_files column:', error.message);
-                const fallbackPayload = { ...payload };
-                delete fallbackPayload.media_files;
-                ({ error } = await supabaseClient.from('faculty_documents').update(fallbackPayload).eq('id', editId));
-
-                if (error && /sub_category|expiry_date|extension_project_id/i.test(error.message || '')) {
-                    delete fallbackPayload.sub_category;
-                    delete fallbackPayload.expiry_date;
-                    delete fallbackPayload.extension_project_id;
-                    ({ error } = await supabaseClient.from('faculty_documents').update(fallbackPayload).eq('id', editId));
-                }
-            }
+            const { error } = await supabaseClient.from('admin_documents').update(payload).eq('id', editId);
             if (error) throw error;
         } else {
             payload.status = 'Submitted';
             payload.verification_status = 'pending';
             payload.created_at = new Date().toISOString();
-
-            let { error } = await supabaseClient.from('faculty_documents').insert(payload);
-            if (error && /media_files|column.*schema cache|schema cache/i.test(error.message || '')) {
-                console.warn('[Doc Save] Retrying without media_files column:', error.message);
-                const fallbackPayload = { ...payload };
-                delete fallbackPayload.media_files;
-                ({ error } = await supabaseClient.from('faculty_documents').insert(fallbackPayload));
-
-                if (error && /sub_category|expiry_date|extension_project_id|verification_status/i.test(error.message || '')) {
-                    delete fallbackPayload.sub_category;
-                    delete fallbackPayload.expiry_date;
-                    delete fallbackPayload.extension_project_id;
-                    delete fallbackPayload.verification_status;
-                    ({ error } = await supabaseClient.from('faculty_documents').insert(fallbackPayload));
-                }
-            }
+            const { data: authData } = await supabaseClient.auth.getUser();
+            console.log('[DOCUMENT INSERT DEBUG]', {
+                authUid: authData?.user?.id,
+                currentAdminProfileId,
+                payloadAdminProfileId: payload?.admin_profile_id,
+                payload
+            });
+            const { error } = await supabaseClient.from('admin_documents').insert(payload);
             if (error) throw error;
         }
 
@@ -3768,9 +3733,9 @@ async function loadExtensionProjects() {
     if (!container || !currentFaculty?.id) return;
     try {
         const { data, error } = await supabaseClient
-            .from('extension_projects')
+            .from('admin_extension_projects')
             .select('*')
-            .eq('faculty_id', currentFaculty.id)
+            .eq('admin_profile_id', requireAdminProfileId())
             .order('created_at', { ascending: false });
         if (error) throw error;
         allExtensionProjects = data || [];
@@ -3828,7 +3793,7 @@ async function openExtensionProjectModal(editId) {
         document.getElementById('extensionProjectModalTitle').textContent = 'Edit Extension Project';
         document.getElementById('extensionProjectEditId').value = editId;
         try {
-            const { data } = await supabaseClient.from('extension_projects').select('*').eq('id', editId).single();
+            const { data } = await supabaseClient.from('admin_extension_projects').select('*').eq('id', editId).single();
             if (data) {
                 document.getElementById('extProjectTitle').value = data.project_title || '';
                 document.getElementById('extProjectPartner').value = data.partner_organization || '';
@@ -3875,9 +3840,10 @@ async function saveExtensionProject() {
         );
     }
 
+    if (!currentAdminProfileId) return alert('Admin profile record was not found for this account.');
     const sdgs = Array.from(document.querySelectorAll('#sdgCheckboxes input[type="checkbox"]:checked')).map(cb => cb.value);
     const payload = {
-        faculty_id: currentFaculty.id,
+        admin_profile_id: currentAdminProfileId,
         project_title: title,
         partner_organization: document.getElementById('extProjectPartner').value.trim() || null,
         beneficiary_count: parseInt(document.getElementById('extProjectBeneficiaries').value) || 0,
@@ -3894,11 +3860,18 @@ async function saveExtensionProject() {
     try {
         const editId = document.getElementById('extensionProjectEditId').value;
         if (editId) {
-            const { error } = await supabaseClient.from('extension_projects').update(payload).eq('id', editId);
+            const { error } = await supabaseClient.from('admin_extension_projects').update(payload).eq('id', editId);
             if (error) throw error;
         } else {
             payload.created_at = new Date().toISOString();
-            const { error } = await supabaseClient.from('extension_projects').insert(payload);
+            const { data: authData } = await supabaseClient.auth.getUser();
+            console.log('[EXTENSION INSERT]', payload);
+            console.log('[EXTENSION INSERT ids]', {
+                authUid: authData?.user?.id || null,
+                adminProfileId: currentAdminProfileId,
+                payloadAdminProfileId: payload.admin_profile_id
+            });
+            const { error } = await supabaseClient.from('admin_extension_projects').insert(payload);
             if (error) throw error;
         }
         closeExtensionProjectModal();
@@ -3929,7 +3902,7 @@ async function saveExtensionProject() {
 async function deleteExtensionProject(id) {
     if (!confirm('Are you sure you want to delete this extension project?')) return;
     try {
-        const { error } = await supabaseClient.from('extension_projects').delete().eq('id', id);
+        const { error } = await supabaseClient.from('admin_extension_projects').delete().eq('id', id);
         if (error) throw error;
         await loadExtensionProjects();
         alert('Extension project deleted.');
@@ -4020,14 +3993,14 @@ async function rejectDocumentVerification(docId) {
 // ═══════════════════════════════════════════════════
 
 async function checkExpiringDocuments() {
-    if (!currentFaculty?.id) return;
+    if (!currentAdminProfileId) return;
     try {
         const now = new Date();
         const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         const { data, error } = await supabaseClient
-            .from('faculty_documents')
+            .from('admin_documents')
             .select('id, title, document_name, expiry_date')
-            .eq('faculty_id', currentFaculty.id)
+            .eq('admin_profile_id', currentAdminProfileId)
             .not('expiry_date', 'is', null)
             .lte('expiry_date', thirtyDaysFromNow.toISOString().split('T')[0]);
         if (error || !data || !data.length) return;
@@ -4075,10 +4048,10 @@ async function generate201FileReport() {
 
     try {
         const [docsRes, researchRes, accomplishmentsRes, extensionRes, teachingRes] = await Promise.all([
-            supabaseClient.from('faculty_documents').select('*').eq('faculty_id', currentFaculty.id).order('created_at', { ascending: false }),
-            supabaseClient.from('faculty_research_projects').select('*').eq('faculty_id', currentFaculty.id).order('created_at', { ascending: false }),
-            supabaseClient.from('faculty_accomplishments').select('*').eq('faculty_id', currentFaculty.id).order('created_at', { ascending: false }),
-            supabaseClient.from('extension_projects').select('*').eq('faculty_id', currentFaculty.id).order('created_at', { ascending: false }),
+            supabaseClient.from('admin_documents').select('*').eq('admin_profile_id', currentAdminProfileId).order('created_at', { ascending: false }),
+            supabaseClient.from('admin_researches').select('*').eq('admin_profile_id', currentAdminProfileId).order('created_at', { ascending: false }),
+            supabaseClient.from('admin_accomplishments').select('*').eq('admin_profile_id', currentAdminProfileId).order('created_at', { ascending: false }),
+            supabaseClient.from('admin_extension_projects').select('*').eq('admin_profile_id', currentAdminProfileId).order('created_at', { ascending: false }),
             supabaseClient.from('faculty_teaching_loads').select('*').eq('faculty_id', currentFaculty.id).order('academic_year', { ascending: false })
         ]);
 
@@ -4399,13 +4372,19 @@ function openAccomplishmentModal() {
         if (subtitleEl) subtitleEl.textContent = 'Record a professional accomplishment and upload proof if available.';
         if (saveBtn) saveBtn.textContent = 'Save Accomplishment';
     }
-    document.getElementById('accomplishmentModal').classList.remove('hidden');
-    document.getElementById('accomplishmentModal').classList.add('flex');
+    const modal = document.getElementById('accomplishmentModal');
+    modal.style.display = '';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
 }
 
 function closeAccomplishmentModal() {
-    document.getElementById('accomplishmentModal').classList.add('hidden');
-    document.getElementById('accomplishmentModal').classList.remove('flex');
+    const modal = document.getElementById('accomplishmentModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        modal.style.display = 'none';
+    }
     clearAccomplishmentForm();
 }
 
@@ -4568,7 +4547,7 @@ async function deleteResearchProject(id) {
     if (!ok) return;
 
     try {
-        const { error } = await supabaseClient.from('faculty_research_projects').delete().eq('id', id);
+        const { error } = await supabaseClient.from('admin_researches').delete().eq('id', id);
         if (error) throw error;
         closeViewResearchModal();
         await loadResearch();
@@ -4830,7 +4809,7 @@ async function deleteAccomplishmentRecord(id) {
 
     try {
         const { error } = await supabaseClient
-            .from('faculty_accomplishments')
+            .from('admin_accomplishments')
             .delete()
             .eq('id', targetId);
         if (error) throw error;
@@ -4939,9 +4918,9 @@ async function loadAccomplishments() {
 
     try {
         const { data, error } = await supabaseClient
-            .from('faculty_accomplishments')
+            .from('admin_accomplishments')
             .select('*')
-            .eq('faculty_id', currentFaculty.id)
+            .eq('admin_profile_id', requireAdminProfileId())
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -5048,12 +5027,59 @@ function resetPhotoAttachments() {
     renderAccomplishmentPhotoPreviews();
 }
 
-async function uploadPhotoAttachments(facultyId) {
+let accomplishmentSaveInFlight = false;
+
+function setAccomplishmentUploadStatus(message) {
+    const status = document.getElementById('accomplishmentUploadStatus');
+    if (!status) return;
+    if (!message) {
+        status.textContent = '';
+        status.classList.add('hidden');
+        return;
+    }
+    status.textContent = message;
+    status.classList.remove('hidden');
+}
+
+function setAccomplishmentSaveLocked(locked) {
+    const saveBtn = document.getElementById('saveAccomplishmentBtn');
+    const photoInput = document.getElementById('accomplishmentPhotoInput');
+    const addPhotos = document.querySelector('label[for="accomplishmentPhotoInput"]');
+    if (saveBtn) saveBtn.disabled = locked;
+    if (photoInput) photoInput.disabled = locked;
+    if (addPhotos) {
+        addPhotos.classList.toggle('pointer-events-none', locked);
+        addPhotos.classList.toggle('opacity-50', locked);
+    }
+}
+
+async function uploadAccomplishmentPhoto(file, folderName) {
+    const filePath = `${folderName}/${Date.now()}-${safeFileName(file.name)}`;
+    const { error: uploadError } = await supabaseClient
+        .storage
+        .from('admin-accomplishments')
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+        });
+    if (uploadError) throw uploadError;
+    const { data } = supabaseClient.storage.from('admin-accomplishments').getPublicUrl(filePath);
+    if (!data?.publicUrl) throw new Error(`Upload did not return a file URL for "${file.name}".`);
+    return data.publicUrl;
+}
+
+async function uploadPhotoAttachments() {
     const attachments = [];
-    for (const file of selectedAccomplishmentFiles) {
-        const uploaded = await uploadToStorage('faculty-accomplishments', file, `admin-${facultyId}`);
+    const files = selectedAccomplishmentFiles;
+    const total = files.length;
+    for (let index = 0; index < total; index += 1) {
+        const file = files[index];
+        setAccomplishmentUploadStatus(total > 1
+            ? `Uploading ${index + 1} of ${total} photos...`
+            : 'Uploading photo...');
+        const photoUrl = await uploadAccomplishmentPhoto(file, requireAdminProfileId());
         attachments.push({
-            photo_url: uploaded.publicUrl,
+            photo_url: photoUrl,
             title: file.name.replace(/\.[^/.]+$/, ''),
             details: '',
             description: ''
@@ -5092,6 +5118,7 @@ function openEditAccomplishmentModal(id) {
 }
 
 async function saveAccomplishment() {
+    if (accomplishmentSaveInFlight) return;
     if (!currentFaculty?.id) return alert('Profile is not loaded.');
 
     const saveBtn = document.getElementById('saveAccomplishmentBtn');
@@ -5106,19 +5133,24 @@ async function saveAccomplishment() {
     if (!dateAchieved) return alert('Please specify the date this was achieved.');
 
     const isEdit = !!window.currentEditingAccomplishmentId;
-    saveBtn.disabled = true;
-    saveBtn.textContent = isEdit ? 'Updating photos...' : 'Uploading photos...';
+    const saveLabel = isEdit ? 'Update Accomplishment' : 'Save Accomplishment';
+    let savedNotice = '';
+    let saveFailed = false;
+    accomplishmentSaveInFlight = true;
+    setAccomplishmentSaveLocked(true);
+    if (saveBtn) saveBtn.textContent = selectedAccomplishmentFiles.length ? 'Uploading...' : 'Saving...';
 
     try {
         let newAttachments = [];
         if (selectedAccomplishmentFiles.length > 0) {
-            newAttachments = await uploadPhotoAttachments(currentFaculty.id);
+            newAttachments = await uploadPhotoAttachments();
         }
 
         const existingPhotos = Array.isArray(window.existingAccomplishmentPhotos) ? window.existingAccomplishmentPhotos : [];
         const finalAttachments = [...existingPhotos, ...newAttachments];
 
-        saveBtn.textContent = isEdit ? 'Updating...' : 'Saving...';
+        setAccomplishmentUploadStatus(isEdit ? 'Saving accomplishment...' : 'Saving accomplishment...');
+        if (saveBtn) saveBtn.textContent = 'Saving...';
 
         let packedDescription = rawDescription;
         if (durationHours) {
@@ -5129,7 +5161,7 @@ async function saveAccomplishment() {
         const proofUrl = finalAttachments.length ? (finalAttachments[0].photo_url || finalAttachments[0].url || '') : '';
 
         const payload = {
-            faculty_id: currentFaculty.id,
+            admin_profile_id: requireAdminProfileId(),
             title,
             accomplishment_type: type,
             description: packedDescription,
@@ -5142,42 +5174,62 @@ async function saveAccomplishment() {
 
         if (isEdit) {
             const { error } = await supabaseClient
-                .from('faculty_accomplishments')
+                .from('admin_accomplishments')
                 .update(payload)
                 .eq('id', window.currentEditingAccomplishmentId);
             if (error) throw error;
         } else {
             payload.created_at = new Date().toISOString();
             const { error } = await supabaseClient
-                .from('faculty_accomplishments')
+                .from('admin_accomplishments')
                 .insert(payload);
             if (error) throw error;
         }
 
-        closeAccomplishmentModal();
-        clearAccomplishmentForm();
-        await loadAccomplishments();
+        let notice = isEdit ? 'Accomplishment updated successfully.' : 'Accomplishment saved successfully.';
+        try {
+            closeAccomplishmentModal();
+            clearAccomplishmentForm();
+            await loadAccomplishments();
 
-        if (typeof window.EngagementLogger !== 'undefined') {
-            window.EngagementLogger.logActivity({
-                facultyId: currentFaculty.id,
-                facultyName: currentFaculty.full_name || currentFaculty.name,
-                department: currentFaculty.department,
-                activityType: type,
-                activityTitle: title,
-                description: `${isEdit ? 'Updated' : 'Recorded'} accomplishment: ${title} (${type})`,
-                sourceModule: 'Admin Profile',
-                details: { Type: type, Title: title, Date: dateAchieved || 'Not set', Action: isEdit ? 'Update' : 'Create' }
-            });
+            if (typeof window.EngagementLogger !== 'undefined') {
+                window.EngagementLogger.logActivity({
+                    facultyId: currentFaculty.id,
+                    facultyName: currentFaculty.full_name || currentFaculty.name,
+                    department: currentFaculty.department,
+                    activityType: type,
+                    activityTitle: title,
+                    description: `${isEdit ? 'Updated' : 'Recorded'} accomplishment: ${title} (${type})`,
+                    sourceModule: 'Admin Profile',
+                    details: { Type: type, Title: title, Date: dateAchieved || 'Not set', Action: isEdit ? 'Update' : 'Create' }
+                });
+            }
+        } catch (refreshError) {
+            console.error('Accomplishment saved, but the list could not refresh:', refreshError);
+            notice = 'Accomplishment saved, but the list could not refresh.';
         }
-
-        alert(isEdit ? 'Accomplishment updated successfully.' : 'Accomplishment saved successfully.');
+        savedNotice = notice;
     } catch (error) {
-        alert('Unable to save accomplishment: ' + error.message);
+        console.error('Accomplishment save failed:', error);
+        savedNotice = error?.message || error?.error || 'The accomplishment could not be saved.';
+        saveFailed = true;
     } finally {
-        saveBtn.disabled = false;
-        saveBtn.textContent = isEdit ? 'Update Accomplishment' : 'Save Accomplishment';
+        accomplishmentSaveInFlight = false;
+        setAccomplishmentSaveLocked(false);
+        setAccomplishmentUploadStatus('');
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = saveLabel;
+        }
+        const modal = document.getElementById('accomplishmentModal');
+        if (modal && !saveFailed) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            modal.style.display = 'none';
+        }
     }
+
+    if (savedNotice) alert(savedNotice);
 }
 
 function clearAccomplishmentForm() {
@@ -5685,9 +5737,9 @@ async function generateReportHtml(type, startDate, endDate) {
 
     // Fetch accomplishments in date range
     const { data: accomplishments } = await supabaseClient
-        .from('faculty_accomplishments')
+        .from('admin_accomplishments')
         .select('*')
-        .eq('faculty_id', currentFaculty.id)
+        .eq('admin_profile_id', currentAdminProfileId)
         .gte('date_achieved', startDate)
         .lte('date_achieved', endDate)
         .order('date_achieved', { ascending: true });

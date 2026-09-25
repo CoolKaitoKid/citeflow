@@ -336,16 +336,14 @@
         function closeDialog(result) {
             card.classList.remove('scale-100', 'opacity-100');
             card.classList.add('scale-95', 'opacity-0');
-            backdrop.classList.add('opacity-0');
-            setTimeout(() => {
-                backdrop.classList.add('hidden');
-                backdrop.classList.remove('opacity-0');
-                if (dialogResolve) {
-                    const cb = dialogResolve;
-                    dialogResolve = null;
-                    cb(result);
-                }
-            }, 180);
+            backdrop.classList.add('hidden');
+            backdrop.classList.remove('flex');
+            backdrop.style.display = 'none';
+            if (dialogResolve) {
+                const cb = dialogResolve;
+                dialogResolve = null;
+                cb(result);
+            }
         }
 
         confirmBtn.addEventListener('click', () => closeDialog(true));
@@ -449,7 +447,9 @@
         iconContainer.className = `w-14 h-14 rounded-2xl mx-auto flex items-center justify-center mb-4 transition-colors ${config.bg}`;
         iconContainer.innerHTML = config.svg;
 
+        backdrop.style.display = '';
         backdrop.classList.remove('hidden');
+        backdrop.classList.add('flex');
         requestAnimationFrame(() => {
             card.classList.remove('scale-95', 'opacity-0');
             card.classList.add('scale-100', 'opacity-100');
