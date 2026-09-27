@@ -6,6 +6,7 @@
     <title>Workflow Approval - CITE-Flow</title>
     <!-- Updated admin workflow page: .html navigation, task detail page, submission file preview/download, clickable notifications. -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
@@ -706,6 +707,15 @@
             width: 100%;
             padding: 18px 22px 28px;
         }
+        /* ID and layout classes set display, which outranks Tailwind .hidden.
+           Without this, a task click never hides the list, and the detail page
+           stays below the fold looking like an empty panel. */
+        #workflowMainView.hidden,
+        #taskDetailPage.hidden,
+        #taskTableSurface.hidden,
+        #taskCardContainer.hidden {
+            display: none !important;
+        }
         #workflowMainView > :nth-child(1) { order: 1; }
         #workflowMainView > :nth-child(2) { order: 2; }
         #workflowMainView > :nth-child(8) { order: 3; }
@@ -856,6 +866,374 @@
             #workflowMainView .wf-toolbar { border-radius: 12px; margin-bottom: 10px; }
             #workflowMainView .wf-toolbar select.field-input { width: 100% !important; max-width: none; flex: 1 1 100%; }
             #taskTableSurface:not(.hidden) { border-radius: 12px; }
+        }
+
+        #taskDetailPage.wf-drawer {
+            position: fixed;
+            inset: 0;
+            z-index: 10020;
+            display: block;
+            width: auto !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: transparent;
+            pointer-events: none;
+        }
+        #taskDetailPage.wf-drawer.hidden { display: none !important; }
+        .wf-drawer-scrim {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.18);
+            pointer-events: none;
+        }
+        .wf-drawer-panel {
+            pointer-events: auto;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            bottom: 10px;
+            width: min(620px, calc(100vw - 20px));
+            display: flex;
+            flex-direction: column;
+            background: #f3f4f6;
+            border: 1px solid #e6e8ee;
+            border-radius: 20px;
+            box-shadow: 0 16px 48px rgba(15, 23, 42, 0.16);
+            overflow: hidden;
+            animation: wf-drawer-in .28s cubic-bezier(.2, .8, .2, 1);
+        }
+        @keyframes wf-drawer-in {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        .wf-drawer-top {
+            padding: 14px 18px 6px;
+            flex-shrink: 0;
+            background: #f3f4f6;
+        }
+        .wf-drawer-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 0;
+            background: transparent;
+            color: #475569;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 4px 2px;
+            cursor: pointer;
+        }
+        .wf-drawer-back:hover { color: #621708; }
+        .wf-drawer-body {
+            overflow: auto;
+            padding: 8px 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 0;
+        }
+        .wf-drawer-actions {
+            flex-shrink: 0;
+            padding: 12px 14px 14px;
+            background: #fff;
+            border-top: 1px solid #e8eaef;
+        }
+        .wf-drawer-actions.hidden { display: none; }
+        .wf-card {
+            background: #fff;
+            border: 1px solid #e8eaef;
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 1px 1px rgba(15, 23, 42, 0.03);
+        }
+        .wf-kicker {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 10px;
+        }
+        .wf-title-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .wf-title-row h1 {
+            font-size: 1.2rem;
+            line-height: 1.3;
+            font-weight: 700;
+            color: #111827;
+            margin: 0;
+            letter-spacing: -0.01em;
+        }
+        .wf-meta-line {
+            margin-top: 8px;
+            font-size: 12.5px;
+            color: #64748b;
+            line-height: 1.5;
+        }
+        .wf-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .wf-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 3px 9px;
+            font-size: 11px;
+            font-weight: 650;
+            background: #f8fafc;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            white-space: nowrap;
+            max-width: 100%;
+        }
+        .wf-pill[data-bucket="submitted"] { color: #0f766e; background: #f0fdfa; border-color: #ccfbf1; }
+        .wf-pill[data-bucket="pending_approval"] { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+        .wf-pill[data-bucket="late"] { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+        .wf-pill[data-bucket="not_submitted"] { color: #475569; background: #f8fafc; border-color: #e2e8f0; }
+        .wf-drawer-resize {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 12px;
+            cursor: ew-resize;
+            z-index: 4;
+            touch-action: none;
+            background: transparent;
+            border: 0;
+            padding: 0;
+        }
+        .wf-drawer-resize::after {
+            content: '';
+            position: absolute;
+            left: 4px;
+            top: 50%;
+            width: 3px;
+            height: 42px;
+            transform: translateY(-50%);
+            border-radius: 99px;
+            background: #d5dae2;
+        }
+        .wf-drawer-panel.is-resizing { animation: none; user-select: none; }
+        .wf-report-sheet {
+            width: min(640px, calc(100vw - 32px));
+            margin: 0 16px;
+            background: #f3f4f6;
+            border: 1px solid #e6e8ee;
+            border-radius: 20px;
+            box-shadow: 0 16px 48px rgba(15, 23, 42, 0.16);
+            display: flex;
+            flex-direction: column;
+            max-height: min(90vh, 860px);
+            overflow: hidden;
+        }
+        .wf-report-top { padding: 16px 18px 6px; flex-shrink: 0; }
+        .wf-report-top h2 { font-size: 1.15rem; line-height: 1.3; font-weight: 700; color: #111827; margin: 0; }
+        .wf-report-body {
+            overflow: auto;
+            padding: 8px 14px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 0;
+        }
+        .wf-report-body .wf-card {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .wf-report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .wf-report-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .wf-report-footer {
+            flex-shrink: 0;
+            display: flex;
+            gap: 8px;
+            padding: 12px 14px 14px;
+            background: #fff;
+            border-top: 1px solid #e8eaef;
+        }
+        .wf-check {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            border: 1px solid #e8eaef;
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: #fff;
+            cursor: pointer;
+        }
+        .wf-summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px 16px;
+        }
+        .wf-summary-grid span {
+            display: block;
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+        .wf-summary-grid strong {
+            display: block;
+            margin-top: 2px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e293b;
+            word-break: break-word;
+        }
+        .wf-tool-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .wf-seg {
+            display: inline-flex;
+            border: 1px solid #e5e7eb;
+            border-radius: 999px;
+            overflow: hidden;
+            background: #f8fafc;
+        }
+        .wf-seg button {
+            border: 0;
+            background: transparent;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 650;
+            padding: 6px 11px;
+            cursor: pointer;
+        }
+        .wf-seg button.active {
+            background: #621708;
+            color: #fff;
+        }
+        .wf-stat-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+        .wf-stat {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+            border: 1px solid #eef0f3;
+            background: #fff;
+            border-radius: 12px;
+            padding: 8px 10px;
+            cursor: pointer;
+        }
+        .wf-stat:hover { border-color: #d7dbe2; }
+        .wf-stat.active { border-color: #621708; background: #fff8f6; }
+        .wf-stat-name { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #334155; }
+        .wf-dot { width: 8px; height: 8px; border-radius: 99px; flex-shrink: 0; }
+        .wf-count {
+            min-width: 28px;
+            height: 24px;
+            padding: 0 8px;
+            border-radius: 999px;
+            background: #f8fafc;
+            border: 1px solid #e8eaef;
+            font-size: 12px;
+            font-weight: 700;
+            color: #334155;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .wf-chart-wrap {
+            position: relative;
+            height: 210px;
+            margin-top: 12px;
+        }
+        .wf-chart-wrap.is-pie { height: auto; min-height: 220px; }
+        .wf-chart-wrap.is-pie canvas { max-height: 240px; margin: 0 auto; }
+        .wf-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+        #wfChartEmpty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 16px;
+            margin: 0;
+        }
+        #wfChartEmpty.hidden { display: none !important; }
+        .wf-faculty-list { display: flex; flex-direction: column; gap: 8px; }
+        .wf-faculty-card {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            text-align: left;
+            border: 1px solid #eceef2;
+            background: #fff;
+            border-radius: 14px;
+            padding: 12px;
+            cursor: pointer;
+            border-left: 3px solid var(--wf-accent, #cbd5e1);
+        }
+        .wf-faculty-card:hover { border-color: #e2e8f0; background: #fafbfc; }
+        .wf-faculty-card.active { box-shadow: inset 0 0 0 1px rgba(98, 23, 8, 0.35); }
+        .wf-faculty-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+        .wf-faculty-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+        .wf-faculty-top strong { font-size: 13.5px; color: #0f172a; line-height: 1.3; }
+        .wf-faculty-dept { font-size: 12px; color: #64748b; font-weight: 600; }
+        .wf-faculty-lines { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
+        .wf-faculty-lines span { font-size: 12px; color: #64748b; line-height: 1.45; }
+        .wf-timing-late { color: #b91c1c !important; font-weight: 650; }
+        .wf-timing-ok { color: #0f766e !important; font-weight: 650; }
+        .wf-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            background: #f1f5f9;
+            color: #475569;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .wf-note {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: #f8fafc;
+            border: 1px solid #eef0f3;
+            font-size: 12.5px;
+            color: #475569;
+            line-height: 1.45;
+        }
+        .wf-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .wf-actions .btn { flex: 1 1 auto; justify-content: center; }
+        .wf-quiet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        @media (max-width: 720px) {
+            .wf-drawer-panel {
+                top: 0;
+                right: 0;
+                bottom: 0;
+                width: 100%;
+                border-radius: 0;
+            }
+            .wf-summary-grid { grid-template-columns: 1fr; }
+            .wf-tool-row { align-items: stretch; }
+            .wf-drawer-resize { display: none; }
+            .wf-report-grid, .wf-report-grid-3 { grid-template-columns: 1fr; }
         }
 </style>
 </head>
@@ -1165,7 +1543,7 @@
                     <svg style="width:15px;height:15px;position:absolute;left:14px;top:50%;transform:translateY(-50%);stroke:#9ca3af;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
-                    <input id="searchInput" type="text" placeholder="Search by task or faculty name..."
+                    <input id="wfTaskSearch" type="text" placeholder="Search by task or faculty name..."
                            oninput="filterSubmissions()"
                            class="field-input pl-10">
                 </div>
@@ -1226,86 +1604,26 @@
 
         </div>
 
-        <!-- TASK DETAIL PAGE -->
-        <div id="taskDetailPage" class="hidden max-w-6xl mx-auto px-8 py-8">
-            <div class="flex items-start justify-between mb-6">
-                <div>
-                    <button onclick="returnToWorkflowMain()" class="btn btn-ghost btn-sm mb-4">
+        <!-- TASK DETAIL DRAWER -->
+        <div id="taskDetailPage" class="wf-drawer hidden" aria-hidden="true">
+            <div class="wf-drawer-scrim"></div>
+            <aside class="wf-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="detailTaskTitle">
+                <button type="button" id="wfDrawerResize" class="wf-drawer-resize" aria-label="Resize task details"></button>
+                <div class="wf-drawer-top">
+                    <button type="button" class="wf-drawer-back" onclick="returnToWorkflowMain()">
                         <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-                        Back to Tasks
+                        Back to Workflow Approval
                     </button>
-                    <div class="flex items-center gap-3 flex-wrap">
-                        <h1 id="detailTaskTitle" class="cite-title">Task Details</h1>
-                        <span id="detailTaskStatusBadge"></span>
-                    </div>
-                    <p id="detailTaskMeta" class="cite-subtitle mt-1"></p>
                 </div>
-                <div class="flex items-center gap-2.5">
-                    <button onclick="openActivityLogModal()" class="btn btn-ghost btn-sm">Activity Log</button>
-                    <button id="detailTaskManageBtn" type="button" class="btn btn-ghost btn-sm hidden"></button>
-                    <button onclick="openAssignModal()" class="btn btn-primary btn-sm wf-admin-only">Assign New Task</button>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-4 gap-4 mb-6">
-                <div class="detail-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Assigned</div>
-                    <div id="detailAssignedCount" class="text-2xl font-semibold text-gray-900">0</div>
-                    <div id="detailAssignedLabel" class="detail-muted mt-1"></div>
-                </div>
-                <div class="detail-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Submitted</div>
-                    <div id="detailSubmittedCount" class="text-2xl font-semibold text-gray-900">0</div>
-                    <div class="detail-muted mt-1">Faculty with uploads</div>
-                </div>
-                <div class="detail-card p-5">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Pending</div>
-                    <div id="detailPendingCount" class="text-2xl font-semibold text-gray-900">0</div>
-                    <div class="detail-muted mt-1">No submission yet</div>
-                </div>
-                <div class="detail-card p-5 cursor-pointer" onclick="openAnalyticsModal(activeTaskDetailId)" title="Click to view analytics">
-                    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Progress Analytics</div>
-                    <div id="detailProgressPercent" class="text-2xl font-semibold text-gray-900">0%</div>
-                    <div class="prog-track mt-3"><div id="detailProgressFill" class="prog-fill bg-emerald-500" style="width:0%"></div></div>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-6">
-                <div class="col-span-2 space-y-6">
-                    <div class="main-surface p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h2 class="text-sm font-semibold text-gray-700">Submitted Part</h2>
-                            <span id="detailSubmittedSummary" class="text-xs text-gray-400"></span>
-                        </div>
-                        <div id="detailSubmissionList" class="space-y-3"></div>
+                <div id="wfDrawerBody" class="wf-drawer-body">
+                    <div class="cite-empty">
+                        <div class="cite-empty-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                        <div class="cite-empty-title">Loading task details</div>
+                        <p class="cite-empty-text">Loading submissions, files, and review status.</p>
                     </div>
                 </div>
-
-                <div class="space-y-6">
-                    <div class="main-surface p-6">
-                        <h2 class="text-sm font-semibold text-gray-700 mb-3">Task Information</h2>
-                        <div class="space-y-3 text-sm">
-                            <div>
-                                <div class="field-label">Deadline</div>
-                                <div id="detailTaskDeadline" class="text-gray-800"></div>
-                            </div>
-                            <div>
-                                <div class="field-label">Instructions</div>
-                                <div id="detailTaskInstructions" class="text-gray-700 leading-relaxed whitespace-pre-wrap"></div>
-                            </div>
-                            <div>
-                                <div class="field-label">Task Attachments</div>
-                                <div id="detailTaskAttachments" class="space-y-2"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="main-surface p-6">
-                        <h2 class="text-sm font-semibold text-gray-700 mb-3">Submission Progress</h2>
-                        <div id="detailDepartmentProgress" class="space-y-4"></div>
-                    </div>
-                </div>
-            </div>
+                <div id="wfDrawerActions" class="wf-drawer-actions hidden"></div>
+            </aside>
         </div>
 
     </div>
@@ -1317,25 +1635,19 @@
 
 
 <div id="reportConfigModal" class="modal-backdrop">
-    <div class="modal-panel modal-small" style="max-width:560px; margin:0 16px;">
-        <div class="modal-header">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2 id="reportConfigModalTitle" class="text-base font-semibold text-gray-900">Add Mandatory Report</h2>
-                    <p class="text-xs text-gray-500 mt-0.5">The configuration remains active until an administrator changes or disables it.</p>
-                </div>
-                <button onclick="closeReportConfigModal()" class="text-gray-400 hover:text-gray-600 p-1">
-                    <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
-                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </button>
-            </div>
+    <div class="modal-panel wf-report-sheet" role="dialog" aria-modal="true" aria-labelledby="reportConfigModalTitle">
+        <div class="wf-report-top">
+            <p class="wf-kicker" style="margin-bottom:4px">Manage Report</p>
+            <h2 id="reportConfigModalTitle">Add Mandatory Report</h2>
+            <p class="wf-meta-line">The configuration stays active until an administrator changes or disables it.</p>
         </div>
 
-        <div class="modal-body space-y-5">
+        <div class="wf-report-body">
             <input type="hidden" id="reportConfigId">
 
-            <div class="grid grid-cols-2 gap-4">
+            <section class="wf-card">
+                <div class="wf-kicker">Report</div>
+            <div class="wf-report-grid">
                 <div>
                     <label class="field-label">Document Category</label>
                     <select id="reportCategory" class="field-input" onchange="onReportCategoryChange()">
@@ -1353,7 +1665,7 @@
                     <input id="reportName" class="field-input" placeholder="e.g. DTR">
                 </div>
             </div>
-            <div>
+            <div style="margin-top:12px">
                 <label class="field-label">Frequency <span class="text-red-500">*</span></label>
                 <select id="reportFrequency" class="field-input" onchange="updateReportDeadlinePreview()">
                     <option value="monthly">Monthly</option>
@@ -1369,7 +1681,11 @@
                     placeholder="Describe what faculty should submit and why."></textarea>
             </div>
 
-            <div class="grid grid-cols-3 gap-4">
+            </section>
+
+            <section class="wf-card">
+                <div class="wf-kicker">Deadline</div>
+            <div class="wf-report-grid">
                 <div>
                     <label class="field-label">Deadline Day <span class="text-red-500">*</span></label>
                     <input id="reportDueDay" type="number" min="1" max="31" value="5" class="field-input" oninput="updateReportDeadlinePreview()">
@@ -1378,20 +1694,17 @@
                     <label class="field-label">Deadline Time <span class="text-red-500">*</span></label>
                     <input id="reportDueTime" type="time" value="12:00" class="field-input" oninput="updateReportDeadlinePreview()">
                 </div>
-                <div>
-                    <label class="field-label">Timezone</label>
-                    <input class="field-input" value="Asia/Manila (Philippine Time)" disabled>
-                </div>
             </div>
-            <div id="reportDeadlinePreview" class="p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm text-amber-950"></div>
+            <div>
+                <label class="field-label">Timezone</label>
+                <input class="field-input" value="Asia/Manila (Philippine Time)" disabled>
+            </div>
+            <div id="reportDeadlinePreview" class="wf-note"></div>
+            </section>
 
-            <div class="target-box">
-                <div class="flex items-center justify-between mb-3">
-                    <div>
-                        <div class="text-sm font-semibold text-gray-800">Recipients</div>
-                        <div class="text-xs text-gray-500">Choose who automatically receives each generated task.</div>
-                    </div>
-                </div>
+            <section class="wf-card">
+                <div class="wf-kicker">Recipients</div>
+                <p class="wf-meta-line" style="margin-top:0;margin-bottom:10px">Choose who automatically receives each generated task.</p>
 
                 <select id="reportRecipientType" onchange="toggleReportRecipientFields()" class="field-input mb-3">
                     <option value="all">All Faculty</option>
@@ -1419,9 +1732,11 @@
                     <select id="reportSelectedFaculty" multiple class="field-input" style="height:145px;"></select>
                     <p class="text-xs text-gray-400 mt-1.5">Hold Ctrl / Cmd to select multiple faculty members.</p>
                 </div>
-            </div>
+            </section>
 
-            <div class="grid grid-cols-2 gap-4">
+            <section class="wf-card">
+                <div class="wf-kicker">Submission</div>
+            <div class="wf-report-grid">
                 <div>
                     <label class="field-label">Submission Method</label>
                     <select id="reportSubmissionMethod" onchange="toggleReportSubmissionFields()" class="field-input">
@@ -1455,15 +1770,19 @@
                     placeholder="Explain exactly what the faculty must submit, naming conventions, required files, etc."></textarea>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <label class="flex items-center gap-2.5 cursor-pointer border border-gray-200 rounded-lg p-3">
+            </section>
+
+            <section class="wf-card">
+                <div class="wf-kicker">Review</div>
+            <div class="wf-report-grid">
+                <label class="wf-check">
                     <input id="reportChairReview" type="checkbox" checked class="w-4 h-4 accent-[#621708]">
                     <span>
                         <span class="block text-sm font-medium text-gray-700">Chairperson Review</span>
                         <span class="block text-xs text-gray-400">Faculty → Chairperson</span>
                     </span>
                 </label>
-                <label class="flex items-center gap-2.5 cursor-pointer border border-gray-200 rounded-lg p-3">
+                <label class="wf-check">
                     <input id="reportFinalReview" type="checkbox" checked class="w-4 h-4 accent-[#621708]">
                     <span>
                         <span class="block text-sm font-medium text-gray-700">Final Approval</span>
@@ -1472,14 +1791,15 @@
                 </label>
             </div>
 
-            <label class="flex items-center gap-2.5 cursor-pointer">
+            <label class="wf-check" style="margin-top:10px">
                 <input id="reportIsActive" type="checkbox" checked class="w-4 h-4 accent-[#621708]">
                 <span class="text-sm text-gray-700">Active recurring report</span>
             </label>
+            </section>
         </div>
 
-        <div class="modal-footer">
-            <button onclick="closeReportConfigModal()" class="btn btn-ghost flex-1 justify-center">Cancel</button>
+        <div class="wf-report-footer">
+            <button type="button" onclick="closeReportConfigModal()" class="btn btn-ghost flex-1 justify-center">Cancel</button>
             <button id="saveReportBtn" onclick="saveReportConfig()" class="btn btn-primary flex-1 justify-center">
                 <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                     <polyline points="20 6 9 17 4 12"/><path d="M4 12l5 5"/>
@@ -1942,9 +2262,46 @@ let activeReviewId = null;
 let currentTimelineSub = null;
 let realtimeChannel = null;
 let activeTaskDetailId = null;
+let detailFocusFacultyId = null;
+let analyticsScope = 'task';
+let analyticsChartType = 'bar';
+let analyticsCategory = null;
+let workflowAnalyticsChart = null;
+let workflowDrawerFocusAnalytics = false;
 let taskViewMode = 'list';
 let fileActionSeq = 0;
 window.workflowFileActionCache = window.workflowFileActionCache || {};
+
+function workflowNotify(message, type = 'error') {
+    const uiType = type === 'warn' ? 'warning' : type;
+    if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+        window.CiteFlowUI.toast(message, uiType);
+        return;
+    }
+    showToast(message, type === 'warning' ? 'warn' : type);
+}
+
+function showWorkflowDetailPane(showDetail) {
+    const detailPage = document.getElementById('taskDetailPage');
+    if (!detailPage) {
+        workflowNotify('The task details panel is missing from this page.', 'error');
+        return false;
+    }
+    const mainView = document.getElementById('workflowMainView');
+    if (mainView) {
+        mainView.classList.remove('hidden');
+        mainView.style.removeProperty('display');
+    }
+    detailPage.classList.toggle('hidden', !showDetail);
+    detailPage.classList.toggle('open', !!showDetail);
+    detailPage.style.removeProperty('display');
+    detailPage.setAttribute('aria-hidden', showDetail ? 'false' : 'true');
+    if (!showDetail && workflowAnalyticsChart) {
+        workflowAnalyticsChart.destroy();
+        workflowAnalyticsChart = null;
+    }
+    return true;
+}
 
 function showToast(message, type = 'success') {
     const colors = {
@@ -1953,7 +2310,11 @@ function showToast(message, type = 'success') {
         warn: 'background:#78350f;color:#fef3c7;border-color:#92400e;'
     };
     const el = document.getElementById('toast');
-    el.style.cssText = `position:fixed;bottom:28px;right:28px;z-index:100;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;border:1px solid;max-width:360px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,0.18);${colors[type]}`;
+    if (!el) {
+        console.error(message);
+        return;
+    }
+    el.style.cssText = `position:fixed;bottom:28px;right:28px;z-index:100001;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;border:1px solid;max-width:360px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,0.18);${colors[type] || colors.error}`;
     el.textContent = message;
     el.style.display = 'block';
     setTimeout(() => { el.style.display = 'none'; }, 2600);
@@ -2108,8 +2469,8 @@ function renderAll() {
     filterSubmissions();
     renderDelegates();
     renderReportConfigs();
-    if (activeTaskDetailId && !document.getElementById('taskDetailPage').classList.contains('hidden')) {
-        renderTaskDetailPage(activeTaskDetailId);
+    if (activeTaskDetailId && document.getElementById('taskDetailPage')?.classList.contains('open')) {
+        renderTaskDetailPage(activeTaskDetailId, { preserveFocus: true });
     }
 }
 
@@ -2282,10 +2643,104 @@ function deadlineCountdown(dueIso) {
     return `<span class="countdown-ok text-xs font-medium">${days}d left</span>`;
 }
 
+const WF_DEPARTMENT_CODES = ['BSIT', 'BSIE', 'BIT'];
+
+function facultyRecordForRef(ref) {
+    const key = String(ref || '');
+    if (!key) return null;
+    const directory = workflowState.facultyDirectory || workflowState.faculty || [];
+    return directory.find(f => String(f.id) === key || String(f.auth_user_id || '') === key) || null;
+}
+
+function workflowFacultyDisplayName(faculty) {
+    if (!faculty) return '';
+    const direct = String(faculty.full_name || faculty.name || '').trim();
+    if (direct) return direct;
+    return [faculty.first_name, faculty.middle_name, faculty.last_name].filter(Boolean).join(' ').trim();
+}
+
+function assignmentDepartmentFromLabel(label) {
+    const text = String(label || '').trim();
+    if (!text) return '';
+    const prefixed = text.match(/^department\s*=\s*(.+)$/i);
+    if (prefixed) {
+        const value = prefixed[1].trim();
+        const known = WF_DEPARTMENT_CODES.find(code => code.toLowerCase() === value.toLowerCase());
+        return known || value;
+    }
+    const head = text.split('|')[0].trim();
+    return WF_DEPARTMENT_CODES.find(code => code.toLowerCase() === head.toLowerCase()) || '';
+}
+
+function taskAssignmentDepartments(task) {
+    if (!task) return [];
+    const fromLabel = assignmentDepartmentFromLabel(task.assigned_label);
+    if (fromLabel) return [fromLabel];
+    const scope = normalizeText(task.assigned_scope);
+    const scopeDept = {
+        all_bsit: 'BSIT',
+        bsit: 'BSIT',
+        all_bsie: 'BSIE',
+        bsie: 'BSIE',
+        all_bit: 'BIT',
+        bit: 'BIT'
+    }[scope];
+    if (scopeDept) return [scopeDept];
+    if (scope === 'department') {
+        const config = typeof getTaskReportConfig === 'function' ? getTaskReportConfig(task) : null;
+        if (config?.recipient_department) return [String(config.recipient_department).trim()];
+        const targets = (workflowState.reportTargets || []).filter(target =>
+            config &&
+            String(target.report_config_id) === String(config.id) &&
+            normalizeText(target.target_type) === 'department' &&
+            target.target_department
+        );
+        if (targets.length) return [...new Set(targets.map(target => String(target.target_department).trim()))];
+    }
+    return [];
+}
+
+function formatAssignedToDisplay(label) {
+    const text = String(label || '').trim();
+    const match = text.match(/^department\s*=\s*(.+)$/i);
+    if (!match) return text;
+    const value = match[1].trim();
+    const known = WF_DEPARTMENT_CODES.find(code => code.toLowerCase() === value.toLowerCase());
+    return known || value;
+}
+
+function taskMatchesFacultyName(task, assignees, query) {
+    if (!query) return true;
+    const names = [];
+    (assignees || []).forEach(faculty => names.push(workflowFacultyDisplayName(faculty)));
+    (workflowState.submissions || []).forEach(sub => {
+        if (String(sub.task_id) !== String(task?.id)) return;
+        const faculty = facultyRecordForRef(sub.faculty_id);
+        names.push(
+            workflowFacultyDisplayName(faculty),
+            sub.faculty_name,
+            sub.submitted_by_name,
+            sub.submitter_name,
+            sub.full_name
+        );
+    });
+    return names.some(name => normalizeText(name).replace(/\s+/g, ' ').includes(query));
+}
+
+function taskMatchesDepartment(task, assignees, dept) {
+    if (!dept) return true;
+    const wanted = normalizeText(dept);
+    const assignmentDepartments = taskAssignmentDepartments(task);
+    if (assignmentDepartments.length) {
+        return assignmentDepartments.some(code => normalizeText(code) === wanted);
+    }
+    return (assignees || []).some(faculty => normalizeText(faculty.department_code) === wanted);
+}
+
 function deriveAssignedLabel(taskId) {
     const task = getTaskById(taskId);
-    if (task?.assigned_label) return task.assigned_label;
-    const rows = workflowState.assignments.filter(a => a.task_id === taskId);
+    if (task?.assigned_label) return formatAssignedToDisplay(task.assigned_label);
+    const rows = (workflowState.assignments || []).filter(a => String(a.task_id) === String(taskId));
     const faculties = rows.map(r => getFacultyById(r.faculty_id)).filter(Boolean);
     const depts = [...new Set(faculties.map(f => f.department_code))];
     if (!rows.length) return 'No assignees';
@@ -2442,14 +2897,14 @@ function renderTaskCardContainer(taskRows) {
 }
 
 function filterSubmissions() {
-    const search  = (document.getElementById('searchInput').value || '').toLowerCase();
+    const search  = (document.getElementById('wfTaskSearch').value || '').toLowerCase();
     const status  = document.getElementById('statusFilter').value;
     const dept    = document.getElementById('deptFilter').value;
     const category = document.getElementById('categoryFilter')?.value || '';
 
     const taskRows = workflowState.tasks.map(task => {
         const assigns = workflowState.assignments.filter(a => a.task_id === task.id);
-        const assignees = assigns.map(a => getFacultyById(a.faculty_id)).filter(Boolean);
+        const assignees = assigns.map(a => facultyRecordForRef(a.faculty_id)).filter(Boolean);
         const submittedCount = assigns.filter(a => {
             const s = getSubmission(task.id, a.faculty_id);
             return !!s && s.status !== 'notsubmitted';
@@ -2461,8 +2916,11 @@ function filterSubmissions() {
 
     const filtered = taskRows.filter(r => {
         const task = r.task;
-        const matchSearch = !search || normalizeText(task.title).includes(search) || r.assignees.some(a => normalizeText(a.full_name).includes(search));
-        const matchDept = !dept || r.assignees.some(a => a.department_code === dept);
+        const query = normalizeText(search).replace(/\s+/g, ' ');
+        const matchSearch = !query ||
+            normalizeText(task.title).includes(query) ||
+            taskMatchesFacultyName(task, r.assignees, query);
+        const matchDept = taskMatchesDepartment(task, r.assignees, dept);
         const matchCategory = !category || resolveTaskCategory(task) === category;
         const statusKey = r.submittedCount === 0 ? 'notsubmitted' : (r.submittedCount >= r.totalAssigned && r.totalAssigned > 0 ? 'approved' : 'underreview');
         const matchStatus = !status || statusKey === status;
@@ -2517,7 +2975,7 @@ function getTaskSubmissionRows(taskId) {
             const aSubmitted = a.submission_id ? 0 : 1;
             const bSubmitted = b.submission_id ? 0 : 1;
             if (aSubmitted !== bSubmitted) return aSubmitted - bSubmitted;
-            return a.faculty_name.localeCompare(b.faculty_name);
+            return String(a.faculty_name || '').localeCompare(String(b.faculty_name || ''));
         });
 }
 
@@ -2648,95 +3106,726 @@ function downloadFile(url, fileName) {
     a.remove();
 }
 
+const WF_ANALYTICS_CATEGORIES = [
+    { key: 'submitted', label: 'Submitted', short: 'Submitted and fully approved', color: '#0f766e' },
+    { key: 'pending_approval', label: 'Pending Approval', short: 'Submitted — Pending Approval', color: '#b45309' },
+    { key: 'late', label: 'Late', short: 'Submitted after the deadline', color: '#b91c1c' },
+    { key: 'not_submitted', label: 'Not Submitted', short: 'Deadline passed, no submission', color: '#64748b' }
+];
+
+function workflowTaskDeadline(task) {
+    return task?.deadline_at || task?.due_at || null;
+}
+
+function workflowSubmissionRaw(row) {
+    if (!row) return null;
+    const match = (workflowState.submissions || []).find(item => String(item.id) === String(row.submission_id));
+    return match || row;
+}
+
+function workflowRowHasSubmission(row) {
+    if (!row) return false;
+    if (row.submitted_at) return true;
+    const rawStatus = String(row.raw_status || '').toLowerCase();
+    if (!row.submission_id) return false;
+    return ['submitted', 'late', 'underreview', 'approved', 'rejected', 'revision'].includes(rawStatus);
+}
+
+function workflowRowApproved(row, task) {
+    if (!workflowRowHasSubmission(row)) return false;
+    const raw = workflowSubmissionRaw(row) || row;
+    const status = String(row.raw_status || raw.status || '').toLowerCase();
+    const stage = String(raw.approval_stage || row.approval_stage || '').toLowerCase();
+    const wf = window.CiteFlowWorkflow;
+    if (wf && typeof wf.isFinallyApproved === 'function') {
+        const config = typeof getTaskReportConfig === 'function' ? getTaskReportConfig(task) : null;
+        const probe = {
+            id: row.submission_id || raw.id,
+            status: row.raw_status || raw.status,
+            approval_stage: raw.approval_stage || row.approval_stage,
+            submitted_at: row.submitted_at || raw.submitted_at
+        };
+        if (wf.isFinallyApproved(probe, task, config)) return true;
+    }
+    return status === 'approved' || stage === 'approved';
+}
+
+function workflowRowSubmittedLate(row, task) {
+    if (!workflowRowHasSubmission(row)) return false;
+    if (row.timing === 'on_time') return false;
+    if (row.timing === 'late') return true;
+    const deadline = workflowTaskDeadline(task);
+    if (row.submitted_at && deadline) return new Date(row.submitted_at) > new Date(deadline);
+    return String(row.raw_status || '').toLowerCase() === 'late' || row.is_late === true;
+}
+
+function classifyWorkflowRow(row, task) {
+    const deadline = workflowTaskDeadline(task);
+    const past = !!(deadline && new Date(deadline).getTime() < Date.now());
+    if (!workflowRowHasSubmission(row)) return past ? 'not_submitted' : null;
+    const approved = workflowRowApproved(row, task);
+    if (workflowRowSubmittedLate(row, task) && !approved) return 'late';
+    if (approved) return 'submitted';
+    return 'pending_approval';
+}
+
+function workflowBucketLabel(bucket) {
+    if (bucket === 'pending_approval') return 'Submitted — Pending Approval';
+    const cat = WF_ANALYTICS_CATEGORIES.find(item => item.key === bucket);
+    return cat ? cat.label : '';
+}
+
+function formatDateLong(iso) {
+    if (!iso) return '—';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function workflowRevisionCount(submissionId, raw) {
+    const history = typeof getApprovalHistoryForSubmission === 'function'
+        ? getApprovalHistoryForSubmission(submissionId).filter(entry => /revision/i.test(String(entry.action || ''))).length
+        : 0;
+    const field = Number(raw?.resubmission_count || 0);
+    return Math.max(history, Number.isFinite(field) ? field : 0);
+}
+
+function workflowPeopleContext(row, task) {
+    const raw = workflowSubmissionRaw(row) || {};
+    const wf = window.CiteFlowWorkflow;
+    const config = typeof getTaskReportConfig === 'function' ? getTaskReportConfig(task) : null;
+    const stageProbe = {
+        id: row?.submission_id || raw.id,
+        status: row?.raw_status || raw.status,
+        approval_stage: raw.approval_stage || row?.approval_stage,
+        submitted_at: row?.submitted_at || raw.submitted_at,
+        reviewed_at: raw.reviewed_at,
+        final_approved_at: raw.final_approved_at,
+        last_reviewed_by_role: raw.last_reviewed_by_role
+    };
+    const hasFile = workflowRowHasSubmission(row);
+    const stage = hasFile && wf && typeof wf.getApprovalStage === 'function'
+        ? wf.getApprovalStage(stageProbe, config, task)
+        : (hasFile ? (stageProbe.approval_stage || '') : '');
+    const stageLabel = typeof formatApprovalStage === 'function' ? formatApprovalStage(stage) : (stage || '—');
+    const chair = row?.submission_id && typeof chairDecisionFromHistory === 'function'
+        ? chairDecisionFromHistory(row.submission_id, raw) : {};
+    const finalDecision = row?.submission_id && typeof finalDecisionFromHistory === 'function'
+        ? finalDecisionFromHistory(row.submission_id, raw) : {};
+    const stageKey = String(stage || '').toLowerCase();
+    let current = '—';
+    if (hasFile) {
+        if (stageKey === 'chairperson') current = chair.name || 'Chairperson';
+        else if (stageKey === 'final_approver' || stageKey === 'final') current = finalDecision.name || 'Dean / Secretary';
+        else if (stageKey === 'approved') current = finalDecision.name || raw.final_approved_by_name || raw.reviewed_by_name || '—';
+        else current = raw.reviewed_by_name || chair.name || finalDecision.name || '—';
+    }
+    let assigned = '—';
+    if (stageKey === 'final_approver' || stageKey === 'approved') assigned = finalDecision.name || 'Dean / Secretary';
+    else if (stageKey === 'chairperson' || stageKey === 'revision') assigned = chair.name || 'Chairperson';
+    else if (hasFile) assigned = raw.reviewed_by_name || 'Chairperson';
+    const remarks = [...new Set([raw.review_remarks, raw.final_approval_remarks, row?.review_remarks]
+        .map(value => String(value || '').trim())
+        .filter(Boolean))];
+    const engineStatus = hasFile && wf && typeof wf.formatWorkflowStatus === 'function'
+        ? wf.formatWorkflowStatus({ ...raw, status: row.raw_status || raw.status, approval_stage: stage }, task, config)
+        : '';
+    return {
+        raw,
+        stage,
+        stageLabel: stageLabel || '—',
+        current: current || '—',
+        assigned: assigned || '—',
+        revisionCount: workflowRevisionCount(row?.submission_id, raw),
+        remarks: remarks.join(' · '),
+        engineStatus
+    };
+}
+
+function workflowTimingLabel(row, task) {
+    const deadline = workflowTaskDeadline(task);
+    if (!deadline) return '';
+    const deadlineMs = new Date(deadline).getTime();
+    const submitted = !!(row?.submission_id || row?.submitted_at);
+    const dayLabel = (ms) => {
+        const days = Math.max(1, Math.ceil(Math.abs(ms) / 86400000));
+        return `${days} ${days === 1 ? 'day' : 'days'}`;
+    };
+    if (submitted && row?.submitted_at) {
+        const diff = new Date(row.submitted_at).getTime() - deadlineMs;
+        return diff > 0 ? `${dayLabel(diff)} late` : '';
+    }
+    const remaining = deadlineMs - Date.now();
+    if (remaining < 0) return `${dayLabel(remaining)} overdue`;
+    return `${dayLabel(remaining)} remaining`;
+}
+
+function facultyInitials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    const letters = ((parts[0] || '?')[0] || '') + ((parts[1] || '')[0] || '');
+    return letters.toUpperCase();
+}
+
+function workflowFileType(name) {
+    const clean = String(name || '');
+    const ext = clean.includes('.') ? clean.split('.').pop() : '';
+    return ext && ext !== clean ? ext.toUpperCase() : 'FILE';
+}
+
+function getAnalyticsSourceRows() {
+    if (analyticsScope === 'overall') {
+        return (allSubmissions || []).map(row => ({ ...row, _task: getTaskById(row.task_id) }));
+    }
+    const task = getTaskById(activeTaskDetailId);
+    return getTaskSubmissionRows(activeTaskDetailId).map(row => ({ ...row, _task: task }));
+}
+
+function bindWorkflowDrawerEvents() {
+    if (window.__wfDrawerEventsBound) return;
+    window.__wfDrawerEventsBound = true;
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const detail = document.getElementById('taskDetailPage');
+        if (!detail?.classList.contains('open')) return;
+        if (document.querySelector('.modal-backdrop.open')) return;
+        returnToWorkflowMain();
+    });
+    document.addEventListener('click', (event) => {
+        const root = document.getElementById('taskDetailPage');
+        if (!root?.classList.contains('open') || !root.contains(event.target)) return;
+        const faculty = event.target.closest('[data-wf-faculty]');
+        if (faculty) {
+            focusWorkflowFaculty(faculty.getAttribute('data-wf-task'), faculty.getAttribute('data-wf-faculty'));
+            return;
+        }
+        const category = event.target.closest('[data-wf-category]');
+        if (category) selectAnalyticsCategory(category.getAttribute('data-wf-category'));
+    });
+    bindWorkflowDrawerResize();
+}
+
+function bindWorkflowDrawerResize() {
+    if (window.__wfDrawerResizeBound) return;
+    const handle = document.getElementById('wfDrawerResize');
+    const panel = document.querySelector('#taskDetailPage .wf-drawer-panel');
+    if (!handle || !panel) return;
+    window.__wfDrawerResizeBound = true;
+    const minWidth = 400;
+    const maxWidth = () => Math.min(960, Math.max(minWidth, window.innerWidth - 48));
+    let dragging = false;
+
+    const applyWidth = (clientX) => {
+        const width = Math.round(Math.min(maxWidth(), Math.max(minWidth, window.innerWidth - clientX - 10)));
+        panel.style.width = width + 'px';
+        if (workflowAnalyticsChart && typeof workflowAnalyticsChart.resize === 'function') {
+            workflowAnalyticsChart.resize();
+        }
+    };
+    const stop = () => {
+        if (!dragging) return;
+        dragging = false;
+        panel.classList.remove('is-resizing');
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+    };
+    handle.addEventListener('pointerdown', (event) => {
+        if (window.innerWidth <= 720) return;
+        dragging = true;
+        panel.classList.add('is-resizing');
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'ew-resize';
+        try { handle.setPointerCapture(event.pointerId); } catch (_) { /* capture is optional */ }
+        event.preventDefault();
+        event.stopPropagation();
+    });
+    window.addEventListener('pointermove', (event) => {
+        if (!dragging) return;
+        applyWidth(event.clientX);
+    });
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+    window.addEventListener('resize', () => {
+        if (window.innerWidth <= 720) panel.style.width = '';
+    });
+}
+
+function focusWorkflowFaculty(taskId, facultyId) {
+    if (!taskId || !facultyId) return;
+    openTaskDetailsPage(taskId, { focusFacultyId: facultyId, preserveCategory: true });
+}
+
+function setAnalyticsScope(scope) {
+    analyticsScope = scope === 'overall' ? 'overall' : 'task';
+    analyticsCategory = null;
+    paintWorkflowAnalytics();
+}
+
+function setAnalyticsChartType(type) {
+    analyticsChartType = type === 'line' || type === 'pie' ? type : 'bar';
+    paintWorkflowAnalytics();
+}
+
+function selectAnalyticsCategory(key) {
+    if (!WF_ANALYTICS_CATEGORIES.some(cat => cat.key === key)) return;
+    analyticsCategory = key;
+    paintWorkflowAnalytics();
+}
+
+function reviewFocusedSubmission(action) {
+    if (!activeTaskDetailId || !detailFocusFacultyId) {
+        workflowNotify('Select a faculty submission first.', 'warn');
+        return;
+    }
+    const row = getTaskSubmissionRows(activeTaskDetailId).find(item => String(item.faculty_id) === String(detailFocusFacultyId));
+    if (!row?.submission_id) {
+        workflowNotify('This faculty has not submitted a file yet.', 'warn');
+        return;
+    }
+    activeReviewId = `${activeTaskDetailId}|${detailFocusFacultyId}`;
+    if (action === 'approved') approveSubmission();
+    else if (action === 'revision') requestRevision();
+    else declineSubmission();
+}
+
+function drawerFileList(files, emptyMessage) {
+    const normalized = (files || []).map(normalizeFileRecord).filter(file => file.name || file.url);
+    if (!normalized.length) return `<p class="text-sm text-gray-400">${escapeHtml(emptyMessage)}</p>`;
+    return normalized.map(file => {
+        const key = registerFileAction(file);
+        const hasUrl = hasFileTarget(file);
+        return `
+            <div class="file-chip">
+                <div class="file-chip-name min-w-0">
+                    <div class="min-w-0">
+                        <span class="truncate block">${escapeHtml(file.name)}</span>
+                        <div class="file-chip-meta">${escapeHtml(workflowFileType(file.name))}${file.uploadedAt ? ` · ${escapeHtml(formatDateTime(file.uploadedAt))}` : ''}</div>
+                    </div>
+                </div>
+                <div class="file-chip-actions">
+                    <button type="button" class="file-action-btn" ${hasUrl ? `onclick="previewFileByKey('${key}')"` : 'disabled'}>Preview</button>
+                    <button type="button" class="file-action-btn" ${hasUrl ? `onclick="downloadFileByKey('${key}')"` : 'disabled'}>Download</button>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function renderWorkflowChart(counts, total) {
+    const canvas = document.getElementById('wfAnalyticsChart');
+    const empty = document.getElementById('wfChartEmpty');
+    if (workflowAnalyticsChart) {
+        workflowAnalyticsChart.destroy();
+        workflowAnalyticsChart = null;
+    }
+    if (!total) {
+        if (canvas) canvas.style.display = 'none';
+        if (empty) {
+            empty.classList.remove('hidden');
+            empty.textContent = analyticsScope === 'overall'
+                ? 'No workflow assignments are loaded, so there is nothing to chart.'
+                : 'This task has no assigned faculty yet.';
+        }
+        return;
+    }
+    if (canvas) canvas.style.display = 'block';
+    if (!canvas || typeof Chart !== 'function') {
+        if (empty) {
+            empty.classList.remove('hidden');
+            empty.textContent = 'The chart could not be drawn. The counts above are from the loaded submissions.';
+        }
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+    const type = analyticsChartType === 'line' ? 'line' : analyticsChartType === 'pie' ? 'pie' : 'bar';
+    const wrap = canvas.closest('.wf-chart-wrap');
+    if (wrap) wrap.classList.toggle('is-pie', type === 'pie');
+    const colors = WF_ANALYTICS_CATEGORIES.map(cat => cat.key === analyticsCategory ? cat.color : `${cat.color}99`);
+    const dataset = {
+        label: 'Faculty',
+        data: WF_ANALYTICS_CATEGORIES.map(cat => counts[cat.key] || 0),
+        backgroundColor: type === 'line' ? 'rgba(98, 23, 8, 0.12)' : colors,
+        borderColor: type === 'line' ? '#621708' : WF_ANALYTICS_CATEGORIES.map(cat => cat.color),
+        borderWidth: type === 'line' ? 2 : WF_ANALYTICS_CATEGORIES.map(cat => cat.key === analyticsCategory ? 2 : 1),
+        tension: 0.35,
+        fill: type === 'line',
+        pointRadius: type === 'line' ? WF_ANALYTICS_CATEGORIES.map(cat => cat.key === analyticsCategory ? 6 : 4) : 0,
+        pointHoverRadius: type === 'line' ? 7 : 0,
+        pointBackgroundColor: WF_ANALYTICS_CATEGORIES.map(cat => cat.color)
+    };
+    if (type === 'pie') dataset.offset = WF_ANALYTICS_CATEGORIES.map(cat => cat.key === analyticsCategory ? 12 : 0);
+    const options = {
+        responsive: true,
+        maintainAspectRatio: type === 'pie',
+        aspectRatio: type === 'pie' ? 1.15 : undefined,
+        interaction: { mode: 'nearest', intersect: false },
+        onHover(evt, elements) {
+            const target = evt?.native?.target;
+            if (target) target.style.cursor = elements?.length ? 'pointer' : 'default';
+        },
+        onClick(evt, elements) {
+            const chart = this;
+            let index = elements?.[0]?.index;
+            if (index == null && chart?.scales?.x && evt) {
+                const x = chart.scales.x.getValueForPixel(evt.x);
+                if (Number.isFinite(x)) index = Math.round(x);
+            }
+            const cat = WF_ANALYTICS_CATEGORIES[index];
+            if (cat) setTimeout(() => selectAnalyticsCategory(cat.key), 0);
+        },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    title(items) {
+                        const cat = WF_ANALYTICS_CATEGORIES[items?.[0]?.dataIndex];
+                        return cat ? cat.label : '';
+                    },
+                    label(ctx) {
+                        const value = typeof ctx.parsed === 'object' ? Number(ctx.parsed.y ?? ctx.parsed.x ?? 0) : Number(ctx.parsed || 0);
+                        const pct = total ? Math.round((value / total) * 100) : 0;
+                        const cat = WF_ANALYTICS_CATEGORIES[ctx.dataIndex];
+                        return `${value} faculty (${pct}%)${cat?.short ? ` · ${cat.short}` : ''}`;
+                    }
+                }
+            }
+        }
+    };
+    if (type !== 'pie') {
+        options.scales = {
+            y: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { ticks: { font: { size: 10 }, maxRotation: 40 } }
+        };
+    }
+    try {
+        workflowAnalyticsChart = new Chart(canvas, {
+            type,
+            data: { labels: WF_ANALYTICS_CATEGORIES.map(cat => cat.label), datasets: [dataset] },
+            options
+        });
+    } catch (error) {
+        console.error('Workflow chart failed:', error);
+        if (empty) {
+            empty.classList.remove('hidden');
+            empty.textContent = 'The chart could not be drawn. The counts above are from the loaded submissions.';
+        }
+    }
+}
+
+function renderAnalyticsFaculty(rows) {
+    const el = document.getElementById('wfAnalyticsFaculty');
+    const empty = document.getElementById('wfAnalyticsFacultyEmpty');
+    const heading = document.getElementById('wfFacultyHeading');
+    if (!el) return;
+    const cat = WF_ANALYTICS_CATEGORIES.find(item => item.key === analyticsCategory);
+    if (heading) heading.textContent = cat?.label || 'Faculty';
+    if (!rows.length) {
+        el.innerHTML = '';
+        if (empty) {
+            empty.classList.remove('hidden');
+            empty.textContent = `No faculty in ${cat?.label || 'this status'}.`;
+        }
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+    el.innerHTML = rows.map(row => {
+        const task = row._task || getTaskById(row.task_id);
+        const people = workflowPeopleContext(row, task);
+        const timing = workflowTimingLabel(row, task);
+        const timingClass = /late|overdue/i.test(timing) ? 'wf-timing-late' : (timing ? 'wf-timing-ok' : '');
+        const active = String(row.faculty_id) === String(detailFocusFacultyId) && String(row.task_id) === String(activeTaskDetailId);
+        const statusText = workflowBucketLabel(cat?.key);
+        const submittedLine = row.submitted_at
+            ? `Submitted: ${formatDateLong(row.submitted_at)}`
+            : 'Submitted: No submission';
+        const deadlineLine = task ? `Deadline: ${formatDateLong(workflowTaskDeadline(task))}` : '';
+        return `
+            <button type="button" class="wf-faculty-card ${active ? 'active' : ''}" style="--wf-accent:${cat?.color || '#cbd5e1'}" data-wf-task="${escapeHtml(row.task_id)}" data-wf-faculty="${escapeHtml(row.faculty_id)}">
+                <span class="wf-avatar">${escapeHtml(facultyInitials(row.faculty_name))}</span>
+                <span class="wf-faculty-body">
+                    <span class="wf-faculty-top">
+                        <strong>${escapeHtml(row.faculty_name || 'Faculty')}</strong>
+                        <span class="wf-pill" data-bucket="${escapeHtml(cat?.key || '')}">${escapeHtml(statusText)}</span>
+                    </span>
+                    <span class="wf-faculty-dept">${escapeHtml(row.department_code || '—')}${analyticsScope === 'overall' && task?.title ? ` · ${escapeHtml(task.title)}` : ''}</span>
+                    <span class="wf-faculty-lines">
+                        <span>${escapeHtml(submittedLine)}</span>
+                        ${deadlineLine ? `<span>${escapeHtml(deadlineLine)}</span>` : ''}
+                        ${timing ? `<span class="${timingClass}">${escapeHtml(timing)}</span>` : ''}
+                        <span>Stage: ${escapeHtml(people.stageLabel || '—')}</span>
+                        <span>Reviewer: ${escapeHtml(people.current || '—')}</span>
+                        ${people.remarks ? `<span>Remarks: ${escapeHtml(people.remarks)}</span>` : ''}
+                    </span>
+                </span>
+            </button>`;
+    }).join('');
+}
+
+function paintWorkflowAnalytics() {
+    const rows = getAnalyticsSourceRows()
+        .map(row => ({ ...row, _bucket: classifyWorkflowRow(row, row._task) }))
+        .filter(row => WF_ANALYTICS_CATEGORIES.some(cat => cat.key === row._bucket));
+    const counts = { submitted: 0, pending_approval: 0, late: 0, not_submitted: 0 };
+    rows.forEach(row => { counts[row._bucket] += 1; });
+    const total = rows.length;
+    if (!WF_ANALYTICS_CATEGORIES.some(cat => cat.key === analyticsCategory)) {
+        analyticsCategory = WF_ANALYTICS_CATEGORIES.find(cat => counts[cat.key] > 0)?.key || 'submitted';
+    }
+    const countsEl = document.getElementById('wfAnalyticsCounts');
+    if (countsEl) {
+        countsEl.innerHTML = WF_ANALYTICS_CATEGORIES.map(cat => {
+            const count = counts[cat.key] || 0;
+            const pct = total ? Math.round((count / total) * 100) : 0;
+            return `
+                <button type="button" class="wf-stat ${analyticsCategory === cat.key ? 'active' : ''}" data-wf-category="${cat.key}">
+                    <span class="wf-stat-name"><span class="wf-dot" style="background:${cat.color}"></span>${escapeHtml(cat.label)}</span>
+                    <span style="display:flex;align-items:center;gap:8px"><span class="text-xs text-gray-400">${pct}%</span><span class="wf-count">${count}</span></span>
+                </button>`;
+        }).join('');
+    }
+    document.getElementById('wfScopeTask')?.classList.toggle('active', analyticsScope !== 'overall');
+    document.getElementById('wfScopeOverall')?.classList.toggle('active', analyticsScope === 'overall');
+    document.querySelectorAll('[data-wf-chart]').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-wf-chart') === analyticsChartType);
+    });
+    const cat = WF_ANALYTICS_CATEGORIES.find(item => item.key === analyticsCategory);
+    const hint = document.getElementById('wfAnalyticsHint');
+    if (hint) {
+        hint.textContent = `${analyticsScope === 'overall' ? 'Overall progress' : 'Task progress'} · ${cat?.short || ''}`;
+    }
+    renderWorkflowChart(counts, total);
+    renderAnalyticsFaculty(rows.filter(row => row._bucket === analyticsCategory));
+}
+
 function openTaskDetailsPage(taskId, options = {}) {
+    bindWorkflowDrawerEvents();
     if (isChairpersonQueueActor() && !taskVisibleToChairperson(getTaskById(taskId))) {
-        showToast('This task is outside your authorized Chairperson scope.', 'warn');
+        workflowNotify('This task is outside your authorized Chairperson scope.', 'warn');
         return;
     }
     const task = getTaskById(taskId);
     if (!task) {
-        showToast('Task not found or not loaded yet.', 'error');
+        workflowNotify('Task not found or not loaded yet.', 'error');
         return;
     }
-    activeTaskDetailId = taskId;
-    document.getElementById('workflowMainView').classList.add('hidden');
-    document.getElementById('taskDetailPage').classList.remove('hidden');
-    renderTaskDetailPage(taskId, options);
+    const switching = String(activeTaskDetailId || '') !== String(taskId);
+    activeTaskDetailId = String(taskId);
+    if (options.focusFacultyId) detailFocusFacultyId = options.focusFacultyId;
+    else if (!options.preserveFocus) detailFocusFacultyId = null;
+    if (switching && !options.preserveCategory) {
+        analyticsScope = 'task';
+        analyticsCategory = null;
+    }
+    workflowDrawerFocusAnalytics = !!options.focusAnalytics;
+    if (!showWorkflowDetailPane(true)) return;
+
+    const body = document.getElementById('wfDrawerBody');
+    const actions = document.getElementById('wfDrawerActions');
+    if (workflowAnalyticsChart) {
+        workflowAnalyticsChart.destroy();
+        workflowAnalyticsChart = null;
+    }
+    if (actions) {
+        actions.classList.add('hidden');
+        actions.innerHTML = '';
+    }
+    if (body && !getTaskSubmissionRows(taskId).length && !(workflowState.assignments || []).some(row => String(row.task_id) === String(taskId))) {
+        body.innerHTML = `<div class="cite-empty"><div class="cite-empty-icon"><i class="fa-solid fa-spinner fa-spin"></i></div><div class="cite-empty-title">Loading task details</div><p class="cite-empty-text">Loading submissions, files, and review status.</p></div>`;
+    }
+
+    renderTaskDetailPage(activeTaskDetailId, options);
     document.querySelectorAll('.action-dropdown').forEach(m => m.classList.remove('open', 'open-up'));
 
     if (options.updateHash !== false) {
-        const focus = options.focusFacultyId ? `&faculty=${encodeURIComponent(options.focusFacultyId)}` : '';
-        history.pushState(null, '', `#task=${encodeURIComponent(taskId)}${focus}`);
+        const focus = detailFocusFacultyId ? `&faculty=${encodeURIComponent(detailFocusFacultyId)}` : '';
+        history.pushState(null, '', `#task=${encodeURIComponent(activeTaskDetailId)}${focus}`);
     }
 }
 
 function returnToWorkflowMain(updateHash = true) {
     activeTaskDetailId = null;
-    document.getElementById('taskDetailPage').classList.add('hidden');
-    document.getElementById('workflowMainView').classList.remove('hidden');
+    detailFocusFacultyId = null;
+    showWorkflowDetailPane(false);
     if (updateHash) history.pushState(null, '', window.location.pathname + window.location.search);
+}
+
+function setDrawerActions(html) {
+    const bar = document.getElementById('wfDrawerActions');
+    if (!bar) return;
+    if (!html) {
+        bar.classList.add('hidden');
+        bar.innerHTML = '';
+        return;
+    }
+    bar.classList.remove('hidden');
+    bar.innerHTML = html;
 }
 
 function renderTaskDetailPage(taskId, options = {}) {
     const task = getTaskById(taskId);
-    if (!task) return;
-    const rows = getTaskSubmissionRows(taskId);
-    const total = rows.length;
-    const submitted = rows.filter(s => s.submission_id).length;
-    const pending = total - submitted;
-    const pct = total ? Math.round((submitted / total) * 100) : 0;
-    const summary = taskSummaryStatus(submitted, total);
-
-    document.getElementById('detailTaskTitle').textContent = task.title;
-    const categoryLabel = formatTaskCategoryLabel(task);
-    document.getElementById('detailTaskMeta').textContent = `${categoryLabel ? categoryLabel + ' | ' : ''}Assigned to ${deriveAssignedLabel(taskId)} | Due ${formatDate(task.due_at)} | Created ${formatDateTime(task.created_at)}`;
-    document.getElementById('detailTaskStatusBadge').innerHTML = `<span class="badge ${summary.className}"><span class="badge-dot"></span>${escapeHtml(summary.label)}</span>`;
-    document.getElementById('detailAssignedCount').textContent = total;
-    document.getElementById('detailAssignedLabel').textContent = deriveAssignedLabel(taskId);
-    document.getElementById('detailSubmittedCount').textContent = submitted;
-    document.getElementById('detailPendingCount').textContent = pending;
-    document.getElementById('detailProgressPercent').textContent = pct + '%';
-    document.getElementById('detailProgressFill').style.width = pct + '%';
-    document.getElementById('detailSubmittedSummary').textContent = `${submitted}/${total} submitted`;
-    document.getElementById('detailTaskDeadline').innerHTML = `${formatDateTime(task.due_at)} <span class="ml-2">${deadlineCountdown(task.due_at)}</span>`;
-    document.getElementById('detailTaskInstructions').textContent = task.instructions || 'No instructions provided.';
-    document.getElementById('detailTaskAttachments').innerHTML = renderFileList(getTaskAttachments(task), 'No task attachments.');
-
-    const manageBtn = document.getElementById('detailTaskManageBtn');
-    if (manageBtn) {
-        if (typeof isChairpersonQueueActor === 'function' && isChairpersonQueueActor()) {
-            manageBtn.classList.add('hidden');
-            manageBtn.onclick = null;
-        } else if (canEditDeleteWorkflowTask(task)) {
-            manageBtn.classList.remove('hidden');
-            manageBtn.textContent = 'Edit Task';
-            manageBtn.onclick = () => openEditTaskModal(task.id);
-        } else if (task.report_config_id) {
-            manageBtn.classList.remove('hidden');
-            manageBtn.textContent = 'Manage Report';
-            manageBtn.onclick = () => openReportConfigModal(task.report_config_id);
-        } else {
-            manageBtn.classList.add('hidden');
-            manageBtn.onclick = null;
-        }
+    const body = document.getElementById('wfDrawerBody');
+    if (!task) {
+        workflowNotify('Task not found or not loaded yet.', 'error');
+        return;
     }
+    if (options.focusFacultyId) detailFocusFacultyId = options.focusFacultyId;
+    try {
+    const rows = getTaskSubmissionRows(taskId);
+    const focus = detailFocusFacultyId
+        ? rows.find(row => String(row.faculty_id) === String(detailFocusFacultyId))
+        : null;
+    const people = focus ? workflowPeopleContext(focus, task) : null;
+    const bucket = focus ? classifyWorkflowRow(focus, task) : null;
+    const categoryLabel = formatTaskCategoryLabel(task);
+    const deadline = workflowTaskDeadline(task);
+    const summary = taskSummaryStatus(rows.filter(row => workflowRowHasSubmission(row)).length, rows.length);
+    const statusText = focus ? (workflowBucketLabel(bucket) || 'No submission yet') : summary.label;
+    const hideDecline = typeof isChairpersonQueueActor === 'function' && isChairpersonQueueActor();
+    let manage = '';
+    if (!hideDecline && canEditDeleteWorkflowTask(task)) {
+        manage = `<button type="button" class="btn btn-ghost btn-sm" onclick="openEditTaskModal('${task.id}')">Edit Task</button>`;
+    } else if (!hideDecline && task.report_config_id) {
+        manage = `<button type="button" class="btn btn-ghost btn-sm" onclick="openReportConfigModal('${task.report_config_id}')">Manage Report</button>`;
+    }
+    const depts = [...new Set(rows.map(row => row.department_code).filter(Boolean))];
+    const deptLabel = focus?.department_code || (depts.length === 1 ? depts[0] : (depts.length ? depts.join(', ') : '—'));
+    const decisionStatus = String(people?.raw?.status || focus?.raw_status || '').toLowerCase();
+    const decisionNote = people && (decisionStatus === 'revision' || decisionStatus === 'rejected')
+        ? `<div class="wf-note">${escapeHtml(decisionStatus === 'revision' ? 'Revision requested' : 'Declined')} by ${escapeHtml(people.raw.reviewed_by_name || 'reviewer')}${people.raw.reviewed_at ? ` on ${escapeHtml(formatDateTime(people.raw.reviewed_at))}` : ''}.</div>`
+        : '';
+    const timing = focus ? workflowTimingLabel(focus, task) : '';
+    const submittedFiles = focus && workflowRowHasSubmission(focus)
+        ? `${typeof mfoReportLinkHtml === 'function' ? mfoReportLinkHtml(task, focus) : ''}${drawerFileList(focus.files, 'No submitted files saved.')}`
+        : '<p class="text-sm text-gray-400">No files uploaded yet.</p>';
+    const taskFiles = drawerFileList(getTaskAttachments(task), 'No task attachments.');
+    const grantGap = focus && typeof chairpersonGrantGapHtml === 'function'
+        ? chairpersonGrantGapHtml(focus, people?.stage)
+        : '';
 
-    renderDetailDepartmentProgress(rows);
-    renderDetailSubmissionList(rows);
-
-    if (options.focusFacultyId) {
-        setTimeout(() => focusSubmissionCard(options.focusFacultyId), 80);
+    if (!body) throw new Error('Task details drawer is missing.');
+    body.innerHTML = `
+        <section class="wf-card">
+            <div class="wf-title-row">
+                <h1 id="detailTaskTitle">${escapeHtml(task.title || 'Task')}</h1>
+                <span class="wf-pill" id="detailTaskStatusBadge" data-bucket="${escapeHtml(bucket || '')}"><span class="wf-dot" style="background:currentColor"></span>${escapeHtml(statusText)}</span>
+            </div>
+            <p class="wf-meta-line" id="detailTaskMeta">${escapeHtml([categoryLabel, focus?.faculty_name, deptLabel, deadline ? `Due ${formatDateLong(deadline)}` : '', people?.stageLabel && people.stageLabel !== '—' ? people.stageLabel : ''].filter(Boolean).join(' · '))}</p>
+            <div class="wf-quiet-actions">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="openActivityLogModal()">Activity Log</button>
+                ${manage}
+                ${focus ? `<button type="button" class="btn btn-ghost btn-sm" onclick="openTimelineModal('${focus.task_id}', '${focus.faculty_id}')">Timeline</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="openCommentsModal('${focus.task_id}', '${focus.faculty_id}')">Comments</button>` : ''}
+            </div>
+        </section>
+        <section class="wf-card">
+            <div class="wf-kicker">Summary</div>
+            <div class="wf-summary-grid">
+                <div><span>Submitted by</span><strong>${escapeHtml(focus?.faculty_name || deriveAssignedLabel(task.id))}</strong></div>
+                <div><span>Department</span><strong>${escapeHtml(deptLabel)}</strong></div>
+                <div><span>Task / report type</span><strong>${escapeHtml(categoryLabel || 'Workflow task')}</strong></div>
+                <div><span>Deadline</span><strong>${escapeHtml(deadline ? formatDateLong(deadline) : '—')}</strong></div>
+                <div><span>Submission date</span><strong>${escapeHtml(focus?.submitted_at ? formatDateTime(focus.submitted_at) : (focus ? 'Not submitted' : 'Select a faculty'))}</strong></div>
+                <div><span>Current status</span><strong>${escapeHtml(focus ? (people?.engineStatus || statusText) : statusText)}</strong></div>
+                <div><span>Approval stage</span><strong>${escapeHtml(people?.stageLabel || '—')}</strong></div>
+                <div><span>Task ID</span><strong title="${escapeHtml(task.id)}">${escapeHtml(String(task.id || '').slice(0, 8))}</strong></div>
+            </div>
+            ${task.instructions ? `<div class="wf-note">${escapeHtml(task.instructions)}</div>` : ''}
+        </section>
+        <section class="wf-card" id="wfAnalyticsCard">
+            <div class="wf-tool-row">
+                <div>
+                    <div class="wf-kicker" style="margin-bottom:2px">Progress Analytics</div>
+                    <p class="wf-meta-line" id="wfAnalyticsHint" style="margin-top:0">Task progress</p>
+                </div>
+                <div class="wf-seg" role="group" aria-label="Progress scope">
+                    <button type="button" id="wfScopeTask" onclick="setAnalyticsScope('task')">Task Progress</button>
+                    <button type="button" id="wfScopeOverall" onclick="setAnalyticsScope('overall')">Overall Progress</button>
+                </div>
+            </div>
+            <div class="wf-seg" style="margin-top:10px" role="group" aria-label="Chart type">
+                <button type="button" data-wf-chart="bar" onclick="setAnalyticsChartType('bar')">Bar</button>
+                <button type="button" data-wf-chart="line" onclick="setAnalyticsChartType('line')">Line</button>
+                <button type="button" data-wf-chart="pie" onclick="setAnalyticsChartType('pie')">Pie</button>
+            </div>
+            <div class="wf-chart-wrap">
+                <canvas id="wfAnalyticsChart"></canvas>
+                <p id="wfChartEmpty" class="hidden text-sm text-gray-400"></p>
+            </div>
+            <div id="wfAnalyticsCounts" class="wf-stat-list"></div>
+            <div class="wf-kicker" id="wfFacultyHeading" style="margin-top:14px">Faculty</div>
+            <p id="wfAnalyticsFacultyEmpty" class="hidden text-sm text-gray-400"></p>
+            <div id="wfAnalyticsFaculty" class="wf-faculty-list"></div>
+        </section>
+        <section class="wf-card" id="wfReviewCard">
+            <div class="wf-kicker">Submission / review</div>
+            ${focus ? `
+                <div class="wf-title-row" style="margin-bottom:10px">
+                    <strong style="font-size:15px;color:#0f172a">${escapeHtml(focus.faculty_name || 'Faculty')}</strong>
+                    <span class="wf-pill" data-bucket="${escapeHtml(bucket || '')}">${escapeHtml(statusText)}</span>
+                </div>
+                <div class="wf-summary-grid">
+                    <div><span>Submitted</span><strong>${escapeHtml(focus.submitted_at ? formatDateTime(focus.submitted_at) : 'No submission yet')}</strong></div>
+                    <div><span>Current reviewer</span><strong>${escapeHtml(people?.current || '—')}</strong></div>
+                    <div><span>Assigned reviewer</span><strong>${escapeHtml(people?.assigned || '—')}</strong></div>
+                    <div><span>Approval stage</span><strong>${escapeHtml(people?.stageLabel || '—')}</strong></div>
+                    <div><span>Revision count</span><strong>${escapeHtml(people?.revisionCount ?? 0)}</strong></div>
+                    <div><span>Submission ID</span><strong title="${escapeHtml(focus.submission_id || '')}">${escapeHtml(focus.submission_id ? String(focus.submission_id).slice(0, 8) : '—')}</strong></div>
+                </div>
+                ${timing ? `<div class="wf-meta-line ${/late|overdue/i.test(timing) ? 'wf-timing-late' : ''}">${escapeHtml(timing)}</div>` : ''}
+                ${decisionNote}
+                <div class="wf-meta-line">${people?.remarks ? `Remarks: ${escapeHtml(people.remarks)}` : 'No review remarks yet.'}</div>
+                ${facultyFilesUpdatedNoticeHtml(focus)}
+                ${grantGap}
+                ${focus && workflowRowHasSubmission(focus) && typeof renderSubmissionMonitoring === 'function' ? renderSubmissionMonitoring(focus) : ''}
+            ` : `<p class="wf-meta-line">Select a faculty from the chart or the list to open their submission, remarks, and review actions.</p>`}
+        </section>
+        <section class="wf-card" id="wfAttachmentsCard">
+            <div class="wf-kicker">Attachments</div>
+            ${focus ? `<div class="wf-kicker" style="margin-top:0">Supporting documents</div><div class="space-y-2">${submittedFiles}</div>` : ''}
+            <div class="wf-kicker" style="margin-top:${focus ? '14px' : '0'}">Task files</div>
+            <div class="space-y-2">${taskFiles}</div>
+        </section>
+    `;
+    if (focus && workflowRowHasSubmission(focus)) {
+        setDrawerActions(`
+            <label class="field-label" for="drawerReviewComment">Remarks / comments</label>
+            <textarea id="drawerReviewComment" class="field-input" rows="2" placeholder="Required when requesting revision or declining."></textarea>
+            <div class="wf-actions" style="margin-top:10px">
+                ${hideDecline ? '' : `<button type="button" class="btn btn-danger btn-sm" onclick="reviewFocusedSubmission('rejected')">Decline</button>`}
+                <button type="button" class="btn btn-warn btn-sm" onclick="reviewFocusedSubmission('revision')">Request Revision</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="reviewFocusedSubmission('approved')">Approve</button>
+            </div>
+        `);
+    } else if (focus) {
+        setDrawerActions(`<p class="wf-meta-line" style="margin:0">Waiting for this faculty to submit. Review actions stay unavailable until a file is uploaded.</p>`);
+    } else {
+        setDrawerActions('');
+    }
+    paintWorkflowAnalytics();
+    if (workflowDrawerFocusAnalytics) {
+        document.getElementById('wfAnalyticsCard')?.scrollIntoView({ block: 'start' });
+        workflowDrawerFocusAnalytics = false;
+    } else if (focus) {
+        document.getElementById('wfReviewCard')?.scrollIntoView({ block: 'nearest' });
+    }
+    } catch (error) {
+        console.error('Workflow task details failed to render:', error);
+        setDrawerActions('');
+        if (body) {
+            body.innerHTML = `<div class="cite-empty py-8"><div class="cite-empty-icon"><i class="fa-solid fa-circle-exclamation"></i></div><div class="cite-empty-title">Unable to load details</div><p class="cite-empty-text">${escapeHtml(error.message || 'This task could not be displayed.')}</p></div>`;
+        }
+        workflowNotify('Unable to display this task\'s details.', 'error');
     }
 }
 
 function renderDetailDepartmentProgress(rows) {
+    const host = document.getElementById('detailDepartmentProgress');
+    if (!host) return;
     const byDept = { BSIT: { total: 0, submitted: 0 }, BSIE: { total: 0, submitted: 0 }, BIT: { total: 0, submitted: 0 } };
     rows.forEach(s => {
         if (!byDept[s.department_code]) byDept[s.department_code] = { total: 0, submitted: 0 };
         byDept[s.department_code].total++;
         if (s.submission_id) byDept[s.department_code].submitted++;
     });
-    document.getElementById('detailDepartmentProgress').innerHTML = Object.entries(byDept).map(([dept, item]) => {
+    host.innerHTML = Object.entries(byDept).map(([dept, item]) => {
         const pct = item.total ? Math.round((item.submitted / item.total) * 100) : 0;
         return `
             <div>
@@ -2752,6 +3841,7 @@ function renderDetailDepartmentProgress(rows) {
 
 function renderDetailSubmissionList(rows) {
     const list = document.getElementById('detailSubmissionList');
+    if (!list) return;
     if (!rows.length) {
         list.innerHTML = '<div class="cite-empty py-8"><div class="cite-empty-icon"><i class="fa-solid fa-user"></i></div><div class="cite-empty-title">No faculty assigned</div><p class="cite-empty-text">Assign faculty to this task to collect submissions.</p></div>';
         return;
@@ -3296,7 +4386,12 @@ function closeReviewModal() {
 }
 
 function applyReview(newStatus) {
-    const comment = document.getElementById('adminComment').value.trim();
+    const drawerComment = document.getElementById('drawerReviewComment');
+    const modalComment = document.getElementById('adminComment');
+    if (drawerComment && modalComment && document.getElementById('taskDetailPage')?.classList.contains('open')) {
+        modalComment.value = drawerComment.value;
+    }
+    const comment = (modalComment?.value || drawerComment?.value || '').trim();
     if ((newStatus === 'revision' || newStatus === 'rejected') && !comment) {
         showToast('Please provide remarks before submitting.', 'error');
         return;
@@ -3759,10 +4854,11 @@ function renderSpecificUsers() {
 }
 
 function normalizeWorkflowFaculty(row) {
+    const composedName = [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ').trim();
     return {
         id: row.id,
         auth_user_id: row.auth_user_id || null,
-        full_name: row.full_name || row.name || row.email || 'Unnamed Faculty',
+        full_name: row.full_name || row.name || composedName || row.email || 'Unnamed Faculty',
         department_code: row.department_code || row.department || 'N/A',
         email: row.email || row.existing_email || '',
         status: row.status || 'Active',
@@ -4221,6 +5317,8 @@ function populateReportFacultySelect(selected = []) {
 function resetReportConfigForm() {
     activeReportConfigId = null;
     document.getElementById('reportConfigModalTitle').textContent = 'Add Mandatory Report';
+    const saveLabel = document.getElementById('saveReportBtnText');
+    if (saveLabel) saveLabel.textContent = 'Save Report';
     document.getElementById('reportConfigId').value = '';
     document.getElementById('reportName').value = '';
     setSelectValue('reportCategory', 'custom', 'custom');
@@ -4253,6 +5351,8 @@ function openReportConfigModal(configId = null) {
 
         activeReportConfigId = config.id;
         document.getElementById('reportConfigModalTitle').textContent = 'Edit Mandatory Report';
+        const editLabel = document.getElementById('saveReportBtnText');
+        if (editLabel) editLabel.textContent = 'Update Report';
         document.getElementById('reportConfigId').value = config.id;
         document.getElementById('reportName').value = config.report_name || '';
         setSelectValue(
@@ -4395,12 +5495,10 @@ async function saveReportConfig() {
         }
     } catch (err) {
         console.error(err);
-        // Use showToast if available, otherwise alert as a fallback
-        if (typeof showToast === 'function') showToast(err.message || 'Unable to save report configuration.', 'error');
-        else alert(err.message || 'Unable to save report configuration.');
+        workflowNotify(err.message || 'Unable to save report configuration.', 'error');
     } finally {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.classList.remove('opacity-70', 'cursor-wait'); }
-        if (saveText) saveText.textContent = 'Save Report';
+        if (saveText) saveText.textContent = activeReportConfigId ? 'Update Report' : 'Save Report';
     }
 }
 
@@ -4882,93 +5980,7 @@ function closeStatusDetailsModal() {
 }
 
 function openAnalyticsModal(taskId) {
-    const task = getTaskById(taskId);
-    if (!task) return;
-    const rows = getTaskSubmissionRows(taskId);
-    const total = rows.length;
-    const onTime = rows.filter(r => r.timing === 'on_time').length;
-    const late = rows.filter(r => r.timing === 'late' && r.submission_id).length;
-    const notSubmitted = rows.filter(r => !r.submission_id).length;
-    const approved = rows.filter(r => r.status === 'approved').length;
-    const revision = rows.filter(r => r.status === 'revision').length;
-    const rejected = rows.filter(r => r.status === 'rejected').length;
-
-    const submitted = onTime + late;
-    const pct = total ? Math.round((submitted / total) * 100) : 0;
-
-    document.getElementById('analyticsTitle').textContent = task.title;
-    document.getElementById('analyticsSubtitle').textContent =
-        `${submitted}/${total} submitted &middot; ${onTime} on time &middot; ${late} late`;
-
-    document.getElementById('analyticsContent').innerHTML = `
-        <div class="detail-card p-6">
-            <div class="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-4">Submission Status</div>
-            <div class="grid grid-cols-3 gap-3">
-                <div class="status-click bg-emerald-50 rounded-xl p-4" onclick="openStatusDetails('${task.id}','ontime')">
-                    <div class="text-xs text-emerald-600 font-medium">On Time</div>
-                    <div class="text-3xl font-semibold text-emerald-700 mt-1">${onTime}</div>
-                    <div class="text-[11px] text-emerald-600 mt-1">Click for faculty</div>
-                </div>
-                <div class="status-click bg-red-50 rounded-xl p-4" onclick="openStatusDetails('${task.id}','late')">
-                    <div class="text-xs text-red-600 font-medium">Late</div>
-                    <div class="text-3xl font-semibold text-red-700 mt-1">${late}</div>
-                    <div class="text-[11px] text-red-600 mt-1">Click for faculty</div>
-                </div>
-                <div class="status-click bg-gray-50 rounded-xl p-4" onclick="openStatusDetails('${task.id}','pending')">
-                    <div class="text-xs text-gray-500 font-medium">Not Submitted</div>
-                    <div class="text-3xl font-semibold text-gray-700 mt-1">${notSubmitted}</div>
-                    <div class="text-[11px] text-gray-500 mt-1">Click for faculty</div>
-                </div>
-            </div>
-
-            <div class="mt-6">
-                <div class="flex justify-between text-xs text-gray-500 mb-2">
-                    <span>Submission Completion</span><span>${pct}%</span>
-                </div>
-                <div class="analytics-bar">
-                    <div style="width:${pct}%;background:#059669;"></div>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-3 mt-6">
-                <div class="bg-gray-50 rounded-lg p-3">
-                    <div class="text-xs text-gray-400">Assigned</div>
-                    <div class="text-xl font-semibold">${total}</div>
-                </div>
-                <div class="bg-emerald-50 rounded-lg p-3">
-                    <div class="text-xs text-emerald-600">Approved</div>
-                    <div class="text-xl font-semibold text-emerald-700">${approved}</div>
-                </div>
-                <div class="bg-amber-50 rounded-lg p-3">
-                    <div class="text-xs text-amber-600">Revision</div>
-                    <div class="text-xl font-semibold text-amber-700">${revision}</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="detail-card p-6">
-            <div class="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-4">Approval Progress</div>
-            <div class="space-y-4">
-                <div>
-                    <div class="flex justify-between text-xs mb-2"><span>Approved</span><span>${approved}</span></div>
-                    <div class="analytics-bar"><div style="width:${total ? approved/total*100 : 0}%;background:#059669;"></div></div>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs mb-2"><span>Needs Revision</span><span>${revision}</span></div>
-                    <div class="analytics-bar"><div style="width:${total ? revision/total*100 : 0}%;background:#d97706;"></div></div>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs mb-2"><span>Declined</span><span>${rejected}</span></div>
-                    <div class="analytics-bar"><div style="width:${total ? rejected/total*100 : 0}%;background:#6b7280;"></div></div>
-                </div>
-                <div class="mt-5 p-3 rounded-lg bg-indigo-50 text-indigo-700 text-xs">
-                    <strong>Approval chain:</strong> Faculty → Chairperson → Dean/Secretary
-                </div>
-            </div>
-        </div>
-    `;
-
-    document.getElementById('taskAnalyticsModal').classList.add('open');
+    openTaskDetailsPage(taskId, { focusAnalytics: true });
 }
 
 /* ---------- Approval chain ---------- */
@@ -5347,8 +6359,8 @@ async function fetchAllData(isRetry) {
         return;
     }
 
-    workflowState.faculty = (faculty.data || [])
-        .map(normalizeWorkflowFaculty)
+    workflowState.facultyDirectory = (faculty.data || []).map(normalizeWorkflowFaculty);
+    workflowState.faculty = workflowState.facultyDirectory
         .filter(f => String(f.status || 'Active').toLowerCase() === 'active');
 
     workflowState.tasks = tasks.data || [];
@@ -5463,7 +6475,7 @@ function filterSubmissions() {
         return;
     }
 
-    const searchEl = document.getElementById('searchInput');
+    const searchEl = document.getElementById('wfTaskSearch');
     const statusEl = document.getElementById('statusFilter');
     const deptEl = document.getElementById('deptFilter');
     if (!searchEl || !statusEl || !deptEl) return;
@@ -5475,7 +6487,7 @@ function filterSubmissions() {
 
     const taskRows = (workflowState.tasks || []).map(task => {
         const assigns = (workflowState.assignments || []).filter(a => String(a.task_id) === String(task.id));
-        const assignees = assigns.map(a => getFacultyById(a.faculty_id)).filter(Boolean);
+        const assignees = assigns.map(a => facultyRecordForRef(a.faculty_id)).filter(Boolean);
         const submittedCount = assigns.filter(a => {
             const s = getSubmission(task.id, a.faculty_id);
             return !!s && s.status !== 'notsubmitted';
@@ -5489,13 +6501,13 @@ function filterSubmissions() {
 
     const filtered = scopedRows.filter(r => {
         const task = r.task;
-        const matchSearch = !search ||
-            normalizeText(task.title).includes(search) ||
-            normalizeText(formatTaskCategoryLabel(task)).includes(search) ||
-            r.assignees.some(a => normalizeText(a.full_name).includes(search));
+        const query = normalizeText(search).replace(/\s+/g, ' ');
+        const matchSearch = !query ||
+            normalizeText(task.title).includes(query) ||
+            normalizeText(formatTaskCategoryLabel(task)).includes(query) ||
+            taskMatchesFacultyName(task, r.assignees, query);
 
-        const matchDept = !dept ||
-            r.assignees.some(a => normalizeText(a.department_code) === normalizeText(dept));
+        const matchDept = taskMatchesDepartment(task, r.assignees, dept);
 
         const matchCategory = !category || resolveTaskCategory(task) === category;
 
@@ -5825,7 +6837,7 @@ function renderChairpersonWorkbench() {
     document.querySelectorAll('.wf-admin-only').forEach(el => el.classList.add('hidden'));
     workbench.classList.remove('hidden');
 
-    const search = (document.getElementById('chairSearchInput')?.value || document.getElementById('searchInput')?.value || '').toLowerCase();
+    const search = (document.getElementById('chairSearchInput')?.value || document.getElementById('wfTaskSearch')?.value || '').toLowerCase();
     const granted = chairpersonHasGrant();
     const deptCode = window.CiteFlowWorkflow?.facultyDepartmentCode?.(currentActorFaculty)
         || currentActorFaculty?.department_code
@@ -6486,6 +7498,12 @@ async function executeArReview(action) {
 <script src="../nav.js"></script>
 
 <script>
+if (window.CiteFlowUI && typeof window.CiteFlowUI.toast !== 'function') {
+    window.CiteFlowUI.toast = function (message, type) {
+        const mapped = type === 'warning' ? 'warn' : (type === 'error' ? 'error' : 'success');
+        if (typeof showToast === 'function') showToast(message, mapped);
+    };
+}
 (function () {
     function raiseWorkflowModals() {
         document.querySelectorAll(

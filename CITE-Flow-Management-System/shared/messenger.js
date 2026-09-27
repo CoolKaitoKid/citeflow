@@ -56,8 +56,10 @@ window.CiteFlowMessenger = (function () {
         pinnedConvoIds: new Set(),
         archivedConvoIds: new Set(),
         manuallyUnreadConvoIds: new Set(),
-        mutedConvoIds: new Set(),
+        mutedUntil: new Map(),
+        deletedForMeAt: new Map(),
         deletedConvoIds: new Set(),
+        _muteExpiryTimer: null,
         _lastRenderedMsgSig: null,
         _lastExpRenderedMsgSig: null,
         _participantsChanged: false,
@@ -91,23 +93,85 @@ window.CiteFlowMessenger = (function () {
             State.pinnedConvoIds = new Set();
             State.archivedConvoIds = new Set();
             State.manuallyUnreadConvoIds = new Set();
-            State.mutedConvoIds = new Set();
+            State.mutedUntil = new Map();
+            State.deletedForMeAt = new Map();
             State.deletedConvoIds = new Set();
+            clearTimeout(State._muteExpiryTimer);
             return;
         }
         try {
-            State.pinnedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_pinned_convos', uid)) || '[]'));
-            State.archivedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_archived_convos', uid)) || '[]'));
-            State.manuallyUnreadConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_unread_convos', uid)) || '[]'));
-            State.mutedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_muted_convos', uid)) || '[]'));
-            State.deletedConvoIds = new Set(JSON.parse(localStorage.getItem(scopedKey('citeflow_deleted_convos', uid)) || '[]'));
+            State.pinnedConvoIds = toIdSet(JSON.parse(localStorage.getItem(scopedKey('citeflow_pinned_convos', uid)) || '[]'));
+            State.archivedConvoIds = toIdSet(JSON.parse(localStorage.getItem(scopedKey('citeflow_archived_convos', uid)) || '[]'));
+            State.manuallyUnreadConvoIds = toIdSet(JSON.parse(localStorage.getItem(scopedKey('citeflow_unread_convos', uid)) || '[]'));
+            State.deletedConvoIds = toIdSet(JSON.parse(localStorage.getItem(scopedKey('citeflow_deleted_convos', uid)) || '[]'));
+            State.mutedUntil = loadMutedUntil(uid);
+            State.deletedForMeAt = loadDeletedForMe(uid);
         } catch (_) {
             State.pinnedConvoIds = new Set();
             State.archivedConvoIds = new Set();
             State.manuallyUnreadConvoIds = new Set();
-            State.mutedConvoIds = new Set();
+            State.mutedUntil = new Map();
+            State.deletedForMeAt = new Map();
             State.deletedConvoIds = new Set();
         }
+        migrateLegacyDeletedConversations();
+        scheduleMuteExpiry();
+    }
+
+    function toIdSet(raw) {
+        const arr = Array.isArray(raw) ? raw : [];
+        return new Set(arr.map((id) => String(id)));
+    }
+
+    function readScopedJson(base, uid, fallback) {
+        try {
+            const raw = localStorage.getItem(scopedKey(base, uid));
+            if (!raw) return fallback;
+            return JSON.parse(raw);
+        } catch (_) {
+            return fallback;
+        }
+    }
+
+    function loadMutedUntil(uid) {
+        const raw = readScopedJson('citeflow_muted_convos', uid, []);
+        const map = new Map();
+        if (Array.isArray(raw)) {
+            raw.forEach((id) => map.set(String(id), null));
+        } else if (raw && typeof raw === 'object') {
+            Object.keys(raw).forEach((id) => {
+                const until = raw[id];
+                map.set(String(id), until == null || until === '' ? null : Number(until));
+            });
+        }
+        return map;
+    }
+
+    function loadDeletedForMe(uid) {
+        const raw = readScopedJson('citeflow_deleted_for_me', uid, {});
+        const map = new Map();
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+            Object.keys(raw).forEach((id) => {
+                const n = Number(raw[id]);
+                if (Number.isFinite(n)) map.set(String(id), n);
+            });
+        }
+        return map;
+    }
+
+    function migrateLegacyDeletedConversations() {
+        if (!State.deletedConvoIds || State.deletedConvoIds.size === 0) return;
+        const now = Date.now();
+        let archiveChanged = false;
+        State.deletedConvoIds.forEach((id) => {
+            const key = String(id);
+            if (!State.deletedForMeAt.has(key)) State.deletedForMeAt.set(key, now);
+            if (State.archivedConvoIds.delete(key)) archiveChanged = true;
+        });
+        State.deletedConvoIds = new Set();
+        saveDeletedForMeState();
+        saveDeletedState();
+        if (archiveChanged) saveArchivedState();
     }
 
     function savePinnedState() {
@@ -124,11 +188,157 @@ window.CiteFlowMessenger = (function () {
     }
     function saveMutedState() {
         if (!State.currentUserId) return;
-        localStorage.setItem(scopedKey('citeflow_muted_convos', State.currentUserId), JSON.stringify(Array.from(State.mutedConvoIds)));
+        const payload = {};
+        State.mutedUntil.forEach((until, id) => {
+            payload[String(id)] = until == null ? null : Number(until);
+        });
+        localStorage.setItem(scopedKey('citeflow_muted_convos', State.currentUserId), JSON.stringify(payload));
     }
     function saveDeletedState() {
         if (!State.currentUserId) return;
         localStorage.setItem(scopedKey('citeflow_deleted_convos', State.currentUserId), JSON.stringify(Array.from(State.deletedConvoIds)));
+    }
+    function saveDeletedForMeState() {
+        if (!State.currentUserId) return;
+        const payload = {};
+        State.deletedForMeAt.forEach((at, id) => {
+            payload[String(id)] = Number(at);
+        });
+        localStorage.setItem(scopedKey('citeflow_deleted_for_me', State.currentUserId), JSON.stringify(payload));
+    }
+
+    function deletionCutoffMs(convoId) {
+        const raw = State.deletedForMeAt.get(String(convoId));
+        if (raw == null || raw === '') return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+    }
+
+    function isConversationHiddenForMe(conv) {
+        if (!conv) return false;
+        const cutoff = deletionCutoffMs(conv.id);
+        if (cutoff == null) return false;
+        const lastAt = conv.lastMessage && conv.lastMessage.created_at;
+        if (!lastAt) return true;
+        return new Date(lastAt).getTime() <= cutoff;
+    }
+
+    function messagesVisibleToMe(conversationId, messages) {
+        const cutoff = deletionCutoffMs(conversationId);
+        const list = Array.isArray(messages) ? messages : [];
+        if (cutoff == null) return list;
+        return list.filter((m) => m && m.created_at && new Date(m.created_at).getTime() > cutoff);
+    }
+
+    function pruneExpiredMutes() {
+        const now = Date.now();
+        let changed = false;
+        Array.from(State.mutedUntil.keys()).forEach((id) => {
+            const until = State.mutedUntil.get(id);
+            if (until != null && Number(until) <= now) {
+                State.mutedUntil.delete(id);
+                changed = true;
+            }
+        });
+        if (changed) saveMutedState();
+        return changed;
+    }
+
+    function isConversationMuted(convoId) {
+        const key = String(convoId);
+        if (!State.mutedUntil.has(key)) return false;
+        const until = State.mutedUntil.get(key);
+        if (until == null) return true;
+        if (Number(until) <= Date.now()) {
+            State.mutedUntil.delete(key);
+            saveMutedState();
+            return false;
+        }
+        return true;
+    }
+
+    function scheduleMuteExpiry() {
+        clearTimeout(State._muteExpiryTimer);
+        pruneExpiredMutes();
+        let soonest = null;
+        const now = Date.now();
+        State.mutedUntil.forEach((until) => {
+            if (until == null) return;
+            const n = Number(until);
+            if (n > now && (soonest == null || n < soonest)) soonest = n;
+        });
+        if (soonest == null) return;
+        const delay = Math.min(Math.max(soonest - now + 40, 250), 2147483647);
+        State._muteExpiryTimer = setTimeout(() => {
+            const changed = pruneExpiredMutes();
+            scheduleMuteExpiry();
+            if (!changed) return;
+            renderConversationList(getConvoSearchFilter());
+            renderExpandedConvoList();
+            updateUnreadBadge();
+            if (State.activeConversationMeta) {
+                renderExpandedInfoPanel(State.activeConversationMeta);
+                const dock = document.getElementById("msgrDockedDetails");
+                if (dock && dock.style.display === "flex") renderDockedInfoPanel(State.activeConversationMeta);
+            }
+        }, delay);
+    }
+
+    function refreshConversationChrome() {
+        renderConversationList(getConvoSearchFilter());
+        renderExpandedConvoList();
+        updateUnreadBadge();
+        if (!State.activeConversationMeta) return;
+        renderExpandedInfoPanel(State.activeConversationMeta);
+        const dock = document.getElementById("msgrDockedDetails");
+        if (dock && dock.style.display === "flex") renderDockedInfoPanel(State.activeConversationMeta);
+    }
+
+    function applyConversationMute(convoId, hours) {
+        const key = String(convoId);
+        const n = Number(hours);
+        const until = n > 0 ? Date.now() + n * 60 * 60 * 1000 : null;
+        State.mutedUntil.set(key, until);
+        saveMutedState();
+        scheduleMuteExpiry();
+        refreshConversationChrome();
+        const label = n === 1 ? "Muted for 1 hour"
+            : n === 8 ? "Muted for 8 hours"
+            : n === 24 ? "Muted for 24 hours"
+            : "Muted until you unmute it";
+        CiteFlowModal.toast(label);
+    }
+
+    function clearConversationMute(convoId) {
+        State.mutedUntil.delete(String(convoId));
+        saveMutedState();
+        scheduleMuteExpiry();
+        refreshConversationChrome();
+        CiteFlowModal.toast("Notifications unmuted");
+    }
+
+    function forgetConversationLocally(convoId) {
+        const key = String(convoId);
+        const drop = (set) => {
+            if (!set || typeof set.delete !== "function") return;
+            set.delete(key);
+            set.delete(convoId);
+        };
+        drop(State.pinnedConvoIds);
+        drop(State.archivedConvoIds);
+        drop(State.manuallyUnreadConvoIds);
+        drop(State.deletedConvoIds);
+        State.mutedUntil.delete(key);
+        State.deletedForMeAt.delete(key);
+        savePinnedState();
+        saveArchivedState();
+        saveUnreadState();
+        saveMutedState();
+        saveDeletedState();
+        saveDeletedForMeState();
+        State.conversations = State.conversations.filter((c) => String(c.id) !== key);
+        if (String(State.activeConversationId) === key) closeActiveChat();
+        refreshConversationChrome();
     }
 
     function saveConvoMeta(convoId, meta) {
@@ -549,20 +759,22 @@ window.CiteFlowMessenger = (function () {
             ? (String(c.lastMessage.sender_id) === String(State.currentUserId) ? "You: " : "") + escapeHtml(c.lastMessage.content)
             : "No messages yet";
         const time = c.lastMessage ? formatTime(c.lastMessage.created_at) : "";
-        const unreadClass = c.unread ? " unread" : "";
+        const muted = isConversationMuted(c.id);
+        const notifies = c.unread && !muted;
+        const unreadClass = notifies ? " unread" : "";
         const activeClass = String(State.activeConversationId) === String(c.id) ? " active" : "";
         return `
             <div class="msgr-convo${unreadClass}${activeClass}" data-id="${c.id}">
                 ${avatarHtml}
                 <div class="msgr-convo-info">
-                    <div class="msgr-convo-name">${c.isPinned ? '<i class="fa-solid fa-thumbtack msgr-pin-icon" title="Pinned"></i> ' : ""}${escapeHtml(c.displayName)}</div>
+                    <div class="msgr-convo-name">${c.isPinned ? '<i class="fa-solid fa-thumbtack msgr-pin-icon" title="Pinned"></i> ' : ""}${muted ? '<i class="fa-solid fa-bell-slash msgr-mute-icon" title="Notifications muted"></i> ' : ""}${escapeHtml(c.displayName)}</div>
                     <div class="msgr-convo-preview">${preview} ${time ? '<span class="msgr-convo-time-inline"> · ' + time + "</span>" : ""}</div>
                 </div>
                 <div class="msgr-convo-meta">
                     <button type="button" class="msgr-convo-options" data-convoid="${c.id}" title="More options">
                         <i class="fa-solid fa-ellipsis"></i>
                     </button>
-                    ${c.unread ? '<div class="msgr-unread-dot"></div>' : ""}
+                    ${notifies ? '<div class="msgr-unread-dot"></div>' : ""}
                 </div>
             </div>`;
     }
@@ -732,6 +944,26 @@ window.CiteFlowMessenger = (function () {
     };
 
     window.CiteFlowModal = CiteFlowModal;
+
+    function confirmMessengerAction(message, title, options = {}) {
+        if (window.CiteFlowUI && typeof window.CiteFlowUI.dialog === "function") {
+            return window.CiteFlowUI.dialog({
+                message,
+                title: title || "Confirmation",
+                type: options.isDanger ? "warning" : "info",
+                cancelText: "Cancel",
+                confirmText: options.confirmText || "Confirm"
+            });
+        }
+        return CiteFlowModal.confirm(message, title, options);
+    }
+
+    function alertMessenger(message, title) {
+        if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === "function") {
+            return window.CiteFlowUI.alert(message, "error", title || "Error");
+        }
+        return CiteFlowModal.alert(message, title);
+    }
 
     /**
      * Clean name formatter helper (e.g. "juan.delacruz@ctu.edu.ph" -> "Juan Delacruz")
@@ -977,9 +1209,6 @@ window.CiteFlowMessenger = (function () {
                     <div class="msgr-header">
                         <h2>Chats</h2>
                         <div class="msgr-header-actions">
-                            <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrHeaderOptionsBtn" title="Options">
-                                <i class="fa-solid fa-ellipsis"></i>
-                            </button>
                             <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrExpandBtn" title="Expand">
                                 <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
                             </button>
@@ -1061,7 +1290,6 @@ window.CiteFlowMessenger = (function () {
                         <div class="msgr-exp-sidebar-header">
                             <h2>Chats</h2>
                             <div class="msgr-header-actions">
-                                <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrExpHeaderOptionsBtn" title="Options"><i class="fa-solid fa-ellipsis"></i></button>
                                 <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrCollapseBtn" title="Collapse"><i class="fa-solid fa-down-left-and-up-right-to-center"></i></button>
                                 <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrExpNewBtn" title="New Message"><i class="fa-solid fa-pen-to-square"></i></button>
                             </div>
@@ -1152,6 +1380,9 @@ window.CiteFlowMessenger = (function () {
             document.body.appendChild(panelWrapper);
         }
 
+        document.getElementById("msgrHeaderOptionsBtn")?.remove();
+        document.getElementById("msgrExpHeaderOptionsBtn")?.remove();
+
         bindEvents();
         setupLifecycleListeners();
         State.mounted = true;
@@ -1209,13 +1440,6 @@ window.CiteFlowMessenger = (function () {
                     e.preventDefault();
                     e.stopPropagation();
                     closeExpandedView();
-                    return;
-                }
-                const headerOptsBtn = e.target.closest("#msgrHeaderOptionsBtn") || e.target.closest("#msgrExpHeaderOptionsBtn") || e.target.closest("button[title='Options']");
-                if (headerOptsBtn) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    showHeaderOptionsDropdown(headerOptsBtn);
                     return;
                 }
                 const convoOptsBtn = e.target.closest(".msgr-convo-options");
@@ -1626,6 +1850,18 @@ window.CiteFlowMessenger = (function () {
         stopLocalTypingImmediately();
 
         document.getElementById("msgrChat")?.classList.remove("show");
+        const expPlaceholder = document.getElementById("msgrExpChatPlaceholder");
+        const expActive = document.getElementById("msgrExpChatActive");
+        if (expPlaceholder) expPlaceholder.style.display = "flex";
+        if (expActive) expActive.style.display = "none";
+        const expInfo = document.getElementById("msgrExpInfoInner");
+        if (expInfo) {
+            expInfo.innerHTML = `
+                <div class="msgr-exp-info-placeholder">
+                    <i class="fa-regular fa-circle-info"></i>
+                    <p>Chat info will appear here</p>
+                </div>`;
+        }
         State.activeConversationId = null;
         State.activeConversationMeta = null;
         State._currentActiveMessages = [];
@@ -1798,17 +2034,17 @@ window.CiteFlowMessenger = (function () {
                     resolvedOthers = [resolveUserIdentity(null, State.currentUserRole === 'Admin' ? 'Faculty' : 'Admin')];
                 }
 
-                const isManuallyUnread = State.manuallyUnreadConvoIds.has(conv.id);
+                const isManuallyUnread = State.manuallyUnreadConvoIds.has(String(conv.id));
                 const isCurrentlyOpen = String(State.activeConversationId) === String(conv.id);
-                const unread = !isCurrentlyOpen && (isManuallyUnread || Boolean(
+                const hasUnreadMessage = Boolean(
                     lastMsg &&
                     String(lastMsg.sender_id) !== String(State.currentUserId) &&
                     (!myLastRead || new Date(lastMsg.created_at) > new Date(myLastRead))
-                ));
+                );
+                const unread = isManuallyUnread || (!isCurrentlyOpen && hasUnreadMessage);
 
-                const isPinned = State.pinnedConvoIds.has(conv.id);
-                const isSoftDeleted = State.deletedConvoIds.has(String(conv.id));
-                const isArchived = isSoftDeleted || State.archivedConvoIds.has(conv.id);
+                const isPinned = State.pinnedConvoIds.has(String(conv.id));
+                const isArchived = State.archivedConvoIds.has(String(conv.id));
 
                 let displayName = conv.name || null;
                 if (conv.is_group) {
@@ -1834,7 +2070,7 @@ window.CiteFlowMessenger = (function () {
                     unread,
                     isPinned,
                     isArchived,
-                    isSoftDeleted,
+                    isSoftDeleted: false,
                     displayName,
                     sortTime: lastMsg?.created_at || conv.last_message_at || conv.created_at || new Date().toISOString()
                 };
@@ -1884,6 +2120,10 @@ window.CiteFlowMessenger = (function () {
             State.conversations = finalConvos;
             console.log("CiteFlowMessenger: Loaded", finalConvos.length, "conversations.");
 
+            if (State.activeConversationId && !finalConvos.some((c) => String(c.id) === String(State.activeConversationId))) {
+                closeActiveChat();
+            }
+
             renderConversationList(getConvoSearchFilter());
             renderExpandedConvoList();
             updateUnreadBadge();
@@ -1908,7 +2148,7 @@ window.CiteFlowMessenger = (function () {
         const listEl = document.getElementById("msgrList");
         if (!listEl) return;
 
-        let activeItems = State.conversations.filter(c => !c.isArchived);
+        let activeItems = State.conversations.filter(c => !c.isArchived && !isConversationHiddenForMe(c));
         let items = activeItems.filter((c) =>
             !filter || c.displayName.toLowerCase().includes(filter)
         );
@@ -1919,7 +2159,7 @@ window.CiteFlowMessenger = (function () {
         } else if (tabFilter === "groups") {
             items = activeItems.filter(c => c.is_group);
         } else if (tabFilter === "archived") {
-            items = State.conversations.filter(c => c.isArchived);
+            items = State.conversations.filter(c => c.isArchived && !isConversationHiddenForMe(c));
         }
 
         if (items.length === 0) {
@@ -2002,7 +2242,7 @@ window.CiteFlowMessenger = (function () {
 
         // Optimistically remove unread highlight immediately upon opening
         conv.unread = false;
-        State.manuallyUnreadConvoIds.delete(conv.id);
+        State.manuallyUnreadConvoIds.delete(String(conv.id));
         saveUnreadState();
         updateUnreadBadge();
 
@@ -2098,7 +2338,7 @@ window.CiteFlowMessenger = (function () {
         }
 
         const otherAvatarUrl = (safeOthers.length > 0 && !isGroup) ? safeOthers[0].avatar_url : null;
-        const isMuted = State.mutedConvoIds.has(conv.id);
+        const isMuted = isConversationMuted(conv.id);
         const sub = conversationPresenceLabel(conv);
         const avatarHtml = wrapAvatarWithPresence(
             renderAvatar(isGroup ? null : otherAvatarUrl, displayName, isGroup),
@@ -2165,9 +2405,11 @@ window.CiteFlowMessenger = (function () {
             </details>
         `;
 
-        document.getElementById("msgrDockedMuteBtn")?.addEventListener("click", () => {
-            handleConvoAction('mute', conv.id);
-            renderDockedInfoPanel(conv);
+        document.getElementById("msgrDockedMuteBtn")?.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isConversationMuted(conv.id)) clearConversationMute(conv.id);
+            else showMuteDurationDropdown(conv.id, e.currentTarget);
         });
 
         document.getElementById("msgrDockedRenameBtn")?.addEventListener("click", () => {
@@ -2237,7 +2479,7 @@ window.CiteFlowMessenger = (function () {
                 }
             }
 
-            const fetchedMessages = Array.isArray(msgRes.data) ? msgRes.data : [];
+            const fetchedMessages = messagesVisibleToMe(conversationId, Array.isArray(msgRes.data) ? msgRes.data : []);
 
             const pendingOptimistic = (State._currentActiveMessages || []).filter(m =>
                 m.is_optimistic && !fetchedMessages.some(f => f.content === m.content && String(f.sender_id) === String(m.sender_id))
@@ -2575,15 +2817,19 @@ window.CiteFlowMessenger = (function () {
      * Mark conversation read
      */
     async function markConversationRead(conversationId) {
-        const sb = getClient();
-        if (!sb || !State.currentUserId || !conversationId) return;
+        if (!conversationId) return;
 
-        State.manuallyUnreadConvoIds.delete(conversationId);
+        State.manuallyUnreadConvoIds.delete(String(conversationId));
         saveUnreadState();
 
         const conv = State.conversations.find((c) => String(c.id) === String(conversationId));
         if (conv) conv.unread = false;
+        renderConversationList(getConvoSearchFilter());
+        renderExpandedConvoList();
         updateUnreadBadge();
+
+        const sb = getClient();
+        if (!sb || !State.currentUserId) return;
 
         clearTimeout(State._markReadTimer);
         State._markReadTimer = setTimeout(async () => {
@@ -2623,6 +2869,8 @@ window.CiteFlowMessenger = (function () {
     async function handleRealtimeMessageReceived(msg) {
         if (!msg || !msg.conversation_id) return;
         const cid = String(msg.conversation_id);
+        const cutoff = deletionCutoffMs(cid);
+        if (cutoff != null && msg.created_at && new Date(msg.created_at).getTime() <= cutoff) return;
         const isDup = rememberRealtimeMessageId(msg.id);
         const isFromMe = String(msg.sender_id) === String(State.currentUserId);
         const isActiveChat = String(State.activeConversationId) === cid;
@@ -2658,15 +2906,6 @@ window.CiteFlowMessenger = (function () {
             if (!isParticipant) return;
             await loadConversations(false);
             return;
-        }
-
-        if (State.deletedConvoIds.has(cid)) {
-            State.deletedConvoIds.delete(cid);
-            saveDeletedState();
-            State.archivedConvoIds.delete(cid);
-            saveArchivedState();
-            conv.isArchived = false;
-            conv.isSoftDeleted = false;
         }
 
         conv.lastMessage = msg;
@@ -2811,6 +3050,14 @@ window.CiteFlowMessenger = (function () {
             )
             .on(
                 "postgres_changes",
+                { event: "DELETE", schema: "public", table: "messages" },
+                () => {
+                    if (State.activeConversationId) loadAndRenderActiveMessages(State.activeConversationId);
+                    scheduleInboxReload();
+                }
+            )
+            .on(
+                "postgres_changes",
                 { event: "*", schema: "public", table: "conversations" },
                 () => {
                     scheduleInboxReload();
@@ -2881,7 +3128,7 @@ window.CiteFlowMessenger = (function () {
      * Unread count badge on the floating message icon showing distinct unread conversations
      */
     function updateUnreadBadge() {
-        const count = State.conversations.filter((c) => c.unread && !c.isArchived && !c.isSoftDeleted).length;
+        const count = State.conversations.filter((c) => c.unread && !c.isArchived && !isConversationHiddenForMe(c) && !isConversationMuted(c.id)).length;
         const allBtns = document.querySelectorAll("#citeflowMessageFab, .message-btn, .msgr-fab-trigger, .msgr-launcher-btn, [data-msgr-trigger]");
 
         allBtns.forEach(btn => {
@@ -3347,7 +3594,9 @@ window.CiteFlowMessenger = (function () {
         const isGroup = conv.is_group;
         const isUnread = conv.unread;
         const isPinned = conv.isPinned;
-        const isArchivedMode = Boolean(conv.isArchived || conv.isSoftDeleted || State.activeFilter === "archived");
+        const isArchivedMode = Boolean(conv.isArchived || State.activeFilter === "archived");
+        const isMuted = isConversationMuted(conv.id);
+        dropdownAnchorEl = anchorBtn;
 
         dropdown.innerHTML = `
             <div class="msgr-dropdown-menu">
@@ -3363,22 +3612,27 @@ window.CiteFlowMessenger = (function () {
                     <i class="fa-solid fa-comment-dots"></i>
                     Open messaging
                 </button>
-                <button class="msgr-dropdown-item" data-action="mute">
+                ${isMuted ? `
+                <button class="msgr-dropdown-item" data-action="unmute">
+                    <i class="fa-solid fa-bell"></i>
+                    Unmute Notifications
+                </button>` : `
+                <button class="msgr-dropdown-item" data-action="mute-open">
                     <i class="fa-solid fa-bell-slash"></i>
-                    Mute notifications
-                </button>
+                    Mute Notifications
+                </button>`}
                 <div class="msgr-dropdown-divider"></div>
                 <button class="msgr-dropdown-item" data-action="${isArchivedMode ? 'unarchive' : 'archive'}">
                     <i class="fa-solid ${isArchivedMode ? 'fa-box-open' : 'fa-box-archive'}"></i>
                     ${isArchivedMode ? 'Unarchive chat' : 'Archive chat'}
                 </button>
-                <button class="msgr-dropdown-item msgr-dropdown-danger" data-action="delete">
+                <button class="msgr-dropdown-item msgr-dropdown-danger" data-action="delete-me">
                     <i class="fa-solid fa-trash-can"></i>
-                    Delete chat
+                    Delete for me
                 </button>
-                <button class="msgr-dropdown-item" data-action="report">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                    Report
+                <button class="msgr-dropdown-item msgr-dropdown-danger" data-action="delete-everyone">
+                    <i class="fa-solid fa-user-xmark"></i>
+                    Delete for everyone
                 </button>
                 ${isGroup ? `<div class="msgr-dropdown-divider"></div>
                 <button class="msgr-dropdown-item msgr-dropdown-danger" data-action="leave">
@@ -3388,30 +3642,121 @@ window.CiteFlowMessenger = (function () {
             </div>
         `;
 
+        positionConvoDropdown(anchorBtn, 360);
+        ensureDropdownOnBody(dropdown);
+
+        dropdown.querySelectorAll(".msgr-dropdown-item").forEach(item => {
+            item.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (item.dataset.action === "mute-open") {
+                    showMuteDurationDropdown(convoId, anchorBtn);
+                    return;
+                }
+                handleConvoAction(item.dataset.action, convoId);
+                closeConvoDropdown();
+            });
+        });
+    }
+
+    let dropdownAnchorEl = null;
+
+    function ensureDropdownOnBody(dropdown) {
+        if (dropdown && dropdown.parentElement !== document.body) {
+            document.body.appendChild(dropdown);
+        }
+    }
+
+    function clampDropdownToViewport(dropdown) {
+        const menu = dropdown && dropdown.querySelector(".msgr-dropdown-menu");
+        if (!menu) return;
+        const box = menu.getBoundingClientRect();
+        const currentTop = parseFloat(dropdown.style.top) || box.top;
+        if (box.bottom > window.innerHeight - 8) {
+            dropdown.style.top = Math.max(8, currentTop - (box.bottom - window.innerHeight + 8)) + "px";
+        } else if (box.top < 8) {
+            dropdown.style.top = "8px";
+        }
+        const shifted = menu.getBoundingClientRect();
+        if (shifted.right > window.innerWidth - 8) {
+            dropdown.style.right = "8px";
+            dropdown.style.left = "auto";
+        }
+        if (shifted.left < 8) {
+            dropdown.style.left = "8px";
+            dropdown.style.right = "auto";
+        }
+    }
+
+    function positionConvoDropdown(anchorBtn, estimatedHeight) {
+        const dropdown = document.getElementById("msgrDropdown");
+        if (!dropdown || !anchorBtn) return;
+        ensureDropdownOnBody(dropdown);
         dropdown.style.position = "fixed";
         dropdown.style.display = "block";
         dropdown.style.zIndex = "10060";
-
         const rect = anchorBtn.getBoundingClientRect();
-        const dropdownHeight = 280;
+        const anchorVisible = rect.width > 0 && rect.height > 0;
+        if (!anchorVisible && dropdown.style.top) {
+            clampDropdownToViewport(dropdown);
+            return;
+        }
         const spaceBelow = window.innerHeight - rect.bottom;
-
-        if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
-            dropdown.style.top = Math.max(10, (rect.top - dropdownHeight - 6)) + "px";
+        if (spaceBelow < estimatedHeight && rect.top > estimatedHeight) {
+            dropdown.style.top = Math.max(8, (rect.top - estimatedHeight - 6)) + "px";
             dropdown.className = "msgr-dropdown arrow-down";
         } else {
             dropdown.style.top = (rect.bottom + 6) + "px";
             dropdown.className = "msgr-dropdown arrow-up";
         }
-
-        const rightEdge = window.innerWidth - rect.right;
-        dropdown.style.right = Math.max(10, rightEdge) + "px";
+        dropdown.style.right = Math.max(8, window.innerWidth - rect.right) + "px";
         dropdown.style.left = "auto";
+        clampDropdownToViewport(dropdown);
+    }
 
+    function showMuteDurationDropdown(convoId, anchorBtn) {
+        const dropdown = document.getElementById("msgrDropdown");
+        const anchor = anchorBtn || dropdownAnchorEl;
+        if (!dropdown || !anchor) return;
+        const keptTop = dropdown.style.top;
+        const keptRight = dropdown.style.right;
+        const keptLeft = dropdown.style.left;
+        const keptClass = dropdown.className;
+        State.openDropdownId = convoId;
+        dropdownAnchorEl = anchor;
+        dropdown.innerHTML = `
+            <div class="msgr-dropdown-menu">
+                <button class="msgr-dropdown-item" data-action="mute-back">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    Mute Notifications
+                </button>
+                <div class="msgr-dropdown-divider"></div>
+                <button class="msgr-dropdown-item" data-action="mute-duration" data-hours="1">1 hour</button>
+                <button class="msgr-dropdown-item" data-action="mute-duration" data-hours="8">8 hours</button>
+                <button class="msgr-dropdown-item" data-action="mute-duration" data-hours="24">24 hours</button>
+                <button class="msgr-dropdown-item" data-action="mute-duration" data-hours="0">Until unmuted</button>
+            </div>
+        `;
+        ensureDropdownOnBody(dropdown);
+        dropdown.style.position = "fixed";
+        dropdown.style.display = "block";
+        dropdown.style.zIndex = "10060";
+        if (keptTop) {
+            dropdown.style.top = keptTop;
+            dropdown.style.right = keptRight;
+            dropdown.style.left = keptLeft || "auto";
+            dropdown.className = keptClass || "msgr-dropdown arrow-up";
+            clampDropdownToViewport(dropdown);
+        } else {
+            positionConvoDropdown(anchor, 240);
+        }
         dropdown.querySelectorAll(".msgr-dropdown-item").forEach(item => {
             item.addEventListener("click", (e) => {
                 e.stopPropagation();
-                handleConvoAction(item.dataset.action, convoId);
+                if (item.dataset.action === "mute-back") {
+                    showConvoDropdown(convoId, anchor);
+                    return;
+                }
+                applyConversationMute(convoId, item.dataset.hours);
                 closeConvoDropdown();
             });
         });
@@ -3548,6 +3893,26 @@ window.CiteFlowMessenger = (function () {
         }
     }
 
+    async function deleteConversationForEveryone(convoId) {
+        const sb = getClient();
+        if (!sb) throw new Error("Database connection unavailable.");
+
+        const { error: msgErr } = await sb.from("messages").delete().eq("conversation_id", convoId);
+        if (msgErr) throw new Error(msgErr.message || "Could not delete messages for everyone.");
+
+        const { data: left, error: leftErr } = await sb.from("messages").select("id").eq("conversation_id", convoId).limit(1);
+        if (leftErr) throw new Error(leftErr.message || "Could not confirm the delete.");
+        if (Array.isArray(left) && left.length > 0) {
+            throw new Error("Delete for everyone is not permitted for this chat, so it is still in your inbox.");
+        }
+
+        const { error: partErr } = await sb.from("conversation_participants").delete().eq("conversation_id", convoId);
+        if (partErr) console.warn("CiteFlowMessenger: participant delete:", partErr);
+
+        const { error: convErr } = await sb.from("conversations").delete().eq("id", convoId);
+        if (convErr) console.warn("CiteFlowMessenger: conversation delete:", convErr);
+    }
+
     async function handleConvoAction(action, convoId) {
         const sb = getClient();
         const conv = State.conversations.find(c => String(c.id) === String(convoId));
@@ -3556,10 +3921,10 @@ window.CiteFlowMessenger = (function () {
         switch (action) {
             case 'toggle-pin':
                 if (conv.isPinned) {
-                    State.pinnedConvoIds.delete(convoId);
+                    State.pinnedConvoIds.delete(String(convoId));
                     conv.isPinned = false;
                 } else {
-                    State.pinnedConvoIds.add(convoId);
+                    State.pinnedConvoIds.add(String(convoId));
                     conv.isPinned = true;
                 }
                 savePinnedState();
@@ -3575,7 +3940,7 @@ window.CiteFlowMessenger = (function () {
                 if (conv.unread) {
                     await markConversationRead(convoId);
                 } else {
-                    State.manuallyUnreadConvoIds.add(convoId);
+                    State.manuallyUnreadConvoIds.add(String(convoId));
                     saveUnreadState();
                     conv.unread = true;
                     if (sb && State.currentUserId) {
@@ -3594,14 +3959,8 @@ window.CiteFlowMessenger = (function () {
             case 'open':
                 activateConversation(conv, State.isExpanded);
                 break;
-                        case 'mute':
-                if (State.mutedConvoIds.has(convoId)) {
-                    State.mutedConvoIds.delete(convoId);
-                    saveMutedState();
-                } else {
-                    State.mutedConvoIds.add(convoId);
-                    saveMutedState();
-                }
+            case 'unmute':
+                clearConversationMute(convoId);
                 break;
             case 'rename':
             case 'customize':
@@ -3653,31 +4012,47 @@ window.CiteFlowMessenger = (function () {
                 updateUnreadBadge();
                 showCustomToast('');
                 break;
-            case 'delete':
-                const confirmed = await CiteFlowModal.confirm(
-                    'Delete this chat for you? The conversation will be moved to Archive and can be restored anytime. Other participants will not be affected.',
-                    'Delete Chat',
-                    { isDanger: true, confirmText: 'Delete' }
+            case 'delete-me': {
+                const confirmed = await confirmMessengerAction(
+                    'This removes the chat and its current messages from your Messenger only. It will not be archived. The other participant still keeps the conversation.',
+                    'Delete for me',
+                    { isDanger: true, confirmText: 'Delete for me' }
                 );
                 if (confirmed) {
-                    State.deletedConvoIds.add(String(convoId));
-                    saveDeletedState();
-                    State.archivedConvoIds.add(String(convoId));
+                    const key = String(convoId);
+                    State.deletedForMeAt.set(key, Date.now() + 1500);
+                    saveDeletedForMeState();
+                    State.archivedConvoIds.delete(key);
+                    State.deletedConvoIds.delete(key);
                     saveArchivedState();
+                    saveDeletedState();
                     if (conv) {
-                        conv.isArchived = true;
-                        conv.isSoftDeleted = true;
+                        conv.isArchived = false;
+                        conv.isSoftDeleted = false;
                     }
-                    if (State.activeConversationId === convoId) closeActiveChat();
-                    renderConversationList("");
-                    renderExpandedConvoList();
-                    updateUnreadBadge();
-                                       showCustomToast('');
+                    if (String(State.activeConversationId) === key) closeActiveChat();
+                    refreshConversationChrome();
+                    CiteFlowModal.toast('Chat deleted for you');
                 }
                 break;
-            case 'report':
-                await CiteFlowModal.alert('This conversation has been reported to administration. Thank you.', 'Report Chat');
+            }
+            case 'delete-everyone': {
+                const confirmed = await confirmMessengerAction(
+                    'This permanently deletes the chat and its messages for everyone in the conversation. This cannot be undone.',
+                    'Delete for everyone',
+                    { isDanger: true, confirmText: 'Delete for everyone' }
+                );
+                if (confirmed) {
+                    try {
+                        await deleteConversationForEveryone(convoId);
+                        forgetConversationLocally(convoId);
+                        CiteFlowModal.toast('Chat deleted for everyone');
+                    } catch (e) {
+                        await alertMessenger(e.message || 'Could not delete this chat for everyone.', 'Delete failed');
+                    }
+                }
                 break;
+            }
             case 'leave':
                 const leaveConfirmed = await CiteFlowModal.confirm(
                     'Leave this group? You will no longer receive messages.',
@@ -3728,7 +4103,7 @@ window.CiteFlowMessenger = (function () {
         const q = query.toLowerCase();
 
         const matchingConvos = State.conversations.filter(c =>
-            c.displayName.toLowerCase().includes(q)
+            !isConversationHiddenForMe(c) && (c.displayName || "").toLowerCase().includes(q)
         );
 
         if (!State.directoryCache || State.directoryCache.length === 0) {
@@ -3884,13 +4259,13 @@ window.CiteFlowMessenger = (function () {
         if (!listEl) return;
 
         const search = (document.getElementById("msgrExpSearch")?.value || "").trim().toLowerCase();
-        let items = State.conversations.filter(c => !c.isArchived);
+        let items = State.conversations.filter(c => !c.isArchived && !isConversationHiddenForMe(c));
         items = items.filter(c => !search || c.displayName.toLowerCase().includes(search));
 
         const tabFilter = State.activeFilter || "all";
         if (tabFilter === "unread") items = items.filter(c => c.unread);
         else if (tabFilter === "groups") items = items.filter(c => c.is_group);
-        else if (tabFilter === "archived") items = State.conversations.filter(c => c.isArchived);
+        else if (tabFilter === "archived") items = State.conversations.filter(c => c.isArchived && !isConversationHiddenForMe(c) && (!search || c.displayName.toLowerCase().includes(search)));
 
         if (items.length === 0) {
             listEl.innerHTML = `<div class="msgr-empty"><i class="fa-regular fa-comments"></i> No conversations</div>`;
@@ -3929,7 +4304,7 @@ window.CiteFlowMessenger = (function () {
             { name: 'You', department: State.currentUserRole, isSelf: true, avatar_url: State.currentUserAvatar },
             ...safeOthers
         ];
-        const isMuted = State.mutedConvoIds.has(conv.id);
+        const isMuted = isConversationMuted(conv.id);
 
         const avatarHtml = wrapAvatarWithPresence(
             renderAvatar(isGroup ? null : otherAvatarUrl, displayName, isGroup)
@@ -3984,9 +4359,11 @@ window.CiteFlowMessenger = (function () {
             </details>
         `;
 
-        document.getElementById("msgrExpMuteBtn")?.addEventListener("click", () => {
-            handleConvoAction('mute', conv.id);
-            renderExpandedInfoPanel(conv);
+        document.getElementById("msgrExpMuteBtn")?.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isConversationMuted(conv.id)) clearConversationMute(conv.id);
+            else showMuteDurationDropdown(conv.id, e.currentTarget);
         });
 
         document.getElementById("msgrExpCustomizeBtn")?.addEventListener("click", () => {
