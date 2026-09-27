@@ -4226,7 +4226,14 @@ async function deleteTask(taskId) {
         showToast('Generated recurring tasks cannot be deleted here. Edit or disable the report configuration instead.', 'warn');
         return;
     }
-    if (!confirm(`Delete task "${task.title}"? This removes the task assignment list from the admin page.`)) return;
+    const confirmedDelete = await window.CiteFlowUI.dialog({
+        title: 'Delete Task',
+        message: `Delete task "${task.title}"? This removes the task assignment list from the admin page.`,
+        type: 'warning',
+        cancelText: 'Cancel',
+        confirmText: 'Delete'
+    });
+    if (!confirmedDelete) return;
     await db.from('wf_task_assignments').delete().eq('task_id', taskId);
     await db.from('wf_submissions').delete().eq('task_id', taskId);
     const { error } = await db.from('wf_tasks').delete().eq('id', taskId);
@@ -7361,7 +7368,14 @@ function escapeHtml(str) {
 function openArReviewModal(reportId) {
     const WF = window.CiteFlowWorkflow;
     const s = _arSubmissions.find(r => r.id === reportId);
-    if (!s) return alert('Report not found.');
+    if (!s) {
+        window.CiteFlowUI.dialog({
+            title: 'Report Not Found',
+            message: 'Report not found.',
+            type: 'error'
+        });
+        return;
+    }
 
     _arCurrentReport = s;
     const fac = _arFacultyMap[s.faculty_id] || {};
@@ -7463,7 +7477,16 @@ async function executeArReview(action) {
         ? (isChair ? 'certify' : 'approve')
         : action;
 
-    if (!confirm(`Are you sure you want to ${actionLabel} this accomplishment report?`)) return;
+    const confirmedReview = await window.CiteFlowUI.dialog({
+        title: action === 'approve'
+            ? (isChair ? 'Certify Report' : 'Approve Report')
+            : 'Request Revision',
+        message: `Are you sure you want to ${actionLabel} this accomplishment report?`,
+        type: 'warning',
+        cancelText: 'Cancel',
+        confirmText: action === 'approve' ? (isChair ? 'Certify' : 'Approve') : 'Request Revision'
+    });
+    if (!confirmedReview) return;
 
     try {
         await WF.reviewAccomplishmentReport(supabaseClient, {
@@ -7486,7 +7509,11 @@ async function executeArReview(action) {
 
     } catch (err) {
         console.error('executeArReview error:', err);
-        alert('Error: ' + err.message);
+        window.CiteFlowUI.dialog({
+            title: 'Error',
+            message: 'Error: ' + err.message,
+            type: 'error'
+        });
     }
 }
 
