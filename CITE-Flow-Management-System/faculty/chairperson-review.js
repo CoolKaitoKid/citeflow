@@ -131,14 +131,19 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const taskRows = (review.submissions || []).map((sub) => {
             const person = people.get(String(sub.faculty_id));
             const task = tasks.get(String(sub.task_id));
+            const config = task?.report_config_id ? configMap().get(String(task.report_config_id)) : null;
+            const mfoPacket = (review.mfoPackets || []).find((p) => String(p.submission_id) === String(sub.id) || (String(p.task_id) === String(sub.task_id) && String(p.faculty_id) === String(sub.faculty_id)));
+            const isMfo = !!mfoPacket || submissionIsMfo({ ...sub, task, config });
             return {
                 ...sub,
                 is_ar: false,
+                is_mfo: isMfo,
+                mfo_packet: mfoPacket || null,
                 faculty_name: person?.full_name || person?.name || 'Faculty',
                 department: person?.department || person?.department_code || '',
-                task_title: task?.title || 'Submission',
+                task_title: task?.title || (isMfo ? 'MFO Accomplishment Report' : 'Submission'),
                 task,
-                config: task?.report_config_id ? configMap().get(String(task.report_config_id)) : null,
+                config,
                 files: filesFor(sub.id)
             };
         }).filter((row) => {
@@ -211,7 +216,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         if (stage === 'declined' || stage === 'revision') return false;
         const required = helper?.requiresChairpersonReview?.(row.config, row.task);
         if (required === false) return false;
-        return stage === 'final_approver' || stage === 'approved' || status === 'approved';
+        return stage === 'final' || stage === 'final_approver' || stage === 'approved' || status === 'approved';
     }
 
     function isRevision(row) {
@@ -236,8 +241,10 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         let rows = buildRows();
         if (review.filterType === 'ar') {
             rows = rows.filter((r) => r.is_ar);
+        } else if (review.filterType === 'mfo') {
+            rows = rows.filter((r) => r.is_mfo || submissionIsMfo(r));
         } else if (review.filterType === 'tasks') {
-            rows = rows.filter((r) => !r.is_ar);
+            rows = rows.filter((r) => !r.is_ar && !r.is_mfo && !submissionIsMfo(r));
         }
 
         const q = String(review.search || '').trim().toLowerCase();
@@ -255,7 +262,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
     }
 
     function setFilterType(type) {
-        review.filterType = ['all', 'ar', 'tasks'].includes(type) ? type : 'all';
+        review.filterType = ['all', 'mfo', 'ar', 'tasks'].includes(type) ? type : 'all';
         render();
     }
 
@@ -602,32 +609,66 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         }
         const helper = wf();
         const actionable = isPending(row);
+        const isMfo = submissionIsMfo(row);
         const stage = helper?.formatWorkflowStatus
             ? helper.formatWorkflowStatus(row, row.task, row.config)
             : (helper?.formatApprovalStage
                 ? helper.formatApprovalStage(row.approval_stage)
                 : (row.approval_stage === 'chairperson' ? 'Pending Chairperson Review' : (row.approval_stage || row.status)));
+
+        // Define primary view/review action button
+        const viewBtn = isMfo
+            ? `<a class="chair-btn-secondary inline-flex items-center" href="mfo-report.html?view=review&submission=${encodeURIComponent(row.id)}" target="_blank" rel="noopener"><i class="fa-solid fa-file-lines mr-1.5"></i> Review MFO Report</a>`
+            : `<button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openView('${row.id}')">View Submission</button>`;
+
         const actions = actionable
             ? `
-                <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openView('${row.id}')">View Submission</button>
-                ${mfoReportLink(row)}
+                ${viewBtn}
                 <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.approve('${row.id}')">Approve</button>
                 <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.openRevision('${row.id}')">Request Revision</button>
                 <button type="button" class="chair-btn-decline" onclick="CiteFlowChairReview.openDecline('${row.id}')">Decline</button>
             `
-            : `<button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openView('${row.id}')">View Submission</button>${mfoReportLink(row)}`;
+            : `${viewBtn}`;
+
+        // Create MFO report content block vs regular uploaded file block
+        const documentBlock = isMfo
+            ? `
+                <div class="mt-3 p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/80 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg bg-[#621708] text-white flex items-center justify-center font-bold text-sm">
+                            <i class="fa-solid fa-file-invoice"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-wide text-[#621708]">Submitted MFO Accomplishment Report</p>
+                            <p class="text-sm font-semibold text-slate-800">${esc(row.task_title)}</p>
+                        </div>
+                    </div>
+                    <a href="mfo-report.html?view=review&submission=${encodeURIComponent(row.id)}" target="_blank" rel="noopener" class="px-3 py-1.5 rounded-lg bg-[#621708] text-white text-xs font-semibold hover:bg-[#4a1206] transition-colors">
+                        Open Report &rarr;
+                    </a>
+                </div>
+              `
+            : `<div class="mt-3 space-y-2">${renderFiles(row.files)}</div>`;
+
         return `
-            <article class="surface rounded-[16px] p-5">
-                <div class="flex items-start justify-between gap-3 mb-3">
+            <article class="surface rounded-[16px] p-5 border-l-4 ${isMfo ? 'border-l-[#621708]' : 'border-l-indigo-500'}">
+                <div class="flex items-start justify-between gap-3 mb-2">
                     <div>
-                        <h3 class="font-bold text-slate-900">${esc(row.task_title)}</h3>
-                        <p class="text-sm text-slate-600 mt-1">${esc(row.faculty_name)} ┬╖ ${esc((row.department || chairDepartment() || 'ΓÇö').toUpperCase())}</p>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${isMfo ? 'bg-[#fff0eb] text-[#621708] border border-[#fbdacf]' : 'bg-slate-100 text-slate-700'}">
+                                ${isMfo ? 'Major Final Output (MFO)' : 'Task Submission'}
+                            </span>
+                        </div>
+                        <h3 class="font-bold text-slate-900 text-base">${esc(row.task_title)}</h3>
+                        <p class="text-sm text-slate-600 mt-0.5">
+                            <span class="font-semibold text-slate-800">${esc(row.faculty_name)}</span> &middot; ${esc((row.department || chairDepartment() || '—').toUpperCase())}
+                        </p>
                     </div>
                     <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">${esc(stage)}</span>
                 </div>
-                <p class="text-sm text-slate-500">Submitted ${esc(formatWhen(row.submitted_at))}</p>
-                <div class="mt-3 space-y-2">${renderFiles(row.files)}</div>
-                <div class="flex flex-wrap gap-2 mt-4">${actions}</div>
+                <p class="text-xs text-slate-500">Submitted ${esc(formatWhen(row.submitted_at))}</p>
+                ${documentBlock}
+                <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100">${actions}</div>
             </article>`;
     }
 
@@ -648,8 +689,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const declined = rows.filter(isDeclined);
         const visible = filteredRows();
         const allRows = buildRows();
+        const mfoRowsCount = allRows.filter((r) => r.is_mfo || submissionIsMfo(r)).length;
         const arRowsCount = allRows.filter((r) => r.is_ar).length;
-        const taskRowsCount = allRows.filter((r) => !r.is_ar).length;
+        const taskRowsCount = allRows.filter((r) => !r.is_ar && !r.is_mfo && !submissionIsMfo(r)).length;
         const tabLabel = {
             pending: 'Pending Approval',
             approved: 'Approved',
@@ -699,6 +741,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 <div class="flex flex-wrap items-center gap-2 mb-4">
                     <span class="text-xs font-semibold text-slate-500 mr-1">Filter:</span>
                     <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'all' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('all')">All Submissions (${allRows.length})</button>
+                    <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'mfo' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('mfo')">MFO Reports (${mfoRowsCount})</button>
                     <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'ar' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('ar')">Accomplishment Reports (${arRowsCount})</button>
                     <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'tasks' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('tasks')">Task Submissions (${taskRowsCount})</button>
                 </div>
@@ -793,14 +836,16 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
 
         const client = db();
         const [
-            facultyRes, tasksRes, grantsRes, configsRes, arRes
+            facultyRes, tasksRes, grantsRes, configsRes, arRes, mfoPacketsRes
         ] = await Promise.all([
             client.from('faculty').select('id, full_name, name, department, role, position, auth_user_id, email, status'),
             client.from('wf_tasks').select('id, title, report_config_id, due_at, deadline_at'),
             client.from('wf_delegated_access').select('*'),
             client.from('wf_report_configs').select('id, report_name, requires_chairperson_review, requires_final_approval'),
-            client.from('accomplishment_report_submissions').select('*').order('submitted_at', { ascending: false })
+            client.from('accomplishment_report_submissions').select('*').order('submitted_at', { ascending: false }),
+            client.from('mfo_packets').select('*').order('created_at', { ascending: false })
         ]);
+        review.mfoPackets = mfoPacketsRes?.data || [];
 
         let submissionsRes = await client.rpc('wf_list_chairperson_submissions');
         console.info('[Chairperson Queue] wf_list_chairperson_submissions response:', {
@@ -816,6 +861,19 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             });
             submissionsRes = await client.from('wf_submissions').select('*');
             console.warn('[Chairperson Queue] direct submissions query used only after RPC failure:', submissionsRes.error || null);
+        }
+
+        // Merge any MFO submissions associated with packets that weren't included in the RPC
+        const mfoSubIds = (review.mfoPackets || []).map((p) => p.submission_id).filter(Boolean);
+        const loadedSubIds = new Set((submissionsRes.data || []).map((s) => String(s.id)));
+        const missingMfoSubIds = mfoSubIds.filter((id) => !loadedSubIds.has(String(id)));
+        if (missingMfoSubIds.length) {
+            try {
+                const extraSub = await client.from('wf_submissions').select('*').in('id', missingMfoSubIds);
+                if (Array.isArray(extraSub.data) && extraSub.data.length) {
+                    submissionsRes.data = [...(submissionsRes.data || []), ...extraSub.data];
+                }
+            } catch (_) {}
         }
 
         const failed = [facultyRes, tasksRes, submissionsRes, grantsRes, configsRes].find((result) => result.error);
@@ -930,6 +988,17 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             toast(result.error, 'error');
             return;
         }
+        if (submissionIsMfo(row) || row.is_mfo) {
+            try {
+                await db().from('mfo_packets')
+                    .update({
+                        packet_state: 'chairperson_approved',
+                        reviewed_by: global.currentFaculty?.full_name || 'Chairperson',
+                        reviewed_at: new Date().toISOString()
+                    })
+                    .eq('submission_id', row.id);
+            } catch (_) {}
+        }
         toast('Chairperson approval recorded. Admin will handle final approval.', 'success');
         if (typeof global.fetchAllData === 'function') await global.fetchAllData();
     }
@@ -1003,6 +1072,18 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         if (!result.ok) {
             toast(result.error, 'error');
             return;
+        }
+        if (submissionIsMfo(row) || row.is_mfo) {
+            try {
+                const nextPacketState = action === 'revision' ? 'revision' : 'declined';
+                await db().from('mfo_packets')
+                    .update({
+                        packet_state: nextPacketState,
+                        reviewed_by: global.currentFaculty?.full_name || 'Chairperson',
+                        reviewed_at: new Date().toISOString()
+                    })
+                    .eq('submission_id', row.id);
+            } catch (_) {}
         }
         closeRevision();
         toast(action === 'rejected'

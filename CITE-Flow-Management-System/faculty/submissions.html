@@ -2719,31 +2719,51 @@ function isMfoTask(task) {
         task.assigned_label,
         task.description
     ].join(' ').toLowerCase();
-    return /\bmfo\b|major final output|accomplishment report/.test(blob);
+    if (/\bmfo\b|major final output|accomplishment report/.test(blob)) return true;
+    if (task.report_config_id && Array.isArray(state?.reportConfigs)) {
+        const cfg = state.reportConfigs.find(c => String(c.id) === String(task.report_config_id));
+        if (cfg) {
+            const cfgBlob = [cfg.report_name, cfg.name, cfg.code, cfg.description].join(' ').toLowerCase();
+            if (/\bmfo\b|major final output|accomplishment report/.test(cfgBlob)) return true;
+        }
+    }
+    return false;
 }
 
 async function openMfoReport(taskId) {
-    const normalizedTaskId = String(taskId || '').trim();
-    const validTaskId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedTaskId)
-        ? normalizedTaskId
-        : '';
-    if (!validTaskId) {
-        console.error('[MFO TRACE] Refusing to open MFO with invalid task UUID', { taskId });
-        return;
+    let resolvedTaskId = String(taskId || '').trim();
+    if (!resolvedTaskId && typeof findMfoSubmitModel === 'function') {
+        const matching = findMfoSubmitModel();
+        if (matching?.task?.id) {
+            resolvedTaskId = String(matching.task.id).trim();
+        }
     }
-    const query = `?task=${encodeURIComponent(validTaskId)}`;
+    if (!resolvedTaskId && Array.isArray(state?.tasks)) {
+        const anyMfo = state.tasks.find(t => isMfoTask(t));
+        if (anyMfo?.id) {
+            resolvedTaskId = String(anyMfo.id).trim();
+        }
+    }
+    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(resolvedTaskId);
+    const query = isValidUuid ? `?task=${encodeURIComponent(resolvedTaskId)}` : '';
     console.info('[AUTH TRACE] SUBMISSIONS -> MFO', {
-        taskId: validTaskId,
+        taskId: isValidUuid ? resolvedTaskId : null,
         sessionUserId: window.CiteFlowAuthGuard?.user?.id || null,
         authGuardState: window.CiteFlowAuthGuard?.state || null,
         href: `mfo-report.html${query}`
     });
     const guard = window.CiteFlowAuthGuard;
     if (guard?.ready && guard.state === guard.AuthState?.INITIALIZING) {
-        await guard.ready;
+        try {
+            await Promise.race([
+                guard.ready,
+                new Promise((resolve) => setTimeout(resolve, 1500))
+            ]);
+        } catch (_) {}
     }
     window.location.assign(`mfo-report.html${query}`);
 }
+window.openMfoReport = openMfoReport;
 
 function openTask(taskId) {
 

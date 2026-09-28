@@ -95,7 +95,8 @@ const facultyPages = [
   "document",
   "status-tracking",
   "submissions",
-  "system-settings"
+  "system-settings",
+  "mfo-report"
 ];
 
 facultyPages.forEach(page => {

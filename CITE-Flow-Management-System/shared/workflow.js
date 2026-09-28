@@ -320,6 +320,11 @@
         const taskFlag = task?.requires_chairperson_review;
         if (taskFlag === false || taskFlag === 'false' || taskFlag === 0) return false;
         if (taskFlag === true || taskFlag === 'true' || taskFlag === 1) return true;
+        // MFO accomplishment reports are explicitly submitted to the Program Chairperson.
+        const isMfo = resolveDocumentCategory(config) === 'MFO'
+            || resolveDocumentCategory(task) === 'MFO'
+            || /\bmfo\b|major final output/i.test([config?.report_name, task?.title].join(' '));
+        if (isMfo) return true;
         return false;
     }
 
