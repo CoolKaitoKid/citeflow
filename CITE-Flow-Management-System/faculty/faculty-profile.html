@@ -2309,6 +2309,7 @@
 <div id="message-container"></div>
 
 <script>
+
 const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
 
@@ -2322,6 +2323,23 @@ window.supabaseClient = supabaseClient;
 let currentAuthUser = null;
 let currentFaculty = null;
 let teachingLoads = [];
+
+
+// Strips ALL CiteFlow metadata comments and stray encoded fragments from any description
+// Strips ALL CiteFlow metadata comments and stray encoded fragments from any description
+// Strips ALL CiteFlow metadata comments and stray encoded fragments from any description
+function stripCiteflowMetadata(text) {
+    if (!text) return '';
+    return String(text)
+        // 1. Strip full CITEFLOW HTML comments (Accomplishments, Docs, Research)
+        .replace(/<!--\s*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA:[\s\S]*?--\>/gi, '')
+        // 2. Strip any other leftover HTML comments
+        .replace(/<!--[\s\S]*?--\>/gi, '')
+        // 3. Clean raw URL-encoded metadata fragments
+        .replace(/%22(?:name|size|type|url|media_files|duration_hours)[^\s\n\r]*/gi, '')
+        .replace(/%7B[\s\S]*?%7D/gi, '')
+        .trim();
+}
 
 function esc(value) {
     return String(value || '').replace(/[&<>'"]/g, char => ({
@@ -3014,20 +3032,16 @@ function renderAuthorChips(authors) {
         '</div>';
 }
 
-let allFacultyResearch = [];
-window.allFacultyDocumentsMap = window.allFacultyDocumentsMap || new Map();
-
 function unpackResearchProject(project) {
     if (!project) return project;
-
     let mediaFiles = Array.isArray(project.media_files) ? [...project.media_files] : [];
     let links = Array.isArray(project.links) ? [...project.links] : [];
-
     if (project.description && project.description.includes('CITEFLOW_RESEARCH_DATA:')) {
-        const match = item.description.match(/<!--\s*CITEFLOW_ACCOMP_DATA:(.*?)\s*--\>/);
-        if (match && match[1]) {
+        const matches = [...project.description.matchAll(/<!--\s*CITEFLOW_RESEARCH_DATA:(.*?)\s*--\>/gi)];
+        if (matches.length > 0) {
+            const lastMatch = matches[matches.length - 1];
             try {
-                const meta = JSON.parse(decodeURIComponent(match[1]));
+                const meta = JSON.parse(decodeURIComponent(lastMatch[1]));
                 if ((!mediaFiles || !mediaFiles.length) && Array.isArray(meta.media_files)) {
                     mediaFiles = meta.media_files;
                 }
@@ -3044,11 +3058,8 @@ function unpackResearchProject(project) {
                 console.warn('Failed to parse embedded research data:', e);
             }
         }
-        project.clean_description = project.description.replace(/<!--\s*CITEFLOW_ACCOMP_DATA:(.*?)\s*--\>/gs, '').trim();
-    } else {
-        project.clean_description = project.description || '';
     }
-
+    project.clean_description = stripCiteflowMetadata(project.description);
     if (project.file_url && !mediaFiles.some(m => m.url === project.file_url)) {
         mediaFiles.unshift({
             name: project.file_name || 'Research Document',
@@ -3056,32 +3067,29 @@ function unpackResearchProject(project) {
             path: project.file_path || ''
         });
     }
-
     if (project.publication_url && !links.some(l => l.url === project.publication_url)) {
         links.unshift({
             url: project.publication_url,
             label: 'Publication URL'
         });
     }
-
     project.media_files = mediaFiles;
     project.links = links;
-
     return project;
 }
 
+
 function unpackDocument(doc) {
     if (!doc) return doc;
-
     let mediaFiles = Array.isArray(doc.media_files) ? [...doc.media_files] : [];
     let extensionProjectId = doc.extension_project_id || null;
     let subCategory = doc.sub_category || null;
-
     if (doc.description && doc.description.includes('CITEFLOW_DOC_DATA:')) {
-        const match = doc.description.match(/<!--\s*CITEFLOW_DOC_DATA:(.*?)\s*--\>/);
-        if (match && match[1]) {
+        const matches = [...doc.description.matchAll(/<!--\s*CITEFLOW_DOC_DATA:(.*?)\s*--\>/gi)];
+        if (matches.length > 0) {
+            const lastMatch = matches[matches.length - 1];
             try {
-                const meta = JSON.parse(decodeURIComponent(match[1]));
+                const meta = JSON.parse(decodeURIComponent(lastMatch[1]));
                 if ((!mediaFiles || !mediaFiles.length) && Array.isArray(meta.media_files)) {
                     mediaFiles = meta.media_files;
                 }
@@ -3095,11 +3103,8 @@ function unpackDocument(doc) {
                 console.warn('Failed to parse embedded doc data:', e);
             }
         }
-        doc.clean_description = doc.description.replace(/<!--\s*CITEFLOW_ACCOMP_DATA:(.*?)\s*--\>/gs, '').trim();
-    } else {
-        doc.clean_description = doc.description || '';
     }
-
+    doc.clean_description = stripCiteflowMetadata(doc.description);
     if (doc.file_url && !mediaFiles.some(m => m.url === doc.file_url)) {
         mediaFiles.unshift({
             name: doc.file_name || doc.document_name || doc.title || 'Document File',
@@ -3107,24 +3112,20 @@ function unpackDocument(doc) {
             path: doc.file_path || ''
         });
     }
-
     doc.media_files = mediaFiles;
     if (extensionProjectId) doc.extension_project_id = extensionProjectId;
     if (subCategory) doc.sub_category = subCategory;
-
     return doc;
 }
-
 function unpackAccomplishment(item) {
     if (!item) return item;
-
     let durationHours = item.duration_hours || null;
-
     if (item.description && item.description.includes('CITEFLOW_ACCOMP_DATA:')) {
-        const match = item.description.match(/<!--\s*CITEFLOW_ACCOMP_DATA:(.*?)\s*--\>/);
-        if (match && match[1]) {
+        const matches = [...item.description.matchAll(/<!--\s*CITEFLOW_ACCOMP_DATA:(.*?)\s*--\>/gi)];
+        if (matches.length > 0) {
+            const lastMatch = matches[matches.length - 1];
             try {
-                const meta = JSON.parse(decodeURIComponent(match[1]));
+                const meta = JSON.parse(decodeURIComponent(lastMatch[1]));
                 if (!durationHours && meta.duration_hours) {
                     durationHours = meta.duration_hours;
                 }
@@ -3132,16 +3133,11 @@ function unpackAccomplishment(item) {
                 console.warn('Failed to parse embedded accomplishment data:', e);
             }
         }
-        item.clean_description = item.description.replace(/<!--\s*CITEFLOW_ACCOMP_DATA:(.*?)\s*--\>/gs, '').trim();
     }
-     else {
-        item.clean_description = item.description || '';
-    }
-
+    item.clean_description = stripCiteflowMetadata(item.description);
     item.duration_hours = durationHours;
     return item;
 }
-
 async function loadResearch() {
     const container = document.getElementById('researchList');
 
@@ -3294,12 +3290,15 @@ async function loadCategorizedDocuments(documentType, containerId, emptyMessage)
             return;
         }
 
+        // Unpack each document so legacy comments are cleaned and media files are extracted
+        const docs = data.map(doc => typeof unpackDocument === 'function' ? unpackDocument(doc) : doc);
+
         if (documentType === 'Extension Document') {
-            container.innerHTML = data.map(doc => renderDocCard(doc)).join('');
+            container.innerHTML = docs.map(doc => renderDocCard(doc)).join('');
         } else {
             // Group by sub_category for Others tab
             const groups = {};
-            data.forEach(doc => {
+            docs.forEach(doc => {
                 const cat = doc.sub_category || 'General';
                 if (!groups[cat]) groups[cat] = [];
                 groups[cat].push(doc);
@@ -3321,6 +3320,7 @@ async function loadCategorizedDocuments(documentType, containerId, emptyMessage)
             `).join('');
         }
     } catch (error) {
+        console.error('Error loading documents:', error);
         container.innerHTML = `<div class="text-sm text-slate-500">${esc(emptyMessage)}</div>`;
     }
 }
@@ -3811,21 +3811,17 @@ async function saveDocumentUpload() {
 
         const primaryFile = uploadedMedia[0] || null;
 
-        // Resilient metadata package stored inside description text
-        const metaPayload = {
-            media_files: uploadedMedia,
-            extension_project_id: extensionProjectId,
-            sub_category: subCategory
-        };
-        const metaComment = `<!-- CITEFLOW_DOC_DATA:${encodeURIComponent(JSON.stringify(metaPayload))} -->`;
-        const fullDescription = description ? `${description}\n\n${metaComment}` : metaComment;
+        // Keep only clean user text, strip any HTML comments completely
+        const cleanDescription = typeof stripCiteflowMetadata === 'function' 
+            ? stripCiteflowMetadata(description) 
+            : description.trim();
 
         const payload = {
             faculty_id: currentFaculty.id,
             document_name: title,
             title: title,
             document_type: type,
-            description: fullDescription,
+            description: cleanDescription,
             file_name: primaryFile ? primaryFile.name : null,
             file_url: primaryFile ? primaryFile.url : '',
             file_path: primaryFile ? primaryFile.path : '',
@@ -3891,7 +3887,7 @@ async function saveDocumentUpload() {
                 department: currentFaculty.department,
                 activityType,
                 activityTitle: `${editId ? 'Updated' : 'Uploaded'} ${type}: ${title}`,
-                description: description || `${editId ? 'Updated' : 'Uploaded'} ${type}: ${title}`,
+                description: cleanDescription || `${editId ? 'Updated' : 'Uploaded'} ${type}: ${title}`,
                 sourceModule: 'Faculty Profile',
                 status: editId ? 'Updated' : 'Submitted',
                 details: { Type: type, Title: title, FilesCount: uploadedMedia.length }

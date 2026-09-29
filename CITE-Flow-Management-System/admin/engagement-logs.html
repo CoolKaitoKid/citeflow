@@ -474,6 +474,20 @@ const CATEGORY_META = {
     other: { label: 'Other', types: [] }
 };
 
+// Clean HTML comments and metadata tags completely
+function cleanDescription(text) {
+    if (!text || typeof text !== 'string') return '';
+    let cleaned = text;
+    if (cleaned.includes('<!--')) {
+        cleaned = cleaned.split('<!--')[0];
+    }
+    if (cleaned.includes('CITEFLOW_')) {
+        cleaned = cleaned.split(/CITEFLOW_/i)[0];
+    }
+    return cleaned.trim();
+}
+const stripCiteflowMetadata = cleanDescription;
+
 function esc(v) { return String(v || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function formatDate(d) { return d ? new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric'}).format(new Date(d)) : '—'; }
 function formatTime(d) { return d ? new Intl.DateTimeFormat('en-US',{hour:'2-digit',minute:'2-digit'}).format(new Date(d)) : '—'; }
@@ -614,6 +628,7 @@ async function safeSelect(table, query = '*') {
 
 function asRecord(partial) {
     const facultyId = resolveFaculty(partial)?.id || partial.faculty_id || null;
+    const cleanDesc = cleanDescription(partial.description);
     return {
         id: partial.id,
         faculty_id: facultyId,
@@ -621,7 +636,7 @@ function asRecord(partial) {
         department: liveDepartment(partial, partial.department) || '—',
         activity_type: partial.activity_type || 'Activity',
         activity_title: partial.activity_title || 'Recorded activity',
-        description: partial.description || '',
+        description: cleanDesc || (partial.activity_title ? `Activity: ${partial.activity_title}` : 'Recorded activity in CITE-Flow.'),
         source_module: partial.source_module || 'CITE-Flow',
         activity_at: partial.activity_at || partial.created_at || null,
         status: partial.status || 'Completed',
@@ -1004,6 +1019,8 @@ function renderTimeline(filtered) {
 
     container.innerHTML = filtered.map(log => {
         const style = categoryStyle(log.category);
+        const descText = cleanDescription(log.description);
+
         return `
             <div class="relative pl-7 sm:pl-9">
                 <div class="timeline-dot bg-white border-2 ${style.border}">
@@ -1011,13 +1028,13 @@ function renderTimeline(filtered) {
                 </div>
                 <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
-                        <div class="min-w-0 pr-2">
+                        <div class="min-w-0 pr-2 flex-1">
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="status-badge ${style.badge}">${esc(log.activity_type)}</span>
                                 <span class="status-badge ${statusClass(log.status)}">${esc(log.status)}</span>
                             </div>
-                            <h4 class="font-semibold text-sm sm:text-base text-slate-900 mt-1.5">${esc(log.activity_title)}</h4>
-                            <p class="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">${esc(log.description || '')}</p>
+                            <h4 class="font-semibold text-sm sm:text-base text-slate-900 mt-1.5 break-words">${esc(log.activity_title)}</h4>
+                            ${descText ? `<p class="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed break-words">${esc(descText)}</p>` : ''}
                             <p class="text-[11px] sm:text-xs text-slate-500 mt-2">
                                 <i class="fas fa-user mr-1"></i>${esc(log.faculty_name)}
                                 <span class="mx-1.5">•</span>
@@ -1025,7 +1042,7 @@ function renderTimeline(filtered) {
                                 <span class="mx-1.5">•</span>${esc(log.source_module || 'CITE-Flow')}
                             </p>
                         </div>
-                        <div class="text-left sm:text-right text-[11px] sm:text-xs text-slate-400 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                        <div class="text-left sm:text-right text-[11px] sm:text-xs text-slate-400 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100 whitespace-nowrap">
                             ${formatDate(log.activity_at)} • ${formatTime(log.activity_at)}
                         </div>
                     </div>
@@ -1055,19 +1072,22 @@ function renderTable(filtered) {
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-                ${filtered.map(log => `
-                    <tr class="align-top">
-                        <td class="py-3 px-3 text-slate-500 whitespace-nowrap">${formatDate(log.activity_at)}<div class="text-[11px]">${formatTime(log.activity_at)}</div></td>
-                        <td class="py-3 px-3 font-semibold text-slate-900">${esc(log.faculty_name)}</td>
-                        <td class="py-3 px-3 text-slate-600">${esc(log.department)}</td>
-                        <td class="py-3 px-3"><span class="status-badge ${categoryStyle(log.category).badge}">${esc(log.activity_type)}</span></td>
-                        <td class="py-3 px-3">
-                            <div class="font-semibold text-slate-900">${esc(log.activity_title)}</div>
-                            <div class="text-[11px] text-slate-500 mt-0.5 line-clamp-2">${esc(log.description || '')}</div>
-                        </td>
-                        <td class="py-3 px-3"><span class="status-badge ${statusClass(log.status)}">${esc(log.status)}</span></td>
-                    </tr>
-                `).join('')}
+                ${filtered.map(log => {
+                    const descText = cleanDescription(log.description);
+                    return `
+                        <tr class="align-top hover:bg-slate-50/50 transition">
+                            <td class="py-3 px-3 text-slate-500 whitespace-nowrap">${formatDate(log.activity_at)}<div class="text-[11px]">${formatTime(log.activity_at)}</div></td>
+                            <td class="py-3 px-3 font-semibold text-slate-900">${esc(log.faculty_name)}</td>
+                            <td class="py-3 px-3 text-slate-600">${esc(log.department)}</td>
+                            <td class="py-3 px-3"><span class="status-badge ${categoryStyle(log.category).badge}">${esc(log.activity_type)}</span></td>
+                            <td class="py-3 px-3 max-w-[320px]">
+                                <div class="font-semibold text-slate-900 break-words">${esc(log.activity_title)}</div>
+                                ${descText ? `<div class="text-[11px] text-slate-500 mt-0.5 line-clamp-2 break-words">${esc(descText)}</div>` : ''}
+                            </td>
+                            <td class="py-3 px-3"><span class="status-badge ${statusClass(log.status)}">${esc(log.status)}</span></td>
+                        </tr>
+                    `;
+                }).join('')}
             </tbody>
         </table>
     `;
@@ -1098,7 +1118,7 @@ async function saveLogEntry(e) {
         activity_type: formData.get('activity_type'),
         source_module: formData.get('source_module'),
         activity_title: formData.get('activity_title'),
-        description: formData.get('description'),
+        description: cleanDescription(formData.get('description')),
         activity_at: formData.get('activity_date') + 'T' + formData.get('activity_time'),
         status: formData.get('status')
     };
@@ -1127,7 +1147,7 @@ function exportLogs() {
         Category: CATEGORY_META[log.category]?.label || 'Other',
         Type: log.activity_type,
         Title: log.activity_title,
-        Description: log.description,
+        Description: cleanDescription(log.description),
         Status: log.status,
         Source: log.source_module
     }));

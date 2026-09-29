@@ -68,6 +68,16 @@
         return [{ label: 'Details', value: String(details) }];
     }
 
+    // Helper to strip any embedded HTML comments / metadata before saving
+    function sanitizeDescription(text) {
+        if (!text || typeof text !== 'string') return '';
+        return text
+            .replace(/<!--\s*CITEFLOW_[A-Z_]+:[\s\S]*?(-->|$)/gi, '')
+            .replace(/CITEFLOW_[A-Z_]+:%7B[\s\S]*?(%7D|$)/gi, '')
+            .replace(/-->/g, '')
+            .trim();
+    }
+
     async function logActivity(payload) {
         const client = getClient();
 
@@ -76,6 +86,12 @@
         }
 
         const actor = await getCurrentActor(client);
+
+        // Sanitize incoming description so no comment junk is ever saved
+        const cleanDesc = sanitizeDescription(payload.description);
+        const fallbackDesc = payload.activityTitle 
+            ? `Recorded ${payload.activityType || 'activity'}: ${payload.activityTitle}` 
+            : 'Activity recorded from ' + pageName() + '.';
 
         const record = {
             faculty_id: payload.facultyId || payload.faculty_id || null,
@@ -94,9 +110,7 @@
                 payload.activityTitle ||
                 payload.activity_title ||
                 'Recorded activity',
-            description:
-                payload.description ||
-                'Activity recorded from ' + pageName() + '.',
+            description: cleanDesc || fallbackDesc,
             source_module:
                 payload.sourceModule ||
                 payload.source_module ||
