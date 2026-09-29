@@ -410,14 +410,13 @@ async function safeSelect(table, query = '*') {
 
 async function loadFacultyProfile() {
     if (window.CiteFlowAuthGuard?.ready) {
-        await window.CiteFlowAuthGuard.ready;
+        try { await window.CiteFlowAuthGuard.ready; } catch (_) {}
     }
-    let authUser = window.CiteFlowAuthGuard?.user || null;
-    if (!authUser) {
-        const session = window.CiteFlowAuth?.getFreshSession
-            ? await window.CiteFlowAuth.getFreshSession(supabaseClient)
-            : (await supabaseClient.auth.getSession()).data?.session;
-        authUser = session?.user || null;
+    let authUser = window.CiteFlowAuthGuard?.user || window.CiteFlowAuthGuard?.session?.user || null;
+    if (!authUser && supabaseClient?.auth?.getSession) {
+        const read = supabaseClient._citeFlowOriginalGetSession || supabaseClient.auth.getSession.bind(supabaseClient.auth);
+        const { data } = await read();
+        authUser = data?.session?.user || null;
     }
     currentUser = authUser;
 

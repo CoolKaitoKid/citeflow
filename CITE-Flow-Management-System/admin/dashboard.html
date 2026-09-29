@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth.js?v=auth-nav-2"></script>
     <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="../nav.css">
@@ -1323,8 +1324,16 @@ function renderProfile(profile, user) {
 }
 
 async function loadAdminProfile() {
-    const { data: authData } = await supabaseClient.auth.getUser();
-    currentUser = authData?.user || null;
+    if (window.CiteFlowAuthGuard?.ready) {
+        try { await window.CiteFlowAuthGuard.ready; } catch (_) {}
+    }
+    let authUser = window.CiteFlowAuthGuard?.user || window.CiteFlowAuthGuard?.session?.user || null;
+    if (!authUser && supabaseClient?.auth?.getSession) {
+        const read = supabaseClient._citeFlowOriginalGetSession || supabaseClient.auth.getSession.bind(supabaseClient.auth);
+        const { data } = await read();
+        authUser = data?.session?.user || null;
+    }
+    currentUser = authUser || null;
     if (!currentUser) {
         const profileNameEl = document.getElementById('profileName');
         const profileRoleEl = document.getElementById('profileRole');

@@ -11,6 +11,44 @@ function ensureCiteFlowSettings() {
     });
 }
 
+function ensureNotificationPresentation() {
+    if (window.CiteFlowNotifPresentation) {
+        window.CiteFlowNotifPresentation.ensureStyles();
+        return Promise.resolve(window.CiteFlowNotifPresentation);
+    }
+    if (document.querySelector('script[src*="notification-presentation.js"]')) {
+        return new Promise((resolve) => {
+            const started = Date.now();
+            const wait = () => {
+                if (window.CiteFlowNotifPresentation) {
+                    window.CiteFlowNotifPresentation.ensureStyles();
+                    resolve(window.CiteFlowNotifPresentation);
+                    return;
+                }
+                if (Date.now() - started > 2000) {
+                    resolve(null);
+                    return;
+                }
+                setTimeout(wait, 40);
+            };
+            wait();
+        });
+    }
+    return new Promise((resolve) => {
+        const script = document.createElement('script');
+        const path = String(location.pathname || '').toLowerCase();
+        script.src = (path.includes('/faculty/') || path.includes('/admin/') || path.includes('/chairperson/'))
+            ? '../shared/notification-presentation.js'
+            : 'shared/notification-presentation.js';
+        script.onload = () => {
+            window.CiteFlowNotifPresentation?.ensureStyles();
+            resolve(window.CiteFlowNotifPresentation || null);
+        };
+        script.onerror = () => resolve(null);
+        document.head.appendChild(script);
+    });
+}
+
 function getFacultyCurrentPageFile() {
     const parts = window.location.pathname.split("/").filter(Boolean);
     const current = parts[parts.length - 1] || "dashboard";
@@ -104,7 +142,7 @@ function navigateToFacultyPage(pageFile) {
         if (mappedHash && location.hash !== mappedHash) {
             location.hash = mappedHash;
         }
-        if (typeof window.switchTab === 'function' && mappedHash) {
+        if (typeof window.switchTab === 'function' && mappedHash && /faculty-profile/i.test(mappedFile)) {
             window.switchTab(mappedHash.replace('#', ''));
         }
         if (typeof window.resetPendingFacultyNotification === 'function') {
@@ -245,9 +283,7 @@ function updateFacultyNavProfile(profileData) {
         (async () => {
             try {
                 const session = window.CiteFlowAuthGuard?.session
-                    || (window.CiteFlowAuth?.ensureActiveSession
-                        ? await window.CiteFlowAuth.ensureActiveSession(window.supabaseClient)
-                        : (await window.supabaseClient.auth.getSession())?.data?.session);
+                    || (await window.supabaseClient.auth.getSession())?.data?.session;
                 const user = session?.user || window.CiteFlowAuthGuard?.user;
                 if (user) {
                     const meta = user.user_metadata || {};
@@ -408,7 +444,38 @@ function renderFacultyNavData(profileData) {
 
 window.updateFacultyNavProfile = updateFacultyNavProfile;
 
+function ensureFacultyGlobalSearch() {
+    const start = () => {
+        if (window.CiteFlowGlobalSearch?.mount) window.CiteFlowGlobalSearch.mount();
+    };
+    if (window.CiteFlowGlobalSearch) {
+        start();
+        return;
+    }
+    if (document.querySelector('script[src*="global-search.js"]')) {
+        start();
+        return;
+    }
+    const script = document.createElement('script');
+    const nested = /\/faculty\/|\/chairperson\/|\/admin\//i.test(window.location.pathname);
+    script.src = nested ? '../shared/global-search.js' : 'shared/global-search.js';
+    script.onload = start;
+    document.head.appendChild(script);
+}
+
+let facultyNavMountPromise = null;
+
 async function loadFacultyNavigation() {
+    if (facultyNavMountPromise) return facultyNavMountPromise;
+    facultyNavMountPromise = mountFacultyNavigation();
+    try {
+        return await facultyNavMountPromise;
+    } finally {
+        facultyNavMountPromise = null;
+    }
+}
+
+async function mountFacultyNavigation() {
     try {
         const candidateUrls = [
             "faculty-nav.html?v=sub-load-1",
@@ -442,6 +509,7 @@ async function loadFacultyNavigation() {
         mountFacultyNavPart(doc.getElementById("facultyProfileModal"), null, true);
 
         attachFacultyNavEvents();
+        ensureFacultyGlobalSearch();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         updateFacultyNavProfile();
         loadFacultyNavNotifications();
@@ -537,9 +605,8 @@ async function refreshFacultyChairReviewNav(options = {}) {
         }
         const guardedSession = window.CiteFlowAuthGuard?.session;
         const user = guardedSession?.user
-            || (window.CiteFlowAuth?.getFreshSession
-                ? (await window.CiteFlowAuth.getFreshSession(sb))?.user
-                : (await sb.auth.getSession())?.data?.session?.user);
+            || window.CiteFlowAuthGuard?.user
+            || (await sb.auth.getSession())?.data?.session?.user;
         if (!user) {
             if (attempt < 4) {
                 setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 400);
@@ -581,6 +648,14 @@ async function refreshFacultyChairReviewNav(options = {}) {
 }
 
 let facultyNavNotifications = [];
+let facultyNotifFilter = 'all';
+
+function visibleFacultyNotifications(items) {
+    const source = Array.isArray(items) ? items : facultyNavNotifications;
+    const hideProfile = window.CiteFlowNotifPresentation?.isProfileUpdate;
+    if (typeof hideProfile !== 'function') return source;
+    return source.filter((item) => !hideProfile(item));
+}
 
 function escapeFacultyNavHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, (c) => ({
@@ -608,7 +683,18 @@ function extractFacultyNotifTitle(notification) {
     return quoted ? quoted[1] : '';
 }
 
+function facultyNotifSubject(notification) {
+    return extractFacultyNotifTitle(notification)
+        || window.CiteFlowNotifPresentation?.present(notification)?.subjectTitle
+        || '';
+}
+
 function facultyNotifTarget(notification) {
+    const type = String(notification?.type || notification?.notif_type || notification?.kind || '').toLowerCase();
+    const msg = String(notification?.message || '').toLowerCase();
+    const title = facultyNotifSubject(notification);
+    const taskId = notification?.task_id || '';
+    const eventId = notification?.event_id || notification?.document_id || notification?.workflow_item_id || '';
     const stored = String(
         notification?.link
         || notification?.url
@@ -616,33 +702,35 @@ function facultyNotifTarget(notification) {
         || notification?.page
         || ''
     ).trim();
-    if (stored) return stored;
+    const accomplishment = /accomplishment report/.test(msg);
+    const documentPortfolio = ['document_expiry', 'document_uploaded', 'document_verified', 'document_rejected'].includes(type);
+    const profileLink = /faculty-profile/i.test(stored);
 
-    const type = String(notification?.type || notification?.notif_type || notification?.kind || '').toLowerCase();
-    const msg = String(notification?.message || '').toLowerCase();
-    const title = extractFacultyNotifTitle(notification);
-    const recordId = notification?.task_id || notification?.document_id || notification?.workflow_item_id || notification?.event_id || '';
+    if (stored && !(profileLink && !accomplishment && !documentPortfolio)) return stored;
 
     if (isFacultyCalendarNotification(notification)) {
+        const recordId = notification?.event_id || eventId;
         return recordId ? `calendar.html#open=${recordId}` : 'calendar.html';
     }
 
-    if (/accomplishment report|accomplishment/i.test(msg) || /accomplishment/i.test(type)) {
-        return 'faculty-profile.html#accomplishments-subs';
-    }
+    if (accomplishment) return 'faculty-profile.html#accomplishments-subs';
 
     if (/document vault|official template|browse folder/.test(msg)) {
         return title ? `document.html#task=${encodeURIComponent(title)}` : 'document.html';
     }
 
+    if (documentPortfolio) return 'faculty-profile.html';
+
+    if (/chairperson review|workflow access/.test(msg)) return 'submissions.html#chair-review';
+
+    const taskKey = taskId || title;
     if (type === 'task' || type === 'assignment' || type === 'reminder' || type === 'deadline'
-        || /new task|assigned to you|reminder:|is due/.test(msg)) {
-        return recordId
-            ? `status-tracking.html#open=${recordId}`
-            : (title ? `status-tracking.html#task=${encodeURIComponent(title)}` : 'status-tracking.html');
+        || type === 'review' || type === 'submission' || type === 'comment'
+        || /new task|assigned to you|reminder:|is due|deadline updated|submission|revision|approved|rejected|declined/.test(msg)) {
+        return taskKey ? `submissions.html#task=${encodeURIComponent(taskKey)}` : 'submissions.html';
     }
 
-    return title ? `status-tracking.html#task=${encodeURIComponent(title)}` : 'status-tracking.html';
+    return taskKey ? `submissions.html#task=${encodeURIComponent(taskKey)}` : 'submissions.html';
 }
 
 async function markOneFacultyNotificationRead(id) {
@@ -651,9 +739,12 @@ async function markOneFacultyNotificationRead(id) {
         String(item.id) === String(id) ? { ...item, is_read: true } : item
     ));
     const row = document.querySelector('#facultyNavNotifList [data-notif-id="' + String(id).replace(/"/g, '') + '"]');
-    if (row) row.classList.remove('unread');
+    if (row) {
+        row.classList.remove('unread');
+        row.querySelector('.nav-notif-dot')?.remove();
+    }
     const badge = document.getElementById('facultyNavNotifBadge');
-    const unread = facultyNavNotifications.filter((item) => !item.is_read).length;
+    const unread = visibleFacultyNotifications().filter((item) => !item.is_read).length;
     if (badge) {
         if (unread > 0) {
             badge.style.display = 'flex';
@@ -678,11 +769,21 @@ async function openFacultyNavNotification(notification) {
         try { sessionStorage.setItem('citeOpenNotif', decodeURIComponent(hashMatch[1])); } catch (_) {}
     }
     const title = extractFacultyNotifTitle(notification);
-    if (title) {
-        try { sessionStorage.setItem('citeOpenTask', title); } catch (_) {}
+    const subject = window.CiteFlowNotifPresentation?.present(notification)?.subjectTitle || '';
+    const deepLink = title || (/submissions\.html|status-tracking|document\.html/i.test(String(target)) ? subject : '');
+    if (deepLink) {
+        try { sessionStorage.setItem('citeOpenTask', deepLink); } catch (_) {}
     }
     const dropdown = document.getElementById('facultyNavNotifDropdown');
     if (dropdown) dropdown.classList.remove('open');
+    if (/final approval required/i.test(String(notification?.message || ''))) {
+        const taskKey = notification?.task_id || facultyNotifSubject(notification);
+        window.location.href = `../admin/workflow-approval.html${taskKey ? '#task=' + encodeURIComponent(taskKey) : ''}`;
+        return;
+    }
+    if (/chairperson review|workflow access/i.test(String(notification?.message || '')) && notification?.submission_id) {
+        try { sessionStorage.setItem('citeOpenChairSubmission', String(notification.submission_id)); } catch (_) {}
+    }
     navigateToFacultyPage(target);
 }
 
@@ -715,7 +816,7 @@ function bindFacultyNavNotifClicks() {
             id,
             link: row.getAttribute('data-link'),
             type: row.getAttribute('data-type'),
-            message: row.textContent
+            message: row.getAttribute('data-raw') || row.textContent
         };
         event.preventDefault();
         event.stopPropagation();
@@ -723,31 +824,51 @@ function bindFacultyNavNotifClicks() {
     });
 }
 
+function bindFacultyNotifFilters() {
+    const dropdown = document.getElementById('facultyNavNotifDropdown');
+    if (!dropdown || dropdown.dataset.citeFilterBound === '1') return;
+    dropdown.dataset.citeFilterBound = '1';
+    dropdown.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-notif-filter]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        facultyNotifFilter = button.getAttribute('data-notif-filter') === 'unread' ? 'unread' : 'all';
+        renderFacultyNavNotifications(facultyNavNotifications);
+    });
+}
+
 function renderFacultyNavNotifications(items) {
     facultyNavNotifications = Array.isArray(items) ? items : [];
+    window.CiteFlowNotifPresentation?.ensureStyles();
     const list = document.getElementById('facultyNavNotifList');
     const badge = document.getElementById('facultyNavNotifBadge');
     if (!list || !badge) return;
 
-    if (!facultyNavNotifications.length) {
-        list.innerHTML = '<p class="nav-notif-empty">No notifications yet</p>';
-        badge.style.display = 'none';
-        badge.textContent = '0';
-        return;
+    const api = window.CiteFlowNotifPresentation;
+    const visible = visibleFacultyNotifications();
+    const shown = facultyNotifFilter === 'unread' ? visible.filter((item) => !item.is_read) : visible;
+    api?.syncFilters(document.getElementById('facultyNavNotifDropdown'), facultyNotifFilter);
+    list.dataset.notifFilter = facultyNotifFilter;
+
+    if (!shown.length) {
+        list.innerHTML = api
+            ? api.emptyState(visible.length ? facultyNotifFilter : 'all')
+            : '<p class="nav-notif-empty">No notifications yet</p>';
+    } else if (api?.renderCard) {
+        list.innerHTML = shown.map((notification) => api.renderCard(notification)).join('');
+    } else {
+        list.innerHTML = shown.map((notification) => `
+            <div class="nav-notif-item ${notification.is_read ? '' : 'unread'}" data-notif-id="${escapeFacultyNavHtml(notification.id)}" data-link="${escapeFacultyNavHtml(notification.link || notification.url || '')}" data-type="${escapeFacultyNavHtml(notification.type || '')}" data-raw="${escapeFacultyNavHtml(notification.message || '')}" role="button" style="cursor:pointer;">
+                <div class="nav-notif-title">${escapeFacultyNavHtml(notification.message)}</div>
+            </div>
+        `).join('');
     }
 
-    list.innerHTML = facultyNavNotifications.map((notification) => `
-        <div class="nav-notif-item ${notification.is_read ? '' : 'unread'}" data-notif-id="${escapeFacultyNavHtml(notification.id)}" data-link="${escapeFacultyNavHtml(notification.link || notification.url || '')}" data-type="${escapeFacultyNavHtml(notification.type || '')}" role="button" style="cursor:pointer;">
-            <div class="flex-1">
-                <div>${escapeFacultyNavHtml(notification.message)}</div>
-                <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${formatFacultyNavDate(notification.created_at)}</div>
-            </div>
-        </div>
-    `).join('');
-
     bindFacultyNavNotifClicks();
+    bindFacultyNotifFilters();
 
-    const unread = facultyNavNotifications.filter((notification) => !notification.is_read).length;
+    const unread = visible.filter((notification) => !notification.is_read).length;
     if (unread > 0) {
         badge.style.display = 'flex';
         badge.textContent = unread > 99 ? '99+' : String(unread);
@@ -757,14 +878,24 @@ function renderFacultyNavNotifications(items) {
     }
 }
 
-async function loadFacultyNavNotifications() {
+async function loadFacultyNavNotifications(attempt) {
+    const tries = Number(attempt || 0);
     const sb = window.supabaseClient;
-    if (!sb?.auth) return;
+    const list = document.getElementById('facultyNavNotifList');
+    if (!sb?.auth || !list) {
+        if (tries < 8) setTimeout(() => loadFacultyNavNotifications(tries + 1), 400);
+        return;
+    }
+
+    await ensureNotificationPresentation();
 
     const user = window.CiteFlowAuthGuard?.user
         || window.CiteFlowAuthGuard?.session?.user
         || (await sb.auth.getSession())?.data?.session?.user;
-    if (!user) return;
+    if (!user) {
+        if (tries < 8) setTimeout(() => loadFacultyNavNotifications(tries + 1), 400);
+        return;
+    }
 
     await ensureCiteFlowSettings();
     if (window.CiteFlowSettings?.loadPreferences) {
@@ -796,6 +927,7 @@ async function loadFacultyNavNotifications() {
     const { data, error } = await query;
     if (error) {
         console.warn('Faculty nav notifications could not be loaded:', error);
+        if (tries < 4) setTimeout(() => loadFacultyNavNotifications(tries + 1), 700);
         return;
     }
 
@@ -863,6 +995,7 @@ window.addEventListener("load", async () => {
         await loadFacultyNavigation();
     } else {
         attachFacultyNavEvents();
+        ensureFacultyGlobalSearch();
         updateFacultyActiveMenu(getFacultyCurrentPageFile());
         updateFacultyNavProfile();
         loadFacultyNavNotifications();
@@ -955,9 +1088,56 @@ window.addEventListener("load", async () => {
         return true;
     }
 
+    function openSubmissionsTask() {
+        if (typeof openTask !== 'function' || typeof getAssignedModels !== 'function') return false;
+        if (/chair-review|chairperson-review/i.test(location.hash || '')) return false;
+        const wanted = wantedValue();
+        if (!wanted) return false;
+        const models = getAssignedModels() || [];
+        if (!models.length) return false;
+        const match = models.find((item) =>
+            String(item.task?.id) === wanted
+            || matchesText(item.task?.title, wanted)
+        );
+        if (!match?.task?.id) return false;
+        clearWanted();
+        openTask(match.task.id);
+        return true;
+    }
+
+    function openChairReviewItem() {
+        if (!/chair-review|chairperson-review/i.test(location.hash || '')) return false;
+        const review = window.CiteFlowChairReview;
+        if (!review?.setMode || !review.access) return false;
+        if (review.mode !== 'chair') review.setMode('chair');
+        let submissionId = '';
+        try { submissionId = sessionStorage.getItem('citeOpenChairSubmission') || ''; } catch (_) {}
+        if (!submissionId || typeof review.openView !== 'function') {
+            try {
+                sessionStorage.removeItem('citeOpenTask');
+                sessionStorage.removeItem('citeOpenNotif');
+            } catch (_) {}
+            return true;
+        }
+        review.openView(submissionId);
+        const openedModal = document.getElementById('chairViewModal')?.classList.contains('open');
+        if (!openedModal) return false;
+        try {
+            sessionStorage.removeItem('citeOpenChairSubmission');
+            sessionStorage.removeItem('citeOpenTask');
+            sessionStorage.removeItem('citeOpenNotif');
+        } catch (_) {}
+        return true;
+    }
+
     async function run() {
         if (opened) return true;
+        if (openChairReviewItem()) {
+            opened = true;
+            return true;
+        }
         if (!wantedValue()) return false;
+        if (openSubmissionsTask()) return true;
         if (openStatusTask()) return true;
         if (await openVaultFolder()) return true;
         return false;

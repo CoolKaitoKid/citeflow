@@ -24,6 +24,55 @@
   let eventsChannel = null;
   let extraChannel = null;
   let panelOpen = false;
+  let listFilter = 'all';
+
+  function presentationSrc() {
+    const path = String(location.pathname || '').toLowerCase();
+    if (path.includes('/admin/') || path.includes('/faculty/') || path.includes('/chairperson/')) {
+      return '../shared/notification-presentation.js';
+    }
+    return 'shared/notification-presentation.js';
+  }
+
+  function presentationApi() {
+    return global.CiteFlowNotifPresentation || null;
+  }
+
+  function ensurePresentation() {
+    const ready = presentationApi();
+    if (ready) {
+      ready.ensureStyles();
+      return Promise.resolve(ready);
+    }
+    const existing = document.querySelector('script[src*="notification-presentation.js"]');
+    if (existing) {
+      return new Promise((resolve) => {
+        const finish = () => resolve(presentationApi());
+        if (presentationApi()) {
+          presentationApi().ensureStyles();
+          resolve(presentationApi());
+          return;
+        }
+        existing.addEventListener('load', finish, { once: true });
+        existing.addEventListener('error', () => resolve(null), { once: true });
+      });
+    }
+    return new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = presentationSrc();
+      script.onload = () => {
+        presentationApi()?.ensureStyles();
+        resolve(presentationApi());
+      };
+      script.onerror = () => resolve(null);
+      document.head.appendChild(script);
+    });
+  }
+
+  function visiblePanelItems() {
+    const api = presentationApi();
+    return items.filter((item) => !api?.isProfileUpdate?.(item));
+  }
 
   function client() {
     const candidates = [global.supabaseClient, global.db, global.supabase];
@@ -399,10 +448,11 @@
   }
 
   function unreadCount() {
-    return items.filter((item) => !item.is_read).length;
+    return visiblePanelItems().filter((item) => !item.is_read).length;
   }
 
   function ensureStyles() {
+    presentationApi()?.ensureStyles();
     let style = document.getElementById('cite-calendar-notif-styles');
     if (!style) {
       style = document.createElement('style');
@@ -414,15 +464,8 @@
       .cite-toast{pointer-events:auto;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #621708;border-radius:16px;box-shadow:0 18px 45px rgba(15,23,42,.12);padding:12px 14px;animation:citeToastIn .18s ease}
       .cite-toast b{display:block;font-size:13px;color:#0f172a;margin-bottom:2px}
       .cite-toast p{margin:0;font-size:12px;color:#475569;line-height:1.4}
-      #adminNavNotifDropdown.nav-notif-dropdown{position:absolute!important;top:calc(100% + 10px)!important;right:0!important;width:340px;max-width:calc(100vw - 24px);background:#fff!important;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 40px rgba(15,23,42,.14);display:none!important;z-index:99999!important;overflow:hidden}
+      #adminNavNotifDropdown.nav-notif-dropdown{position:absolute!important;top:calc(100% + 10px)!important;right:0!important;width:min(400px,calc(100vw - 20px));display:none!important;z-index:99999!important}
       #adminNavNotifDropdown.nav-notif-dropdown.open{display:block!important}
-      #adminNavNotifDropdown .nav-notif-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #eee;color:#111;font-size:14px;font-weight:700}
-      #adminNavNotifDropdown .nav-notif-header button{border:0;background:transparent;color:#621708;font-size:12px;font-weight:700;cursor:pointer}
-      #adminNavNotifDropdown .nav-notif-list{max-height:380px;overflow-y:auto;padding:4px 0}
-      #adminNavNotifDropdown .nav-notif-item{display:block;width:100%;text-align:left;padding:12px 16px;border:0;border-radius:0;background:transparent;color:#374151;font-size:13px;line-height:1.45;font-weight:400;cursor:pointer}
-      #adminNavNotifDropdown .nav-notif-item.unread{background:#eff6ff}
-      #adminNavNotifDropdown .nav-notif-item small,#adminNavNotifDropdown .nav-notif-date{display:block;margin-top:6px;color:#9ca3af;font-size:12px;font-weight:400}
-      #adminNavNotifDropdown .nav-notif-empty{padding:24px 16px;text-align:center;color:#9ca3af;font-size:13px;margin:0}
       @keyframes citeToastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
     `;
   }
@@ -441,9 +484,10 @@
   function showToast(item) {
     ensureStyles();
     const root = ensureToastRoot();
+    const presented = presentationApi()?.present(item);
     const el = document.createElement('div');
     el.className = 'cite-toast';
-    el.innerHTML = `<b>${esc(item.title)}</b><p>${esc(item.message)}</p>`;
+    el.innerHTML = `<b>${esc(presented?.title || item.title || 'Notification')}</b><p>${esc(presented?.description || item.message || '')}</p>`;
     root.prepend(el);
     setTimeout(() => el.remove(), 7000);
   }
@@ -514,14 +558,23 @@
   }
 
   function panelMarkup() {
+    const header = presentationApi()?.headerMarkup('cite-mark-all-read') || `
+      <div class="nav-notif-header">
+        <div class="nav-notif-heading">
+          <span>Notifications</span>
+          <button type="button" class="nav-notif-mark" id="cite-mark-all-read">Mark all read</button>
+        </div>
+        <div class="nav-notif-filters" role="tablist" aria-label="Notification filters">
+          <button type="button" class="nav-notif-filter is-active" data-notif-filter="all">All</button>
+          <button type="button" class="nav-notif-filter" data-notif-filter="unread">Unread</button>
+        </div>
+      </div>
+    `;
     return `
       <div id="adminNavNotifDropdown" class="nav-notif-dropdown">
-        <div class="nav-notif-header">
-          <span>Notifications</span>
-          <button type="button" id="cite-mark-all-read">Mark all read</button>
-        </div>
+        ${header}
         <div id="adminNavNotifList" class="nav-notif-list">
-          <p class="nav-notif-empty">No notifications yet</p>
+          <div class="nav-notif-empty"><i class="fa-regular fa-bell" aria-hidden="true"></i><p>No notifications yet</p></div>
         </div>
       </div>
     `;
@@ -600,6 +653,17 @@
         markAllRead();
       };
     }
+    if (!document.documentElement.dataset.citeNotifFilterBound) {
+      document.documentElement.dataset.citeNotifFilterBound = '1';
+      document.addEventListener('click', (event) => {
+        const button = event.target.closest('#adminNavNotifDropdown [data-notif-filter]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        listFilter = button.getAttribute('data-notif-filter') === 'unread' ? 'unread' : 'all';
+        renderList();
+      });
+    }
     if (!document.documentElement.dataset.citeNotifClickBound) {
       document.documentElement.dataset.citeNotifClickBound = '1';
       document.addEventListener('click', (event) => {
@@ -631,36 +695,66 @@
   function renderList() {
     const list = existingList();
     if (!list) return;
-    if (!items.length) {
-      list.innerHTML = '<p class="nav-notif-empty">No notifications yet</p>';
+    const api = presentationApi();
+    api?.ensureStyles();
+    const visible = visiblePanelItems();
+    const shown = (listFilter === 'unread' ? visible.filter((item) => !item.is_read) : visible).slice(0, 30);
+    api?.syncFilters(existingPanel(), listFilter);
+    list.dataset.notifFilter = listFilter;
+    if (!shown.length) {
+      list.innerHTML = api
+        ? api.emptyState(visible.length ? listFilter : 'all')
+        : '<p class="nav-notif-empty">No notifications yet</p>';
       return;
     }
-    list.innerHTML = items.slice(0, 30).map((item) => `
-      <button type="button" class="nav-notif-item ${item.is_read ? '' : 'unread'}" data-notif-id="${esc(item.id)}" data-event-id="${esc(item.event_id || '')}" data-notif-type="${esc(item.type || '')}" data-notif-link="${esc(item.link || '')}">
-        ${notifItemInner(item)}
-      </button>
-    `).join('');
+    if (!api?.renderCard) {
+      list.innerHTML = shown.map((item) => `
+        <div class="nav-notif-item ${item.is_read ? '' : 'unread'}" data-notif-id="${esc(item.id)}" data-event-id="${esc(item.event_id || '')}" data-notif-type="${esc(item.type || '')}" data-notif-link="${esc(item.link || '')}" data-raw="${esc(notifBody(item))}" role="button" tabindex="0">
+          ${notifItemInner(item)}
+        </div>
+      `).join('');
+      return;
+    }
+    list.innerHTML = shown.map((item) => api.renderCard(
+      item,
+      `data-event-id="${esc(item.event_id || '')}" data-notif-type="${esc(item.type || '')}" data-notif-link="${esc(item.link || '')}"`
+    )).join('');
   }
 
   function mergeIntoNativeList(item) {
     const list = document.getElementById('facultyNavNotifList');
     if (!list || !item?.id) return;
+    const api = presentationApi();
+    if (api?.isProfileUpdate?.(item)) return;
+    if (list.dataset.notifFilter === 'unread' && item.is_read) return;
     const id = String(item.id);
     if (list.querySelector(`[data-notif-id="${esc(id)}"]`) || list.querySelector(`[data-id="${esc(id)}"]`)) return;
     if (item.event_id && list.querySelector(`[data-event-id="${String(item.event_id)}"]`)) return;
     const snippet = notifBody(item).slice(0, 48);
-    if (snippet && Array.from(list.querySelectorAll('.nav-notif-item')).some((el) => (el.textContent || '').includes(snippet))) return;
+    if (snippet && Array.from(list.querySelectorAll('.nav-notif-item')).some((el) => {
+      const raw = el.getAttribute('data-raw') || '';
+      return (raw && raw.includes(snippet)) || (el.textContent || '').includes(snippet);
+    })) return;
 
     const empty = list.querySelector('.nav-notif-empty');
     if (empty) empty.remove();
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
+    const html = api?.renderCard
+      ? api.renderCard(item, `data-event-id="${esc(item.event_id || '')}" data-notif-type="${esc(item.type || '')}" data-notif-link="${esc(item.link || '')}"`)
+      : '';
+    if (html) {
+      list.insertAdjacentHTML('afterbegin', html);
+      return;
+    }
+
+    const btn = document.createElement('div');
     btn.className = `nav-notif-item ${item.is_read ? '' : 'unread'}`;
+    btn.setAttribute('role', 'button');
     btn.setAttribute('data-notif-id', id);
     btn.setAttribute('data-event-id', item.event_id || '');
     btn.setAttribute('data-notif-type', item.type || '');
     btn.setAttribute('data-notif-link', item.link || '');
+    btn.setAttribute('data-raw', notifBody(item));
     btn.innerHTML = notifItemInner(item);
     list.prepend(btn);
   }
@@ -806,6 +900,7 @@
 
   function canShowNotification(item) {
     if (!item) return false;
+    if (item.source === 'wf' && currentPortal === 'admin') return true;
     if (currentPortal === 'admin') {
       if (item.audience === 'admin' || item.type === 'leave' || item.type === 'feedback') return true;
       if (item.user_id && currentUser?.id && item.user_id === currentUser.id) return true;
@@ -825,13 +920,21 @@
     const type = String(item?.type || '').toLowerCase();
     const text = `${item?.title || ''} ${item?.message || ''}`.toLowerCase();
     const stored = String(item?.link || '').trim();
-    if (stored && /\.html/i.test(stored)) return stored;
+    const taskHash = item?.task_id ? `#task=${encodeURIComponent(item.task_id)}` : '';
+    const workflowItem = item?.source === 'wf' || ['review', 'submission', 'task', 'comment'].includes(type);
+    if (currentPortal === 'admin' && /workflow-approval\.html/i.test(stored)) return stored;
+    if (currentPortal === 'admin' && workflowItem && type !== 'calendar' && type !== 'event' && type !== 'schedule') {
+      if (/faculty profile|profile update/.test(text)) return 'faculty-profiles.html';
+      if (type.includes('document') || text.includes('vault')) return 'document-vault.html';
+      return `workflow-approval.html${taskHash}`;
+    }
+    if (stored && /\.html/i.test(stored) && !/faculty-profile/i.test(stored)) return stored;
     if (currentPortal === 'admin') {
       if (type === 'leave' || text.includes('leave')) return 'calendar.html';
       if (type === 'feedback' || text.includes('feedback')) return 'calendar.html';
       if (type === 'calendar' || type === 'event' || type === 'schedule') return 'calendar.html';
-      if (type.includes('task') || text.includes('new task') || text.includes('is due')) return 'workload-tracker.html';
-      if (type.includes('workflow') || text.includes('approval')) return 'workflow-approval.html';
+      if (type.includes('task') || text.includes('new task') || text.includes('is due')) return `workload-tracker.html${taskHash}`;
+      if (type.includes('workflow') || text.includes('approval')) return `workflow-approval.html${taskHash}`;
       if (type.includes('document') || text.includes('vault')) return 'document-vault.html';
       if (type.includes('engagement')) return 'engagement-logs.html';
       if (text.includes('faculty profile')) return 'faculty-profiles.html';
@@ -874,6 +977,10 @@
     return current === target || current.replace('.html', '') === target.replace('.html', '');
   }
 
+  function notificationTable(item) {
+    return item?.source === 'wf' ? 'wf_notifications' : 'notifications';
+  }
+
   async function markReadNow(id) {
     if (!id) return;
     const item = items.find((row) => String(row.id) === String(id));
@@ -881,7 +988,7 @@
     updateBadge();
     const db = client();
     if (!db) return;
-    await db.from('notifications').update({ is_read: true }).eq('id', id);
+    await db.from(notificationTable(item)).update({ is_read: true }).eq('id', id);
   }
 
   let navLockAt = 0;
@@ -912,6 +1019,11 @@
     }
 
     closePanel();
+    if (String(hash).startsWith('#task=') && typeof global.openTaskFromHash === 'function') {
+      if (location.hash !== hash) location.hash = hash;
+      else global.openTaskFromHash();
+      return;
+    }
     if (typeof global.openPendingCalendarNotification === 'function') {
       global.openPendingCalendarNotification();
       return;
@@ -1025,11 +1137,42 @@
 
     if (error) {
       console.warn('CalendarNotifications: notifications table not ready', error.message);
+    } else {
+      (data || []).forEach((row) => ingest(row, { toast: false }));
+    }
+    if (currentPortal === 'admin') await loadAdminWorkflowNotifications();
+    updateBadge();
+  }
+
+  async function loadAdminWorkflowNotifications() {
+    const db = client();
+    if (!db || !currentUser?.id || currentPortal !== 'admin') return;
+    let facultyId = null;
+    try {
+      if (global.CiteFlowWorkflow?.getCurrentFaculty) {
+        const faculty = await global.CiteFlowWorkflow.getCurrentFaculty(currentUser);
+        facultyId = faculty?.id ?? null;
+      }
+    } catch (_) {}
+    if (facultyId == null) {
+      const { data } = await db.from('faculty').select('id').eq('auth_user_id', currentUser.id).maybeSingle();
+      facultyId = data?.id ?? null;
+    }
+    if (facultyId == null) return;
+    const { data, error } = await db
+      .from('wf_notifications')
+      .select('*')
+      .eq('faculty_id', facultyId)
+      .order('created_at', { ascending: false })
+      .limit(40);
+    if (error) {
+      console.warn('CalendarNotifications: workflow notifications could not be loaded', error.message);
       return;
     }
-
-    (data || []).forEach((row) => ingest(row, { toast: false }));
-    updateBadge();
+    (data || []).forEach((row) => {
+      if (global.CiteFlowNotifPresentation?.isProfileUpdate?.(row)) return;
+      ingest({ ...row, source: 'wf' }, { toast: false });
+    });
   }
 
   async function markRead(id) {
@@ -1038,16 +1181,28 @@
     updateBadge();
     const db = client();
     if (!db || !id) return;
-    await db.from('notifications').update({ is_read: true }).eq('id', id);
+    await db.from(notificationTable(item)).update({ is_read: true }).eq('id', id);
   }
 
   async function markAllRead() {
+    const wfIds = items.filter((row) => row.source === 'wf').map((row) => row.id).filter(Boolean);
+    const otherIds = items.filter((row) => row.source !== 'wf').map((row) => row.id).filter(Boolean);
     items = items.map((row) => ({ ...row, is_read: true }));
     updateBadge();
     const db = client();
     if (!db || !currentUser?.id) return;
-    const ids = items.map((row) => row.id).filter(Boolean);
-    if (ids.length) await db.from('notifications').update({ is_read: true }).in('id', ids);
+    if (wfIds.length) await db.from('wf_notifications').update({ is_read: true }).in('id', wfIds);
+    if (otherIds.length) await db.from('notifications').update({ is_read: true }).in('id', otherIds);
+  }
+
+  function subscribeAdminWorkflowBell() {
+    const db = client();
+    if (!db || currentPortal !== 'admin' || global.__adminWfNotifChannel) return;
+    global.__adminWfNotifChannel = db.channel('admin-wf-notifications-bell')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, () => {
+        loadAdminWorkflowNotifications().then(() => updateBadge()).catch(() => {});
+      })
+      .subscribe();
   }
 
   function subscribeNotifications() {
@@ -1204,6 +1359,7 @@
     }
 
     currentPortal = options?.portal || currentPortal || 'faculty';
+    await ensurePresentation();
     const { data } = await db.auth.getUser();
     currentUser = data?.user || currentUser;
     currentProfile = options?.profile || currentProfile || (
@@ -1228,6 +1384,7 @@
     requestBrowserPermission();
     await loadExisting();
     subscribeNotifications();
+    subscribeAdminWorkflowBell();
     subscribeCalendarFallback();
     subscribeAdminFallbacks();
     subscribeFacultyOutbound();

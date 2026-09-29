@@ -174,15 +174,7 @@ function attachNavEvents() {
         navigateTo(pageFile);
     });
 
-    const searchInput = document.querySelector("#navbar-container #searchInput");
-    if (searchInput && !searchInput.dataset.bound) {
-        searchInput.dataset.bound = "true";
-        searchInput.addEventListener("keypress", function (e) {
-            if (e.key === "Enter") {
-                alert("Searching for: " + this.value);
-            }
-        });
-    }
+    if (window.CiteFlowGlobalSearch?.mount) window.CiteFlowGlobalSearch.mount();
 }
 
 function changePage(pageName) {
@@ -294,37 +286,10 @@ function injectAdminNotifCss() {
       }
       #adminNavNotifDropdown.nav-notif-dropdown {
         position: absolute !important; top: calc(100% + 10px) !important; right: 0 !important;
-        width: 340px; max-width: calc(100vw - 24px); background: #fff !important;
-        border: 1px solid #e5e7eb; border-radius: 12px;
-        box-shadow: 0 10px 40px rgba(15, 23, 42, 0.14);
-        display: none !important; z-index: 99999 !important; overflow: hidden;
+        width: min(400px, calc(100vw - 20px));
+        display: none !important; z-index: 99999 !important;
       }
       #adminNavNotifDropdown.nav-notif-dropdown.open { display: block !important; }
-      #adminNavNotifDropdown .nav-notif-header {
-        display: flex; align-items: center; justify-content: space-between; gap: 12px;
-        padding: 12px 16px; border-bottom: 1px solid #eee; color: #111;
-        font-size: 14px; font-weight: 700;
-      }
-      #adminNavNotifDropdown .nav-notif-header button {
-        border: 0; background: transparent; color: #621708; font-size: 12px;
-        font-weight: 700; cursor: pointer;
-      }
-      #adminNavNotifDropdown .nav-notif-list {
-        max-height: 380px; overflow-y: auto; padding: 4px 0;
-      }
-      #adminNavNotifDropdown .nav-notif-item {
-        display: block; width: 100%; text-align: left; padding: 12px 16px;
-        border: 0; border-radius: 0; background: transparent; color: #374151;
-        font-size: 13px; line-height: 1.45; font-weight: 400; cursor: pointer;
-      }
-      #adminNavNotifDropdown .nav-notif-item.unread { background: #eff6ff; }
-      #adminNavNotifDropdown .nav-notif-item small,
-      #adminNavNotifDropdown .nav-notif-date {
-        display: block; margin-top: 6px; color: #9ca3af; font-size: 12px; font-weight: 400;
-      }
-      #adminNavNotifDropdown .nav-notif-empty {
-        padding: 24px 16px; text-align: center; color: #9ca3af; font-size: 13px; margin: 0;
-      }
     `;
 }
 
@@ -393,11 +358,17 @@ function wireAdminNavbarBell() {
         wrap.insertAdjacentHTML("beforeend", `
           <div id="adminNavNotifDropdown" class="nav-notif-dropdown">
             <div class="nav-notif-header">
-              <span>Notifications</span>
-              <button type="button" id="cite-mark-all-read">Mark all read</button>
+              <div class="nav-notif-heading">
+                <span>Notifications</span>
+                <button type="button" class="nav-notif-mark" id="cite-mark-all-read">Mark all read</button>
+              </div>
+              <div class="nav-notif-filters" role="tablist" aria-label="Notification filters">
+                <button type="button" class="nav-notif-filter is-active" data-notif-filter="all" aria-selected="true">All</button>
+                <button type="button" class="nav-notif-filter" data-notif-filter="unread" aria-selected="false">Unread</button>
+              </div>
             </div>
             <div id="adminNavNotifList" class="nav-notif-list">
-              <p class="nav-notif-empty">No notifications yet</p>
+              <div class="nav-notif-empty"><i class="fa-regular fa-bell" aria-hidden="true"></i><p>No notifications yet</p></div>
             </div>
           </div>
         `);
@@ -451,6 +422,24 @@ function watchAdminNavbarBell() {
     [120, 400, 1000, 2000, 4000].forEach((ms) => {
         window.setTimeout(() => wireAdminNavbarBell(), ms);
     });
+}
+
+function ensureGlobalSearch() {
+    const start = () => {
+        if (window.CiteFlowGlobalSearch?.mount) window.CiteFlowGlobalSearch.mount();
+    };
+    if (window.CiteFlowGlobalSearch) {
+        start();
+        return;
+    }
+    if (document.querySelector('script[src*="global-search.js"]')) {
+        start();
+        return;
+    }
+    const script = document.createElement("script");
+    script.src = isInAdminFolder() ? "../shared/global-search.js" : "shared/global-search.js";
+    script.onload = start;
+    document.head.appendChild(script);
 }
 
 function ensureCalendarNotifications() {
@@ -532,6 +521,7 @@ async function loadAdminNavigation() {
         mountNavPart(doc.getElementById("msgrArchivedModal"), null, true);
 
         attachNavEvents();
+        ensureGlobalSearch();
         updateActiveMenu(getCurrentPageFile());
         loadNavbarProfileModal();
         ensureCalendarNotifications();

@@ -139,7 +139,7 @@
             guardState = AuthState.INITIALIZING;
             guardApi.state = AuthState.INITIALIZING;
 
-            const activeSession = await restoreSession(sb);
+            let activeSession = await restoreSession(sb);
 
             console.info('[AUTH TRACE] AUTH GUARD', {
                 hasSession: !!activeSession,
@@ -147,6 +147,13 @@
                 authUserId: activeSession?.user?.id || null,
                 expiresAt: activeSession?.expires_at || null
             });
+
+            if (!activeSession?.user || !activeSession?.access_token) {
+                if (persistedAuthToken()) {
+                    await delay(500);
+                    activeSession = await restoreSession(sb);
+                }
+            }
 
             if (!activeSession?.user || !activeSession?.access_token) {
                 console.warn('Auth Guard: Session restoration finished with no authenticated user.');
@@ -333,6 +340,19 @@
 
     function delay(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function persistedAuthToken() {
+        try {
+            return Object.keys(localStorage).some((key) => {
+                const name = String(key || '').toLowerCase();
+                if (!(name.startsWith('sb-') && name.endsWith('-auth-token'))) return false;
+                const raw = localStorage.getItem(key);
+                return typeof raw === 'string' && raw.length > 20;
+            });
+        } catch (_) {
+            return false;
+        }
     }
 
     async function restoreSession(sb) {

@@ -352,7 +352,7 @@ window.CiteFlowAuth = (function () {
 
             const { data: facultyRecord } = await sb
                 .from('faculty')
-                .select('id, auth_user_id, email, profile_completed, must_change_password, first_login_completed_at, role, position')
+                .select('id, auth_user_id, email, employee_id, profile_completed, must_change_password, first_login_completed_at, role, position')
                 .or(`auth_user_id.eq.${session.user.id},email.ilike.${session.user.email}`)
                 .maybeSingle();
 
@@ -716,6 +716,122 @@ window.CiteFlowAuth = (function () {
     }
 
     /**
+     * Faculty IDs are not a single institutional format. Accept a trimmed
+     * alphanumeric value with common separators, and keep the entered text.
+     */
+    const FACULTY_EMPLOYEE_ID_MAX_LENGTH = 64;
+    const FACULTY_EMPLOYEE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 \-_.\/]*$/;
+    const FACULTY_ID_REQUIRED_MESSAGE = 'Please enter your Faculty ID Number.';
+
+    function normalizeFacultyEmployeeId(value) {
+        return String(value || '').trim();
+    }
+
+    function validateFacultyEmployeeId(value) {
+        const employeeId = normalizeFacultyEmployeeId(value);
+        if (!employeeId || employeeId.length > FACULTY_EMPLOYEE_ID_MAX_LENGTH || !FACULTY_EMPLOYEE_ID_PATTERN.test(employeeId)) {
+            return { valid: false, message: FACULTY_ID_REQUIRED_MESSAGE };
+        }
+        return { valid: true, employeeId };
+    }
+
+    /**
+     * Profile saves may keep an already-stored Faculty ID unchanged.
+     * A new or edited value must be a non-empty, reasonable identifier.
+     */
+    function resolveFacultyEmployeeIdForSave(enteredValue, currentValue) {
+        const employeeId = normalizeFacultyEmployeeId(enteredValue);
+        const current = normalizeFacultyEmployeeId(currentValue);
+        if (!employeeId) {
+            return { valid: false, message: FACULTY_ID_REQUIRED_MESSAGE };
+        }
+        const format = validateFacultyEmployeeId(employeeId);
+        if (format.valid) return format;
+        if (current && employeeId === current) {
+            return { valid: true, employeeId: current };
+        }
+        return format;
+    }
+
+    function facultyEmployeeIdConflictMessage(error) {
+        if (!error) return '';
+        const code = String(error.code || '');
+        const text = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase();
+        const uniqueViolation = code === '23505'
+            || text.includes('duplicate key')
+            || text.includes('unique constraint')
+            || text.includes('already exists');
+        if (!uniqueViolation) return '';
+        if (text.includes('email') && !text.includes('employee_id')) return '';
+        return 'This Faculty ID Number is already assigned to another faculty member.';
+    }
+
+    async function assertFacultyEmployeeIdAvailable(employeeId, facultyRowId) {
+        const sb = getClient();
+        const normalized = normalizeFacultyEmployeeId(employeeId);
+        if (!sb || !normalized) return;
+
+        const likePattern = normalized.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const { data, error } = await sb
+            .from('faculty')
+            .select('id')
+            .ilike('employee_id', likePattern)
+            .limit(5);
+
+        if (error) {
+            console.warn('CiteFlowAuth: faculty ID availability check skipped:', error.message);
+            return;
+        }
+
+        const conflict = (data || []).some((row) => String(row.id) !== String(facultyRowId ?? ''));
+        if (conflict) {
+            throw new Error('This Faculty ID Number is already assigned to another faculty member.');
+        }
+    }
+
+    function facultyRowBelongsToUser(row, user) {
+        if (!row) return false;
+        if (!row.auth_user_id) return true;
+        return String(row.auth_user_id) === String(user?.id || '');
+    }
+
+    async function findExistingFacultyForOnboarding(sb, user, facultyRecordId) {
+        if (facultyRecordId != null && String(facultyRecordId).trim() !== '') {
+            const byId = await sb
+                .from('faculty')
+                .select('id, auth_user_id')
+                .eq('id', facultyRecordId)
+                .maybeSingle();
+            if (!byId.error && byId.data && facultyRowBelongsToUser(byId.data, user)) {
+                return byId.data;
+            }
+        }
+
+        const byAuth = await sb
+            .from('faculty')
+            .select('id, auth_user_id')
+            .eq('auth_user_id', user.id)
+            .order('id', { ascending: true })
+            .limit(1);
+        if (!byAuth.error && byAuth.data && byAuth.data[0]) {
+            return byAuth.data[0];
+        }
+
+        if (user.email) {
+            const byEmail = await sb
+                .from('faculty')
+                .select('id, auth_user_id, email')
+                .ilike('email', user.email)
+                .order('id', { ascending: true })
+                .limit(5);
+            const match = (byEmail.data || []).find((row) => facultyRowBelongsToUser(row, user));
+            if (match) return match;
+        }
+
+        return null;
+    }
+
+    /**
      * Complete the first-time onboarding flow (password change + profile details + photo upload)
      * @param {object} params
      * @param {string} params.newPassword
@@ -727,6 +843,7 @@ window.CiteFlowAuth = (function () {
      * @param {string} params.sex
      * @param {string} params.position
      * @param {File|null} params.photoFile
+     * @param {string|number|null} params.facultyRecordId Existing faculty row to update
      */
     async function completeOnboarding({
         newPassword,
@@ -741,7 +858,8 @@ window.CiteFlowAuth = (function () {
         birthdate,
         sex,
         position,
-        photoFile
+        photoFile,
+        facultyRecordId
     }) {
         const sb = getClient();
         if (!sb) throw new Error("Authentication service is unavailable.");
@@ -847,31 +965,54 @@ window.CiteFlowAuth = (function () {
             profilePayload.profile_photo_url = photoUrl;
         }
 
-        const { error: profileError } = await sb
-            .from('faculty')
-            .upsert(profilePayload, { onConflict: 'auth_user_id' });
+        // Update the linked faculty row in place. Do not insert a second row,
+        // and do not replace an auth_user_id that is already set.
+        const existingFaculty = await findExistingFacultyForOnboarding(sb, user, facultyRecordId);
+        let profileError = null;
 
-        if (profileError) {
-            console.warn("CiteFlowAuth: Upsert failed (likely no UNIQUE on auth_user_id):", profileError.message, "— trying update fallback.");
-            // Fallback 1: Update by auth_user_id
-            const { error: updateErr1 } = await sb
+        if (existingFaculty?.id != null) {
+            const updatePayload = { ...profilePayload };
+            if (existingFaculty.auth_user_id) {
+                delete updatePayload.auth_user_id;
+            }
+            const updated = await sb
                 .from('faculty')
-                .update(profilePayload)
-                .eq('auth_user_id', user.id);
+                .update(updatePayload)
+                .eq('id', existingFaculty.id);
+            profileError = updated.error;
+        } else {
+            const upserted = await sb
+                .from('faculty')
+                .upsert(profilePayload, { onConflict: 'auth_user_id' });
+            profileError = upserted.error;
 
-            if (updateErr1) {
-                console.warn("CiteFlowAuth: Update by auth_user_id failed:", updateErr1.message, "— trying by email.");
-                // Fallback 2: Update by email
-                const { error: updateErr2 } = await sb
+            if (profileError) {
+                console.warn("CiteFlowAuth: Upsert failed (likely no UNIQUE on auth_user_id):", profileError.message, "— trying update fallback.");
+                const { error: updateErr1 } = await sb
                     .from('faculty')
                     .update(profilePayload)
-                    .eq('email', user.email);
+                    .eq('auth_user_id', user.id);
 
-                if (updateErr2) {
-                    console.error("CiteFlowAuth: All faculty profile update methods failed:", updateErr2.message);
-                    throw new Error("Profile record save failed: " + updateErr2.message);
+                if (updateErr1) {
+                    console.warn("CiteFlowAuth: Update by auth_user_id failed:", updateErr1.message, "— trying by email.");
+                    const emailPayload = { ...profilePayload };
+                    delete emailPayload.auth_user_id;
+                    const { error: updateErr2 } = await sb
+                        .from('faculty')
+                        .update(emailPayload)
+                        .eq('email', user.email);
+                    profileError = updateErr2;
+                } else {
+                    profileError = null;
                 }
             }
+        }
+
+        if (profileError) {
+            const duplicateMessage = facultyEmployeeIdConflictMessage(profileError);
+            if (duplicateMessage) throw new Error(duplicateMessage);
+            console.error("CiteFlowAuth: Faculty profile update failed:", profileError.message);
+            throw new Error("Profile record save failed: " + profileError.message);
         }
 
         // 4. Also update public.profiles for messenger name resolution
@@ -1491,6 +1632,10 @@ window.CiteFlowAuth = (function () {
         clearUserCache,
         isSessionValid,
         verifyFirstTimeLoginSession,
+        validateFacultyEmployeeId,
+        resolveFacultyEmployeeIdForSave,
+        assertFacultyEmployeeIdAvailable,
+        facultyEmployeeIdConflictMessage,
         encryptSessionPayload,
         decryptSessionPayload,
         getClient,

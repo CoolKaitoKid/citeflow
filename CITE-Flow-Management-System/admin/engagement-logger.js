@@ -36,8 +36,9 @@
 
     async function getCurrentActor(client) {
         try {
-            const { data } = await client.auth.getUser();
-            const user = data?.user;
+            const read = client._citeFlowOriginalGetSession || client.auth.getSession.bind(client.auth);
+            const { data } = await read();
+            const user = data?.session?.user || data?.user || null;
 
             if (!user) return { id: null, name: 'System' };
 

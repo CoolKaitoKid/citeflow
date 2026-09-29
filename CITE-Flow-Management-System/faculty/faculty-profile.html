@@ -8,7 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js?v=auth-session-2"></script>
-    <script src="../shared/auth.js?v=auth-nav-1"></script>
+    <script src="../shared/auth.js?v=faculty-id-1"></script>
     <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
     <script src="../shared/workflow.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
@@ -493,7 +493,7 @@
             <section id="overview-tab">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-7">
                     <div class="card p-5">
-                        <p class="text-xs text-slate-500">Employee ID</p>
+                        <p class="text-xs text-slate-500">Faculty ID Number</p>
                         <p id="overviewEmployeeId" class="font-semibold text-slate-950 mt-1">—</p>
                     </div>
 
@@ -1321,6 +1321,12 @@
                 <label class="field-label">Full Name</label>
                 <input id="editFullName" class="field" readonly style="background:#f8fafc; color:#475569; cursor:not-allowed;" title="Auto-generated from First, Middle, and Last Name.">
                 <p class="text-xs text-slate-500 mt-1">Auto-generated from First, Middle, and Last Name.</p>
+            </div>
+
+            <div>
+                <label class="field-label" for="editEmployeeId">Faculty ID Number</label>
+                <input id="editEmployeeId" class="field" placeholder="Enter your Faculty ID Number" maxlength="64" autocomplete="off">
+                <p class="text-xs text-slate-500 mt-1">Enter the Faculty ID Number assigned to you. This updates your existing faculty record.</p>
             </div>
 
             <!-- CONTACT NUMBER (11 DIGITS ONLY) -->
@@ -3581,6 +3587,7 @@ function openEditProfileModal() {
     // Clean phone number to digits only, maximum 11 numbers
     const cleanPhone = String(currentFaculty.phone || '').replace(/[^0-9]/g, '').slice(0, 11);
     document.getElementById('editPhone').value = cleanPhone;
+    document.getElementById('editEmployeeId').value = currentFaculty.employee_id || '';
 
     document.getElementById('editLastName').value = currentFaculty.last_name || '';
     document.getElementById('editFirstName').value = currentFaculty.first_name || '';
@@ -3611,24 +3618,42 @@ function closeEditProfileModal() {
     document.getElementById('editProfileModal').classList.remove('flex');
 }
 
+function notifyProfile(message, type) {
+    if (window.CiteFlowUI?.alert) return CiteFlowUI.alert(message, type);
+    if (typeof window.showNoticeModal === 'function') return window.showNoticeModal({ message, type });
+}
+
 async function saveProfileChanges() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return notifyProfile('Faculty profile is not loaded.', 'error');
 
     const phone = document.getElementById('editPhone').value.trim();
 
     // STRICT 11-DIGIT VALIDATION
     if (phone && phone.length !== 11) {
-        return alert('Contact number must be exactly 11 digits (e.g., 09123456789).');
+        return notifyProfile('Contact number must be exactly 11 digits (e.g., 09123456789).', 'warning');
     }
     if (phone && !phone.startsWith('09')) {
-        return alert('Contact number must start with "09" (e.g., 09123456789).');
+        return notifyProfile('Contact number must start with "09" (e.g., 09123456789).', 'warning');
+    }
+
+    const facultyIdCheck = CiteFlowAuth.resolveFacultyEmployeeIdForSave(
+        document.getElementById('editEmployeeId').value,
+        currentFaculty.employee_id
+    );
+    if (!facultyIdCheck.valid) {
+        return notifyProfile(facultyIdCheck.message, 'warning');
+    }
+    try {
+        await CiteFlowAuth.assertFacultyEmployeeIdAvailable(facultyIdCheck.employeeId, currentFaculty.id);
+    } catch (err) {
+        return notifyProfile(err.message || 'This Faculty ID Number is already assigned to another faculty member.', 'error');
     }
 
     let profilePhotoUrl = '';
     try {
         profilePhotoUrl = await uploadProfilePictureIfSelected();
     } catch (err) {
-        return alert(err.message);
+        return notifyProfile(err.message, 'error');
     }
 
     const firstName = document.getElementById('editFirstName').value.trim();
@@ -3652,6 +3677,7 @@ async function saveProfileChanges() {
         educational_qualification: document.getElementById('editEducationalQualification').value.trim(),
         eligibility: document.getElementById('editEligibility').value.trim(),
         years_experience: Number(document.getElementById('editYearsExperience').value || 0),
+        employee_id: facultyIdCheck.employeeId,
         updated_at: new Date().toISOString()
     };
     if (profilePhotoUrl) updates.profile_photo_url = profilePhotoUrl;
@@ -3663,13 +3689,14 @@ async function saveProfileChanges() {
 
     if (error) {
         console.error('Error saving profile:', error);
-        return alert('Failed to update profile: ' + error.message);
+        const duplicateMessage = CiteFlowAuth.facultyEmployeeIdConflictMessage(error);
+        return notifyProfile(duplicateMessage || ('Failed to update profile: ' + error.message), 'error');
     }
 
     Object.assign(currentFaculty, updates);
     renderProfile();
     closeEditProfileModal();
-    alert('Profile updated successfully!');
+    notifyProfile('Profile updated successfully!', 'success');
 }
 function openDocumentUploadModal() {
     document.getElementById('documentUploadModal').classList.remove('hidden');
@@ -4349,7 +4376,7 @@ async function generate201FileReport() {
                         <tr>
                             <td style="padding:5px 8px; font-weight:700; background:#f8fafc; width:160px; border:1px solid #cbd5e1;">Full Name</td>
                             <td style="padding:5px 8px; font-weight:700; border:1px solid #cbd5e1;">${esc(fullName)}</td>
-                            <td style="padding:5px 8px; font-weight:700; background:#f8fafc; width:140px; border:1px solid #cbd5e1;">Employee ID</td>
+                            <td style="padding:5px 8px; font-weight:700; background:#f8fafc; width:140px; border:1px solid #cbd5e1;">Faculty ID Number</td>
                             <td style="padding:5px 8px; border:1px solid #cbd5e1;">${esc(f.employee_id || 'N/A')}</td>
                         </tr>
                         <tr>

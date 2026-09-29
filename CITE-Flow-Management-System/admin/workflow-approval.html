@@ -6123,6 +6123,15 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
         submission_id: sub.submission_id
     });
 
+    if (newStatus === 'approved' && nextStage === 'final_approver' && window.CiteFlowWorkflow?.notifyFinalApprovers) {
+        await CiteFlowWorkflow.notifyFinalApprovers(db, {
+            task,
+            taskId: sub.task_id,
+            submissionId: sub.submission_id,
+            message: `Final approval required: ${task?.title || 'Submission'}`
+        });
+    }
+
     const toast =
         newStatus === 'approved' && nextStage === 'final_approver'
             ? 'Chairperson approval recorded. Submission is now awaiting Dean/Secretary approval.'

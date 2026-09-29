@@ -12,7 +12,7 @@
     <!-- Supabase JS Client & Centralized Config -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="shared/supabase-config.js"></script>
-    <script src="shared/auth.js"></script>
+    <script src="shared/auth.js?v=faculty-id-1"></script>
     <script src="shared/auth-guard.js"></script>
     <script src="shared/system-ui.js"></script>
 
@@ -825,10 +825,11 @@
                         </div>
 
                         <div class="input-group">
-                            <label class="input-label" for="employeeId">Faculty ID <span style="color:#94a3b8; font-weight:normal;">(Assigned)</span></label>
+                            <label class="input-label" for="employeeId">Faculty ID <span id="employeeIdHint" style="color:#94a3b8; font-weight:normal;">(Assigned)</span></label>
                             <div class="input-wrapper">
-                                <input type="text" id="employeeId" class="form-control no-icon" placeholder="Assigned by Admin" readonly style="background:#f1f5f9; cursor:not-allowed; opacity:0.85;">
+                                <input type="text" id="employeeId" class="form-control no-icon" placeholder="Assigned by Admin" readonly style="background:#f1f5f9; cursor:not-allowed; opacity:0.85;" autocomplete="off" maxlength="64">
                             </div>
+                            <p id="employeeIdHelp" style="display:none; font-size:0.75rem; color:var(--text-muted); margin-top:6px;">Enter the Faculty ID Number assigned to you.</p>
                         </div>
 
                         <div class="input-group">
@@ -937,6 +938,8 @@
             let currentStep = 1;
             let selectedPhotoFile = null;
             let currentSessionUser = null;
+            let existingFacultyRecordId = null;
+            let facultyIdEditable = false;
 
             const stepperProgress = document.getElementById('stepperProgress');
             const stepItems = document.querySelectorAll('.step-item');
@@ -1014,6 +1017,10 @@
                 }
 
                 const meta = currentSessionUser.user_metadata || {};
+                const role = String(meta.role || profile?.role || profile?.position || '').toLowerCase();
+                const isAdminOnboarding = role === 'admin' || role === 'administrator' || Boolean(profile?.admin_access);
+                existingFacultyRecordId = profile?.id ?? null;
+                facultyIdEditable = !isAdminOnboarding;
 
                 populateNameFields(meta.full_name || meta.name || '', meta.first_name || '', meta.last_name || '');
                 employeeId.value = meta.employee_id || meta.id_number || 'ASSIGNED-BY-ADMIN';
@@ -1039,6 +1046,30 @@
                         avatarPreview.style.display = 'block';
                         avatarPlaceholder.style.display = 'none';
                     }
+                }
+
+                if (facultyIdEditable) {
+                    const label = document.querySelector('label[for="employeeId"]');
+                    if (label) label.innerHTML = 'Faculty ID Number <span style="color:#ef4444;">*</span>';
+                    employeeId.readOnly = false;
+                    employeeId.required = true;
+                    employeeId.placeholder = 'Enter your Faculty ID Number';
+                    employeeId.style.background = '';
+                    employeeId.style.cursor = '';
+                    employeeId.style.opacity = '';
+                    const help = document.getElementById('employeeIdHelp');
+                    if (help) help.style.display = 'block';
+                    if (!employeeId.value || employeeId.value === 'ASSIGNED-BY-ADMIN') employeeId.value = '';
+
+                    const phoneLabel = document.querySelector('label[for="phone"]');
+                    if (phoneLabel) phoneLabel.innerHTML = 'Contact Number <span style="color:#ef4444;">*</span>';
+                    phone.placeholder = '09171234567';
+                    phone.maxLength = 11;
+                    phone.required = true;
+                    phone.addEventListener('input', () => {
+                        const digits = phone.value.replace(/\D/g, '').slice(0, 11);
+                        if (phone.value !== digits) phone.value = digits;
+                    });
                 }
             } catch (e) {
                 console.warn("Prepopulation notice:", e);
@@ -1088,6 +1119,33 @@
 
             function hideAlert() {
                 alertBanner.style.display = 'none';
+            }
+
+            function validateFacultyPhoneInput() {
+                if (!facultyIdEditable) return true;
+                const value = phone.value;
+                if (!/^09\d{9}$/.test(value)) {
+                    showAlert('Contact number must be exactly 11 digits and start with 09 (example: 09171234567).');
+                    return false;
+                }
+                return true;
+            }
+
+            async function validateFacultyIdInput() {
+                if (!facultyIdEditable) return true;
+                const check = CiteFlowAuth.validateFacultyEmployeeId(employeeId.value);
+                if (!check.valid) {
+                    showAlert(check.message);
+                    return false;
+                }
+                employeeId.value = check.employeeId;
+                try {
+                    await CiteFlowAuth.assertFacultyEmployeeIdAvailable(check.employeeId, existingFacultyRecordId);
+                } catch (err) {
+                    showAlert(err.message || 'This Faculty ID Number is already assigned to another faculty member.');
+                    return false;
+                }
+                return true;
             }
 
             function updateStepUI() {
@@ -1156,6 +1214,8 @@
                         showAlert('Please select your Department.');
                         return;
                     }
+                    if (!validateFacultyPhoneInput()) return;
+                    if (!(await validateFacultyIdInput())) return;
                     currentStep = 3;
                     updateStepUI();
                     return;
@@ -1163,6 +1223,9 @@
 
                 // Submission Step 3: Photo & Completion
                 if (currentStep === 3) {
+                    if (!validateFacultyPhoneInput()) return;
+                    if (!(await validateFacultyIdInput())) return;
+
                     nextBtn.disabled = true;
                     btnSpinner.style.display = 'inline-block';
                     nextBtnText.textContent = 'Finalizing...';
@@ -1191,7 +1254,8 @@
                             phone: phone.value.trim(),
                             birthdate: birthdate.value || null,
                             sex: sex.value || '',
-                            photoFile: selectedPhotoFile
+                            photoFile: selectedPhotoFile,
+                            facultyRecordId: existingFacultyRecordId
                         });
 
                         showAlert('Onboarding complete! Redirecting to your dashboard...', 'success');

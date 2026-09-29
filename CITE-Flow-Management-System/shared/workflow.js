@@ -1288,6 +1288,62 @@
         })));
     }
 
+    async function notifyFinalApprovers(sb, { task, taskId, submissionId, message }) {
+        const facultyList = await loadFacultyDirectory(sb);
+        const deans = (facultyList || []).filter((person) => isWorkflowAdmin(person));
+        const coveredAuth = new Set(deans.map((dean) => dean.auth_user_id).filter(Boolean));
+        if (deans.length) {
+            await createWorkflowNotification(sb, deans.map((dean) => ({
+                type: 'review',
+                faculty_id: dean.id,
+                recipient_auth_user_id: dean.auth_user_id || null,
+                task_id: taskId || task?.id || null,
+                submission_id: submissionId || null,
+                message,
+                is_read: false
+            })));
+        }
+
+        try {
+            const { data: admins, error } = await sb.from('admin_profiles').select('*').limit(50);
+            if (error) return true;
+            const taskKey = taskId || task?.id || '';
+            const link = `workflow-approval.html${taskKey ? '#task=' + encodeURIComponent(taskKey) : ''}`;
+            const rows = (admins || []).filter((admin) => {
+                const uid = admin.auth_user_id || admin.id;
+                return uid && !coveredAuth.has(uid) && !/chair/i.test(String(admin.role || ''));
+            }).map((admin) => ({
+                user_id: admin.auth_user_id || admin.id,
+                type: 'review',
+                title: 'Final Approval Needed',
+                message,
+                link,
+                audience: 'admin',
+                is_read: false
+            }));
+            let current = rows;
+            for (let attempt = 0; attempt < 6 && current.length; attempt += 1) {
+                const inserted = await sb.from('notifications').insert(current);
+                if (!inserted.error) break;
+                const raw = String(inserted.error.message || '');
+                const match = raw.match(/column "([^"]+)"/i) || raw.match(/'([^']+)' column/i);
+                if (!match) {
+                    console.warn('CiteFlowWorkflow.notifyFinalApprovers:', raw);
+                    break;
+                }
+                const column = match[1];
+                current = current.map((row) => {
+                    const next = { ...row };
+                    delete next[column];
+                    return next;
+                });
+            }
+        } catch (err) {
+            console.warn('CiteFlowWorkflow.notifyFinalApprovers:', err);
+        }
+        return true;
+    }
+
     /**
      * Name the column the database is rejecting.
      *
@@ -1589,6 +1645,15 @@
             task_id: submission.task_id,
             submission_id: submissionId
         });
+
+        if (action === 'approved' && transition.nextStage === APPROVAL_STAGES.FINAL) {
+            await notifyFinalApprovers(sb, {
+                task,
+                taskId: submission.task_id,
+                submissionId,
+                message: `Final approval required: ${task?.title || 'Submission'}`
+            });
+        }
 
         // The status change is committed at this point, so the action succeeded.
         // A failed audit row is still worth telling the reviewer about, because
@@ -2133,6 +2198,7 @@
         recordApprovalHistory,
         logActivity,
         createWorkflowNotification,
+        notifyFinalApprovers,
         getActorDisplayName,
         showToast,
         confirmAction,

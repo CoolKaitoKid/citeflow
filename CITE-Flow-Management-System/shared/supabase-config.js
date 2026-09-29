@@ -149,6 +149,53 @@
     };
 })();
 
+(function installCiteFlowSharedClient() {
+    if (window.__citeflowCreateClientPatched || !window.supabase || typeof window.supabase.createClient !== 'function') return;
+    const originalCreate = window.supabase.createClient.bind(window.supabase);
+
+    function patchSharedAuth(client) {
+        if (!client?.auth || client.__citeflowAuthPatched) return;
+        client.__citeflowAuthPatched = true;
+        const originalRefresh = client.auth.refreshSession.bind(client.auth);
+        const originalGetUser = client.auth.getUser.bind(client.auth);
+        client.auth.refreshSession = function (currentSession) {
+            if (window.__citeflowRefreshInFlight) return window.__citeflowRefreshInFlight;
+            window.__citeflowRefreshInFlight = Promise.resolve()
+                .then(() => originalRefresh(currentSession))
+                .finally(() => { window.__citeflowRefreshInFlight = null; });
+            return window.__citeflowRefreshInFlight;
+        };
+        client.auth.getUser = async function (jwt) {
+            if (!jwt) {
+                try {
+                    const read = client._citeFlowOriginalGetSession || client.auth.getSession.bind(client.auth);
+                    const { data } = await read();
+                    if (data?.session?.user) return { data: { user: data.session.user }, error: null };
+                } catch (_) {}
+                return { data: { user: null }, error: null };
+            }
+            try {
+                return await originalGetUser(jwt);
+            } catch (error) {
+                return { data: { user: null }, error };
+            }
+        };
+    }
+
+    window.supabase.createClient = function (url, key, options) {
+        const persist = options?.auth?.persistSession !== false;
+        if (persist && window.supabaseClient) return window.supabaseClient;
+        const client = originalCreate(url, key, options);
+        if (persist) {
+            window.supabaseClient = client;
+            patchSharedAuth(client);
+        }
+        return client;
+    };
+    window.__citeflowCreateClientPatched = true;
+    if (window.supabaseClient) patchSharedAuth(window.supabaseClient);
+})();
+
 (function () {
     const SUPABASE_URL = 'https://uforealazougjckepggc.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
