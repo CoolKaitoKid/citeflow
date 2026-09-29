@@ -1000,9 +1000,9 @@
             </div>
 
             <div>
-                <label class="field-label">Phone</label>
-                <input id="editPhone" class="field">
-            </div>
+    <label class="field-label">Phone</label>
+    <input id="editPhone" type="tel" maxlength="11" class="field">
+</div>
 
             <div>
                 <label class="field-label">Last Name</label>
@@ -2399,7 +2399,8 @@ function renderProfile() {
 
     document.getElementById('profileName').textContent = name;
     document.getElementById('profileSubtitle').textContent = `Admin • ${department}`;
-    document.getElementById('profilePhone').textContent = currentFaculty.phone || 'No contact number';
+   const cleanPhone = String(currentFaculty.phone || '').replace(/[^0-9]/g, '').slice(0, 11);
+document.getElementById('profilePhone').textContent = cleanPhone || 'No contact number';
     document.getElementById('profileEmail').textContent = currentFaculty.email || currentAuthUser?.email || 'No email';
     document.getElementById('profileJoined').textContent = `Joined ${formatDate(currentFaculty.start_date || currentFaculty.created_at)}`;
 
@@ -2679,11 +2680,11 @@ function renderAuthorChips(authors) {
         authors.map(a => `<span class="chip">${esc(a)}</span>`).join('') +
         '</div>';
 }
-
 function enteredDescription(record) {
     if (!record) return '';
     if (typeof record.clean_description === 'string') return record.clean_description;
-    return String(record.description || '').replace(/<!--\s*CITEFLOW_(?:RESEARCH|DOC|ACCOMP)_DATA:.*?-->/gs, '').trim();
+    const commentRegex = new RegExp('<' + '!--[\\s\\S]*?--' + '>', 'g');
+    return String(record.description || '').replace(commentRegex, '').trim();
 }
 
 function unpackResearchProject(project) {
@@ -2693,7 +2694,8 @@ function unpackResearchProject(project) {
     let links = Array.isArray(project.links) ? [...project.links] : [];
 
     if (project.description && project.description.includes('CITEFLOW_RESEARCH_DATA:')) {
-        const match = project.description.match(/<!--\s*CITEFLOW_RESEARCH_DATA:(.*?)\s*-->/);
+        const matchRegex = new RegExp('<' + '!--\\s*CITEFLOW_RESEARCH_DATA:([\\s\\S]*?)\\s*--' + '>');
+        const match = project.description.match(matchRegex);
         if (match && match[1]) {
             try {
                 const meta = JSON.parse(decodeURIComponent(match[1]));
@@ -2713,7 +2715,8 @@ function unpackResearchProject(project) {
                 console.warn('Failed to parse embedded research data:', e);
             }
         }
-        project.clean_description = project.description.replace(/<!--\s*CITEFLOW_RESEARCH_DATA:.*?\s*-->/gs, '').trim();
+        const cleanRegex = new RegExp('<' + '!--\\s*CITEFLOW_RESEARCH_DATA:[\\s\\S]*?--' + '>', 'g');
+        project.clean_description = project.description.replace(cleanRegex, '').trim();
     } else {
         project.clean_description = project.description || '';
     }
@@ -2747,7 +2750,8 @@ function unpackDocument(doc) {
     let subCategory = doc.sub_category || null;
 
     if (doc.description && doc.description.includes('CITEFLOW_DOC_DATA:')) {
-        const match = doc.description.match(/<!--\s*CITEFLOW_DOC_DATA:(.*?)\s*-->/);
+        const matchRegex = new RegExp('<' + '!--\\s*CITEFLOW_DOC_DATA:([\\s\\S]*?)\\s*--' + '>');
+        const match = doc.description.match(matchRegex);
         if (match && match[1]) {
             try {
                 const meta = JSON.parse(decodeURIComponent(match[1]));
@@ -2764,7 +2768,8 @@ function unpackDocument(doc) {
                 console.warn('Failed to parse embedded doc data:', e);
             }
         }
-        doc.clean_description = doc.description.replace(/<!--\s*CITEFLOW_DOC_DATA:.*?\s*-->/gs, '').trim();
+        const cleanRegex = new RegExp('<' + '!--\\s*CITEFLOW_DOC_DATA:[\\s\\S]*?--' + '>', 'g');
+        doc.clean_description = doc.description.replace(cleanRegex, '').trim();
     } else {
         doc.clean_description = doc.description || '';
     }
@@ -2790,7 +2795,8 @@ function unpackAccomplishment(item) {
     let durationHours = item.duration_hours || null;
 
     if (item.description && item.description.includes('CITEFLOW_ACCOMP_DATA:')) {
-        const match = item.description.match(/<!--\s*CITEFLOW_ACCOMP_DATA:(.*?)\s*-->/);
+        const matchRegex = new RegExp('<' + '!--\\s*CITEFLOW_ACCOMP_DATA:([\\s\\S]*?)\\s*--' + '>');
+        const match = item.description.match(matchRegex);
         if (match && match[1]) {
             try {
                 const meta = JSON.parse(decodeURIComponent(match[1]));
@@ -2801,7 +2807,8 @@ function unpackAccomplishment(item) {
                 console.warn('Failed to parse embedded accomplishment data:', e);
             }
         }
-        item.clean_description = item.description.replace(/<!--\s*CITEFLOW_ACCOMP_DATA:.*?\s*-->/gs, '').trim();
+        const cleanRegex = new RegExp('<' + '!--\\s*CITEFLOW_ACCOMP_DATA:[\\s\\S]*?--' + '>', 'g');
+        item.clean_description = item.description.replace(cleanRegex, '').trim();
     } else {
         item.clean_description = item.description || '';
     }
@@ -2809,7 +2816,69 @@ function unpackAccomplishment(item) {
     item.duration_hours = durationHours;
     return item;
 }
+function unpackDocument(doc) {
+    if (!doc) return doc;
 
+    let mediaFiles = Array.isArray(doc.media_files) ? [...doc.media_files] : [];
+    let extensionProjectId = doc.extension_project_id || null;
+    let subCategory = doc.sub_category || null;
+
+    if (doc.description && doc.description.includes('CITEFLOW_DOC_DATA:')) {
+        const regex = new RegExp('<' + '!--\\s*CITEFLOW_DOC_DATA:([\\s\\S]*?)\\s*--' + '>');
+        const match = doc.description.match(regex);
+        if (match && match[1]) {
+            try {
+                const meta = JSON.parse(decodeURIComponent(match[1]));
+                if ((!mediaFiles || !mediaFiles.length) && Array.isArray(meta.media_files)) {
+                    mediaFiles = meta.media_files;
+                }
+                if (!extensionProjectId && meta.extension_project_id) {
+                    extensionProjectId = meta.extension_project_id;
+                }
+                if (!subCategory && meta.sub_category) {
+                    subCategory = meta.sub_category;
+                }
+            } catch (e) {
+                console.error('Failed to unpack document data', e);
+            }
+        }
+    }
+
+    return {
+        ...doc,
+        clean_description: enteredDescription(doc),
+        media_files: mediaFiles,
+        extension_project_id: extensionProjectId,
+        sub_category: subCategory
+    };
+}
+
+function unpackAccomplishment(item) {
+    if (!item) return item;
+
+    let mediaFiles = Array.isArray(item.media_files) ? [...item.media_files] : [];
+
+    if (item.description && item.description.includes('CITEFLOW_ACCOMP_DATA:')) {
+        const regex = new RegExp('<' + '!--\\s*CITEFLOW_ACCOMP_DATA:([\\s\\S]*?)\\s*--' + '>');
+        const match = item.description.match(regex);
+        if (match && match[1]) {
+            try {
+                const meta = JSON.parse(decodeURIComponent(match[1]));
+                if ((!mediaFiles || !mediaFiles.length) && Array.isArray(meta.media_files)) {
+                    mediaFiles = meta.media_files;
+                }
+            } catch (e) {
+                console.error('Failed to unpack accomplishment data', e);
+            }
+        }
+    }
+
+    return {
+        ...item,
+        clean_description: enteredDescription(item),
+        media_files: mediaFiles
+    };
+}
 async function loadResearch() {
     const container = document.getElementById('researchList');
 
@@ -6759,7 +6828,10 @@ function openEditProfileModal() {
         currentFaculty.full_name || currentFaculty.name || ''
     );
     document.getElementById('editEmployeeId').value = currentFaculty.employee_id || '';
-    document.getElementById('editPhone').value = currentFaculty.phone || '';
+
+    // 👉 THIS LINE LIMITS THE CONTACT NUMBER TO 11 LENGTH:
+    document.getElementById('editPhone').value = String(currentFaculty.phone || '').replace(/[^0-9]/g, '').slice(0, 11);
+
     document.getElementById('editLastName').value = currentFaculty.last_name || '';
     document.getElementById('editFirstName').value = currentFaculty.first_name || '';
     document.getElementById('editMiddleName').value = currentFaculty.middle_name || '';

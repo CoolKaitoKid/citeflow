@@ -1299,6 +1299,7 @@
 </div>
 
 <!-- EDIT PROFILE MODAL -->
+<!-- EDIT PROFILE MODAL -->
 <div id="editProfileModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[2000] flex overflow-y-auto items-start justify-center p-3 sm:p-5 min-h-screen">
     <div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto">
         <div class="px-7 py-5 border-b border-slate-100 flex items-start justify-between gap-4 flex-shrink-0">
@@ -1322,9 +1323,16 @@
                 <p class="text-xs text-slate-500 mt-1">Auto-generated from First, Middle, and Last Name.</p>
             </div>
 
+            <!-- CONTACT NUMBER (11 DIGITS ONLY) -->
             <div>
-                <label class="field-label">Phone</label>
-                <input id="editPhone" class="field">
+                <label class="field-label">Phone <span class="text-xs text-slate-400 font-normal">(11 digits)</span></label>
+                <input id="editPhone" 
+                       type="tel" 
+                       maxlength="11" 
+                       placeholder="09123456789" 
+                       class="field" 
+                       oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 11);">
+                <p class="text-xs text-slate-500 mt-1">Must be exactly 11 digits (e.g. 09123456789).</p>
             </div>
 
             <div>
@@ -1428,7 +1436,6 @@
         </div>
     </div>
 </div>
-
 <!-- DOCUMENT UPLOAD MODAL -->
 <div id="documentUploadModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto">
@@ -3445,38 +3452,32 @@ async function uploadProfilePictureIfSelected() {
 function openEditProfileModal() {
     if (!currentFaculty) return;
 
-    document.getElementById('editFullName').value = buildDisplayFullName(
-        currentFaculty.first_name || '',
-        currentFaculty.middle_name || '',
-        currentFaculty.last_name || '',
-        currentFaculty.full_name || currentFaculty.name || ''
-    );
-    document.getElementById('editPhone').value = currentFaculty.phone || '';
+    // Clean phone number to digits only, maximum 11 numbers
+    const cleanPhone = String(currentFaculty.phone || '').replace(/[^0-9]/g, '').slice(0, 11);
+    document.getElementById('editPhone').value = cleanPhone;
+
     document.getElementById('editLastName').value = currentFaculty.last_name || '';
     document.getElementById('editFirstName').value = currentFaculty.first_name || '';
     document.getElementById('editMiddleName').value = currentFaculty.middle_name || '';
     document.getElementById('editSex').value = currentFaculty.sex || '';
-    document.getElementById('editBirthdate').value = currentFaculty.birthdate || '';
-    document.getElementById('editDepartment').value = currentFaculty.department || 'N/A';
-    const whVal = (currentFaculty.shift && !['Morning', 'Afternoon', 'Night'].includes(currentFaculty.shift))
-        ? currentFaculty.shift
-        : '8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M.';
-    document.getElementById('editShift').value = whVal;
-    document.getElementById('editAcademicRank').value = currentFaculty.academic_rank || currentFaculty.position || 'Part-time';
-
-    const currentPhotoUrl = currentFaculty.profile_photo_url || currentFaculty.avatar_url || currentFaculty.photo_url || '';
-    document.getElementById('editPhotoUrl').value = currentPhotoUrl;
-    setEditProfilePhotoPreview(currentPhotoUrl, currentFaculty.full_name || currentFaculty.name || currentFaculty.email || 'Faculty');
+    document.getElementById('editBirthdate').value = currentFaculty.birthdate ? currentFaculty.birthdate.split('T')[0] : '';
+    document.getElementById('editDepartment').value = currentFaculty.department || 'BSIT';
+    document.getElementById('editShift').value = currentFaculty.shift || '8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M.';
+    document.getElementById('editAcademicRank').value = currentFaculty.academic_rank || 'Instructor I';
+    document.getElementById('editPhotoUrl').value = currentFaculty.profile_photo_url || '';
     document.getElementById('editMastersDegree').value = currentFaculty.masters_degree || '';
     document.getElementById('editDoctorateDegree').value = currentFaculty.doctorate_degree || '';
     document.getElementById('editEducationalQualification').value = currentFaculty.educational_qualification || '';
     document.getElementById('editEligibility').value = currentFaculty.eligibility || '';
-    document.getElementById('editYearsExperience').value = currentFaculty.years_experience || '';
+    document.getElementById('editYearsExperience').value = currentFaculty.years_experience || 0;
 
     autoUpdateFullName();
+    const photoUrl = currentFaculty.profile_photo_url || '';
+    setImageOrInitials('editPhotoPreview', 'editPhotoPreviewFallback', photoUrl, currentFaculty.full_name || 'FM');
 
-    document.getElementById('editProfileModal').classList.remove('hidden');
-    document.getElementById('editProfileModal').classList.add('flex');
+    const modal = document.getElementById('editProfileModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
 }
 
 function closeEditProfileModal() {
@@ -3485,102 +3486,65 @@ function closeEditProfileModal() {
 }
 
 async function saveProfileChanges() {
-    if (!currentFaculty?.id) return;
+    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+
+    const phone = document.getElementById('editPhone').value.trim();
+
+    // STRICT 11-DIGIT VALIDATION
+    if (phone && phone.length !== 11) {
+        return alert('Contact number must be exactly 11 digits (e.g., 09123456789).');
+    }
+    if (phone && !phone.startsWith('09')) {
+        return alert('Contact number must start with "09" (e.g., 09123456789).');
+    }
+
+    let profilePhotoUrl = '';
+    try {
+        profilePhotoUrl = await uploadProfilePictureIfSelected();
+    } catch (err) {
+        return alert(err.message);
+    }
 
     const firstName = document.getElementById('editFirstName').value.trim();
     const middleName = document.getElementById('editMiddleName').value.trim();
     const lastName = document.getElementById('editLastName').value.trim();
-    const displayName = buildDisplayFullName(firstName, middleName, lastName, '');
-    const formalName = buildFormalFullName(firstName, middleName, lastName, '');
-    const workingHours = document.getElementById('editShift')?.value.trim() || '8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M.';
+    const fullName = buildFormalFullName(firstName, middleName, lastName, document.getElementById('editFullName').value.trim());
 
-    let profilePhotoUrl = '';
-
-    try {
-        profilePhotoUrl = await uploadProfilePictureIfSelected();
-    } catch (error) {
-        console.error(error);
-        return alert(error.message || 'Unable to upload profile picture.');
-    }
-
-    const payload = {
+    const updates = {
         first_name: firstName,
         middle_name: middleName,
         last_name: lastName,
-        full_name: displayName,
-        name: displayName,
+        full_name: fullName,
+        phone: phone, // Saved as clean 11 digits
         sex: document.getElementById('editSex').value,
         birthdate: document.getElementById('editBirthdate').value || null,
-        phone: document.getElementById('editPhone').value.trim(),
         department: document.getElementById('editDepartment').value,
-        shift: workingHours,
+        shift: document.getElementById('editShift').value.trim(),
         academic_rank: document.getElementById('editAcademicRank').value,
-        profile_photo_url: profilePhotoUrl || currentFaculty.profile_photo_url || '',
         masters_degree: document.getElementById('editMastersDegree').value.trim(),
         doctorate_degree: document.getElementById('editDoctorateDegree').value.trim(),
         educational_qualification: document.getElementById('editEducationalQualification').value.trim(),
         eligibility: document.getElementById('editEligibility').value.trim(),
         years_experience: Number(document.getElementById('editYearsExperience').value || 0),
-        status: currentFaculty.status || 'Active',
-        leave_start_date: currentFaculty.leave_start_date || null,
-        leave_end_date: currentFaculty.leave_end_date || null,
         updated_at: new Date().toISOString()
     };
+    if (profilePhotoUrl) updates.profile_photo_url = profilePhotoUrl;
 
     const { error } = await supabaseClient
         .from('faculty')
-        .update(payload)
+        .update(updates)
         .eq('id', currentFaculty.id);
 
     if (error) {
-        console.error(error);
-        return alert('Unable to update profile: ' + error.message);
+        console.error('Error saving profile:', error);
+        return alert('Failed to update profile: ' + error.message);
     }
 
-    try {
-        const cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
-        cached.name = formalName;
-        cached.full_name = formalName;
-        cached.first_name = payload.first_name;
-        cached.middle_name = payload.middle_name;
-        cached.last_name = payload.last_name;
-        cached.department = payload.department;
-        cached.profile_photo_url = payload.profile_photo_url;
-        localStorage.setItem('citeflow_user', JSON.stringify(cached));
-    } catch (_) {}
-
-    if (typeof window.updateFacultyNavProfile === 'function') {
-        window.updateFacultyNavProfile({
-            first_name: payload.first_name,
-            middle_name: payload.middle_name,
-            last_name: payload.last_name,
-            name: formalName,
-            full_name: formalName,
-            department: payload.department,
-            role: payload.academic_rank,
-            profile_photo_url: payload.profile_photo_url
-        });
-    }
-
+    Object.assign(currentFaculty, updates);
+    renderProfile();
     closeEditProfileModal();
-    await loadFacultyProfile();
-
-    if (typeof window.EngagementLogger !== 'undefined') {
-        window.EngagementLogger.logActivity({
-            facultyId: currentFaculty.id,
-            facultyName: displayName,
-            department: payload.department,
-            activityType: 'Profile Update',
-            activityTitle: 'Updated faculty profile',
-            description: 'Updated faculty profile details',
-            sourceModule: 'Faculty Profile',
-            details: { Department: payload.department, Rank: payload.academic_rank }
-        });
-    }
-
     alert('Profile updated successfully!');
 }
-
 function openDocumentUploadModal() {
     document.getElementById('documentUploadModal').classList.remove('hidden');
     document.getElementById('documentUploadModal').classList.add('flex');

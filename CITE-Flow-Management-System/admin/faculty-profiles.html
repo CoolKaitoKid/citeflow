@@ -4584,7 +4584,8 @@ function unpackResearchProject(project) {
     let links = Array.isArray(project.links) ? [...project.links] : [];
 
     if (project.description && project.description.includes('CITEFLOW_RESEARCH_DATA:')) {
-        const match = project.description.match(/<!--\s*CITEFLOW_RESEARCH_DATA:(.*?)\s*-->/);
+        const regexMatch = new RegExp('<' + '!--\\s*CITEFLOW_RESEARCH_DATA:([\\s\\S]*?)\\s*--' + '>');
+        const match = project.description.match(regexMatch);
         if (match && match[1]) {
             try {
                 const meta = JSON.parse(decodeURIComponent(match[1]));
@@ -4604,7 +4605,8 @@ function unpackResearchProject(project) {
                 console.warn('Failed to parse embedded research data:', e);
             }
         }
-        project.clean_description = project.description.replace(/<!--\s*CITEFLOW_RESEARCH_DATA:.*?\s*-->/gs, '').trim();
+        const regexReplace = new RegExp('<' + '!--\\s*CITEFLOW_RESEARCH_DATA:[\\s\\S]*?\\s*--' + '>', 'g');
+        project.clean_description = project.description.replace(regexReplace, '').trim();
     } else {
         project.clean_description = project.description || '';
     }
