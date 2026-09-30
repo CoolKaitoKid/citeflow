@@ -857,21 +857,95 @@
         if (!sub.data) throw new Error('This submission is not available to your account.');
         state.submission = sub.data;
 
-        let packet = await client.from('mfo_packets').select('*').eq('submission_id', submissionId).maybeSingle();
-        if (!packet.data && state.submission.task_id && state.submission.faculty_id) {
-            packet = await client.from('mfo_packets').select('*').eq('task_id', state.submission.task_id).eq('faculty_id', state.submission.faculty_id).maybeSingle();
+        // Retrieve MFO packet via authoritative RPC or fallbacks
+        let packetData = null;
+        try {
+            const rpcRes = await client.rpc('mfo_get_submission_packet', { p_submission_id: submissionId });
+            if (rpcRes.data) {
+                packetData = Array.isArray(rpcRes.data) ? rpcRes.data[0] : rpcRes.data;
+            }
+        } catch (_) {}
+
+        // Fallback 1: Query by submission_id
+        if (!packetData) {
+            const p1 = await client.from('mfo_packets').select('*').eq('submission_id', submissionId).maybeSingle();
+            if (p1.data) packetData = p1.data;
         }
-        if (!packet.data) throw new Error('No MFO report is attached to this submission.');
-        state.packet = packet.data;
+
+        // Fallback 2: Query by task_id and faculty_id
+        if (!packetData && state.submission.task_id && state.submission.faculty_id) {
+            const p2 = await client.from('mfo_packets').select('*').eq('task_id', state.submission.task_id).eq('faculty_id', state.submission.faculty_id).maybeSingle();
+            if (p2.data) packetData = p2.data;
+        }
+
+        // Fallback 3: Check wf_submission_files for tagged mfo_packet_id
+        if (!packetData) {
+            try {
+                const filesRes = await client.from('wf_submission_files').select('mfo_packet_id').eq('submission_id', submissionId);
+                const pktId = (filesRes.data || []).map((f) => f.mfo_packet_id).find(Boolean);
+                if (pktId) {
+                    const p3 = await client.from('mfo_packets').select('*').eq('id', pktId).maybeSingle();
+                    if (p3.data) packetData = p3.data;
+                }
+            } catch (_) {}
+        }
+
+        // Fallback 4: Query latest packet for this faculty member
+        if (!packetData && state.submission.faculty_id) {
+            try {
+                const facPackets = await client.from('mfo_packets').select('*').eq('faculty_id', state.submission.faculty_id).order('updated_at', { ascending: false });
+                if (Array.isArray(facPackets.data) && facPackets.data.length > 0) {
+                    const matched = facPackets.data.find((p) => p.task_id && String(p.task_id) === String(state.submission.task_id))
+                        || facPackets.data[0];
+                    packetData = matched;
+                }
+            } catch (_) {}
+        }
+
+        // Auto-link packet to submission if found
+        if (packetData?.id) {
+            const patch = {};
+            if (!packetData.submission_id) patch.submission_id = submissionId;
+            if (!packetData.task_id && state.submission.task_id) patch.task_id = state.submission.task_id;
+            if (Object.keys(patch).length > 0) {
+                try {
+                    await client.from('mfo_packets').update(patch).eq('id', packetData.id);
+                    Object.assign(packetData, patch);
+                } catch (_) {}
+            }
+        }
+
+        // Fallback 5: If no packet record exists, synthesize a fallback packet
+        // so the reviewer can still inspect the submission, view files, and take approval actions
+        if (!packetData) {
+            packetData = {
+                id: null,
+                submission_id: submissionId,
+                task_id: state.submission.task_id || null,
+                faculty_id: state.submission.faculty_id,
+                department: null,
+                packet_state: state.submission.status || 'submitted',
+                reporting_year: new Date().getFullYear(),
+                quarter: Math.floor(new Date().getMonth() / 3) + 1,
+                period_label: 'Submitted Accomplishment Report',
+                is_synthetic: true
+            };
+        }
+
+        state.packet = packetData;
 
         const [author, task, configs, catalog] = await Promise.all([
-            client.from('faculty').select('*').eq('id', state.packet.faculty_id).maybeSingle(),
-            state.submission.task_id ? client.from('wf_tasks').select('*').eq('id', state.submission.task_id).maybeSingle() : Promise.resolve({ data: null }),
+            state.packet.faculty_id
+                ? client.from('faculty').select('*').eq('id', state.packet.faculty_id).maybeSingle()
+                : Promise.resolve({ data: null }),
+            state.submission.task_id
+                ? client.from('wf_tasks').select('*').eq('id', state.submission.task_id).maybeSingle()
+                : Promise.resolve({ data: null }),
             client.from('wf_report_configs').select('*'),
             client.from('mfo_section_catalog').select('*').order('sort_order', { ascending: true })
         ]);
-        state.faculty = author.data || { id: state.packet.faculty_id, full_name: 'Faculty', department: state.packet.department };
-        state.task = task.data || null;
+        state.faculty = author?.data || { id: state.packet.faculty_id, full_name: 'Faculty', department: state.packet.department };
+        state.task = task?.data || null;
         state.configs = configs.data || [];
         state.config = linkedApprovalConfig();
         state.catalog = catalog.data || [];
@@ -998,7 +1072,19 @@
     // Load
     // -------------------------------------------------------------------
     async function loadPacketData() {
-        if (!state.packet?.id) throw new Error('Unable to open or create an MFO packet for this account.');
+        if (!state.packet?.id) {
+            const client = db();
+            SECTIONS.forEach((def) => { state.rows[def.table] = []; });
+            state.sectionStatus = {};
+            if (state.submission?.id) {
+                try {
+                    const files = await client.from('wf_submission_files').select('*').eq('submission_id', state.submission.id).order('created_at', { ascending: true });
+                    state.files = files.data || [];
+                    await hydrateFileDisplayUrls(state.files);
+                } catch (_) {}
+            }
+            return;
+        }
         const client = db(), packetId = state.packet.id;
         SECTIONS.forEach((def) => { state.rows[def.table] = []; });
 
