@@ -460,7 +460,7 @@ function ensureCalendarNotifications() {
         return;
     }
     const script = document.createElement("script");
-    script.src = isInAdminFolder() ? "../shared/calendar-notifications.js" : "shared/calendar-notifications.js";
+    script.src = isInAdminFolder() ? "../shared/calendar-notifications.js?v=admin-hook-1" : "shared/calendar-notifications.js?v=admin-hook-1";
     script.onload = start;
     document.head.appendChild(script);
 }

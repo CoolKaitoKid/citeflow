@@ -109,8 +109,8 @@
         return { theme, text, textMuted, border, hover, activeNav, panel, panelText, isLight };
     }
 
-    function applyTheme() {
-        const selected = getStoredTheme();
+    function applyTheme(color) {
+        const selected = color || getStoredTheme();
         const palette = adjustTheme(selected);
         const root = document.documentElement;
 
@@ -464,10 +464,16 @@
     window.CiteFlowUI = {
         setTheme: function (hexColor) {
             saveTheme(hexColor);
-            applyTheme();
+            applyTheme(hexColor);
+        },
+        previewTheme: function (hexColor) {
+            applyTheme(hexColor);
         },
         getTheme: function () {
             return getStoredTheme();
+        },
+        getDefaultTheme: function () {
+            return DEFAULT_THEME;
         },
         getAllowedThemes: function () {
             return [...THEMES];

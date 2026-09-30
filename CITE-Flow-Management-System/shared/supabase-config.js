@@ -153,11 +153,102 @@
     if (window.__citeflowCreateClientPatched || !window.supabase || typeof window.supabase.createClient !== 'function') return;
     const originalCreate = window.supabase.createClient.bind(window.supabase);
 
+    const REFRESH_LOCK_KEY = 'citeflow_auth_refresh_lock';
+    const REFRESH_LOCK_TTL_MS = 8000;
+    const pageRefreshOwner = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    function readRefreshLock() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(REFRESH_LOCK_KEY) || 'null');
+            if (!parsed || typeof parsed.until !== 'number' || parsed.until < Date.now()) return null;
+            return parsed;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function writeRefreshLock(owner) {
+        try {
+            localStorage.setItem(REFRESH_LOCK_KEY, JSON.stringify({
+                owner,
+                until: Date.now() + REFRESH_LOCK_TTL_MS
+            }));
+        } catch (_) {}
+    }
+
+    function clearRefreshLock(owner) {
+        try {
+            const current = readRefreshLock();
+            if (!current || current.owner === owner) localStorage.removeItem(REFRESH_LOCK_KEY);
+        } catch (_) {}
+    }
+
+    function readStoredAuthSession() {
+        try {
+            const key = Object.keys(localStorage).find((name) => name.startsWith('sb-') && name.endsWith('-auth-token'));
+            if (!key) return null;
+            const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+            const session = parsed?.currentSession?.access_token ? parsed.currentSession : parsed;
+            if (!session?.access_token || !session?.refresh_token) return null;
+            return session;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function accessTokenStillValid(session) {
+        let exp = Number(session?.expires_at || 0);
+        if (!exp && session?.access_token) {
+            try {
+                const part = session.access_token.split('.')[1];
+                const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')));
+                exp = Number(payload?.exp || 0);
+            } catch (_) {}
+        }
+        if (!exp) return Boolean(session?.access_token && session?.user);
+        return exp * 1000 > Date.now();
+    }
+
+    function wait(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    // One refresh at a time across Faculty page loads. A second page must not
+    // rotate the same refresh token while the previous page is still saving it.
+    async function coordinateRefresh(refreshToken, originalCall) {
+        const other = readRefreshLock();
+        if (other && other.owner !== pageRefreshOwner) {
+            const deadline = Math.min(other.until + 200, Date.now() + REFRESH_LOCK_TTL_MS);
+            while (Date.now() < deadline) {
+                const session = readStoredAuthSession();
+                if (session?.user && session.refresh_token && session.refresh_token !== refreshToken) {
+                    return { data: session, error: null };
+                }
+                if (!readRefreshLock()) break;
+                await wait(200);
+            }
+            const settled = readStoredAuthSession();
+            if (settled?.user && accessTokenStillValid(settled)) {
+                return { data: settled, error: null };
+            }
+        }
+
+        writeRefreshLock(pageRefreshOwner);
+        try {
+            return await originalCall(refreshToken);
+        } finally {
+            clearRefreshLock(pageRefreshOwner);
+        }
+    }
+
     function patchSharedAuth(client) {
         if (!client?.auth || client.__citeflowAuthPatched) return;
         client.__citeflowAuthPatched = true;
         const originalRefresh = client.auth.refreshSession.bind(client.auth);
         const originalGetUser = client.auth.getUser.bind(client.auth);
+        const originalCallRefresh = typeof client.auth._callRefreshToken === 'function'
+            ? client.auth._callRefreshToken.bind(client.auth)
+            : null;
         client.auth.refreshSession = function (currentSession) {
             if (window.__citeflowRefreshInFlight) return window.__citeflowRefreshInFlight;
             window.__citeflowRefreshInFlight = Promise.resolve()
@@ -165,6 +256,14 @@
                 .finally(() => { window.__citeflowRefreshInFlight = null; });
             return window.__citeflowRefreshInFlight;
         };
+        if (originalCallRefresh) {
+            client.auth._callRefreshToken = function (refreshToken) {
+                if (window.__citeflowCallRefreshInFlight) return window.__citeflowCallRefreshInFlight;
+                window.__citeflowCallRefreshInFlight = coordinateRefresh(refreshToken, originalCallRefresh)
+                    .finally(() => { window.__citeflowCallRefreshInFlight = null; });
+                return window.__citeflowCallRefreshInFlight;
+            };
+        }
         client.auth.getUser = async function (jwt) {
             if (!jwt) {
                 try {

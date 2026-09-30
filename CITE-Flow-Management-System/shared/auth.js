@@ -1543,6 +1543,32 @@ window.CiteFlowAuth = (function () {
             if (stored?.user?.id && stored?.access_token) return stored;
             if (candidate?.user?.id && candidate?.access_token) return candidate;
 
+            // getSession() can be empty for a moment during page navigation even
+            // though localStorage still has an unexpired access token. Reuse that
+            // session. Do not refresh or sign out to recover it.
+            const persisted = getPersistedSupabaseSession();
+            const persistedExp = tokenExpiry(persisted);
+            const persistedNow = Math.floor(Date.now() / 1000);
+            if (persisted?.user?.id && persisted?.access_token && (!persistedExp || persistedExp > persistedNow)) {
+                lastKnownSession = persisted;
+                try {
+                    const lockRaw = localStorage.getItem('citeflow_auth_refresh_lock');
+                    const lock = lockRaw ? JSON.parse(lockRaw) : null;
+                    const refreshBusy = lock && Number(lock.until) > Date.now();
+                    if (!refreshBusy && persisted.refresh_token && client.auth?.setSession) {
+                        const applied = await client.auth.setSession({
+                            access_token: persisted.access_token,
+                            refresh_token: persisted.refresh_token
+                        });
+                        if (applied?.data?.session?.user?.id && applied.data.session.access_token) {
+                            lastKnownSession = applied.data.session;
+                            return applied.data.session;
+                        }
+                    }
+                } catch (_) {}
+                return persisted;
+            }
+
             return null;
         })();
 

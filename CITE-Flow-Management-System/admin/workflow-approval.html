@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workflow Approval - CITE-Flow</title>
+    <title>Submissions - CITE-Flow</title>
     <!-- Updated admin workflow page: .html navigation, task detail page, submission file preview/download, clickable notifications. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -407,6 +407,20 @@
             text-align:center;
             color:#9ca3af;
         }
+        .rr-list { background:#fff; border:1px solid #eef1f4; border-radius:16px; overflow:hidden; }
+        .rr-item { display:flex; flex-wrap:wrap; gap:12px 16px; align-items:flex-start; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f3f4f6; }
+        .rr-item:last-child { border-bottom:0; }
+        .rr-fields { display:grid; grid-template-columns:repeat(5,minmax(110px,1fr)); gap:10px 14px; flex:1 1 520px; min-width:0; }
+        .rr-kicker { font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:#9ca3af; font-weight:600; }
+        .rr-value { font-size:13px; color:#374151; margin-top:2px; line-height:1.35; }
+        .rr-name { font-size:14px; font-weight:600; color:#111827; }
+        .rr-actions { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; flex:1 1 220px; }
+        .rr-actions .btn { white-space:nowrap; }
+        #reportConfigSearch { min-width:0; }
+        @media (max-width:900px) {
+            .rr-fields { grid-template-columns:1fr 1fr; }
+            .rr-actions { justify-content:flex-start; }
+        }
         .status-click {
             cursor:pointer;
             transition:transform .15s, box-shadow .15s;
@@ -713,22 +727,14 @@
         #workflowMainView.hidden,
         #taskDetailPage.hidden,
         #taskTableSurface.hidden,
-        #taskCardContainer.hidden {
+        #taskCardContainer.hidden,
+        .wf-view-panel.is-hidden,
+        #chairpersonWorkbench {
             display: none !important;
         }
-        #workflowMainView > :nth-child(1) { order: 1; }
-        #workflowMainView > :nth-child(2) { order: 2; }
-        #workflowMainView > :nth-child(8) { order: 3; }
-        #workflowMainView > :nth-child(9) { order: 4; }
-        #workflowMainView > :nth-child(10) { order: 5; }
-        #workflowMainView > :nth-child(11) { order: 6; }
-        #workflowMainView > :nth-child(12) { order: 7; }
-        #workflowMainView > :nth-child(13) { order: 8; }
-        #workflowMainView > :nth-child(3) { order: 9; }
-        #workflowMainView > :nth-child(4) { order: 10; }
-        #workflowMainView > :nth-child(5) { order: 11; }
-        #workflowMainView > :nth-child(6) { order: 12; }
-        #workflowMainView > :nth-child(7) { order: 13; }
+        #wfViewQueue { order: 3; }
+        #wfViewTasks { order: 4; }
+        #wfViewReports { order: 5; }
 
         #workflowMainView > .flex.items-start {
             flex-direction: column;
@@ -1257,9 +1263,9 @@
                 <div>
                     <p id="workflowPageKicker" class="cite-kicker">Workflow</p>
                     <div class="flex items-center flex-wrap gap-2.5 mb-1">
-                        <h1 id="workflowPageTitle" class="cite-title">Document Submissions</h1>
+                        <h1 id="workflowPageTitle" class="cite-title">Submissions</h1>
                     </div>
-                    <p class="cite-subtitle">Review submissions, track progress, and manage assigned faculty tasks.</p>
+                    <p class="cite-subtitle">Review the queue, assign tasks, and manage recurring reports.</p>
                 </div>
                 <div class="wf-admin-only flex items-center gap-2.5">
                     <button onclick="openAccessModal()" class="btn btn-ghost">
@@ -1269,20 +1275,12 @@
                         </svg>
                         Manage Access
                     </button>
-                    <button onclick="openAssignModal()" class="btn btn-primary">
-                        <svg style="width:15px;height:15px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Assign New Task
-                    </button>
                 </div>
                 </div>
-                <div class="wf-category-bar wf-admin-only" role="tablist" aria-label="Submission categories">
-                    <button type="button" class="wf-category-tab active" data-category="" onclick="setWorkflowCategory(this)">All Categories</button>
-                    <button type="button" class="wf-category-tab" data-category="DTR" onclick="setWorkflowCategory(this)">DTR</button>
-                    <button type="button" class="wf-category-tab" data-category="LDP" onclick="setWorkflowCategory(this)">LDP</button>
-                    <button type="button" class="wf-category-tab" data-category="Syllabus" onclick="setWorkflowCategory(this)">Syllabus</button>
-                    <button type="button" class="wf-category-tab" data-category="IPCR" onclick="setWorkflowCategory(this)">IPCR</button>
-                    <button type="button" class="wf-category-tab" data-category="TOS" onclick="setWorkflowCategory(this)">Table of Specifications (TOS)</button>
-                    <button type="button" class="wf-category-tab" data-category="MFO" onclick="setWorkflowCategory(this)">MFO (Accomplishment Report)</button>
+                <div class="wf-category-bar" id="wfViewTabs" role="tablist" aria-label="Submission views">
+                    <button type="button" class="wf-category-tab active" data-view="queue" onclick="setAdminWorkflowView('queue')">Queue</button>
+                    <button type="button" class="wf-category-tab" data-view="tasks" onclick="setAdminWorkflowView('tasks')">Tasks</button>
+                    <button type="button" class="wf-category-tab" data-view="reports" onclick="setAdminWorkflowView('reports')">Recurring Reports</button>
                 </div>
             </div>
 
@@ -1345,6 +1343,35 @@
                 </div>
             </div>
 
+
+            <div id="wfViewQueue" class="wf-view-panel">
+            <div class="wf-category-bar mb-3" id="queueBucketTabs" role="tablist" aria-label="Queue">
+                <button type="button" class="wf-category-tab active" data-bucket="review" onclick="setQueueBucket('review')">Needs Review</button>
+                <button type="button" class="wf-category-tab" data-bucket="returned" onclick="setQueueBucket('returned')">Returned</button>
+                <button type="button" class="wf-category-tab" data-bucket="approved" onclick="setQueueBucket('approved')">Approved</button>
+                <button type="button" class="wf-category-tab" data-bucket="all" onclick="setQueueBucket('all')">All</button>
+            </div>
+            <div class="wf-toolbar">
+                <div class="relative flex-1 min-w-0">
+                    <input id="queueSearch" type="text" placeholder="Search faculty, task, or department" oninput="renderSubmissionQueue()" class="field-input">
+                </div>
+            </div>
+            <div class="main-surface overflow-visible mb-6">
+                <table class="data-table w-full">
+                    <thead>
+                        <tr>
+                            <th class="text-left">Faculty</th>
+                            <th class="text-left">Task</th>
+                            <th class="text-left">Submitted</th>
+                            <th class="text-left">Status</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queueTableBody">
+                        <tr><td colspan="5" class="text-center" style="padding:24px;color:#9ca3af;">Loading queue...</td></tr>
+                    </tbody>
+                </table>
+            </div>
 
             <!-- =========================================================
                  ACCOMPLISHMENT REPORT SUBMISSIONS
@@ -1454,91 +1481,57 @@
             </div>
 
 
-            <!-- =========================================================
-                 RECURRING REPORT CONFIGURATION
-                 ========================================================= -->
-            <p class="wf-section-label wf-admin-only">Recurring reports</p>
-            <div class="main-surface p-5 mb-6 wf-admin-only">
-                <div class="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                        <h2 class="text-[15px] font-semibold text-slate-900">Mandatory Report Configuration</h2>
-                        <p class="text-xs text-slate-500 mt-1">
-                            Recurring reports generate faculty tasks automatically. Edit those templates here — not from the task list.
-                        </p>
-                    </div>
-                    <button onclick="openReportConfigModal()" class="btn btn-primary btn-sm">
-                        <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24">
-                            <line x1="12" y1="5" x2="12" y2="19"/>
-                            <line x1="5" y1="12" x2="19" y2="12"/>
-                        </svg>
-                        Add Report
-                    </button>
-                </div>
-                <div id="reportConfigList" class="report-config-grid">
-                    <div class="report-empty">Loading report configurations...</div>
-                </div>
             </div>
 
-            <p class="wf-section-label wf-admin-only">Overview</p>
-            <!-- Stats row -->
-            <div class="grid grid-cols-4 gap-3 mb-6 wf-admin-only">
-                <div class="stat-card cite-stat-pending p-5">
-                    <div class="flex items-start justify-between mb-3">
-                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pending Review</div>
-                        <div class="cite-icon" style="width:34px;height:34px;"><i class="fa-solid fa-hourglass-half text-xs"></i></div>
-                    </div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-pending" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-amber-400"></div>
-                        <span class="text-xs text-gray-500">Awaiting decision</span>
-                    </div>
+            <div id="wfViewReports" class="wf-view-panel is-hidden">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-[15px] font-semibold text-slate-900">Recurring Reports</h2>
+                    <p class="text-xs text-slate-500 mt-1">Manage the templates that create the next period. Pausing or deleting a template leaves tasks already generated.</p>
                 </div>
-                <div class="stat-card cite-stat-approved p-5">
-                    <div class="flex items-start justify-between mb-3">
-                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Approved</div>
-                        <div class="cite-icon" style="width:34px;height:34px;background:#ecfdf5;border-color:#bbf7d0;color:#047857;"><i class="fa-solid fa-check text-xs"></i></div>
-                    </div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-approved" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
-                        <span class="text-xs text-gray-500">Completed</span>
-                    </div>
-                </div>
-                <div class="stat-card cite-stat-revision p-5">
-                    <div class="flex items-start justify-between mb-3">
-                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Needs Revision</div>
-                        <div class="cite-icon" style="width:34px;height:34px;background:#fef2f2;border-color:#fecaca;color:#b91c1c;"><i class="fa-solid fa-rotate-left text-xs"></i></div>
-                    </div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-revision" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-red-400"></div>
-                        <span class="text-xs text-gray-500">Returned to faculty</span>
-                    </div>
-                </div>
-                <div class="stat-card cite-stat-declined p-5">
-                    <div class="flex items-start justify-between mb-3">
-                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Declined</div>
-                        <div class="cite-icon" style="width:34px;height:34px;background:#f8fafc;border-color:#e2e8f0;color:#64748b;"><i class="fa-solid fa-xmark text-xs"></i></div>
-                    </div>
-                    <div class="flex items-end gap-2">
-                        <span id="stat-declined" class="text-3xl font-semibold text-gray-900">—</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-2">
-                        <div class="w-2 h-2 rounded-full bg-gray-400"></div>
-                        <span class="text-xs text-gray-500">Not accepted</span>
-                    </div>
+                <button type="button" onclick="openReportConfigModal()" class="btn btn-primary btn-sm">
+                    <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Create Recurring Report
+                </button>
+            </div>
+            <div class="wf-category-bar mb-3" id="reportFrequencyTabs" role="tablist" aria-label="Report frequency">
+                <button type="button" class="wf-category-tab active" data-frequency="" onclick="setReportFrequencyFilter(this, '')">All</button>
+                <button type="button" class="wf-category-tab" data-frequency="monthly" onclick="setReportFrequencyFilter(this, 'monthly')">Monthly</button>
+                <button type="button" class="wf-category-tab" data-frequency="quarterly" onclick="setReportFrequencyFilter(this, 'quarterly')">Quarterly</button>
+                <button type="button" class="wf-category-tab" data-frequency="semi_annual" onclick="setReportFrequencyFilter(this, 'semi_annual')">Semi-Annual</button>
+                <button type="button" class="wf-category-tab" data-frequency="annual" onclick="setReportFrequencyFilter(this, 'annual')">Annual</button>
+            </div>
+            <div class="wf-toolbar mb-3">
+                <div class="relative flex-1 min-w-0">
+                    <svg style="width:15px;height:15px;position:absolute;left:14px;top:50%;transform:translateY(-50%);stroke:#9ca3af;stroke-width:2;fill:none;" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input id="reportConfigSearch" type="search" placeholder="Search by report name" oninput="setReportConfigSearch(this.value)" class="field-input pl-10">
                 </div>
             </div>
+            <div id="reportConfigList" class="rr-list">
+                <div class="cite-empty"><p class="cite-empty-text">Loading report configurations...</p></div>
+            </div>
+            </div>
 
-            <p class="wf-section-label wf-admin-only">Assigned tasks</p>
-            <!-- Filter bar -->
-            <div class="wf-toolbar wf-admin-only">
+            <div id="wfViewTasks" class="wf-view-panel is-hidden">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <p class="wf-section-label" style="margin:0;">Assigned tasks</p>
+                <button onclick="openAssignModal()" class="btn btn-primary btn-sm">
+                    <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2.5;fill:none;" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Assign New Task
+                </button>
+            </div>
+            <div id="wfLegacyStats" hidden>
+                <span id="stat-pending"></span>
+                <span id="stat-approved"></span>
+                <span id="stat-revision"></span>
+                <span id="stat-declined"></span>
+            </div>
+            <div class="wf-toolbar">
                 <div class="relative flex-1 min-w-0">
                     <svg style="width:15px;height:15px;position:absolute;left:14px;top:50%;transform:translateY(-50%);stroke:#9ca3af;stroke-width:2;fill:none;" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -1559,23 +1552,10 @@
                     <option value="BSIE">BSIE</option>
                     <option value="BIT">BIT</option>
                 </select>
-                <select id="categoryFilter" onchange="filterSubmissions()" class="field-input wf-category-source" aria-hidden="true" tabindex="-1">
-                    <option value="">All Categories</option>
-                    <option value="DTR">DTR</option>
-                    <option value="LDP">LDP</option>
-                    <option value="Syllabus">Syllabus</option>
-                    <option value="IPCR">IPCR</option>
-                    <option value="TOS">Table of Specifications (TOS)</option>
-                    <option value="MFO">MFO (Accomplishment Report)</option>
-                </select>
-                <div class="view-toggle shrink-0" title="Switch main page task layout">
-                    <button id="listViewBtn" class="active" onclick="setTaskViewMode('list')">List</button>
-                    <button id="folderViewBtn" onclick="setTaskViewMode('folder')">Folder</button>
-                </div>
             </div>
 
-            <!-- Submissions Table -->
-            <div id="taskTableSurface" class="main-surface overflow-visible wf-admin-only">
+            <p class="wf-section-label">One-time tasks</p>
+            <div id="taskTableSurface" class="main-surface overflow-visible mb-6">
                 <table class="data-table w-full">
                     <thead>
                         <tr>
@@ -1586,21 +1566,26 @@
                             <th class="text-right" style="width:88px">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="submissionsTableBody">
-                        <tr>
-                            <td colspan="5">
-                                <div class="cite-empty">
-                                    <div class="cite-empty-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
-                                    <div class="cite-empty-title">Loading tasks</div>
-                                    <p class="cite-empty-text">Fetching the latest submissions.</p>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
+                    <tbody id="submissionsTableBody"></tbody>
                 </table>
             </div>
-
-            <div id="taskCardContainer" class="task-card-grid hidden wf-admin-only"></div>
+            <p class="wf-section-label">Recurring tasks</p>
+            <div class="main-surface overflow-visible">
+                <table class="data-table w-full">
+                    <thead>
+                        <tr>
+                            <th class="text-left" style="width:36%">Task</th>
+                            <th class="text-left">Assigned To</th>
+                            <th class="text-left">Deadline</th>
+                            <th class="text-left">Status</th>
+                            <th class="text-right" style="width:88px">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recurringTaskTableBody"></tbody>
+                </table>
+            </div>
+            <div id="taskCardContainer" class="task-card-grid hidden"></div>
+            </div>
 
         </div>
 
@@ -1612,7 +1597,7 @@
                 <div class="wf-drawer-top">
                     <button type="button" class="wf-drawer-back" onclick="returnToWorkflowMain()">
                         <svg style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-                        Back to Workflow Approval
+                        Back to Submissions
                     </button>
                 </div>
                 <div id="wfDrawerBody" class="wf-drawer-body">
@@ -1638,7 +1623,7 @@
     <div class="modal-panel wf-report-sheet" role="dialog" aria-modal="true" aria-labelledby="reportConfigModalTitle">
         <div class="wf-report-top">
             <p class="wf-kicker" style="margin-bottom:4px">Manage Report</p>
-            <h2 id="reportConfigModalTitle">Add Mandatory Report</h2>
+            <h2 id="reportConfigModalTitle">Create Recurring Report</h2>
             <p class="wf-meta-line">The configuration stays active until an administrator changes or disables it.</p>
         </div>
 
@@ -1806,6 +1791,19 @@
                 </svg>
                 <span id="saveReportBtnText">Save Report</span>
             </button>
+        </div>
+    </div>
+</div>
+
+<div id="recurringActionModal" class="modal-backdrop">
+    <div class="modal-panel modal-small" style="max-width:440px;margin:0 16px;" role="dialog" aria-modal="true" aria-labelledby="recurringActionTitle">
+        <div class="modal-header">
+            <h2 id="recurringActionTitle" class="text-base font-semibold text-gray-900">Confirm</h2>
+            <p id="recurringActionBody" class="text-sm text-gray-500 mt-2"></p>
+        </div>
+        <div class="modal-footer" style="justify-content:flex-end;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="closeRecurringActionModal()">Cancel</button>
+            <button type="button" id="recurringActionConfirm" class="btn btn-primary btn-sm" onclick="confirmRecurringAction()">Confirm</button>
         </div>
     </div>
 </div>
@@ -2467,6 +2465,7 @@ function renderAll() {
     updateStats();
     updateProgress();
     filterSubmissions();
+    if (typeof renderSubmissionQueue === 'function') renderSubmissionQueue();
     renderDelegates();
     renderReportConfigs();
     if (activeTaskDetailId && document.getElementById('taskDetailPage')?.classList.contains('open')) {
@@ -4967,6 +4966,11 @@ window.addEventListener('load', async () => {
 
 let activeReportConfigId = null;
 let reportGenerationRunning = false;
+let adminWorkflowView = 'queue';
+let queueBucket = 'review';
+let reportFrequencyFilter = '';
+let reportConfigSearch = '';
+let recurringActionHandler = null;
 
 function manilaNow() {
     return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
@@ -5337,7 +5341,7 @@ function populateReportFacultySelect(selected = []) {
 
 function resetReportConfigForm() {
     activeReportConfigId = null;
-    document.getElementById('reportConfigModalTitle').textContent = 'Add Mandatory Report';
+    document.getElementById('reportConfigModalTitle').textContent = 'Create Recurring Report';
     const saveLabel = document.getElementById('saveReportBtnText');
     if (saveLabel) saveLabel.textContent = 'Save Report';
     document.getElementById('reportConfigId').value = '';
@@ -5371,7 +5375,7 @@ function openReportConfigModal(configId = null) {
         if (!config) return;
 
         activeReportConfigId = config.id;
-        document.getElementById('reportConfigModalTitle').textContent = 'Edit Mandatory Report';
+        document.getElementById('reportConfigModalTitle').textContent = 'Edit Recurring Report';
         const editLabel = document.getElementById('saveReportBtnText');
         if (editLabel) editLabel.textContent = 'Update Report';
         document.getElementById('reportConfigId').value = config.id;
@@ -5523,17 +5527,34 @@ async function saveReportConfig() {
     }
 }
 
+function reportApprovalLabel(config) {
+    const chair = config?.requires_chairperson_review !== false;
+    const finalApproval = config?.requires_final_approval !== false;
+    if (chair && finalApproval) return 'Chairperson, then Dean’s Office';
+    if (chair) return 'Chairperson review';
+    if (finalApproval) return 'Dean’s Office';
+    return 'None';
+}
+
 function renderReportConfigs() {
     const container = document.getElementById('reportConfigList');
     if (!container) return;
 
-    const configs = workflowState.reportConfigs || [];
+    const query = String(reportConfigSearch || '').trim().toLowerCase();
+    const configs = (workflowState.reportConfigs || []).filter(config => {
+        if (reportFrequencyFilter && String(config.frequency || '') !== reportFrequencyFilter) return false;
+        if (!query) return true;
+        const name = `${config.report_name || ''} ${formatTaskCategoryLabel(config) || ''}`.toLowerCase();
+        return name.includes(query);
+    });
     if (!configs.length) {
-        container.innerHTML = `
-            <div class="report-empty" style="grid-column:1/-1;">
-                <div class="text-gray-500 font-medium mb-1">No mandatory reports configured</div>
-                <div class="text-xs">Click <strong>Add Report</strong> to create DTR, LDP, Syllabus, Table of Specifications (TOS), Chairperson reports, or any recurring submission.</div>
-            </div>`;
+        const title = (workflowState.reportConfigs || []).length
+            ? 'No reports match this filter'
+            : 'No recurring reports yet';
+        const detail = (workflowState.reportConfigs || []).length
+            ? 'Try another frequency or clear the search.'
+            : 'Create a recurring report for DTR, MFO, or another cycle.';
+        container.innerHTML = `<div class="cite-empty"><div class="cite-empty-title">${escapeHtml(title)}</div><p class="cite-empty-text">${escapeHtml(detail)}</p></div>`;
         return;
     }
 
@@ -5541,47 +5562,213 @@ function renderReportConfigs() {
         const next = getPeriodForNextTask(config);
         const recipientCount = getRecipientFaculty(config).length;
         const active = config.is_active !== false;
+        const id = escapeHtml(config.id);
+        const name = formatTaskCategoryLabel(config) || config.report_name || 'Report';
+        const deadline = next.deadlineAt
+            ? new Date(next.deadlineAt).toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+            : '—';
         return `
-            <div class="report-config-card">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <div class="font-semibold text-gray-900">${escapeHtml(formatTaskCategoryLabel(config) || config.report_name)}</div>
-                        <div class="text-xs text-gray-500 mt-1">${escapeHtml(config.description || 'No description provided.')}</div>
+            <article class="rr-item">
+                <div class="rr-fields">
+                    <div style="grid-column:1/-1;">
+                        <div class="rr-name">${escapeHtml(name)} <span class="config-chip ${active ? 'active' : 'inactive'}">${active ? 'Active' : 'Inactive'}</span></div>
+                        <div class="text-xs text-gray-500 mt-1">${escapeHtml(config.description || '')}</div>
                     </div>
-                    <span class="config-chip ${active ? 'active' : 'inactive'}">${active ? 'Active' : 'Inactive'}</span>
+                    <div><div class="rr-kicker">Frequency</div><div class="rr-value">${escapeHtml(reportFrequencyLabel(config.frequency))}</div></div>
+                    <div><div class="rr-kicker">Recipients</div><div class="rr-value">${escapeHtml(reportRecipientLabel(config))}<div class="text-xs text-gray-500">${recipientCount} active</div></div></div>
+                    <div><div class="rr-kicker">Next deadline</div><div class="rr-value">${escapeHtml(deadline)}<div class="text-xs text-gray-500">${escapeHtml(next.label || '')}</div></div></div>
+                    <div><div class="rr-kicker">Approval</div><div class="rr-value">${escapeHtml(reportApprovalLabel(config))}</div></div>
                 </div>
-
-                <div class="flex flex-wrap gap-2 mt-4">
-                    <span class="config-chip">${escapeHtml(reportFrequencyLabel(config.frequency))}</span>
-                    <span class="config-chip">Due ${escapeHtml(config.due_day || '—')} @ ${escapeHtml(String(config.due_time || '').slice(0,5))}</span>
-                    <span class="config-chip">${escapeHtml(reportRecipientLabel(config))}</span>
-                    <span class="config-chip">${escapeHtml(reportMethodLabel(config))}</span>
+                <div class="rr-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="openReportConfigModal('${id}')"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="requestDuplicateReport('${id}')"><i class="fa-solid fa-copy"></i> Duplicate</button>
+                    <button type="button" class="btn ${active ? 'btn-warn' : 'btn-success'} btn-sm" onclick="${active ? `requestPauseReport('${id}')` : `requestResumeReport('${id}')`}"><i class="fa-solid ${active ? 'fa-pause' : 'fa-play'}"></i> ${active ? 'Pause' : 'Resume'}</button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="requestDeleteReport('${id}')"><i class="fa-solid fa-trash"></i> Delete</button>
                 </div>
-
-                <div class="mt-4 p-3 rounded-lg bg-gray-50">
-                    <div class="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Next Reporting Period</div>
-                    <div class="text-sm font-medium text-gray-800 mt-1">${escapeHtml(next.label)}</div>
-                    <div class="text-xs text-gray-500 mt-1">
-                        Due ${formatDateTime(next.deadlineAt)} &middot; ${recipientCount} active recipient${recipientCount === 1 ? '' : 's'}
-                    </div>
-                </div>
-
-                <div class="flex gap-2 mt-4">
-                    <button class="btn btn-ghost btn-sm flex-1 justify-center" onclick="openReportConfigModal('${config.id}')">
-                        <i class="fa-solid fa-pen-to-square"></i> Edit
-                    </button>
-                    <button class="btn ${active ? 'btn-warn' : 'btn-success'} btn-sm flex-1 justify-center"
-                        onclick="toggleReportConfig('${config.id}', ${!active})">
-                        ${active ? 'Disable' : 'Enable'}
-                    </button>
-                    <button class="btn btn-primary btn-sm" title="Generate next period now"
-                        onclick="generateNextTaskForConfig('${config.id}', true)">
-                        <i class="fa-solid fa-rotate"></i>
-                    </button>
-                </div>
-            </div>
-        `;
+            </article>`;
     }).join('');
+}
+
+function setReportConfigSearch(value) {
+    reportConfigSearch = String(value || '');
+    renderReportConfigs();
+}
+
+function openRecurringActionModal({ title, body, confirmLabel, tone, onConfirm }) {
+    recurringActionHandler = onConfirm;
+    const titleEl = document.getElementById('recurringActionTitle');
+    const bodyEl = document.getElementById('recurringActionBody');
+    const button = document.getElementById('recurringActionConfirm');
+    if (titleEl) titleEl.textContent = title;
+    if (bodyEl) bodyEl.textContent = body;
+    if (button) {
+        button.textContent = confirmLabel || 'Confirm';
+        button.className = `btn btn-sm ${tone === 'danger' ? 'btn-danger' : tone === 'warn' ? 'btn-warn' : 'btn-primary'}`;
+    }
+    document.getElementById('recurringActionModal')?.classList.add('open');
+}
+
+function closeRecurringActionModal() {
+    recurringActionHandler = null;
+    document.getElementById('recurringActionModal')?.classList.remove('open');
+}
+
+async function confirmRecurringAction() {
+    const action = recurringActionHandler;
+    closeRecurringActionModal();
+    if (action) await action();
+}
+
+function findReportConfig(id) {
+    return (workflowState.reportConfigs || []).find(config => String(config.id) === String(id)) || null;
+}
+
+function requestPauseReport(id) {
+    const config = findReportConfig(id);
+    if (!config) return;
+    openRecurringActionModal({
+        title: 'Pause recurring report',
+        body: `Pause “${config.report_name || 'this report'}”? Future periods will not be generated. Tasks, submissions, files, and approval history already created stay in place.`,
+        confirmLabel: 'Pause',
+        tone: 'warn',
+        onConfirm: () => toggleReportConfig(id, false)
+    });
+}
+
+function requestResumeReport(id) {
+    const config = findReportConfig(id);
+    if (!config) return;
+    openRecurringActionModal({
+        title: 'Resume recurring report',
+        body: `Resume “${config.report_name || 'this report'}”? The next period is created when Submissions loads, and only if that period does not already exist.`,
+        confirmLabel: 'Resume',
+        tone: 'primary',
+        onConfirm: () => toggleReportConfig(id, true)
+    });
+}
+
+function nextReportCopyName(name) {
+    const source = String(name || 'Report').trim() || 'Report';
+    const taken = new Set((workflowState.reportConfigs || []).map(config => String(config.report_name || '').trim().toLowerCase()));
+    const first = `${source} (copy)`;
+    if (!taken.has(first.toLowerCase())) return first;
+    let index = 2;
+    while (taken.has(`${source} (copy ${index})`.toLowerCase())) index += 1;
+    return `${source} (copy ${index})`;
+}
+
+function requestDuplicateReport(id) {
+    const config = findReportConfig(id);
+    if (!config) return;
+    const copyName = nextReportCopyName(config.report_name);
+    openRecurringActionModal({
+        title: 'Duplicate recurring report',
+        body: `Create a separate inactive copy named “${copyName}”. It will not generate tasks until you resume it, and existing tasks are not copied.`,
+        confirmLabel: 'Duplicate',
+        tone: 'primary',
+        onConfirm: () => duplicateReportConfig(id)
+    });
+}
+
+function requestDeleteReport(id) {
+    const config = findReportConfig(id);
+    if (!config) return;
+    openRecurringActionModal({
+        title: 'Delete recurring report',
+        body: `Remove the “${config.report_name || 'this report'}” configuration only. Generated tasks, submissions, files, and approval history will be kept.`,
+        confirmLabel: 'Delete configuration',
+        tone: 'danger',
+        onConfirm: () => deleteReportConfig(id)
+    });
+}
+
+async function duplicateReportConfig(id) {
+    const config = findReportConfig(id);
+    if (!config) return;
+    const copyName = nextReportCopyName(config.report_name);
+    const payload = {
+        report_name: copyName,
+        description: config.description || null,
+        frequency: config.frequency,
+        reporting_period_type: config.reporting_period_type || ({
+            monthly: 'previous_month',
+            quarterly: 'previous_quarter',
+            semi_annual: 'previous_semi_annual',
+            annual: 'previous_year'
+        })[config.frequency] || null,
+        due_day: config.due_day,
+        due_time: config.due_time,
+        submission_method: config.submission_method,
+        submission_url: config.submission_url || null,
+        submission_instructions: config.submission_instructions || null,
+        recipient_type: config.recipient_type,
+        recipient_role: config.recipient_role || null,
+        recipient_department: config.recipient_department || null,
+        selected_faculty_ids: config.selected_faculty_ids || [],
+        requires_chairperson_review: config.requires_chairperson_review !== false,
+        requires_final_approval: config.requires_final_approval !== false,
+        final_approver_type: config.final_approver_type || 'either',
+        is_active: false,
+        created_by_name: ADMIN_NAME,
+        updated_by_name: ADMIN_NAME
+    };
+    const result = await db.from('wf_report_configs').insert(payload).select().single();
+    if (result.error) {
+        showToast(result.error.message || 'Unable to duplicate this report.', 'error');
+        return;
+    }
+    const created = result.data;
+    const recipientType = created.recipient_type || config.recipient_type;
+    const targetRows = [];
+    if (recipientType === 'all') {
+        targetRows.push({ report_config_id: created.id, target_type: 'all' });
+    } else if (recipientType === 'role') {
+        targetRows.push({ report_config_id: created.id, target_type: 'role', target_role: created.recipient_role || config.recipient_role });
+    } else if (recipientType === 'department') {
+        targetRows.push({ report_config_id: created.id, target_type: 'department', target_department: created.recipient_department || config.recipient_department });
+    } else {
+        (created.selected_faculty_ids || config.selected_faculty_ids || []).forEach(facultyId => {
+            targetRows.push({ report_config_id: created.id, target_type: 'faculty', target_faculty_id: facultyId });
+        });
+    }
+    if (targetRows.length) {
+        const targetResult = await db.from('wf_report_targets').insert(targetRows);
+        if (targetResult.error) {
+            showToast('Copy saved, but recipient targets could not be copied.', 'warn');
+        }
+    }
+    showToast(`Created inactive copy “${copyName}”. It will not generate a period until you resume it.`);
+    await fetchAllData();
+}
+
+function reportTargetInsertRow(target) {
+    const row = {
+        report_config_id: target.report_config_id,
+        target_type: target.target_type
+    };
+    if (target.target_role) row.target_role = target.target_role;
+    if (target.target_department) row.target_department = target.target_department;
+    if (target.target_faculty_id) row.target_faculty_id = target.target_faculty_id;
+    return row;
+}
+
+async function deleteReportConfig(id) {
+    const targets = (workflowState.reportTargets || []).filter(target => String(target.report_config_id) === String(id));
+    const targetDelete = await db.from('wf_report_targets').delete().eq('report_config_id', id);
+    if (targetDelete.error) {
+        showToast(targetDelete.error.message || 'Unable to remove recipient targets. Nothing else was deleted.', 'error');
+        return;
+    }
+    const { error } = await db.from('wf_report_configs').delete().eq('id', id);
+    if (error) {
+        if (targets.length) {
+            await db.from('wf_report_targets').insert(targets.map(reportTargetInsertRow));
+        }
+        showToast('This configuration is still referenced, so it was not deleted. Generated tasks, submissions, files, and approval history were not removed. Pause it to stop future periods.', 'error');
+        return;
+    }
+    showToast('Recurring configuration removed. Generated tasks, submissions, files, and approval history were kept.');
+    await fetchAllData();
 }
 
 async function toggleReportConfig(id, active) {
@@ -5591,7 +5778,7 @@ async function toggleReportConfig(id, active) {
     }).eq('id', id);
 
     if (error) return showToast(error.message || 'Unable to update report.', 'error');
-    showToast(active ? 'Recurring report enabled.' : 'Recurring report disabled.', active ? 'success' : 'warn');
+    showToast(active ? 'Recurring report resumed.' : 'Recurring report paused. Existing tasks were kept.', active ? 'success' : 'warn');
     await fetchAllData();
 }
 
@@ -5806,10 +5993,14 @@ function updateStats() {
     const pending = allSubmissions.filter(s => !s.submission_id).length;
     const submitted = allSubmissions.filter(s => s.submission_id && s.timing === 'on_time').length;
     const late = allSubmissions.filter(s => s.timing === 'late').length;
-    document.getElementById('stat-pending').textContent = pending + late;
-    document.getElementById('stat-approved').textContent = counts.approved || 0;
-    document.getElementById('stat-revision').textContent = counts.revision || 0;
-    document.getElementById('stat-declined').textContent = counts.rejected || 0;
+    const pendingEl = document.getElementById('stat-pending');
+    const approvedEl = document.getElementById('stat-approved');
+    const revisionEl = document.getElementById('stat-revision');
+    const declinedEl = document.getElementById('stat-declined');
+    if (pendingEl) pendingEl.textContent = pending + late;
+    if (approvedEl) approvedEl.textContent = counts.approved || 0;
+    if (revisionEl) revisionEl.textContent = counts.revision || 0;
+    if (declinedEl) declinedEl.textContent = counts.rejected || 0;
     const pendingLabel = document.querySelector('#stat-pending')?.parentElement?.parentElement?.querySelector('.text-gray-500');
     if (pendingLabel) pendingLabel.textContent = `${submitted} on time &middot; ${late} late`;
 }
@@ -6530,7 +6721,6 @@ function setWorkflowCategory(button) {
 
 function filterSubmissions() {
     if (typeof isChairpersonQueueActor === 'function' && isChairpersonQueueActor()) {
-        renderChairpersonWorkbench();
         return;
     }
 
@@ -6539,10 +6729,11 @@ function filterSubmissions() {
     const deptEl = document.getElementById('deptFilter');
     if (!searchEl || !statusEl || !deptEl) return;
 
+    taskViewMode = 'list';
+
     const search = (searchEl.value || '').toLowerCase();
     const status = statusEl.value;
     const dept = deptEl.value;
-    const category = document.getElementById('categoryFilter')?.value || '';
 
     const taskRows = (workflowState.tasks || []).map(task => {
         const assigns = (workflowState.assignments || []).filter(a => String(a.task_id) === String(task.id));
@@ -6556,86 +6747,54 @@ function filterSubmissions() {
         return { task, assignees, submittedCount, totalAssigned, summary, assignedLabel: deriveAssignedLabel(task.id) };
     });
 
-    const scopedRows = taskRows;
-
-    const filtered = scopedRows.filter(r => {
+    const filtered = taskRows.filter(r => {
         const task = r.task;
         const query = normalizeText(search).replace(/\s+/g, ' ');
         const matchSearch = !query ||
             normalizeText(task.title).includes(query) ||
             normalizeText(formatTaskCategoryLabel(task)).includes(query) ||
             taskMatchesFacultyName(task, r.assignees, query);
-
         const matchDept = taskMatchesDepartment(task, r.assignees, dept);
-
-        const matchCategory = !category || resolveTaskCategory(task) === category;
-
         const statusKey = r.submittedCount === 0
             ? 'notsubmitted'
             : (r.submittedCount >= r.totalAssigned && r.totalAssigned > 0 ? 'approved' : 'underreview');
-
-        return matchSearch && matchDept && matchCategory && (!status || statusKey === status);
+        return matchSearch && matchDept && (!status || statusKey === status);
     });
 
-    const tableSurface = document.getElementById('taskTableSurface');
-    const cardContainer = document.getElementById('taskCardContainer');
+    const oneTime = filtered.filter(r => !isGeneratedRecurringTask(r.task));
+    const recurring = filtered.filter(r => isGeneratedRecurringTask(r.task));
+    const oneBody = document.getElementById('submissionsTableBody');
+    const recurringBody = document.getElementById('recurringTaskTableBody');
+    if (oneBody) oneBody.innerHTML = oneTime.length ? oneTime.map(renderAdminTaskRow).join('') : emptyTasksRow('No one-time tasks', 'Assign a task, or open Recurring Reports for DTR, MFO, and other cycles.');
+    if (recurringBody) recurringBody.innerHTML = recurring.length ? recurring.map(renderAdminTaskRow).join('') : emptyTasksRow('No recurring tasks yet', 'The next period is created when this page loads an active report configuration.');
+}
 
-    if (taskViewMode === 'folder') {
-        tableSurface?.classList.add('hidden');
-        cardContainer?.classList.remove('hidden');
-        renderTaskCardContainer(filtered);
-        return;
-    }
-
-    tableSurface?.classList.remove('hidden');
-    cardContainer?.classList.add('hidden');
-
-    const tbody = document.getElementById('submissionsTableBody');
-    if (!filtered.length) {
-        const chairQueue = isChairpersonQueueActor();
-        const granted = !!(window.CiteFlowWorkflow &&
-            CiteFlowWorkflow.hasChairpersonWorkflowAccess(currentActorFaculty, getActorDelegatedAccess()));
-        tbody.innerHTML = emptyTasksRow(
-            chairQueue && !granted
-                ? 'No authorized Chairperson tasks'
-                : (chairQueue ? 'No Chairperson approval tasks' : 'No tasks found'),
-            chairQueue && !granted
-                ? 'An administrator must grant you Chairperson workflow access first.'
-                : (chairQueue
-                    ? 'There are no pending submissions that require Chairperson review in your authorized department.'
-                    : 'Try a different search or filter.')
-        );
-        return;
-    }
-
-    tbody.innerHTML = filtered.map(r => {
-        const task = r.task;
-        const deadline = task.deadline_at || task.due_at;
-        const countdown = deadlineCountdown(deadline);
-        const recurring = isGeneratedRecurringTask(task)
-            ? `<span class="config-chip active ml-2">Recurring</span>`
-            : '';
-
-        return `
-            <tr class="task-row-clickable ${taskRowTone(r.summary.className)}" onclick="openTaskDetailsPage('${task.id}')">
-                <td>
-                    <div class="task-row-title font-medium text-[#621708] text-sm leading-snug">${escapeHtml(task.title)} ${recurring} ${renderCategoryChip(task)}</div>
-                    <div class="text-xs text-gray-400 mt-1">
-                        ${escapeHtml(task.reporting_period_label || 'Manual task')} &middot; Click for details
-                    </div>
-                </td>
-                <td class="text-gray-600 text-sm">${escapeHtml(r.assignedLabel)}</td>
-                <td>
-                    <div class="text-xs text-gray-500">${formatDateTime(deadline)}</div>
-                    <div class="mt-0.5">${countdown}</div>
-                </td>
-                <td><span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span></td>
-                <td onclick="event.stopPropagation()" class="text-right">
-                    ${renderTaskActionMenu(task)}
-                </td>
-            </tr>
-        `;
-    }).join('');
+function renderAdminTaskRow(r) {
+    const task = r.task;
+    const deadline = task.deadline_at || task.due_at;
+    const countdown = deadlineCountdown(deadline);
+    const recurring = isGeneratedRecurringTask(task)
+        ? `<span class="config-chip active ml-2">Recurring</span>`
+        : '';
+    return `
+        <tr class="task-row-clickable ${taskRowTone(r.summary.className)}" onclick="openTaskDetailsPage('${task.id}')">
+            <td>
+                <div class="task-row-title font-medium text-[#621708] text-sm leading-snug">${escapeHtml(task.title)} ${recurring} ${renderCategoryChip(task)}</div>
+                <div class="text-xs text-gray-400 mt-1">
+                    ${escapeHtml(task.reporting_period_label || 'Manual task')} &middot; Click for details
+                </div>
+            </td>
+            <td class="text-gray-600 text-sm">${escapeHtml(r.assignedLabel)}</td>
+            <td>
+                <div class="text-xs text-gray-500">${formatDateTime(deadline)}</div>
+                <div class="mt-0.5">${countdown}</div>
+            </td>
+            <td><span class="badge ${r.summary.className}"><span class="badge-dot"></span>${escapeHtml(r.summary.label)}</span></td>
+            <td onclick="event.stopPropagation()" class="text-right">
+                ${renderTaskActionMenu(task)}
+            </td>
+        </tr>
+    `;
 }
 
 /* ================================================================
@@ -6977,30 +7136,98 @@ function applyChairpersonSidebar() {
     }
 }
 
+function setAdminWorkflowView(view) {
+    adminWorkflowView = view === 'tasks' || view === 'reports' ? view : 'queue';
+    document.querySelectorAll('#wfViewTabs .wf-category-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.getAttribute('data-view') === adminWorkflowView);
+    });
+    document.getElementById('wfViewQueue')?.classList.toggle('is-hidden', adminWorkflowView !== 'queue');
+    document.getElementById('wfViewTasks')?.classList.toggle('is-hidden', adminWorkflowView !== 'tasks');
+    document.getElementById('wfViewReports')?.classList.toggle('is-hidden', adminWorkflowView !== 'reports');
+}
+
+function setQueueBucket(bucket) {
+    queueBucket = bucket || 'review';
+    document.querySelectorAll('#queueBucketTabs .wf-category-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.getAttribute('data-bucket') === queueBucket);
+    });
+    renderSubmissionQueue();
+}
+
+function setReportFrequencyFilter(button, frequency) {
+    reportFrequencyFilter = frequency || '';
+    document.querySelectorAll('#reportFrequencyTabs .wf-category-tab').forEach(tab => {
+        tab.classList.toggle('active', tab === button);
+    });
+    renderReportConfigs();
+}
+
+function submissionQueueBucket(row) {
+    const task = getTaskById(row.task_id);
+    const raw = (workflowState.submissions || []).find(s => String(s.id) === String(row.submission_id)) || row;
+    const wf = window.CiteFlowWorkflow;
+    const config = getTaskReportConfig(task);
+    const stage = wf?.getWorkflowStage ? wf.getWorkflowStage(raw.submission_id || raw.submitted_at ? raw : null, task, config) : '';
+    const status = String(raw.status || raw.raw_status || row.raw_status || row.status || '').toLowerCase();
+    if (stage === 'revision_required' || status === 'revision') return 'returned';
+    if (stage === 'completed' || status === 'approved') return 'approved';
+    if (stage === 'final_approval') return 'review';
+    return 'other';
+}
+
+function renderSubmissionQueue() {
+    const body = document.getElementById('queueTableBody');
+    if (!body) return;
+    const query = String(document.getElementById('queueSearch')?.value || '').trim().toLowerCase();
+    const rows = (allSubmissions || []).filter(row => {
+        const bucket = submissionQueueBucket(row);
+        if (queueBucket !== 'all' && bucket !== queueBucket) return false;
+        if (!query) return true;
+        const task = getTaskById(row.task_id);
+        const hay = [row.faculty_name, row.department_code, task?.title, row.status, row.approval_stage].join(' ').toLowerCase();
+        return hay.includes(query);
+    });
+    if (!rows.length) {
+        body.innerHTML = `<tr><td colspan="5"><div class="cite-empty"><div class="cite-empty-title">Nothing in this queue</div><p class="cite-empty-text">Needs Review shows submissions waiting for Dean’s Office final approval.</p></div></td></tr>`;
+        return;
+    }
+    body.innerHTML = rows.map(row => {
+        const task = getTaskById(row.task_id);
+        const raw = (workflowState.submissions || []).find(s => String(s.id) === String(row.submission_id)) || row;
+        const label = window.CiteFlowWorkflow?.formatWorkflowStatus?.(raw, task) || row.status || '—';
+        const action = row.submission_id
+            ? `<button type="button" class="btn btn-ghost btn-sm" onclick="openReviewModal('${row.task_id}', '${row.faculty_id}')">Review</button>`
+            : '<span class="text-xs text-gray-400">Not submitted</span>';
+        return `
+            <tr>
+                <td><div class="text-sm font-medium text-gray-900">${escapeHtml(row.faculty_name || 'Faculty')}</div><div class="text-xs text-gray-500">${escapeHtml(row.department_code || '')}</div></td>
+                <td><div class="text-sm text-gray-800">${escapeHtml(task?.title || 'Task')}</div></td>
+                <td class="text-xs text-gray-500">${row.submitted_at ? formatDateTime(row.submitted_at) : '—'}</td>
+                <td class="text-sm">${escapeHtml(label)}</td>
+                <td class="text-right">${action}</td>
+            </tr>`;
+    }).join('');
+}
+
 function syncChairpersonWorkbenchChrome() {
-    const chairQueue = isChairpersonQueueActor();
-    const granted = chairpersonHasGrant();
-    const workbench = document.getElementById('chairpersonWorkbench');
+    if (isChairpersonQueueActor()) {
+        if (!window.__chairReviewRedirect) {
+            window.__chairReviewRedirect = true;
+            window.location.replace('../faculty/submissions.html#chair-review');
+        }
+        return;
+    }
+    document.getElementById('chairpersonWorkbench')?.classList.add('hidden');
     const titleEl = document.getElementById('workflowPageTitle');
     const kickerEl = document.getElementById('workflowPageKicker');
     const subtitle = document.querySelector('#workflowMainView .cite-subtitle');
-
-    document.querySelectorAll('.wf-admin-only').forEach(el => el.classList.toggle('hidden', chairQueue));
-    if (workbench) workbench.classList.toggle('hidden', !chairQueue);
-
-    if (titleEl) titleEl.textContent = chairQueue ? 'Chairperson Workflow Approval' : 'Document Submissions';
-    if (kickerEl) kickerEl.textContent = chairQueue ? 'Chairperson' : 'Workflow';
-    document.title = chairQueue ? 'Chairperson Workflow Approval - CITE-Flow' : 'Workflow Approval - CITE-Flow';
-
+    if (titleEl) titleEl.textContent = 'Submissions';
+    if (kickerEl) kickerEl.textContent = 'Workflow';
+    document.title = 'Submissions - CITE-Flow';
     if (subtitle) {
-        subtitle.textContent = chairQueue
-            ? (granted
-                ? 'Approve only the submissions that require Chairperson review. Everything else in your department is view-only.'
-                : 'You do not have Chairperson workflow access. Ask an administrator to grant access.')
-            : 'Review submissions, track progress, and manage assigned faculty tasks.';
+        subtitle.textContent = 'Review the queue, assign tasks, and manage recurring reports.';
     }
-
-    if (chairQueue) applyChairpersonSidebar();
+    setAdminWorkflowView(adminWorkflowView);
 }
 
 const _wfOriginalRecompute = typeof recomputeSubmissionMatrix === 'function' ? recomputeSubmissionMatrix : null;
@@ -7592,7 +7819,7 @@ async function executeArReview(action) {
 </script>
 <script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
-<script src="../nav.js"></script>
+<script src="../nav.js?v=admin-hook-1"></script>
 
 <script>
 if (window.CiteFlowUI && typeof window.CiteFlowUI.toast !== 'function') {

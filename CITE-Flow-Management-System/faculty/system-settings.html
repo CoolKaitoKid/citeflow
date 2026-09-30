@@ -6,9 +6,9 @@
     <title>Settings - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../shared/supabase-config.js?v=auth-session-2"></script>
-    <script src="../shared/auth.js?v=auth-nav-1"></script>
-    <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
+    <script src="../shared/supabase-config.js?v=auth-nav-lock-1"></script>
+    <script src="../shared/auth.js?v=auth-nav-lock-1"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-lock-1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
     <style>
@@ -20,19 +20,57 @@
             --cite-theme-text: #ffffff;
             --cite-theme-border: rgba(98, 23, 8, 0.14);
         }
+        .settings-workspace {
+            display: grid;
+            grid-template-columns: 220px minmax(0, 1fr);
+            gap: 28px;
+            align-items: start;
+        }
+        .settings-nav { position: sticky; top: 92px; }
+        .settings-nav-label {
+            margin: 16px 12px 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+        .settings-nav-label:first-child { margin-top: 0; }
+        .settings-nav-btn {
+            display: flex;
+            width: 100%;
+            text-align: left;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border: 0;
+            border-radius: 10px;
+            background: transparent;
+            color: #475569;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background .15s, color .15s;
+        }
+        .settings-nav-btn i { width: 16px; text-align: center; font-size: 13px; color: #94a3b8; }
+        .settings-nav-btn:hover { background: #eef1f5; color: #0f172a; }
+        .settings-nav-btn.is-active {
+            background: color-mix(in srgb, var(--cite-theme) 10%, white);
+            color: var(--cite-theme);
+        }
+        .settings-nav-btn.is-active i { color: var(--cite-theme); }
+        .settings-panel { display: none; }
+        .settings-panel.is-active { display: block; }
         .settings-card {
             background: #fff;
-            border: 1px solid #e8eaef;
-            border-radius: 20px;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.05);
+            border: 1px solid #e7ebf0;
+            border-radius: 16px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
-        .section-icon {
-            width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
-            display: inline-flex; align-items: center; justify-content: center;
-            color: var(--cite-theme);
-            background: color-mix(in srgb, var(--cite-theme) 9%, white);
-            border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
-        }
+        .settings-card-head { padding: 22px 22px 0; }
+        .settings-card-head h2 { font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+        .settings-card-head p { margin-top: 4px; font-size: 13px; line-height: 1.5; color: #64748b; max-width: 62ch; }
+        .settings-card-body { padding: 18px 22px 22px; }
+        .section-icon { display: none; }
         .primary-btn {
             background: var(--cite-theme); color: var(--cite-theme-text);
             border: 1px solid var(--cite-theme-border); border-radius: 12px;
@@ -44,6 +82,8 @@
             border-radius: 12px; padding: 10px 16px; font-size: 13px; font-weight: 700;
         }
         .secondary-btn:hover { background: #f8fafc; }
+        .reset-btn { color: #9f1239; border-color: #fecdd3; display: inline-flex; align-items: center; gap: 6px; }
+        .reset-btn:hover { background: #fff1f2; }
         .ghost-link { display: inline-flex; align-items: center; gap: 8px; color: var(--cite-theme); font-size: 13px; font-weight: 700; }
         .toggle { position: relative; display: inline-flex; width: 44px; height: 24px; flex-shrink: 0; }
         .toggle input { opacity: 0; width: 0; height: 0; }
@@ -61,11 +101,30 @@
         body.settings-editing #themePickerLabel:hover .theme-picker-swatch { transform: scale(1.04); }
         .preview-shell { border: 1px solid #e8eaef; border-radius: 14px; overflow: hidden; background: #fff; }
         .action-row {
-            display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 12px;
-            padding: 14px 16px; border: 1px solid #eef1f5; border-radius: 14px; background: #f8fafc;
+            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px;
+            padding: 14px 0; border: 0; border-bottom: 1px solid #eef2f6; border-radius: 0; background: transparent;
         }
-        @media (min-width: 640px) {
-            .action-row { flex-direction: row; align-items: center; }
+        .action-row:last-child { border-bottom: 0; padding-bottom: 0; }
+        .action-row .secondary-btn { flex-shrink: 0; }
+        #notifRows > label {
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+            padding: 14px 0; margin: 0;
+            background: transparent; border: 0; border-bottom: 1px solid #eef2f6; border-radius: 0;
+        }
+        #notifRows > label:last-child { border-bottom: 0; padding-bottom: 0; }
+        .settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        @media (max-width: 860px) {
+            .settings-workspace { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+            .settings-nav { position: static; margin: 0 -4px; overflow-x: auto; }
+            .settings-nav-scroll { display: flex; gap: 6px; width: max-content; padding-bottom: 2px; }
+            .settings-nav-label { display: none; }
+            .settings-nav-btn { width: auto; white-space: nowrap; background: #fff; border: 1px solid #e7ebf0; }
+            .settings-nav-btn.is-active { border-color: color-mix(in srgb, var(--cite-theme) 35%, white); }
+        }
+        @media (max-width: 640px) {
+            .action-row { align-items: stretch; }
+            .action-row .secondary-btn { width: 100%; text-align: center; }
+            .settings-card-head, .settings-card-body { padding-left: 16px; padding-right: 16px; }
         }
         .toast { position: fixed; right: 20px; bottom: 20px; z-index: 2600; transform: translateY(16px); opacity: 0; pointer-events: none; transition: .25s; }
         .toast.show { transform: none; opacity: 1; }
@@ -77,14 +136,15 @@
     <div id="sidebar-container"></div>
     <main class="flex-1 min-h-screen ml-0 md:ml-[220px] bg-slate-50 w-full overflow-x-hidden">
         <div id="navbar-container"></div>
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
-            
-            <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-7">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
                 <div>
+                    <p class="text-[11px] font-bold tracking-[0.14em] uppercase mb-1" style="color: var(--cite-theme)">Faculty</p>
                     <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950">Settings</h1>
-                    <p class="text-sm text-slate-500 mt-1 max-w-xl">Manage your CITE-Flow preferences, appearance, notifications, and security.</p>
+                    <p class="text-sm text-slate-500 mt-1 max-w-xl">Manage your account and preferences.</p>
                 </div>
-                <div class="flex items-center gap-2.5 self-start sm:self-auto">
+                <div class="settings-actions self-start sm:self-auto">
+                    <button id="resetBtn" type="button" class="secondary-btn reset-btn"><i class="fa-solid fa-rotate-left"></i> Reset</button>
                     <button id="editBtn" type="button" class="primary-btn" data-theme-primary="true">Edit</button>
                     <button id="cancelBtn" type="button" class="secondary-btn hidden">Cancel</button>
                     <button id="saveBtn" type="button" class="primary-btn hidden" data-theme-primary="true">Save Changes</button>
@@ -92,17 +152,26 @@
             </header>
 
             <div id="settingsError" class="hidden mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
-            <div class="space-y-5 pb-16">
-                
-                <!-- Account Section -->
-                <section class="settings-card p-5 sm:p-6">
-                    <div class="flex items-start gap-3 mb-5">
-                        <div class="section-icon"><i class="fa-regular fa-user"></i></div>
-                        <div>
-                            <h2 class="text-base font-bold text-slate-950">Account</h2>
-                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Your identity is managed in My Profile. Department is set by administration.</p>
-                        </div>
+            <div class="settings-workspace pb-10">
+                <nav class="settings-nav" aria-label="Settings sections">
+                    <div class="settings-nav-scroll">
+                        <div class="settings-nav-label">Account</div>
+                        <button type="button" class="settings-nav-btn is-active" data-settings-target="account" aria-selected="true"><i class="fa-regular fa-user"></i> Profile</button>
+                        <button type="button" class="settings-nav-btn" data-settings-target="security"><i class="fa-solid fa-shield-halved"></i> Security</button>
+                        <div class="settings-nav-label">Preferences</div>
+                        <button type="button" class="settings-nav-btn" data-settings-target="appearance"><i class="fa-solid fa-palette"></i> Appearance</button>
+                        <button type="button" class="settings-nav-btn" data-settings-target="notifications"><i class="fa-regular fa-bell"></i> Notifications</button>
+                        <button type="button" class="settings-nav-btn" data-settings-target="period"><i class="fa-regular fa-calendar"></i> Academic Period</button>
                     </div>
+                </nav>
+                <div class="min-w-0">
+                <section class="settings-panel is-active" data-settings-panel="account">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Profile</h2>
+                        <p>Your identity is managed in My Profile. Department is set by administration.</p>
+                    </header>
+                    <div class="settings-card-body">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div class="flex items-center gap-4 min-w-0">
                             <div id="accountAvatar" class="w-16 h-16 rounded-2xl bg-slate-100 text-slate-500 font-bold flex items-center justify-center overflow-hidden shrink-0">—</div>
@@ -116,17 +185,17 @@
                         </div>
                         <a href="faculty-profile.html" class="ghost-link shrink-0 self-start sm:self-auto">Open My Profile <i class="fa-solid fa-arrow-right text-xs"></i></a>
                     </div>
+                    </div>
+                </article>
                 </section>
 
-                <!-- Appearance Section -->
-                <section class="settings-card p-5 sm:p-6">
-                    <div class="flex items-start gap-3 mb-5">
-                        <div class="section-icon"><i class="fa-solid fa-palette"></i></div>
-                        <div>
-                            <h2 class="text-base font-bold text-slate-950">Appearance</h2>
-                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Choose any color for the CITE-Flow theme. It updates the sidebar, buttons, and accents across the system.</p>
-                        </div>
-                    </div>
+                <section class="settings-panel" data-settings-panel="appearance">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Appearance</h2>
+                        <p>Choose any color for the CITE-Flow theme. It updates the sidebar, buttons, and accents across the system.</p>
+                    </header>
+                    <div class="settings-card-body">
                     <div class="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-5">
                         <div>
                             <div class="text-xs font-bold text-slate-700 mb-3">Theme color</div>
@@ -151,29 +220,29 @@
                             </div>
                         </div>
                     </div>
+                    </div>
+                </article>
                 </section>
 
-                <!-- Notifications Section -->
-                <section class="settings-card p-5 sm:p-6">
-                    <div class="flex items-start gap-3 mb-5">
-                        <div class="section-icon"><i class="fa-regular fa-bell"></i></div>
-                        <div>
-                            <h2 class="text-base font-bold text-slate-950">Notifications</h2>
-                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">In-app alerts for submissions, reviews, and tasks. Messenger mute stays in Messenger.</p>
-                        </div>
+                <section class="settings-panel" data-settings-panel="notifications">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Notifications</h2>
+                        <p>In-app alerts for submissions, reviews, and tasks. Messenger mute stays in Messenger.</p>
+                    </header>
+                    <div class="settings-card-body">
+                    <div id="notifRows"></div>
                     </div>
-                    <div class="space-y-2.5" id="notifRows"></div>
+                </article>
                 </section>
 
-                <!-- Academic Period Section -->
-                <section class="settings-card p-5 sm:p-6">
-                    <div class="flex items-start gap-3 mb-5">
-                        <div class="section-icon"><i class="fa-regular fa-calendar"></i></div>
-                        <div>
-                            <h2 class="text-base font-bold text-slate-950">Academic Period</h2>
-                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Set by Administration. Faculty cannot change this.</p>
-                        </div>
-                    </div>
+                <section class="settings-panel" data-settings-panel="period">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Academic Period</h2>
+                        <p>Set by Administration. Faculty cannot change this.</p>
+                    </header>
+                    <div class="settings-card-body">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                             <div class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Academic Year</div>
@@ -184,44 +253,60 @@
                             <div id="academicSemesterLabel" class="text-sm font-bold text-slate-950 mt-1">—</div>
                         </div>
                     </div>
+                    </div>
+                </article>
                 </section>
 
-                <!-- Security Section -->
-                <section class="settings-card p-5 sm:p-6">
-                    <div class="flex items-start gap-3 mb-5">
-                        <div class="section-icon"><i class="fa-solid fa-shield-halved"></i></div>
-                        <div>
-                            <h2 class="text-base font-bold text-slate-950">Security</h2>
-                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Password, two-factor authentication, and sign out.</p>
-                        </div>
-                    </div>
-                    <div class="space-y-2.5">
+                <section class="settings-panel" data-settings-panel="security">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Security</h2>
+                        <p>Password, two-factor authentication, and sign out.</p>
+                    </header>
+                    <div class="settings-card-body">
+                    <div>
                         <div class="action-row">
-                            <div>
+                            <div class="min-w-0">
                                 <div class="text-sm font-bold text-slate-900">Change Password</div>
                                 <div class="text-xs text-slate-500 mt-0.5">Send a reset code to your account email.</div>
                             </div>
                             <button id="settings-change-password" type="button" class="secondary-btn w-full sm:w-auto text-center">Change</button>
                         </div>
                         <div class="action-row">
-                            <div>
+                            <div class="min-w-0">
                                 <div class="text-sm font-bold text-slate-900">Two-Factor Authentication</div>
                                 <div id="twofa-status-text" class="text-xs text-slate-500 mt-0.5">Add an extra layer of security to your account.</div>
                             </div>
                             <button id="twofa-toggle-btn" type="button" class="secondary-btn w-full sm:w-auto text-center"><span id="twofa-toggle-label">Enable</span></button>
                         </div>
                         <div class="action-row">
-                            <div>
+                            <div class="min-w-0">
                                 <div class="text-sm font-bold text-slate-900">Sign Out</div>
                                 <div class="text-xs text-slate-500 mt-0.5">End your current CITE-Flow session.</div>
                             </div>
                             <button id="settings-sign-out" type="button" class="secondary-btn text-red-600 border-red-200 w-full sm:w-auto text-center">Sign Out</button>
                         </div>
                     </div>
+                    </div>
+                </article>
                 </section>
+                </div>
             </div>
         </div>
     </main>
+</div>
+
+<div id="confirmModal" class="hidden fixed inset-0 bg-slate-950/50 z-[2500] items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+        <div class="p-6">
+            <h3 id="confirmTitle" class="text-lg font-bold text-slate-950">Confirm</h3>
+            <p id="confirmMessage" class="text-sm text-slate-500 mt-1"></p>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 flex justify-end gap-2.5">
+            <button type="button" id="confirmNo" class="secondary-btn">Cancel</button>
+            <button type="button" id="confirmYes" class="primary-btn" data-theme-primary="true">Confirm</button>
+        </div>
+    </div>
 </div>
 
 <div id="twofa-modal" class="hidden fixed inset-0 bg-slate-950/50 z-[2500] items-center justify-center p-4">
@@ -273,7 +358,10 @@
 
     let isEditing = false;
     let snapshot = null;
-    let selectedTheme = window.CiteFlowUI?.getTheme?.() || '#621708';
+    let confirmResolver = null;
+    let resetVersion = 0;
+    let savedTheme = toThemeHex(window.CiteFlowUI.getDefaultTheme());
+    let selectedTheme = savedTheme;
 
     function showToast(title, message) {
         document.getElementById('toastTitle').textContent = title;
@@ -332,12 +420,13 @@
     }
 
     function toThemeHex(color) {
-        const value = String(color || '#621708').trim();
+        const fallback = String(window.CiteFlowUI.getDefaultTheme()).toLowerCase();
+        const value = String(color || fallback).trim();
         if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toLowerCase();
         if (/^#[0-9a-fA-F]{3}$/.test(value)) {
             return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase();
         }
-        return '#621708';
+        return fallback;
     }
 
     function renderTheme(color) {
@@ -355,13 +444,22 @@
 
     function applyThemeLive(color) {
         selectedTheme = toThemeHex(color);
-        window.CiteFlowUI?.setTheme?.(selectedTheme);
-        const preview = document.getElementById('themePreview');
-        const hex = document.getElementById('themeHexDisplay');
-        if (preview) preview.style.background = selectedTheme;
-        if (hex) hex.textContent = selectedTheme.toUpperCase();
-        const picker = document.getElementById('themePicker');
-        if (picker && picker.value !== selectedTheme) picker.value = selectedTheme;
+        if (window.CiteFlowUI?.previewTheme) window.CiteFlowUI.previewTheme(selectedTheme);
+        else window.CiteFlowUI?.setTheme?.(selectedTheme);
+        renderTheme(selectedTheme);
+    }
+
+    function applySavedTheme() {
+        selectedTheme = savedTheme;
+        window.CiteFlowUI.setTheme(savedTheme);
+        renderTheme(savedTheme);
+    }
+
+    function applyDefaultTheme() {
+        savedTheme = toThemeHex(window.CiteFlowUI.getDefaultTheme());
+        selectedTheme = savedTheme;
+        window.CiteFlowUI.setTheme(savedTheme);
+        renderTheme(savedTheme);
     }
 
     function setEditing(next) {
@@ -375,15 +473,33 @@
     }
 
     function takeSnapshot() {
-        snapshot = { theme: selectedTheme, prefs: collectPrefs() };
+        snapshot = { theme: savedTheme, prefs: collectPrefs() };
     }
 
     function restoreSnapshot() {
         if (!snapshot) return;
-        selectedTheme = snapshot.theme;
-        window.CiteFlowUI?.setTheme?.(snapshot.theme);
+        savedTheme = snapshot.theme || savedTheme;
         renderNotifRows(snapshot.prefs);
-        renderTheme(snapshot.theme);
+        applySavedTheme();
+        if (isEditing) setEditing(true);
+    }
+
+    function askConfirm(title, message, confirmLabel) {
+        document.getElementById('confirmTitle').textContent = title;
+        document.getElementById('confirmMessage').textContent = message;
+        document.getElementById('confirmYes').textContent = confirmLabel || 'Confirm';
+        const modal = document.getElementById('confirmModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        return new Promise((resolve) => { confirmResolver = resolve; });
+    }
+
+    function closeConfirmModal(result) {
+        const modal = document.getElementById('confirmModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (confirmResolver) confirmResolver(result);
+        confirmResolver = null;
     }
 
     async function loadAccount() {
@@ -413,8 +529,9 @@
 
     async function saveAll() {
         try {
-            window.CiteFlowUI?.setTheme?.(selectedTheme);
             await window.CiteFlowSettings.savePreferences(collectPrefs());
+            savedTheme = toThemeHex(selectedTheme);
+            window.CiteFlowUI?.setTheme?.(savedTheme);
             showToast('Saved', 'Your preferences have been updated.');
             setEditing(false);
             takeSnapshot();
@@ -424,13 +541,43 @@
         }
     }
 
+    async function resetToDefaults() {
+        const ok = await askConfirm(
+            'Reset to Default Settings?',
+            'All current settings will be restored to the default CITE-Flow configuration.',
+            'Reset'
+        );
+        if (!ok) return;
+        resetVersion += 1;
+        const stayEditing = isEditing;
+        applyDefaultTheme();
+        const prefs = window.CiteFlowSettings.defaultPrefs('faculty');
+        renderNotifRows(prefs);
+        if (stayEditing) setEditing(true);
+        takeSnapshot();
+        try {
+            await window.CiteFlowSettings.savePreferences(prefs);
+            showError('');
+        } catch (error) {
+            showError(error.message || 'The default theme was restored, but notification settings could not be saved.');
+        }
+        showToast('Reset', 'Settings reset successfully.');
+    }
+
     document.getElementById('editBtn').addEventListener('click', () => { takeSnapshot(); setEditing(true); });
     document.getElementById('cancelBtn').addEventListener('click', () => { restoreSnapshot(); setEditing(false); });
     document.getElementById('saveBtn').addEventListener('click', saveAll);
+    document.getElementById('resetBtn').addEventListener('click', resetToDefaults);
+    document.getElementById('confirmYes').addEventListener('click', () => closeConfirmModal(true));
+    document.getElementById('confirmNo').addEventListener('click', () => closeConfirmModal(false));
 
     document.addEventListener('DOMContentLoaded', async () => {
+        const versionAtStart = resetVersion;
         if (typeof loadSidebar === 'function') await loadSidebar();
-        selectedTheme = window.CiteFlowUI?.getTheme?.() || selectedTheme;
+        if (!isEditing && versionAtStart === resetVersion) {
+            savedTheme = toThemeHex(window.CiteFlowUI.getTheme());
+            selectedTheme = savedTheme;
+        }
         document.getElementById('themePicker')?.addEventListener('input', (event) => {
             if (!isEditing) return;
             applyThemeLive(event.target.value);
@@ -444,9 +591,32 @@
         ]);
         document.getElementById('academicYearLabel').textContent = period.academic_year;
         document.getElementById('academicSemesterLabel').textContent = period.semester;
-        renderNotifRows(prefs);
-        renderTheme(selectedTheme);
+        if (versionAtStart === resetVersion) {
+            renderNotifRows(prefs);
+            if (!isEditing) {
+                applySavedTheme();
+                takeSnapshot();
+            } else if (snapshot) {
+                snapshot.theme = savedTheme;
+                snapshot.prefs = { ...prefs };
+                if (window.CiteFlowUI.previewTheme) window.CiteFlowUI.previewTheme(selectedTheme);
+            }
+        }
         await loadAccount();
+    });
+
+    function showSettingsPanel(name) {
+        document.querySelectorAll('[data-settings-panel]').forEach((panel) => {
+            panel.classList.toggle('is-active', panel.getAttribute('data-settings-panel') === name);
+        });
+        document.querySelectorAll('[data-settings-target]').forEach((button) => {
+            const active = button.getAttribute('data-settings-target') === name;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+    }
+    document.querySelectorAll('[data-settings-target]').forEach((button) => {
+        button.addEventListener('click', () => showSettingsPanel(button.getAttribute('data-settings-target')));
     });
 </script>
 </body>
