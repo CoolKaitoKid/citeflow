@@ -159,9 +159,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             const typeLabel = ar.report_type === 'online'
                 ? 'Online / WFH Accomplishment Report'
                 : 'Face-to-Face Accomplishment Report';
-            const fmtPeriod = (s, e) => {
+                       const fmtPeriod = (s, e) => {
                 const f = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-                return s && e ? `${f(s)} ΓÇô ${f(e)}` : 'Period not specified';
+                return s && e ? `${f(s)} – ${f(e)}` : 'Period not specified';
             };
             return {
                 ...ar,
@@ -485,9 +485,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             const url = fileUrl(file);
             const name = esc(fileName(file));
             const key = registerFileAction(file);
-            return `
+                        return `
                 <div class="chair-file-row">
-                    <span class="text-sm text-slate-800 truncate">≡ƒôä ${name}</span>
+                    <span class="text-sm text-slate-800 truncate"><i class="fa-solid fa-file-lines mr-1.5 text-slate-500"></i>${name}</span>
                     <div class="flex gap-2 shrink-0">
                         <button type="button" class="file-manage-btn" ${url ? `onclick="CiteFlowChairReview.previewFile('${key}')"` : 'disabled title="No file URL saved"'}>Preview</button>
                         <button type="button" class="file-manage-btn" ${url ? `onclick="CiteFlowChairReview.downloadFile('${key}')"` : 'disabled title="No file URL saved"'}>Download</button>
@@ -509,9 +509,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 ${row.report_pdf_url ? `<a href="${esc(row.report_pdf_url)}" target="_blank" rel="noopener" class="chair-file-view-btn inline-flex items-center gap-1 text-xs font-semibold text-[#621708] hover:underline px-3 py-2">Open PDF</a>` : ''}
             `;
 
-        const pdfSnippet = row.report_pdf_url
+                const pdfSnippet = row.report_pdf_url
             ? `<div class="chair-file-row mt-3">
-                <span class="text-sm text-slate-800 truncate">≡ƒôä ${esc(row.task_title)} (${esc(row.period_text)})</span>
+                <span class="text-sm text-slate-800 truncate"><i class="fa-solid fa-file-lines mr-1.5 text-slate-500"></i>${esc(row.task_title)} (${esc(row.period_text)})</span>
                 <div class="flex gap-2 shrink-0">
                     <button type="button" class="file-manage-btn" onclick="CiteFlowChairReview.openArReview('${row.id}')">Preview</button>
                     <a href="${esc(row.report_pdf_url)}" target="_blank" rel="noopener" download class="file-manage-btn">Download</a>
@@ -535,9 +535,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                         </p>
                     </div>
                 </div>
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-2">
-                    <span><strong>Period:</strong> ${esc(row.period_text)}</span>
-                    <span><strong>Submitted:</strong> ${esc(formatWhen(row.submitted_at))}</span>
+                                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-2">
+                    <span><i class="fa-regular fa-calendar mr-1"></i><strong>Period:</strong> ${esc(row.period_text)}</span>
+                    <span><i class="fa-regular fa-clock mr-1"></i><strong>Submitted:</strong> ${esc(formatWhen(row.submitted_at))}</span>
                 </div>
                 ${pdfSnippet}
                 <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100">${actions}</div>
