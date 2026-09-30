@@ -964,11 +964,16 @@
                     packetState = 'declined';
                 }
                 try {
-                    await client.from('mfo_packets').update({
+                    let { error } = await client.from('mfo_packets').update({
                         packet_state: packetState,
                         reviewed_by: state.reviewerActor?.full_name || state.user?.email || null,
                         reviewed_at: new Date().toISOString()
                     }).eq('id', state.packet.id);
+                    if (error && /column|schema|cache/i.test(error.message || '')) {
+                        await client.from('mfo_packets').update({
+                            packet_state: packetState
+                        }).eq('id', state.packet.id);
+                    }
                 } catch (_) {}
             }
 

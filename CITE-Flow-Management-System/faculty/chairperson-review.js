@@ -185,9 +185,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
     }
 
     function isPending(row) {
-        if (row.is_ar) {
-            return row.status === 'submitted';
-        }
+        if (row.is_ar) return false;
         const helper = wf();
         if (!helper || !review.access) return false;
         if (helper.canReviewAsChairperson(row, global.currentFaculty, targetFaculty(row), reviewContext(row.task))) {
@@ -254,6 +252,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 .toLowerCase()
                 .includes(q))
             : rows;
+        if (review.filterType === 'ar') return searched;
         if (review.tab === 'approved') return searched.filter(isApproved);
         if (review.tab === 'revision') return searched.filter(isRevision);
         if (review.tab === 'declined') return searched.filter(isDeclined);
@@ -503,44 +502,11 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
     }
 
     function renderArCard(row) {
-        const actionable = isPending(row);
-        const WF = wf();
-        const statusLabel = WF ? WF.formatAccomplishmentReportStatus(row.status) : row.status;
-        const statusCss = WF ? WF.getAccomplishmentReportStatusCss(row.status) : 'bg-indigo-50 text-indigo-700';
-
-        let remarksBlock = '';
-        if (row.chair_remarks) {
-            remarksBlock = `
-                <div class="mt-2 text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-600">
-                    <span class="font-semibold text-slate-700">Chair Remarks:</span> ${esc(row.chair_remarks)}
-                </div>`;
-        } else if (row.dean_remarks) {
-            remarksBlock = `
-                <div class="mt-2 text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-600">
-                    <span class="font-semibold text-slate-700">Dean Remarks:</span> ${esc(row.dean_remarks)}
-                </div>`;
-        }
-
-        const actions = actionable
-            ? `
-                <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openArReview('${row.id}')">
-                    <i class="fa-solid fa-eye mr-1"></i> Review Report
-                </button>
-                <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.approveAr('${row.id}')">
-                    <i class="fa-solid fa-check mr-1"></i> Certify
-                </button>
-                <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.openArRevision('${row.id}')">
-                    <i class="fa-solid fa-rotate-left mr-1"></i> Request Revision
-                </button>
-                <button type="button" class="chair-btn-decline" onclick="CiteFlowChairReview.openArDecline('${row.id}')">
-                    <i class="fa-solid fa-xmark mr-1"></i> Decline
-                </button>
-            `
-            : `
+        const actions = `
                 <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openArReview('${row.id}')">
                     <i class="fa-solid fa-file-pdf mr-1"></i> View Report
                 </button>
-                ${row.report_pdf_url ? `<a href="${esc(row.report_pdf_url)}" target="_blank" rel="noopener" class="chair-file-view-btn inline-flex items-center gap-1 text-xs font-semibold text-[#621708] hover:underline px-3 py-2">Open PDF Γåù</a>` : ''}
+                ${row.report_pdf_url ? `<a href="${esc(row.report_pdf_url)}" target="_blank" rel="noopener" class="chair-file-view-btn inline-flex items-center gap-1 text-xs font-semibold text-[#621708] hover:underline px-3 py-2">Open PDF</a>` : ''}
             `;
 
         const pdfSnippet = row.report_pdf_url
@@ -565,16 +531,14 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                         </div>
                         <h3 class="font-bold text-slate-900 text-base">${esc(row.task_title)}</h3>
                         <p class="text-sm text-slate-600 mt-0.5">
-                            <span class="font-semibold text-slate-800">${esc(row.faculty_name)}</span> ┬╖ ${esc((row.department || chairDepartment() || 'ΓÇö').toUpperCase())}
+                            <span class="font-semibold text-slate-800">${esc(row.faculty_name)}</span> &middot; ${esc((row.department || chairDepartment() || '—').toUpperCase())}
                         </p>
                     </div>
-                    <span class="text-[11px] font-bold px-2.5 py-1 rounded-full ${statusCss} border">${esc(statusLabel)}</span>
                 </div>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-2">
-                    <span>≡ƒôà <strong>Period:</strong> ${esc(row.period_text)}</span>
-                    <span>≡ƒòÆ <strong>Submitted:</strong> ${esc(formatWhen(row.submitted_at))}</span>
+                    <span><strong>Period:</strong> ${esc(row.period_text)}</span>
+                    <span><strong>Submitted:</strong> ${esc(formatWhen(row.submitted_at))}</span>
                 </div>
-                ${remarksBlock}
                 ${pdfSnippet}
                 <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100">${actions}</div>
             </article>`;
@@ -997,13 +961,18 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         }
         if (submissionIsMfo(row) || row.is_mfo) {
             try {
-                await db().from('mfo_packets')
+                let { error } = await db().from('mfo_packets')
                     .update({
                         packet_state: 'chairperson_approved',
                         reviewed_by: global.currentFaculty?.full_name || 'Chairperson',
                         reviewed_at: new Date().toISOString()
                     })
                     .eq('submission_id', row.id);
+                if (error && /column|schema|cache/i.test(error.message || '')) {
+                    await db().from('mfo_packets')
+                        .update({ packet_state: 'chairperson_approved' })
+                        .eq('submission_id', row.id);
+                }
             } catch (_) {}
         }
         toast('Chairperson approval recorded. Admin will handle final approval.', 'success');
@@ -1083,13 +1052,18 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         if (submissionIsMfo(row) || row.is_mfo) {
             try {
                 const nextPacketState = action === 'revision' ? 'revision' : 'declined';
-                await db().from('mfo_packets')
+                let { error } = await db().from('mfo_packets')
                     .update({
                         packet_state: nextPacketState,
                         reviewed_by: global.currentFaculty?.full_name || 'Chairperson',
                         reviewed_at: new Date().toISOString()
                     })
                     .eq('submission_id', row.id);
+                if (error && /column|schema|cache/i.test(error.message || '')) {
+                    await db().from('mfo_packets')
+                        .update({ packet_state: nextPacketState })
+                        .eq('submission_id', row.id);
+                }
             } catch (_) {}
         }
         closeRevision();
@@ -1192,31 +1166,17 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             }
         }
 
-        // Remarks input
         const remarksField = document.getElementById('chairArReviewRemarks');
-        if (remarksField) remarksField.value = '';
+        if (remarksField) {
+            remarksField.value = '';
+            remarksField.closest('div')?.classList.add('hidden');
+        }
 
-        // Actions
         const actionsDiv = document.getElementById('chairArReviewActions');
         if (actionsDiv) {
-            if (row.status === 'submitted') {
-                actionsDiv.innerHTML = `
-                    <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeArReview()">Cancel</button>
-                    <button type="button" class="chair-btn-decline" onclick="CiteFlowChairReview.submitArReview('reject')">
-                        <i class="fa-solid fa-xmark mr-1"></i> Decline
-                    </button>
-                    <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.submitArReview('revision')">
-                        <i class="fa-solid fa-rotate-left mr-1"></i> Request Revision
-                    </button>
-                    <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.submitArReview('approve')">
-                        <i class="fa-solid fa-check mr-1"></i> Certify as Chairperson
-                    </button>
-                `;
-            } else {
-                actionsDiv.innerHTML = `
-                    <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeArReview()">Close</button>
-                `;
-            }
+            actionsDiv.innerHTML = `
+                <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeArReview()">Close</button>
+            `;
         }
 
         modal.classList.add('open');

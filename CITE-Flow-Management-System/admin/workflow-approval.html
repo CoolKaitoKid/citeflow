@@ -3851,8 +3851,18 @@ function renderDetailSubmissionList(rows) {
         const submittedText = hasSubmission ? `Submitted ${formatDateTime(s.submitted_at)}` : 'No uploaded submission yet';
         const filesHtml = hasSubmission ? renderFileList(s.files, 'No submitted files saved.') : '<p class="text-sm text-gray-400">No files uploaded yet.</p>';
         const filesUpdatedHtml = hasSubmission ? facultyFilesUpdatedNoticeHtml(s) : '';
+        const task = getTaskById(s.task_id);
+        const isMfo = typeof isMfoSubmission === 'function' ? isMfoSubmission(task, s) : false;
+        const mfoBadge = isMfo ? `<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-weight:600;font-size:11px;padding:2px 8px;border-radius:9999px;">MFO Report</span>` : '';
+        const mfoCard = (hasSubmission && isMfo && typeof mfoReportLinkHtml === 'function') ? mfoReportLinkHtml(task, s) : '';
+        const mfoBtn = (hasSubmission && isMfo) ? `
+            <a href="../faculty/mfo-report.html?submission=${encodeURIComponent(s.submission_id)}&view=review" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:6px">
+                <i class="fa-solid fa-file-invoice"></i> Open MFO Report
+            </a>
+        ` : '';
         const reviewButtons = hasSubmission ? `
             <button onclick="openReviewModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-primary btn-sm">Review / View Submission</button>
+            ${mfoBtn}
             <button onclick="openTimelineModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-ghost btn-sm">Timeline</button>
             <button onclick="openCommentsModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-ghost btn-sm">Comments</button>
         ` : `
@@ -3862,11 +3872,15 @@ function renderDetailSubmissionList(rows) {
             <div id="submission-card-${s.faculty_id}" class="submission-card ${submissionCardTone(s.status)}">
                 <div class="flex items-start justify-between gap-4 mb-3">
                     <div>
-                        <div class="font-semibold text-gray-900">${escapeHtml(s.faculty_name)}</div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-semibold text-gray-900">${escapeHtml(s.faculty_name)}</span>
+                            ${mfoBadge}
+                        </div>
                         <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(s.department_code)} | ${submittedText}</div>
                     </div>
                     ${statusBadge(s.status)}
                 </div>
+                ${mfoCard}
                 <div class="space-y-2 mb-4">${filesHtml}</div>
                 ${filesUpdatedHtml ? `<div class="mb-4">${filesUpdatedHtml}</div>` : ''}
                 <div class="flex flex-wrap gap-2">${reviewButtons}</div>
@@ -6201,23 +6215,49 @@ function chairpersonGrantGapHtml(sub, stage) {
  */
 function submissionHasMfoPacket(sub) {
     if (!sub?.submission_id) return false;
+    const subId = String(sub.submission_id);
+    const hasPacket = (workflowState.mfoPackets || []).some(p => String(p.submission_id) === subId);
+    if (hasPacket) return true;
     return (workflowState.submissionFiles || []).some(f =>
-        String(f.submission_id) === String(sub.submission_id)
+        String(f.submission_id) === subId
         && (f.mfo_packet_id || f.mfo_section));
 }
 
 function isMfoSubmission(task, sub) {
     if (submissionHasMfoPacket(sub)) return true;
+    const cat = window.CiteFlowWorkflow?.resolveDocumentCategory?.(task);
+    if (cat === 'MFO') return true;
     const haystack = [task?.title, task?.instructions].filter(Boolean).join(' ');
-    return /\bmfo\b|major final output|accomplishment report/i.test(haystack);
+    return /\bmfo\b|major final output/i.test(haystack);
 }
 
 function mfoReportLinkHtml(task, sub) {
     if (!sub?.submission_id) return '';
     if (!isMfoSubmission(task, sub)) return '';
-    return `<a class="file-action-btn" style="display:inline-flex;margin-bottom:8px" target="_blank" rel="noopener"
-        href="../faculty/mfo-report.html?submission=${encodeURIComponent(sub.submission_id)}&view=review">Open completed MFO report</a>`;
+    const url = `../faculty/mfo-report.html?submission=${encodeURIComponent(sub.submission_id)}&view=review`;
+    return `
+        <div style="margin-bottom:12px;padding:14px 16px;border-radius:12px;background:linear-gradient(135deg,#fff8f6 0%,#fff0eb 100%);border:1.5px solid #fbdacf;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="width:38px;height:38px;border-radius:10px;background:#621708;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">
+                    <i class="fa-solid fa-file-invoice"></i>
+                </div>
+                <div>
+                    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#621708;margin-bottom:2px">
+                        MFO Accomplishment Report
+                    </div>
+                    <div style="font-size:13px;font-weight:600;color:#1e293b">${escapeHtml(task?.title || 'MFO Report')}</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:1px">${escapeHtml(sub.faculty_name || '')} · Submitted Report</div>
+                </div>
+            </div>
+            <a href="${url}" target="_blank" rel="noopener"
+               style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;background:#621708;color:#fff;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background 0.2s"
+               onmouseover="this.style.background='#4a1206'" onmouseout="this.style.background='#621708'">
+                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:11px"></i>
+                Open Full MFO Report
+            </a>
+        </div>`;
 }
+
 
 /* ---------- Override review modal so stage is visible ---------- */
 async function openReviewModal(taskId, facultyRef) {
@@ -6341,7 +6381,8 @@ async function fetchAllData(isRetry) {
     const [
         faculty, tasks, assignments, submissions, files,
         notifications, activity, comments, delegates,
-        reportConfigs, reportTargets, approvalHistory
+        reportConfigs, reportTargets, approvalHistory,
+        mfoPackets
     ] = await Promise.all([
         db.from('faculty').select('*').order('full_name', { ascending: true }),
         db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
@@ -6354,7 +6395,8 @@ async function fetchAllData(isRetry) {
         db.from('wf_delegated_access').select('*').eq('is_active', true),
         db.from('wf_report_configs').select('*').order('created_at', { ascending: false }),
         db.from('wf_report_targets').select('*'),
-        db.from('wf_approval_history').select('*').order('created_at', { ascending: false }).limit(200)
+        db.from('wf_approval_history').select('*').order('created_at', { ascending: false }).limit(200),
+        db.from('mfo_packets').select('*').then(r => r, () => ({ data: [] }))
     ]);
 
     const required = { faculty, tasks, assignments, submissions, files, delegates, reportConfigs };
@@ -6390,6 +6432,7 @@ async function fetchAllData(isRetry) {
     workflowState.reportConfigs = reportConfigs.data || [];
     workflowState.reportTargets = reportTargets.data || [];
     workflowState.approvalHistory = approvalHistory.data || [];
+    workflowState.mfoPackets = mfoPackets?.data || [];
 
     await loadWorkflowActor();
     syncChairpersonWorkbenchChrome();
@@ -7001,6 +7044,24 @@ applyReviewRealtime = async function unifiedApplyReviewRealtime(submissionId, ne
         CiteFlowWorkflow.showToast(result.error, 'error');
         return;
     }
+
+    // Sync mfo_packets.packet_state when Admin takes action on an MFO submission
+    if (isMfoSubmission(task, sub || {})) {
+        const mfoState = newStatus === 'approved' ? 'approved'
+            : newStatus === 'revision' ? 'revision'
+            : newStatus === 'declined' ? 'declined'
+            : null;
+        if (mfoState) {
+            try {
+                await db.from('mfo_packets')
+                    .update({ packet_state: mfoState })
+                    .eq('submission_id', String(submissionId));
+            } catch (e) {
+                console.warn('[MFO] packet_state sync failed (admin):', e);
+            }
+        }
+    }
+
 
     const { transition } = result;
     const toast =
