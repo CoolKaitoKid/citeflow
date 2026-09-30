@@ -2238,8 +2238,8 @@
             <div class="mfo-doc-note">(policies created, external grant for instruction/research/extension, etc.)</div>
             <div class="mfo-doc-lines">${notes ? esc(notes) : NA}</div>
             <div class="mfo-doc-sign">
-                <div class="box"><div><b>Date Submitted:</b></div><div class="line"></div><div>${esc(state.submission?.submitted_at ? reportDate(state.submission.submitted_at) : NA)}</div></div>
-                <div class="box"><div><b>Submitted by:</b></div><div class="line"></div><div>${esc(tv(faculty.full_name))}</div></div>
+                <div class="box"><div><b>Date Submitted:</b></div><div class="line" style="display:flex;align-items:flex-end;padding-bottom:2px;">${esc(state.submission?.submitted_at ? reportDate(state.submission.submitted_at) : NA)}</div></div>
+                <div class="box"><div><b>Submitted by:</b></div><div class="line" style="display:flex;align-items:flex-end;padding-bottom:2px;font-weight:600;">${esc(tv(faculty.full_name))}</div></div>
             </div>
             ${photoEntries.length ? renderDocumentationPages(photoEntries, period) : ''}
             ${reportFooter()}
