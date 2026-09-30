@@ -1388,9 +1388,11 @@
     subscribeCalendarFallback();
     subscribeAdminFallbacks();
     subscribeFacultyOutbound();
-    hookCalendarSaveFunctions();
+    scheduleCalendarSaveHooks();
     return currentProfile;
   }
+
+  let calendarHookRetriesScheduled = false;
 
   function hookCalendarSaveFunctions() {
     if (currentPortal !== 'admin') return;
@@ -1410,6 +1412,13 @@
       wrapped.__citeCalHooked = true;
       global[name] = wrapped;
     });
+  }
+
+  function scheduleCalendarSaveHooks() {
+    if (currentPortal !== 'admin') return;
+    hookCalendarSaveFunctions();
+    if (calendarHookRetriesScheduled) return;
+    calendarHookRetriesScheduled = true;
     [400, 1200, 2500, 5000].forEach((ms) => window.setTimeout(hookCalendarSaveFunctions, ms));
   }
 

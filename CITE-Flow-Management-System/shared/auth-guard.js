@@ -156,6 +156,17 @@
             }
 
             if (!activeSession?.user || !activeSession?.access_token) {
+                // A page change can make getSession() miss a token that is still
+                // valid in storage. That is not a logout. Redirect only when the
+                // stored access token is missing or already expired.
+                const persisted = usablePersistedSession();
+                if (persisted) {
+                    console.warn('Auth Guard: using persisted session after a temporary miss during navigation.');
+                    activeSession = persisted;
+                }
+            }
+
+            if (!activeSession?.user || !activeSession?.access_token) {
                 console.warn('Auth Guard: Session restoration finished with no authenticated user.');
                 redirectToLogin(prefix);
                 return;
@@ -167,6 +178,11 @@
                 const again = await restoreSession(sb);
                 if (again?.user) {
                     activeSession = again;
+                    return false;
+                }
+                const persisted = usablePersistedSession();
+                if (persisted) {
+                    activeSession = persisted;
                     return false;
                 }
                 console.warn('Auth Guard: Session expired after refresh failure. Redirecting to login...');
@@ -353,6 +369,21 @@
         } catch (_) {
             return false;
         }
+    }
+
+    function usablePersistedSession() {
+        const session = window.CiteFlowAuth?.getPersistedSupabaseSession?.();
+        if (!session?.user || !session?.access_token) return null;
+        let exp = Number(session.expires_at || 0);
+        if (!exp) {
+            try {
+                const part = String(session.access_token).split('.')[1];
+                const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')));
+                exp = Number(payload?.exp || 0);
+            } catch (_) {}
+        }
+        if (exp && exp * 1000 <= Date.now()) return null;
+        return session;
     }
 
     async function restoreSession(sb) {

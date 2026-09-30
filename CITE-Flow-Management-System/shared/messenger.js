@@ -1165,7 +1165,19 @@ window.CiteFlowMessenger = (function () {
     function mountDOM() {
         if (State.mounted) return;
 
-        // 1. Ensure Messenger CSS is loaded
+        // 1. Ensure Messenger CSS is loaded.
+        // The stylesheet is async, so shell nodes would paint before it arrives.
+        // These class rules match the closed state in messenger.css and stay
+        // weaker than .show, so opening the panel or New Message is unchanged.
+        if (!document.getElementById("citeflow-messenger-prehide")) {
+            const prehide = document.createElement("style");
+            prehide.id = "citeflow-messenger-prehide";
+            prehide.textContent = [
+                ".msgr-backdrop,.msgr-new-modal{position:fixed;inset:0;opacity:0;visibility:hidden}",
+                ".msgr-panel{position:fixed;top:0;right:-440px;width:420px;max-width:100vw}"
+            ].join("");
+            document.head.appendChild(prehide);
+        }
         if (!document.querySelector('link[data-citeflow="universal-messenger-css"]')) {
             const link = document.createElement("link");
             link.rel = "stylesheet";
