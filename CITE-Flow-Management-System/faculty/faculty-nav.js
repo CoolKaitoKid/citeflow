@@ -604,6 +604,7 @@ async function refreshFacultyChairReviewNav(options = {}) {
     if (!item) return;
     const attempt = Number(options.attempt || 0);
     let show = false;
+
     try {
         if (window.CiteFlowAuthGuard?.ready) {
             await window.CiteFlowAuthGuard.ready;
@@ -612,36 +613,31 @@ async function refreshFacultyChairReviewNav(options = {}) {
                 return;
             }
         }
-        const wf = window.CiteFlowWorkflow;
+
         const sb = window.CiteFlowAuth?.ensureSharedClient?.() || window.supabaseClient || window.db;
         if (!sb) {
-            if (attempt < 4) {
-                setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 400);
-            }
+            if (attempt < 4) setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 400);
             return;
         }
-        if (window.__citeChairAccessResolved) {
-            syncFacultyChairReviewNav(window.CiteFlowChairReview?.access === true);
-            return;
-        }
+
         const guardedSession = window.CiteFlowAuthGuard?.session;
         const user = guardedSession?.user
             || window.CiteFlowAuthGuard?.user
             || (await sb.auth.getSession())?.data?.session?.user;
+
         if (!user) {
-            if (attempt < 4) {
-                setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 400);
-            }
+            if (attempt < 4) setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 400);
             return;
         }
+
         let faculty = window.currentFaculty || window.CiteFlowAuthGuard?.faculty || null;
-        if (!faculty && wf?.getCurrentFaculty) {
+        if (!faculty && window.CiteFlowWorkflow?.getCurrentFaculty) {
             try {
-                faculty = await wf.getCurrentFaculty(user) || faculty;
+                faculty = await window.CiteFlowWorkflow.getCurrentFaculty(user) || faculty;
             } catch (_) {}
         }
+
         if (!faculty) {
-            // Profile often loads after the sidebar. Do not hide the item yet.
             if (attempt < 6) {
                 setTimeout(() => refreshFacultyChairReviewNav({ attempt: attempt + 1 }), 500);
             } else {
@@ -649,22 +645,35 @@ async function refreshFacultyChairReviewNav(options = {}) {
             }
             return;
         }
-        if (wf?.currentUserHasChairpersonGrant) {
-            show = await wf.currentUserHasChairpersonGrant(sb, faculty, user);
-        } else if (window.CiteFlowChairReview?.access) {
+
+        // ✅ DIRECT CHECK: Only show if an ACTIVE grant exists in wf_delegated_access
+        let query = sb
+            .from('wf_delegated_access')
+            .select('id, is_active')
+            .eq('is_active', true);
+
+        if (faculty.id) {
+            query = query.or(`grantee_faculty_id.eq.${faculty.id},grantee_auth_user_id.eq.${user.id}`);
+        } else {
+            query = query.eq('grantee_auth_user_id', user.id);
+        }
+
+        const { data: activeGrants, error } = await query;
+
+        if (!error && activeGrants && activeGrants.length > 0) {
             show = true;
-        } else if (sb?.rpc) {
-            const rpc = await sb.rpc('wf_current_user_has_chairperson_grant');
-            show = rpc.data === true;
+        } else {
+            show = false; // Revoked or no grant -> HIDE
         }
-        if (show && window.CiteFlowChairReview?.refreshAccess) {
-            try {
-                await window.CiteFlowChairReview.refreshAccess(faculty, user);
-            } catch (_) {}
+
+        if (window.CiteFlowChairReview) {
+            window.CiteFlowChairReview.access = show;
         }
-    } catch (_) {
+    } catch (err) {
+        console.warn('Error checking chairperson review nav access:', err);
         show = false;
     }
+
     syncFacultyChairReviewNav(show);
 }
 

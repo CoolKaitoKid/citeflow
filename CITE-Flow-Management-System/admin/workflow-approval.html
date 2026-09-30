@@ -3646,6 +3646,8 @@ function returnToWorkflowMain(updateHash = true) {
     if (updateHash) history.pushState(null, '', window.location.pathname + window.location.search);
 }
 
+
+
 function setDrawerActions(html) {
     const bar = document.getElementById('wfDrawerActions');
     if (!bar) return;
@@ -4503,6 +4505,213 @@ function renderDelegates() {
         </div>
     `).join('');
 }
+
+/* =========================================================================
+   CHAIRPERSON / OIC ACCESS LOGIC (ADMIN PORTAL)
+========================================================================= */
+
+// 1. Open Modal
+async function openAccessModal() {
+    const modal = document.getElementById('accessModal');
+    if (!modal) return;
+    modal.classList.add('open');
+    modal.style.display = 'flex';
+
+    await populateAccessUserSelect();
+    await loadDelegatedAccessList();
+}
+
+// 2. Close Modal
+function closeAccessModal() {
+    const modal = document.getElementById('accessModal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.style.display = 'none';
+}
+
+// 3. Populate Faculty Dropdown
+async function populateAccessUserSelect() {
+    const select = document.getElementById('accessUserSelect');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Loading faculty members...</option>';
+
+    try {
+        const client = window.supabaseClient || window.CiteFlowAuth?.ensureSharedClient?.();
+        const { data: facultyList, error } = await client
+            .from('faculty')
+            .select('id, auth_user_id, full_name, email, department')
+            .order('full_name');
+
+        if (error) throw error;
+
+        select.innerHTML = '<option value="">Select a faculty member...</option>';
+        (facultyList || []).forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f.id;
+            opt.dataset.authUserId = f.auth_user_id || '';
+            opt.dataset.dept = f.department || '';
+            opt.textContent = `${f.full_name} (${f.department || 'No Dept'} · ${f.email || ''})`;
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('Error loading faculty list:', err);
+        select.innerHTML = '<option value="">Failed to load faculty</option>';
+    }
+}
+
+// 4. Load Active Delegates List
+async function loadDelegatedAccessList() {
+    const container = document.getElementById('currentDelegates');
+    if (!container) return;
+
+    container.innerHTML = '<p class="text-sm text-gray-400 py-2">Loading active access...</p>';
+
+    try {
+        const client = window.supabaseClient || window.CiteFlowAuth?.ensureSharedClient?.();
+        const { data: grants, error } = await client
+            .from('wf_delegated_access')
+            .select(`
+                id,
+                grantee_faculty_id,
+                grantee_auth_user_id,
+                departments,
+                access_role,
+                is_active,
+                faculty:grantee_faculty_id ( id, full_name, email, department )
+            `)
+            .eq('is_active', true);
+
+        if (error) throw error;
+
+        renderDelegates(grants || []);
+    } catch (err) {
+        console.error('Error loading delegates:', err);
+        container.innerHTML = '<p class="text-sm text-red-500 py-2">Error loading delegates.</p>';
+    }
+}
+
+// 5. Render Active Delegates with Revoke Button
+function renderDelegates(grants) {
+    const container = document.getElementById('currentDelegates');
+    if (!container) return;
+
+    if (!grants.length) {
+        container.innerHTML = '<p class="text-sm text-gray-400">No chairperson access configured.</p>';
+        return;
+    }
+
+    container.innerHTML = grants.map(grant => {
+        const name = grant.faculty?.full_name || 'Faculty Member';
+        const depts = Array.isArray(grant.departments) ? grant.departments.join(', ') : (grant.departments || 'BSIT');
+        const role = (grant.access_role || 'Chairperson').toUpperCase();
+        const facultyId = grant.grantee_faculty_id;
+
+        return `
+            <div class="delegate-row flex items-center justify-between p-3 border border-gray-100 rounded-lg bg-gray-50 mb-2">
+                <div>
+                    <div class="font-medium text-sm text-gray-900">${escapeHtml(name)}</div>
+                    <div class="text-xs text-gray-500 mt-0.5">
+                        <span class="font-semibold text-gray-700">${escapeHtml(depts)}</span> · ${escapeHtml(role)}
+                    </div>
+                </div>
+                <button type="button" onclick="revokeAccess('${grant.id}', '${facultyId}')" 
+                    class="btn btn-danger btn-sm text-xs py-1 px-3">
+                    Revoke
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+
+// 6. GRANT ACCESS
+async function grantAccess() {
+    const select = document.getElementById('accessUserSelect');
+    const facultyId = select?.value;
+
+    if (!facultyId) {
+        alert('Please select a faculty member.');
+        return;
+    }
+
+    const selectedOption = select.options[select.selectedIndex];
+    const authUserId = selectedOption.dataset.authUserId || null;
+
+    // Collect checked departments
+    const selectedDepts = [];
+    if (document.getElementById('deptBSIT')?.checked) selectedDepts.push('BSIT');
+    if (document.getElementById('deptBSIE')?.checked) selectedDepts.push('BSIE');
+    if (document.getElementById('deptBIT')?.checked) selectedDepts.push('BIT');
+
+    if (!selectedDepts.length) {
+        alert('Please select at least one department (BSIT, BSIE, or BIT).');
+        return;
+    }
+
+    try {
+        const client = window.supabaseClient || window.CiteFlowAuth?.ensureSharedClient?.();
+
+        // 1. Insert active grant into wf_delegated_access
+        const { error } = await client
+            .from('wf_delegated_access')
+            .insert([{
+                grantee_faculty_id: facultyId,
+                grantee_auth_user_id: authUserId,
+                departments: selectedDepts.join(','),
+                access_role: 'chairperson',
+                is_active: true,
+                created_at: new Date().toISOString()
+            }]);
+
+        if (error) throw error;
+
+        // Reset form inputs
+        select.value = '';
+        document.getElementById('deptBSIT').checked = false;
+        document.getElementById('deptBSIE').checked = false;
+        document.getElementById('deptBIT').checked = false;
+
+        await loadDelegatedAccessList();
+        showToast('Chairperson review access granted!', 'success');
+    } catch (err) {
+        console.error('Error granting access:', err);
+        alert('Failed to grant access: ' + err.message);
+    }
+}
+
+// 7. REVOKE ACCESS (Deactivates delegation AND resets position back to 'Faculty')
+async function revokeAccess(grantId, facultyId) {
+    if (!confirm('Are you sure you want to revoke this Chairperson access?')) {
+        return;
+    }
+
+    try {
+        const client = window.supabaseClient || window.CiteFlowAuth?.ensureSharedClient?.();
+
+        // 1. Deactivate in wf_delegated_access
+        const { error: grantErr } = await client
+            .from('wf_delegated_access')
+            .update({ is_active: false })
+            .eq('id', grantId);
+
+        if (grantErr) throw grantErr;
+
+        // 2. Also ensure her faculty table position is reset to 'Faculty'
+        if (facultyId && facultyId !== 'undefined' && facultyId !== 'null') {
+            await client
+                .from('faculty')
+                .update({ position: 'Faculty', role: 'Faculty' })
+                .eq('id', facultyId);
+        }
+
+        await loadDelegatedAccessList();
+        showToast('Access revoked. Chairperson Review is now locked for this user.', 'warn');
+    } catch (err) {
+        console.error('Error revoking access:', err);
+        alert('Failed to revoke access: ' + err.message);
+    }
+}
+
 
 function openAccessModal() {
     const ws = ensureWorkflowState();
