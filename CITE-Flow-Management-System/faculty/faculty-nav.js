@@ -138,10 +138,30 @@ function navigateToFacultyPage(pageFile) {
     const dest = mappedFile + mappedHash;
     const currentFile = getFacultyCurrentPageFile();
     const samePage = normalizeFacultyPageKey(currentFile) === normalizeFacultyPageKey(mappedFile);
+
     if (samePage) {
-        if (mappedHash && location.hash !== mappedHash) {
+        // ✅ FIX: Handle switching between Submissions and Chairperson Review on the same page
+        if (normalizeFacultyPageKey(currentFile) === 'submissions') {
+            if (mappedHash === '#chair-review' || mappedHash === '#chairperson-review') {
+                location.hash = mappedHash;
+                if (window.CiteFlowChairReview && typeof window.CiteFlowChairReview.setMode === 'function') {
+                    window.CiteFlowChairReview.setMode('chair');
+                }
+            } else {
+                // Switching back to My Submissions: remove hash & switch mode
+                if (location.hash) {
+                    history.replaceState(null, '', location.pathname);
+                }
+                if (window.CiteFlowChairReview && typeof window.CiteFlowChairReview.setMode === 'function') {
+                    window.CiteFlowChairReview.setMode('mine');
+                }
+            }
+        } else if (mappedHash && location.hash !== mappedHash) {
             location.hash = mappedHash;
+        } else if (!mappedHash && location.hash) {
+            history.replaceState(null, '', location.pathname);
         }
+
         if (typeof window.switchTab === 'function' && mappedHash && /faculty-profile/i.test(mappedFile)) {
             window.switchTab(mappedHash.replace('#', ''));
         }
@@ -153,6 +173,7 @@ function navigateToFacultyPage(pageFile) {
         updateFacultyActiveMenu();
         return;
     }
+
     const inChairperson = window.location.pathname.toLowerCase().includes('/chairperson/');
     if (inChairperson && !dest.startsWith('../') && !dest.startsWith('/')) {
         window.location.href = `../faculty/${dest}`;

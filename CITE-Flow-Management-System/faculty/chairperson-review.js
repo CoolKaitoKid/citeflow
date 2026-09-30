@@ -389,7 +389,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         else alert(message);
     }
 
-    function setMode(mode) {
+        function setMode(mode) {
         if (mode === 'chair' && !review.access) {
             review.mode = 'mine';
             if (typeof global.renderListPage === 'function') global.renderListPage();
@@ -397,13 +397,20 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         }
         review.mode = mode === 'chair' ? 'chair' : 'mine';
         if (review.mode === 'chair') {
+            location.hash = '#chair-review';
             global.currentView = 'chair-review';
             render();
             return;
         }
+        
+        // ✅ Clear hash and reset view to My Submissions list
+        if (location.hash === '#chair-review' || location.hash === '#chairperson-review') {
+            history.replaceState(null, '', location.pathname);
+        }
         global.currentView = 'list';
         if (typeof global.renderListPage === 'function') global.renderListPage();
     }
+
 
     function setTab(tab) {
         review.tab = ['pending', 'approved', 'revision', 'declined', 'department'].includes(tab) ? tab : 'pending';
@@ -703,7 +710,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         root.innerHTML = `
             <div class="fade-in">
                 <header class="mb-6">
-                    <p class="cite-kicker">Submissions</p>
+                    
                     <div class="flex items-center flex-wrap gap-2.5 mt-1">
                         <h1 class="cite-title">Chairperson Review</h1>
                         <span class="cite-live"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>Live</span>
@@ -1355,10 +1362,12 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         afterDataRefresh
     };
 
-    window.addEventListener('hashchange', () => {
+               window.addEventListener('hashchange', () => {
         const hash = String(location.hash || '').toLowerCase();
         if (hash === '#chair-review' || hash === '#chairperson-review') {
             setMode('chair');
+        } else {
+            setMode('mine'); // <-- Switches back to My Submissions when hash is removed
         }
         if (typeof window.updateFacultyActiveMenu === 'function') {
             window.updateFacultyActiveMenu();
