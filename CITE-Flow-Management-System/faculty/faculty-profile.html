@@ -2333,21 +2333,31 @@ let teachingLoads = [];
 
 
 // Strips ALL CiteFlow metadata comments and stray encoded fragments from any description
-// Strips ALL CiteFlow metadata comments and stray encoded fragments from any description
-// Strips ALL CiteFlow metadata comments and stray encoded fragments from any description
 function stripCiteflowMetadata(text) {
     if (!text) return '';
-    return String(text)
-        // 1. Strip full CITEFLOW HTML comments (Accomplishments, Docs, Research)
-        .replace(/<!--\s*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA:[\s\S]*?--\>/gi, '')
-        // 2. Strip any other leftover HTML comments
-        .replace(/<!--[\s\S]*?--\>/gi, '')
-        // 3. Clean raw URL-encoded metadata fragments
-        .replace(/%22(?:name|size|type|url|media_files|duration_hours)[^\s\n\r]*/gi, '')
-        .replace(/%7B[\s\S]*?%7D/gi, '')
-        .trim();
-}
+    let str = String(text);
 
+    // 1. Strip full CITEFLOW HTML comments (Accomplishments, Docs, Research)
+    const citeflowRegex = new RegExp('<' + '!--\\s*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA:[\\s\\S]*?(?:--' + '>|--!>|→|->|&#8594;|&rarr;|\\n|$)', 'gi');
+    str = str.replace(citeflowRegex, '');
+
+    // 2. Strip any line containing CITEFLOW metadata
+    const lineRegex = new RegExp('^[^\\n]*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA[^\\n]*(?:\\r?\\n|$)', 'gim');
+    str = str.replace(lineRegex, '');
+
+    const inlineRegex = new RegExp('[^\\n]*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA[^\\n]*', 'gi');
+    str = str.replace(inlineRegex, '');
+
+    // 3. Strip any other leftover HTML comments
+    const htmlCommentRegex = new RegExp('<' + '!--[\\s\\S]*?--' + '>', 'gi');
+    str = str.replace(htmlCommentRegex, '');
+
+    // 4. Clean raw URL-encoded metadata fragments
+    str = str.replace(/%22(?:name|size|type|url|media_files|duration_hours)[^\s\n\r]*/gi, '');
+    str = str.replace(/%7B[\s\S]*?%7D/gi, '');
+
+    return str.trim();
+}
 
 function clearDocumentUploadForm() {
     // Reset text and date inputs
@@ -3172,11 +3182,12 @@ function unpackAccomplishment(item) {
     if (!item) return item;
     let durationHours = item.duration_hours || null;
     if (item.description && item.description.includes('CITEFLOW_ACCOMP_DATA:')) {
-        const matches = [...item.description.matchAll(/<!--\s*CITEFLOW_ACCOMP_DATA:(.*?)\s*--\>/gi)];
+        const accomRegex = new RegExp('<' + '!--\\s*CITEFLOW_ACCOMP_DATA:(.*?)(?:--' + '>|--!>|→|->|&#8594;|&rarr;|\\n|$)', 'gi');
+        const matches = [...item.description.matchAll(accomRegex)];
         if (matches.length > 0) {
             const lastMatch = matches[matches.length - 1];
             try {
-                const meta = JSON.parse(decodeURIComponent(lastMatch[1]));
+                const meta = JSON.parse(decodeURIComponent(lastMatch[1].trim()));
                 if (!durationHours && meta.duration_hours) {
                     durationHours = meta.duration_hours;
                 }
@@ -3185,10 +3196,13 @@ function unpackAccomplishment(item) {
             }
         }
     }
+    // Clean description without metadata
     item.clean_description = stripCiteflowMetadata(item.description);
     item.duration_hours = durationHours;
     return item;
 }
+
+
 async function loadResearch() {
     const container = document.getElementById('researchList');
 
@@ -5195,53 +5209,77 @@ function closeViewExtensionModal() {
 }
 
 function openViewAccomplishmentModal(id) {
-    let item = allFacultyAccomplishments.find(a => String(a.id) === String(id));
-    if (!item) return;
+    const accomplishment = (allFacultyAccomplishments || []).find(a => String(a.id) === String(id));
+    if (!accomplishment) return;
 
-    item = unpackAccomplishment(item);
-    window.currentViewingAccomplishmentId = String(item.id || id);
+    window.currentViewingAccomplishmentId = id;
 
-    document.getElementById('viewAccomplishmentTitle').textContent = item.title || 'Untitled Accomplishment';
-    document.getElementById('viewAccomplishmentTypeBadge').textContent = item.accomplishment_type || 'Activity';
-    document.getElementById('viewAccomplishmentDate').textContent = item.date_achieved ? formatLongDate(item.date_achieved) : '—';
-    document.getElementById('viewAccomplishmentVenue').textContent = item.venue || 'Not specified';
-    document.getElementById('viewAccomplishmentDuration').textContent = item.duration_hours ? item.duration_hours + ' Hours' : '—';
-    document.getElementById('viewAccomplishmentDescription').textContent = item.clean_description || item.description || 'No description provided.';
+    // Title & Type
+    document.getElementById('viewAccomplishmentTitle').textContent = accomplishment.title || 'Untitled Accomplishment';
+    const typeBadge = document.getElementById('viewAccomplishmentTypeBadge');
+    if (typeBadge) typeBadge.textContent = accomplishment.type || 'Accomplishment';
 
-    // Proof certificate
-    const proofSection = document.getElementById('viewAccomplishmentProofSection');
-    const proofEl = document.getElementById('viewAccomplishmentProof');
-    if (item.proof_file_url) {
-        proofSection.classList.remove('hidden');
-        proofEl.innerHTML = `
-            <div class="flex items-center gap-2.5 truncate">
-                <span class="text-xl">📜</span>
-                <span class="text-xs font-semibold text-slate-800 truncate">Proof / Certificate Document</span>
-            </div>
-            <a href="${esc(item.proof_file_url)}" target="_blank" class="text-xs font-semibold text-[#621708] hover:underline shrink-0">View Certificate</a>
-        `;
-    } else {
-        proofSection.classList.add('hidden');
+    // Meta details
+    document.getElementById('viewAccomplishmentDate').textContent = formatLongDate(accomplishment.date_achieved || accomplishment.date);
+    document.getElementById('viewAccomplishmentVenue').textContent = accomplishment.venue || 'Not specified';
+    document.getElementById('viewAccomplishmentDuration').textContent = accomplishment.duration_hours ? `${accomplishment.duration_hours} Hours` : 'Not specified';
+
+    // Description & Highlights (Strip metadata and NEVER fallback to raw description)
+    const cleanDesc = stripCiteflowMetadata(accomplishment.clean_description || accomplishment.description || '');
+    const descEl = document.getElementById('viewAccomplishmentDescription');
+    if (descEl) {
+        descEl.textContent = cleanDesc || 'No description provided';
     }
 
-    // Photo gallery
+    // Proof / Certificate Document
+    const proofSection = document.getElementById('viewAccomplishmentProofSection');
+    const proofContainer = document.getElementById('viewAccomplishmentProof');
+    if (proofSection && proofContainer) {
+        if (accomplishment.proof_url || accomplishment.file_url) {
+            const proofUrl = accomplishment.proof_url || accomplishment.file_url;
+            proofContainer.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">📜</span>
+                    <div>
+                        <div class="text-sm font-semibold text-slate-800">Proof / Certificate Document</div>
+                        <div class="text-xs text-slate-400">Attached accomplishment proof</div>
+                    </div>
+                </div>
+                <a href="${esc(proofUrl)}" target="_blank" class="text-xs font-semibold text-[#621708] hover:underline">View Certificate</a>
+            `;
+            proofSection.classList.remove('hidden');
+        } else {
+            proofSection.classList.add('hidden');
+        }
+    }
+
+    // Photo Documentation Gallery (Removed photo description / caption)
     const photosSection = document.getElementById('viewAccomplishmentPhotosSection');
-    const photosEl = document.getElementById('viewAccomplishmentPhotos');
-    const photos = Array.isArray(item.photo_attachments) ? item.photo_attachments : [];
-    if (photos.length) {
-        photosSection.classList.remove('hidden');
-        photosEl.innerHTML = photos.map(p => `
-            <a href="${esc(p.photo_url || p.url)}" target="_blank" class="rounded-2xl border border-slate-200 overflow-hidden bg-slate-100 aspect-square block group">
-                <img src="${esc(p.photo_url || p.url)}" alt="${esc(p.title || 'Documentation photo')}" class="w-full h-full object-cover group-hover:scale-105 transition-transform">
-            </a>
-        `).join('');
-    } else {
-        photosSection.classList.add('hidden');
+    const photosContainer = document.getElementById('viewAccomplishmentPhotos');
+    if (photosSection && photosContainer) {
+        const photos = accomplishment.photos || accomplishment.photo_urls || accomplishment.media_files || [];
+        if (Array.isArray(photos) && photos.length > 0) {
+            photosContainer.innerHTML = photos.map(photo => {
+                const url = typeof photo === 'string' ? photo : (photo.url || photo.path);
+                return `
+                    <div class="rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-2xs">
+                        <a href="${esc(url)}" target="_blank" class="block">
+                            <img src="${esc(url)}" alt="Photo Documentation" class="w-full h-32 object-cover hover:scale-105 transition-transform duration-200 cursor-pointer">
+                        </a>
+                    </div>
+                `;
+            }).join('');
+            photosSection.classList.remove('hidden');
+        } else {
+            photosSection.classList.add('hidden');
+        }
     }
 
     const modal = document.getElementById('viewAccomplishmentModal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
 }
 
 function closeViewAccomplishmentModal() {
@@ -5692,19 +5730,35 @@ async function saveAccomplishment() {
 
     try {
         let newAttachments = [];
-        if (selectedAccomplishmentFiles.length > 0) {
+        if (typeof selectedAccomplishmentFiles !== 'undefined' && selectedAccomplishmentFiles.length > 0) {
             newAttachments = await uploadPhotoAttachments(currentFaculty.id);
         }
 
         const existingPhotos = Array.isArray(window.existingAccomplishmentPhotos) ? window.existingAccomplishmentPhotos : [];
-        const finalAttachments = [...existingPhotos, ...newAttachments];
+        
+        // Strip any caption or photo description from the photo attachments
+        const finalAttachments = [...existingPhotos, ...newAttachments].map(att => {
+            if (typeof att === 'string') return att;
+            const cleanAtt = { ...att };
+            delete cleanAtt.description;
+            delete cleanAtt.caption;
+            return cleanAtt;
+        });
 
         saveBtn.textContent = isEdit ? 'Updating...' : 'Saving...';
 
-        let packedDescription = rawDescription;
+        // 1. Strip any existing CITEFLOW metadata from the description first
+        const cleanDescription = stripCiteflowMetadata(rawDescription);
+
+        // 2. Only append fresh metadata once (safely formatted)
+        let packedDescription = cleanDescription;
         if (durationHours) {
             const metaJson = encodeURIComponent(JSON.stringify({ duration_hours: durationHours }));
-            packedDescription = `${rawDescription}\n<!-- CITEFLOW_ACCOMP_DATA:${metaJson} -->`.trim();
+            const openTag = '<' + '!--';
+            const closeTag = '--' + '>';
+            packedDescription = cleanDescription 
+                ? `${cleanDescription}\n${openTag} CITEFLOW_ACCOMP_DATA:${metaJson} ${closeTag}` 
+                : `${openTag} CITEFLOW_ACCOMP_DATA:${metaJson} ${closeTag}`;
         }
 
         const proofUrl = finalAttachments.length ? (finalAttachments[0].photo_url || finalAttachments[0].url || '') : '';
@@ -5735,6 +5789,13 @@ async function saveAccomplishment() {
             if (error) throw error;
         }
 
+        // Reset editing state
+        window.currentEditingAccomplishmentId = null;
+        window.existingAccomplishmentPhotos = [];
+        if (typeof selectedAccomplishmentFiles !== 'undefined') {
+            selectedAccomplishmentFiles = [];
+        }
+
         closeAccomplishmentModal();
         clearAccomplishmentForm();
         await loadAccomplishments();
@@ -5754,6 +5815,7 @@ async function saveAccomplishment() {
 
         alert(isEdit ? 'Accomplishment updated successfully.' : 'Accomplishment saved successfully.');
     } catch (error) {
+        console.error('Save Accomplishment Error:', error);
         alert('Unable to save accomplishment: ' + error.message);
     } finally {
         saveBtn.disabled = false;
