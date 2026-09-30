@@ -170,7 +170,7 @@ GRANT EXECUTE ON FUNCTION public.wf_task_requires_chairperson(uuid) TO authentic
 CREATE OR REPLACE FUNCTION public.mfo_get_submission_packet(p_submission_id uuid)
 RETURNS public.mfo_packets
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = public
 AS $$

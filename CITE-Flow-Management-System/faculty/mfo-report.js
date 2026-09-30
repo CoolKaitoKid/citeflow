@@ -802,6 +802,8 @@
             if (global.CiteFlowAuthGuard?.ready) await global.CiteFlowAuthGuard.ready;
 
             const session = await requireSession();
+            state.session = session;
+            if (session?.user) state.user = session.user;
             const sidebarPromise = typeof global.loadSidebar === 'function'
                 ? Promise.resolve().then(() => global.loadSidebar()).catch((e) => warn('sidebar', e)) : Promise.resolve();
             try { await db().rpc('wf_link_faculty_auth_user_if_safe'); } catch (_) { /* optional */ }
@@ -829,6 +831,13 @@
         }
     }
 
+    function withTimeout(promise, ms, fallbackValue) {
+        return Promise.race([
+            promise,
+            new Promise((resolve) => setTimeout(() => resolve(fallbackValue), ms))
+        ]);
+    }
+
     function renderInitFailure() {
         const root = document.getElementById('mfoApp');
         if (!root) return;
@@ -851,45 +860,86 @@
     async function initReviewerMode(submissionId) {
         const client = db();
         state.reviewerMode = true;
+        if (!state.user && state.session?.user) state.user = state.session.user;
 
-        let sub = await client.from('wf_submissions').select('*').eq('id', submissionId).maybeSingle();
-        if (sub.error) throw sub.error;
-        if (!sub.data) {
-            const listed = await client.rpc('wf_list_chairperson_submissions');
-            sub = { data: (listed.data || []).find((r) => String(r.id) === String(submissionId)) || null };
+        let sub = null;
+        try {
+            const subRes = await withTimeout(
+                client.from('wf_submissions').select('*').eq('id', submissionId).maybeSingle(),
+                4000,
+                { data: null, error: null }
+            );
+            if (subRes?.error) throw subRes.error;
+            sub = subRes;
+        } catch (e) {
+            warn('fetch submission', e);
         }
-        if (!sub.data) throw new Error('This submission is not available to your account.');
-        state.submission = sub.data;
 
+        if (!sub?.data) {
+            try {
+                const listed = await withTimeout(
+                    client.rpc('wf_list_chairperson_submissions'),
+                    4000,
+                    { data: [] }
+                );
+                sub = { data: (listed?.data || []).find((r) => String(r.id) === String(submissionId)) || null };
+            } catch (_) {}
+        }
+        if (!sub?.data) throw new Error('This submission is not available to your account.');
+        state.submission = sub.data;
         // Retrieve MFO packet via authoritative RPC or fallbacks
         let packetData = null;
         try {
-            const rpcRes = await client.rpc('mfo_get_submission_packet', { p_submission_id: submissionId });
-            if (rpcRes.data) {
+            const rpcRes = await withTimeout(
+                client.rpc('mfo_get_submission_packet', { p_submission_id: submissionId }),
+                3500,
+                { data: null }
+            );
+            if (rpcRes?.data) {
                 packetData = Array.isArray(rpcRes.data) ? rpcRes.data[0] : rpcRes.data;
             }
         } catch (_) {}
 
         // Fallback 1: Query by submission_id
         if (!packetData) {
-            const p1 = await client.from('mfo_packets').select('*').eq('submission_id', submissionId).maybeSingle();
-            if (p1.data) packetData = p1.data;
+            try {
+                const p1 = await withTimeout(
+                    client.from('mfo_packets').select('*').eq('submission_id', submissionId).maybeSingle(),
+                    3000,
+                    { data: null }
+                );
+                if (p1?.data) packetData = p1.data;
+            } catch (_) {}
         }
 
         // Fallback 2: Query by task_id and faculty_id
         if (!packetData && state.submission.task_id && state.submission.faculty_id) {
-            const p2 = await client.from('mfo_packets').select('*').eq('task_id', state.submission.task_id).eq('faculty_id', state.submission.faculty_id).maybeSingle();
-            if (p2.data) packetData = p2.data;
+            try {
+                const p2 = await withTimeout(
+                    client.from('mfo_packets').select('*').eq('task_id', state.submission.task_id).eq('faculty_id', state.submission.faculty_id).maybeSingle(),
+                    3000,
+                    { data: null }
+                );
+                if (p2?.data) packetData = p2.data;
+            } catch (_) {}
         }
 
         // Fallback 3: Check wf_submission_files for tagged mfo_packet_id
         if (!packetData) {
             try {
-                const filesRes = await client.from('wf_submission_files').select('mfo_packet_id').eq('submission_id', submissionId);
-                const pktId = (filesRes.data || []).map((f) => f.mfo_packet_id).find(Boolean);
+                const filesRes = await withTimeout(
+                    client.from('wf_submission_files').select('mfo_packet_id').eq('submission_id', submissionId),
+                    3000,
+                    { data: [] }
+                );
+                const pktId = (filesRes?.data || []).map((f) => f.mfo_packet_id).find(Boolean);
                 if (pktId) {
-                    const p3 = await client.from('mfo_packets').select('*').eq('id', pktId).maybeSingle();
-                    if (p3.data) packetData = p3.data;
+                    const p3 = await withTimeout(
+                        client.from('mfo_packets').select('*').eq('id', pktId).maybeSingle(),
+                        3000,
+                        { data: null }
+                    );
+                    if (p3?.data) packetData = p3.data;
                 }
             } catch (_) {}
         }
@@ -897,8 +947,12 @@
         // Fallback 4: Query latest packet for this faculty member
         if (!packetData && state.submission.faculty_id) {
             try {
-                const facPackets = await client.from('mfo_packets').select('*').eq('faculty_id', state.submission.faculty_id).order('updated_at', { ascending: false });
-                if (Array.isArray(facPackets.data) && facPackets.data.length > 0) {
+                const facPackets = await withTimeout(
+                    client.from('mfo_packets').select('*').eq('faculty_id', state.submission.faculty_id).order('updated_at', { ascending: false }),
+                    3000,
+                    { data: [] }
+                );
+                if (Array.isArray(facPackets?.data) && facPackets.data.length > 0) {
                     const matched = facPackets.data.find((p) => p.task_id && String(p.task_id) === String(state.submission.task_id))
                         || facPackets.data[0];
                     packetData = matched;
@@ -913,7 +967,7 @@
             if (!packetData.task_id && state.submission.task_id) patch.task_id = state.submission.task_id;
             if (Object.keys(patch).length > 0) {
                 try {
-                    await client.from('mfo_packets').update(patch).eq('id', packetData.id);
+                    client.from('mfo_packets').update(patch).eq('id', packetData.id).then(() => {}).catch(() => {});
                     Object.assign(packetData, patch);
                 } catch (_) {}
             }
@@ -940,19 +994,19 @@
 
         const [author, task, configs, catalog] = await Promise.all([
             state.packet.faculty_id
-                ? client.from('faculty').select('*').eq('id', state.packet.faculty_id).maybeSingle()
+                ? withTimeout(client.from('faculty').select('*').eq('id', state.packet.faculty_id).maybeSingle(), 3000, { data: null })
                 : Promise.resolve({ data: null }),
             state.submission.task_id
-                ? client.from('wf_tasks').select('*').eq('id', state.submission.task_id).maybeSingle()
+                ? withTimeout(client.from('wf_tasks').select('*').eq('id', state.submission.task_id).maybeSingle(), 3000, { data: null })
                 : Promise.resolve({ data: null }),
-            client.from('wf_report_configs').select('*'),
-            client.from('mfo_section_catalog').select('*').order('sort_order', { ascending: true })
+            withTimeout(client.from('wf_report_configs').select('*'), 3000, { data: [] }),
+            withTimeout(client.from('mfo_section_catalog').select('*').order('sort_order', { ascending: true }), 3000, { data: [] })
         ]);
         state.faculty = author?.data || { id: state.packet.faculty_id, full_name: 'Faculty', department: state.packet.department };
         state.task = task?.data || null;
-        state.configs = configs.data || [];
+        state.configs = configs?.data || [];
         state.config = linkedApprovalConfig();
-        state.catalog = catalog.data || [];
+        state.catalog = catalog?.data || [];
         state.period = {
             reporting_year: state.packet.reporting_year, quarter: state.packet.quarter, period_label: state.packet.period_label,
             period_start: state.packet.period_start, period_end: state.packet.period_end,
@@ -960,11 +1014,17 @@
         };
 
         await loadPacketData();
-        try { state.reviewerActor = await resolveFaculty(state.user); } catch (_) { state.reviewerActor = null; }
+        try {
+            if (state.user) {
+                state.reviewerActor = await resolveFaculty(state.user);
+            }
+        } catch (_) {
+            state.reviewerActor = null;
+        }
         let isFinalApprover = false;
         try {
-            const finalRes = await client.rpc('wf_is_final_approver');
-            isFinalApprover = !!finalRes.data;
+            const finalRes = await withTimeout(client.rpc('wf_is_final_approver'), 2000, { data: false });
+            isFinalApprover = !!finalRes?.data;
         } catch (_) {}
         if (!isFinalApprover && state.user) {
             const role = String(state.reviewerActor?.role || state.user?.user_metadata?.role || '').toLowerCase();
@@ -1021,7 +1081,7 @@
         }
     }
 
-    async function confirmReviewerModal() {
+    async function confirmReviewerAction() {
         const modal = state.reviewerModal;
         if (!modal) return;
         const action = modal.action;
@@ -1040,6 +1100,7 @@
         closeReviewerModal();
         await executeReviewAction(action, comment);
     }
+    const confirmReviewerModal = confirmReviewerAction;
 
     function reviewerAction(action) {
         openReviewerModal(action);
@@ -1118,7 +1179,7 @@
                 try {
                     const files = await client.from('wf_submission_files').select('*').eq('submission_id', state.submission.id).order('created_at', { ascending: true });
                     state.files = files.data || [];
-                    await hydrateFileDisplayUrls(state.files);
+                    void hydrateFileDisplayUrls(state.files).catch((e) => warn('sign files', e));
                 } catch (_) {}
             }
             return;
@@ -1161,7 +1222,7 @@
             if (key) unique.set(key, f);
         });
         state.files = [...unique.values()];
-        await hydrateFileDisplayUrls(state.files);
+        void hydrateFileDisplayUrls(state.files).catch((e) => warn('sign files', e));
 
         const backup = loadLocalBackup();
         if (backup?.rows) {
@@ -1185,6 +1246,7 @@
     }
 
     function saveLocalBackup() {
+        if (state.reviewerMode) return;
         try {
             const data = {
                 facultyId: state.faculty?.id,
@@ -2524,8 +2586,23 @@
         const root = document.getElementById('mfoApp');
         if (!root) return;
         if (state.initFailure) { renderInitFailure(); return; }
-        if (!state.faculty) return;
-        if (state.previewOpen) { renderPreview(); return; }
+        // In reviewer mode, faculty is always pre-set; do not bail silently.
+        if (!state.faculty && !state.reviewerMode) return;
+        // Defensive fallback: ensure state.faculty is never null when rendering
+        if (!state.faculty) {
+            state.faculty = { id: null, full_name: 'Faculty', department: '' };
+        }
+        if (state.previewOpen) {
+            try { renderPreview(); } catch (e) {
+                err('renderPreview failed', e);
+                root.innerHTML = `<div class="surface rounded-[16px] p-6 text-sm text-slate-700">
+                    <div class="font-bold text-base mb-2">Could not render the report</div>
+                    <p class="font-mono text-xs break-words bg-slate-50 rounded-lg p-3">${esc(String(e?.message || e))}</p>
+                    <button type="button" class="cite-action mt-4" onclick="window.location.reload()">Retry</button>
+                </div>`;
+            }
+            return;
+        }
 
         const faculty = state.faculty;
         const grouped = [];
