@@ -348,8 +348,12 @@
     function endBusy() { state.busy = false; state.busyLabel = ''; render(); }
 
     function toast(message, type) {
-        const el = document.getElementById('mfoToast');
-        if (!el) { window.alert(message); return; }
+        let el = document.getElementById('mfoToast');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'mfoToast';
+            document.body.appendChild(el);
+        }
         el.className = type === 'error' ? 'err' : 'ok';
         el.style.display = 'block';
         el.textContent = message;
@@ -996,19 +1000,53 @@
         return ['submitted', 'late', 'underreview'].includes(status) && stage === 'chairperson';
     }
 
-    async function reviewerAction(action) {
-        if (!reviewerCanAct() || !global.CiteFlowWorkflow?.applySubmissionReview) return;
-        let comment = '';
-        if (action === 'revision' || action === 'rejected') {
-            comment = String(window.prompt(action === 'revision' ? 'Remarks for revision (required):' : 'Reason for decline (required):') || '').trim();
-            if (!comment) { toast('Remarks are required.', 'error'); return; }
-        } else {
-            const confirmMsg = state.reviewerIsAdmin
-                ? 'Certify and grant final approval for this MFO Accomplishment Report?'
-                : 'Approve this MFO report and send it to Admin for final approval?';
-            if (!window.confirm(confirmMsg)) return;
+    function openReviewerModal(action) {
+        if (!reviewerCanAct()) return;
+        state.reviewerModal = { action, comment: '', error: '' };
+        render();
+    }
+
+    function closeReviewerModal() {
+        state.reviewerModal = null;
+        render();
+    }
+
+    function updateReviewerModalComment(comment) {
+        if (!state.reviewerModal) return;
+        state.reviewerModal.comment = comment;
+        if (comment.trim() && state.reviewerModal.error) {
+            state.reviewerModal.error = '';
+            const errEl = document.getElementById('mfoReviewCommentError');
+            if (errEl) errEl.style.display = 'none';
+        }
+    }
+
+    async function confirmReviewerModal() {
+        const modal = state.reviewerModal;
+        if (!modal) return;
+        const action = modal.action;
+        const comment = String(modal.comment || '').trim();
+
+        if ((action === 'revision' || action === 'rejected') && !comment) {
+            modal.error = action === 'revision'
+                ? 'Please provide remarks explaining what needs revision.'
+                : 'Please provide a reason for declining this report.';
+            render();
+            const input = document.getElementById('mfoReviewCommentInput');
+            if (input) input.focus();
+            return;
         }
 
+        closeReviewerModal();
+        await executeReviewAction(action, comment);
+    }
+
+    function reviewerAction(action) {
+        openReviewerModal(action);
+    }
+
+    async function executeReviewAction(action, comment = '') {
+        if (!reviewerCanAct() || !global.CiteFlowWorkflow?.applySubmissionReview) return;
         const isApprove = action === 'approved';
         const busyMsg = isApprove ? 'Approving…' : action === 'revision' ? 'Sending revision…' : 'Declining…';
         if (!beginBusy(busyMsg)) return;
@@ -1896,6 +1934,114 @@
         </div>`;
     }
 
+    function renderReviewerModal() {
+        const modal = state.reviewerModal;
+        if (!modal) return '';
+        const action = modal.action;
+        const isApprove = action === 'approved';
+        const isRevision = action === 'revision';
+        const isDecline = action === 'rejected';
+
+        const facultyName = state.faculty?.full_name || 'Faculty';
+        const department = state.faculty?.department || state.faculty?.department_code || 'Program';
+        const periodLabel = state.period?.period_label || 'Current Period';
+
+        let title = 'Review Decision';
+        let subtitle = 'MFO Accomplishment Report';
+        let iconHtml = '';
+        let confirmBtnText = 'Confirm';
+        let confirmBtnStyle = 'background:#621708;border-color:#621708;color:#fff;';
+        let promptText = '';
+        let requireRemarks = false;
+        let remarksPlaceholder = '';
+        let remarksLabel = 'Optional remarks';
+
+        if (isApprove) {
+            title = state.reviewerIsAdmin ? 'Certify & Approve MFO Report' : 'Approve MFO Report';
+            subtitle = state.reviewerIsAdmin ? 'Grant final institutional certification' : 'Advance report to Admin for final approval';
+            iconHtml = `<div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 text-xl border border-emerald-200 shadow-xs">
+                <i class="fa-solid fa-file-circle-check"></i>
+            </div>`;
+            confirmBtnText = state.reviewerIsAdmin ? 'Certify & Approve' : 'Approve Submission';
+            confirmBtnStyle = 'background:#047857;border-color:#047857;color:#fff;';
+            promptText = state.reviewerIsAdmin
+                ? `You are granting final approval and certifying the quarterly accomplishment report for <strong>${esc(facultyName)}</strong> (${esc(department)}).`
+                : `Approve this MFO Accomplishment Report for <strong>${esc(facultyName)}</strong> (${esc(department)}) and forward it to the Admin for final review.`;
+            remarksPlaceholder = 'Add any commendations, notes, or remarks (optional)...';
+        } else if (isRevision) {
+            title = 'Request Revision';
+            subtitle = 'Return report to submitter for corrections';
+            iconHtml = `<div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 text-xl border border-amber-200 shadow-xs">
+                <i class="fa-solid fa-rotate-left"></i>
+            </div>`;
+            confirmBtnText = 'Send Revision Request';
+            confirmBtnStyle = 'background:#b45309;border-color:#b45309;color:#fff;';
+            promptText = `Return this report to <strong>${esc(facultyName)}</strong>. The faculty member will be notified with your remarks so they can make corrections and resubmit.`;
+            requireRemarks = true;
+            remarksLabel = 'Revision Remarks (Required)';
+            remarksPlaceholder = 'Detail the items, tables, or documentation that require updating...';
+        } else if (isDecline) {
+            title = 'Decline MFO Report';
+            subtitle = 'Reject this report submission';
+            iconHtml = `<div class="w-11 h-11 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center shrink-0 text-xl border border-rose-200 shadow-xs">
+                <i class="fa-solid fa-circle-xmark"></i>
+            </div>`;
+            confirmBtnText = 'Decline Submission';
+            confirmBtnStyle = 'background:#be123c;border-color:#be123c;color:#fff;';
+            promptText = `Decline the MFO Accomplishment Report submitted by <strong>${esc(facultyName)}</strong>. This will formally decline the submission.`;
+            requireRemarks = true;
+            remarksLabel = 'Reason for Decline (Required)';
+            remarksPlaceholder = 'Specify the reason for declining this report...';
+        }
+
+        return `
+        <div class="mfo-review-overlay" onclick="if(event.target===this){CiteFlowMfoFaculty.closeReviewerModal()}">
+            <div class="mfo-review-dialog" role="dialog" aria-modal="true" style="max-width: 500px;">
+                <div class="mfo-review-header">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900">${esc(title)}</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">${esc(subtitle)}</p>
+                    </div>
+                    <button type="button" class="mfo-review-close" aria-label="Close" onclick="CiteFlowMfoFaculty.closeReviewerModal()">×</button>
+                </div>
+                <div class="mfo-review-body" style="padding-top: 16px; padding-bottom: 20px;">
+                    <div class="flex items-start gap-3 mb-4">
+                        ${iconHtml}
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm text-slate-700 leading-relaxed">${promptText}</p>
+                            <div class="mt-2.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-0.5">
+                                <div><span class="text-slate-400 font-medium">Faculty:</span> <strong class="text-slate-800">${esc(facultyName)}</strong></div>
+                                <div><span class="text-slate-400 font-medium">Program:</span> <span class="text-slate-700 font-medium">${esc(department)}</span> · <span class="text-slate-500">${esc(periodLabel)}</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="block text-xs font-bold text-slate-800 mb-1.5" for="mfoReviewCommentInput">
+                            ${esc(remarksLabel)}
+                            ${requireRemarks ? '<span class="text-rose-600 font-bold ml-0.5">*</span>' : ''}
+                        </label>
+                        <textarea
+                            id="mfoReviewCommentInput"
+                            class="mfo-field"
+                            rows="${requireRemarks ? 3 : 2}"
+                            placeholder="${esc(remarksPlaceholder)}"
+                            oninput="CiteFlowMfoFaculty.updateReviewerModalComment(this.value)"
+                            style="width: 100%; border-radius: 12px; font-size: 13px; line-height: 1.5; padding: 10px 12px;"
+                        >${esc(modal.comment || '')}</textarea>
+                        ${modal.error ? `<p id="mfoReviewCommentError" class="text-xs font-semibold text-rose-600 mt-1.5 flex items-center gap-1"><i class="fa-solid fa-circle-exclamation"></i> ${esc(modal.error)}</p>` : ''}
+                    </div>
+                </div>
+                <div class="mfo-review-footer flex flex-row justify-end gap-2.5">
+                    <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closeReviewerModal()" style="border-radius: 10px;">Cancel</button>
+                    <button type="button" class="cite-action-primary" style="${confirmBtnStyle}; border-radius: 10px; font-weight: 600;" onclick="CiteFlowMfoFaculty.confirmReviewerAction()">
+                        ${esc(confirmBtnText)}
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }
+
     // -------------------------------------------------------------------
     // Photo modal (shared by the record-level "Add File" and the general
     // "Attach Photo Documentation" flow)
@@ -1990,12 +2136,39 @@
             mfo_packet_id: packet.id
         }, path);
     }
-    async function removePhotoDoc(docIndex) {
+    function openDeletePhotoDocModal(docIndex) {
+        if (state.locked || state.busy) return;
+        const row = state.rows.mfo_documentation_items?.[docIndex];
+        if (!row) return;
+        state.deleteDocModal = {
+            docIndex,
+            title: row.title || row.caption || 'this photo documentation entry'
+        };
+        render();
+    }
+
+    function closeDeletePhotoDocModal() {
+        state.deleteDocModal = null;
+        render();
+    }
+
+    async function confirmDeletePhotoDoc() {
+        const modal = state.deleteDocModal;
+        if (!modal) return;
+        const docIndex = modal.docIndex;
+        closeDeletePhotoDocModal();
+        await performRemovePhotoDoc(docIndex);
+    }
+
+    function removePhotoDoc(docIndex) {
+        openDeletePhotoDocModal(docIndex);
+    }
+
+    async function performRemovePhotoDoc(docIndex) {
         if (state.locked || state.busy) return;
         requirePacket();
         const row = state.rows.mfo_documentation_items?.[docIndex];
         if (!row) return;
-        if (!window.confirm('Remove this photo documentation entry and its photos?')) return;
         if (!beginBusy('Removing documentation…')) return;
         try {
             const recordId = isUuid(row.id) ? row.id : null;
@@ -2008,6 +2181,40 @@
             toast('Photo documentation removed.');
         } catch (error) { toast(friendlyError(error, 'Unable to remove photo documentation.'), 'error'); }
         finally { endBusy(); }
+    }
+
+    function renderDeleteDocModal() {
+        const modal = state.deleteDocModal;
+        if (!modal) return '';
+        return `
+        <div class="mfo-review-overlay" onclick="if(event.target===this){CiteFlowMfoFaculty.closeDeletePhotoDocModal()}">
+            <div class="mfo-review-dialog" role="dialog" aria-modal="true" style="max-width: 440px;">
+                <div class="mfo-review-header">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900">Remove Documentation</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Permanently remove photo documentation entry</p>
+                    </div>
+                    <button type="button" class="mfo-review-close" aria-label="Close" onclick="CiteFlowMfoFaculty.closeDeletePhotoDocModal()">×</button>
+                </div>
+                <div class="mfo-review-body" style="padding-top: 16px; padding-bottom: 20px;">
+                    <div class="flex items-start gap-3.5">
+                        <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 text-lg border border-rose-200 shadow-xs">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </div>
+                        <div class="text-sm text-slate-700 leading-relaxed">
+                            Are you sure you want to remove <strong>${esc(modal.title)}</strong>?<br>
+                            <span class="text-slate-500 text-xs mt-1 block">Any uploaded photos attached to this entry will also be deleted.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mfo-review-footer flex flex-row justify-end gap-2.5">
+                    <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closeDeletePhotoDocModal()">Cancel</button>
+                    <button type="button" class="cite-action-primary" style="background:#be123c;border-color:#be123c;color:#fff;" onclick="CiteFlowMfoFaculty.confirmDeletePhotoDoc()">
+                        <i class="fa-solid fa-trash-can mr-1.5"></i> Remove Entry
+                    </button>
+                </div>
+            </div>
+        </div>`;
     }
     function renderPhotoModal() {
         const modal = state.photoModal;
@@ -2268,19 +2475,21 @@
                     : '<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closePreview()">← Back to editor</button>'
                 }
                 ${state.reviewerMode && reviewerCanAct() ? `
-                <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.reviewerAction('approved')">
+                <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.openReviewerModal('approved')">
                     ${state.reviewerIsAdmin ? '<i class="fa-solid fa-check-double mr-1"></i> Certify & Approve' : '<i class="fa-solid fa-check mr-1"></i> Approve'}
                 </button>
-                <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.reviewerAction('revision')">
+                <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.openReviewerModal('revision')">
                     <i class="fa-solid fa-rotate-left mr-1"></i> Request Revision
                 </button>
-                <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.reviewerAction('rejected')">
+                <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.openReviewerModal('rejected')">
                     <i class="fa-solid fa-xmark mr-1"></i> Decline
                 </button>` : ''}
                 <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.printReport()"><i class="fa-solid fa-print"></i> Print</button>
             </div>
         </div>
         ${renderReportDocument()}
+        ${renderReviewerModal()}
+        ${renderDeleteDocModal()}
         ${renderPhotoModal()}`;
         if (!state.photoModal) window.scrollTo({ top: 0, behavior: 'auto' });
         hydrateReportPhotos();
@@ -2364,6 +2573,8 @@
             ${renderOtherNotes()}
             ${renderReview()}
             ${renderSubmitModal()}
+            ${renderReviewerModal()}
+            ${renderDeleteDocModal()}
             ${renderPhotoModal()}`;
         hydrateEditorPhotoNodes();
     }
@@ -2379,6 +2590,8 @@
     global.CiteFlowMfoFaculty = {
         updateRow, addRow, removeRow, setSectionNa, updateNotes, persistNotes,
         saveDraft, submitPacket, openPreview, closePreview, printReport, reviewerAction,
+        openReviewerModal, closeReviewerModal, updateReviewerModalComment, confirmReviewerAction,
+        openDeletePhotoDocModal, closeDeletePhotoDocModal, confirmDeletePhotoDoc,
         uploadFile, removeFile, render, openPhotoModal, closePhotoModal, updatePhotoModalField,
         addPhotoModalFiles, removePendingPhoto, savePhotoModal, removePhotoDoc,
         closeSubmitModal, confirmSubmitPacket,

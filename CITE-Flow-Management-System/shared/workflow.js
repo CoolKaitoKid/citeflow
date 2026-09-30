@@ -1041,8 +1041,85 @@
         console.log(`[${type || 'info'}]`, message);
     }
 
-    async function confirmAction(message, title) {
-        return global.confirm(title ? `${title}\n\n${message}` : message);
+    async function confirmAction(message, title, options = {}) {
+        if (typeof document === 'undefined') {
+            return global.confirm ? global.confirm(title ? `${title}\n\n${message}` : message) : true;
+        }
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'citeflow-modal-overlay';
+            overlay.style.cssText = `
+                position: fixed; inset: 0; z-index: 99999;
+                background: rgba(15, 23, 42, 0.48); backdrop-filter: blur(2px);
+                display: flex; align-items: center; justify-content: center;
+                padding: 16px;
+            `;
+
+            const isDanger = options.danger || /decline|reject|delete|remove|unsubmit/i.test(title || message);
+            const confirmBtnText = options.confirmText || (isDanger ? 'Confirm' : 'Continue');
+            const cancelBtnText = options.cancelText || 'Cancel';
+            const iconClass = isDanger ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-question';
+            const iconColor = isDanger ? '#e11d48' : '#8c2a10';
+            const iconBg = isDanger ? '#ffe4e6' : '#fdf2e9';
+            const confirmBtnBg = isDanger ? '#be123c' : '#621708';
+
+            overlay.innerHTML = `
+                <div class="citeflow-modal-card" role="dialog" aria-modal="true" style="
+                    width: min(440px, 100%); background: #ffffff; border-radius: 16px;
+                    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2), 0 2px 8px rgba(15, 23, 42, 0.08);
+                    border: 1px solid #e2e8f0; overflow: hidden; font-family: inherit;
+                ">
+                    <div style="padding: 22px 24px 18px;">
+                        <div style="display: flex; align-items: flex-start; gap: 14px;">
+                            <div style="
+                                width: 42px; height: 42px; border-radius: 12px; background: ${iconBg}; color: ${iconColor};
+                                display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+                                font-size: 18px;
+                            ">
+                                <i class="${iconClass}"></i>
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+                                    ${title || 'Confirmation'}
+                                </h3>
+                                <p style="margin: 6px 0 0; font-size: 13.5px; color: #475569; line-height: 1.5; white-space: pre-wrap;">
+                                    ${message || ''}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="
+                        display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+                        padding: 14px 24px; background: #f8fafc; border-top: 1px solid #edf2f7;
+                    ">
+                        <button type="button" id="citeModalCancel" style="
+                            padding: 8px 16px; font-size: 13px; font-weight: 600; color: #475569;
+                            background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px;
+                            cursor: pointer; transition: all 0.15s ease;
+                        ">
+                            ${cancelBtnText}
+                        </button>
+                        <button type="button" id="citeModalConfirm" style="
+                            padding: 8px 18px; font-size: 13px; font-weight: 600; color: #ffffff;
+                            background: ${confirmBtnBg}; border: 1px solid ${confirmBtnBg}; border-radius: 10px;
+                            cursor: pointer; transition: all 0.15s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+                        ">
+                            ${confirmBtnText}
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            function cleanup(res) {
+                overlay.remove();
+                resolve(res);
+            }
+
+            overlay.querySelector('#citeModalCancel').onclick = () => cleanup(false);
+            overlay.querySelector('#citeModalConfirm').onclick = () => cleanup(true);
+            overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+            document.body.appendChild(overlay);
+        });
     }
 
     async function logActivity(sb, payload) {
