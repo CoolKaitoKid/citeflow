@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reports and Analytics - CITE-Flow</title>
+    <title>Reports &amp; Analytics - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="../nav.css">
@@ -16,353 +16,390 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         * { font-family: 'Inter', sans-serif; }
-        .app-surface { background: linear-gradient(135deg, #f8fafc 0%, #f9fafb 50%, #f7f7fb 100%); }
-        .panel { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 18px 45px rgba(15, 23, 42, .06); }
-        .soft-card { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 10px 28px rgba(15, 23, 42, .045); transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .soft-card:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(15, 23, 42, .08); }
-        .field { width: 100%; border: 1px solid #dbe1ea; border-radius: 14px; padding: 10px 12px; font-size: 13px; outline: none; background: #fff; color: #0f172a; }
-        .field:focus { border-color: #621708; box-shadow: 0 0 0 4px rgba(98, 23, 8, .08); }
-        .btn-primary { background: var(--cite-theme); color: white; border-radius: 14px; padding: 9px 16px; font-size: 13px; font-weight: 700; transition: all 0.15s ease; }
-        .btn-primary:hover { background: #8c2a10; }
-        .btn-secondary { background: #fff; color: #334155; border: 1px solid #dbe1ea; border-radius: 14px; padding: 9px 16px; font-size: 13px; font-weight: 700; transition: all 0.15s ease; }
-        .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
-        .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-        .action-approved { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
-        .action-requested-edit, .action-revision { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-        .action-rejected, .action-declined { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
-        .action-created, .action-submitted { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-        .action-updated { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
-        .action-download, .action-exported { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-        .action-notification { background: #fefce8; color: #a16207; border: 1px solid #fef08a; }
-        .action-admin-upload { background: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
-        .action-other { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
-        .table-row:hover { background: #f8fafc; }
-
-        /* Calendar Dropdown & Custom Select Styling (Consistent across views) */
-        .cite-select-wrap {
+        body {
+            background: color-mix(in srgb, var(--cite-theme) 5%, white);
+            color: color-mix(in srgb, var(--cite-theme) 72%, black);
+        }
+        .cite-title { color: color-mix(in srgb, var(--cite-theme) 58%, black); }
+        .cite-ink { color: color-mix(in srgb, var(--cite-theme) 46%, black); }
+        .cite-muted { color: color-mix(in srgb, var(--cite-theme) 32%, black); }
+        .cite-faint { color: color-mix(in srgb, var(--cite-theme) 50%, black); }
+        .cite-line { border-color: color-mix(in srgb, var(--cite-theme) 14%, white); }
+        .cite-accent { border-top: 4px solid var(--cite-theme); }
+        .panel {
+            background: white;
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
+            box-shadow: 0 10px 28px color-mix(in srgb, var(--cite-theme) 8%, transparent);
+        }
+        .chart-card {
+            box-shadow: 0 18px 40px color-mix(in srgb, var(--cite-theme) 10%, transparent);
+            transition: box-shadow 180ms ease, border-color 180ms ease;
+        }
+        .chart-card:hover {
+            border-color: color-mix(in srgb, var(--cite-theme) 32%, white);
+            box-shadow: 0 22px 48px color-mix(in srgb, var(--cite-theme) 16%, transparent);
+        }
+        .chart-plot, .chart-plot-trend {
             position: relative;
-            display: inline-flex;
-            align-items: center;
+            height: 340px;
+            background: color-mix(in srgb, var(--cite-theme) 4%, white);
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 12%, white);
+            border-radius: 14px;
+        }
+        .chart-plot-trend { height: 380px; }
+        @media (min-width: 1280px) {
+            .chart-plot { height: 360px; }
+            .chart-plot-trend { height: 420px; }
+        }
+        .field {
             width: 100%;
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 22%, white);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 13px;
+            line-height: 1.3;
+            outline: none;
+            background-color: white;
+            color: color-mix(in srgb, var(--cite-theme) 70%, black);
+            min-width: 0;
         }
-        .cite-select-wrap > select {
-            -webkit-appearance: none !important;
-            appearance: none !important;
-            background-color: #ffffff !important;
-            background-image: none !important;
-            padding-right: 38px !important;
-            cursor: pointer;
+        select.field {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: none;
+            padding-right: 36px;
         }
-        .cite-select-chevron {
-            position: absolute !important;
-            right: 12px !important;
-            top: 50% !important;
-            width: 14px !important;
-            height: 14px !important;
-            margin-top: -7px !important;
-            pointer-events: none !important;
-            color: #475569 !important;
-            z-index: 2 !important;
-            display: block !important;
+        select.field::-ms-expand { display: none; }
+        .field:focus {
+            border-color: var(--cite-theme);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--cite-theme) 18%, transparent);
         }
-    </style>
-    <style id="reports-cal-compact">
-    /* Mobile responsive fixes to keep dropdowns fixed/scrollable without disappearing */
-    select:not([multiple]) {
-        -webkit-appearance: none;
-        appearance: none;
-    }
-    .compact-select { position: relative; display: inline-block; width: 100%; max-width: 100%; }
-    .compact-select-trigger,
-    .compact-select-panel { display: none; }
-    @media (max-width: 767px) {
-        .cite-select-wrap .cite-select-chevron { display: none !important; }
-        .compact-select { width: 100%; display: block; }
-        .compact-select-native {
-            position: absolute !important;
-            width: 1px !important;
-            height: 1px !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-            overflow: hidden !important;
-            border: 0 !important;
-            padding: 0 !important;
-            margin: 0 !important;
+        .btn-primary {
+            background: var(--cite-theme);
+            color: var(--cite-theme-text);
+            border: 1px solid var(--cite-theme-border);
+            border-radius: 10px;
+            padding: 9px 14px;
+            font-size: 13px;
+            font-weight: 700;
         }
-        .compact-select-trigger {
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 8px;
-            width: 100%;
-            text-align: left;
-            cursor: pointer;
-            position: relative;
-            padding-right: 40px !important;
-            background-color: #ffffff;
-            color: #0f172a;
+        .btn-primary:hover { background: var(--cite-theme-hover); }
+        .btn-secondary {
+            background: white;
+            color: color-mix(in srgb, var(--cite-theme) 70%, black);
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 22%, white);
+            border-radius: 10px;
+            padding: 9px 14px;
+            font-size: 13px;
+            font-weight: 700;
         }
-        .compact-select-trigger::after {
+        .btn-secondary:hover { background: color-mix(in srgb, var(--cite-theme) 8%, white); }
+        .btn-primary:disabled, .btn-secondary:disabled { opacity: .6; cursor: wait; }
+        .details-clamp {
+            max-width: 420px;
+            color: color-mix(in srgb, var(--cite-theme) 50%, black);
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .cite-select-wrap { position: relative; display: block; width: 100%; min-width: 0; }
+        .cite-select-wrap::after {
             content: "";
             position: absolute;
-            right: 12px;
+            right: 14px;
             top: 50%;
-            width: 12px;
-            height: 8px;
-            margin-top: -4px;
+            width: 0;
+            height: 0;
+            margin-top: -2px;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 6px solid var(--cite-theme);
             pointer-events: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1h10L6 7z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-size: 12px 8px;
         }
-        .compact-select-trigger span {
-            min-width: 0;
-            flex: 1;
-            overflow: hidden;
-            text-align: left;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        #activity-table tr:hover { background: color-mix(in srgb, var(--cite-theme) 6%, white); }
+        .cite-table-head {
+            background: color-mix(in srgb, var(--cite-theme) 6%, white);
+            color: color-mix(in srgb, var(--cite-theme) 40%, black);
         }
-        .compact-select-panel {
-            display: none;
-            position: fixed !important;
-            z-index: 100050 !important;
-            max-height: 220px !important;
-            overflow-y: auto !important;
-            -webkit-overflow-scrolling: touch !important;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 14px;
-            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
-            pointer-events: auto !important;
+        #activity-table tr { border-bottom: 1px solid color-mix(in srgb, var(--cite-theme) 12%, white); }
+        .export-menu { position: relative; }
+        .export-panel {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            z-index: 40;
+            min-width: 180px;
+            background: white;
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
+            border-radius: 10px;
+            box-shadow: 0 12px 30px color-mix(in srgb, var(--cite-theme) 12%, transparent);
+            padding: 6px;
         }
-        .compact-select-panel.open { display: block !important; }
-        .compact-select-option {
+        .export-panel button {
             display: block;
             width: 100%;
             text-align: left;
-            padding: 10px 14px;
+            padding: 8px 10px;
+            border-radius: 8px;
             font-size: 13px;
-            line-height: 1.3;
-            color: #334155;
-            background: #ffffff;
-            border: 0;
-            cursor: pointer;
+            font-weight: 600;
+            color: color-mix(in srgb, var(--cite-theme) 70%, black);
+            background: transparent;
         }
-        .compact-select-option:hover,
-        .compact-select-option:active {
-            background: #f1f5f9;
+        .export-panel button:hover {
+            background: color-mix(in srgb, var(--cite-theme) 8%, white);
+            color: var(--cite-theme);
         }
-        .compact-select-option.active {
-            background: #621708;
-            color: #ffffff;
+        #activity-table td { vertical-align: top; }
+        .compact-select { position: relative; display: block; width: 100%; min-width: 0; }
+        .compact-select-trigger, .compact-select-panel { display: none; }
+        @media (max-width: 767px) {
+            .chart-plot, .chart-plot-trend { height: 320px; }
+            .cite-select-wrap::after { display: none; }
+            .compact-select-native {
+                position: absolute !important;
+                width: 1px !important;
+                height: 1px !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                overflow: hidden !important;
+            }
+            .compact-select-trigger {
+                display: flex;
+                align-items: center;
+                width: 100%;
+                text-align: left;
+                cursor: pointer;
+                position: relative;
+                padding-right: 36px !important;
+                background: white !important;
+                color: color-mix(in srgb, var(--cite-theme) 70%, black) !important;
+            }
+            .compact-select-trigger span {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                color: color-mix(in srgb, var(--cite-theme) 70%, black);
+            }
+            .compact-select-trigger::after {
+                content: "";
+                position: absolute;
+                right: 14px;
+                top: 50%;
+                width: 0;
+                height: 0;
+                margin-top: -2px;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid var(--cite-theme);
+            }
+            .compact-select-panel {
+                display: none;
+                position: fixed;
+                z-index: 100050;
+                max-height: 240px;
+                overflow-y: auto;
+                background: white;
+                border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
+                border-radius: 10px;
+                box-shadow: 0 12px 30px color-mix(in srgb, var(--cite-theme) 14%, transparent);
+            }
+            .compact-select-panel.open { display: block; }
+            .compact-select-option {
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 10px 14px;
+                font-size: 13px;
+                color: color-mix(in srgb, var(--cite-theme) 70%, black);
+                background: white;
+                border: 0;
+            }
+            .compact-select-option.active {
+                background: var(--cite-theme);
+                color: var(--cite-theme-text);
+            }
         }
-    }
     </style>
 </head>
-<body class="bg-gray-50 overflow-x-hidden min-h-screen">
+<body class="overflow-x-hidden min-h-screen">
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
-
-    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] app-surface w-full overflow-x-hidden transition-all duration-300">
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] w-full min-w-0 overflow-x-hidden">
         <div id="navbar-container"></div>
-
         <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
-            <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6 sm:mb-8">
-                <div>
-                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950">Reports and Analytics</h1>
-                    <p class="text-xs sm:text-sm text-slate-500 mt-1">System activity logs, action distribution, module activity, and exportable analytics.</p>
+            <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+                <div class="min-w-0">
+                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight cite-title">Reports &amp; Analytics</h1>
+                    <p class="text-sm cite-muted mt-1">System-wide activity and administrative reporting.</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                    <button onclick="refreshReports()" class="btn-secondary flex items-center gap-2 text-xs sm:text-sm shadow-sm">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0 0 19 5M19 5v6h-6"/></svg>
-                        Refresh
-                    </button>
-                    <button onclick="exportReport('excel')" class="btn-primary flex items-center gap-2 text-xs sm:text-sm shadow-sm">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>
-                        Export Reports
-                    </button>
+                <div class="flex items-center gap-2 shrink-0">
+                    <div class="export-menu" id="export-menu">
+                        <button type="button" id="export-toggle" onclick="toggleExportMenu(event)" class="btn-primary inline-flex items-center gap-2">
+                            <i class="fas fa-download text-xs"></i> Export
+                        </button>
+                        <div id="export-panel" class="export-panel hidden">
+                            <button type="button" onclick="exportReport('pdf')">PDF</button>
+                            <button type="button" onclick="exportReport('excel')">Excel</button>
+                            <button type="button" onclick="exportReport('csv')">CSV</button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
-            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 mb-6" id="summary-cards">
-                <div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5">
-                    <div class="flex items-start justify-between">
-                        <div>
-                            <div class="text-xs sm:text-sm text-slate-500 font-medium">Total Activities</div>
-                            <div id="card-total" class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2"><div class="skeleton-text xl" style="width:60px"></div></div>
-                        </div>
-                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center shrink-0">
-                            <i class="fas fa-chart-line text-lg"></i>
+            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
+                <article class="panel rounded-xl p-4">
+                    <div class="text-sm cite-muted font-medium">Total Activities</div>
+                    <div id="card-total" class="text-3xl font-bold cite-title mt-1"><div class="skeleton-text xl" style="width:60px"></div></div>
+                    <p class="text-xs cite-faint mt-2">Activities matching the current filters</p>
+                </article>
+                <article class="panel rounded-xl p-4">
+                    <div class="text-sm cite-muted font-medium">Today's Activity</div>
+                    <div id="card-today" class="text-3xl font-bold cite-title mt-1"><div class="skeleton-text xl" style="width:60px"></div></div>
+                    <p class="text-xs cite-faint mt-2">Matching activities dated today, Philippine time</p>
+                </article>
+                <article class="panel rounded-xl p-4">
+                    <div class="text-sm cite-muted font-medium">Active Modules</div>
+                    <div id="card-modules" class="text-3xl font-bold cite-title mt-1"><div class="skeleton-text xl" style="width:60px"></div></div>
+                    <p class="text-xs cite-faint mt-2">Modules with at least one matching activity</p>
+                </article>
+                <article class="panel rounded-xl p-4">
+                    <div class="text-sm cite-muted font-medium">Approvals &amp; Reviews</div>
+                    <div id="card-approvals" class="text-3xl font-bold cite-title mt-1"><div class="skeleton-text xl" style="width:60px"></div></div>
+                    <p class="text-xs cite-faint mt-2">Workflow approval, revision, and rejection decisions in the current results</p>
+                </article>
+            </section>
+
+            <section class="panel rounded-xl p-4 sm:p-5 mb-5">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div class="min-w-0">
+                        <label for="module-filter" class="text-[11px] font-bold cite-muted uppercase">Module</label>
+                        <div class="cite-select-wrap mt-1.5">
+                            <select id="module-filter" onchange="applyFilters()" class="field"><option value="">All Modules</option></select>
                         </div>
                     </div>
-                    <div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">Recorded system activities</div>
+                    <div class="min-w-0">
+                        <label for="department-filter" class="text-[11px] font-bold cite-muted uppercase">Department</label>
+                        <div class="cite-select-wrap mt-1.5">
+                            <select id="department-filter" onchange="applyFilters()" class="field">
+                                <option value="">All Departments</option>
+                                <option value="BSIT">BSIT</option>
+                                <option value="BIT">BIT</option>
+                                <option value="BSIE">BSIE</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="min-w-0">
+                        <label for="status-filter" class="text-[11px] font-bold cite-muted uppercase">Workflow Status</label>
+                        <div class="cite-select-wrap mt-1.5">
+                            <select id="status-filter" onchange="applyFilters()" class="field"><option value="">All Statuses</option></select>
+                        </div>
+                    </div>
+                    <div class="min-w-0">
+                        <label for="from-date" class="text-[11px] font-bold cite-muted uppercase">From</label>
+                        <input id="from-date" type="date" onchange="applyFilters()" class="field mt-1.5">
+                    </div>
+                    <div class="min-w-0">
+                        <label for="to-date" class="text-[11px] font-bold cite-muted uppercase">To</label>
+                        <input id="to-date" type="date" onchange="applyFilters()" class="field mt-1.5">
+                    </div>
+                    <div class="min-w-0">
+                        <label for="search-reports" class="text-[11px] font-bold cite-muted uppercase">Search</label>
+                        <input id="search-reports" type="search" oninput="applyFilters()" placeholder="User, role, department, module, action, details" class="field mt-1.5">
+                    </div>
                 </div>
-                <div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5">
-                    <div class="flex items-start justify-between">
-                        <div>
-                            <div class="text-xs sm:text-sm text-slate-500 font-medium">Today's Activity</div>
-                            <div id="card-today" class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2"><div class="skeleton-text xl" style="width:60px"></div></div>
-                        </div>
-                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center shrink-0">
-                            <i class="fas fa-calendar-day text-lg"></i>
-                        </div>
-                    </div>
-                    <div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">Activities recorded today</div>
-                </div>
-                <div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5">
-                    <div class="flex items-start justify-between">
-                        <div>
-                            <div class="text-xs sm:text-sm text-slate-500 font-medium">Active Modules</div>
-                            <div id="card-modules" class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2"><div class="skeleton-text xl" style="width:60px"></div></div>
-                        </div>
-                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-indigo-500/10 text-indigo-700 flex items-center justify-center shrink-0">
-                            <i class="fas fa-cubes text-lg"></i>
-                        </div>
-                    </div>
-                    <div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">Active system modules</div>
-                </div>
-                <div class="soft-card rounded-2xl sm:rounded-[1.6rem] p-4 sm:p-5">
-                    <div class="flex items-start justify-between">
-                        <div>
-                            <div class="text-xs sm:text-sm text-slate-500 font-medium">Approvals & Reviews</div>
-                            <div id="card-approvals" class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1 sm:mt-2"><div class="skeleton-text xl" style="width:60px"></div></div>
-                        </div>
-                        <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-500/10 text-amber-700 flex items-center justify-center shrink-0">
-                            <i class="fas fa-check-double text-lg"></i>
-                        </div>
-                    </div>
-                    <div class="text-[11px] sm:text-xs text-slate-400 mt-3 sm:mt-4">Workflow reviews completed</div>
+                <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p id="result-summary" class="text-sm cite-muted min-w-0">Showing 0 activities</p>
+                    <button type="button" onclick="resetFilters()" class="btn-secondary shrink-0">Reset</button>
                 </div>
             </section>
 
-            <section class="panel rounded-2xl sm:rounded-[2rem] p-4 sm:p-6 mb-6">
-                <div class="flex flex-col lg:flex-row lg:items-end gap-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 flex-1">
-                        <div>
-                            <label class="text-[11px] font-bold text-slate-500 uppercase">Filter by Module</label>
-                            <div class="cite-select-wrap mt-1.5">
-                                <select id="module-filter" onchange="applyFilters()" class="field"><option value="">All Modules</option></select>
-                                <svg class="cite-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="text-[11px] font-bold text-slate-500 uppercase">From Date</label>
-                            <input id="from-date" type="date" onchange="applyFilters()" class="field mt-1.5">
-                        </div>
-                        <div>
-                            <label class="text-[11px] font-bold text-slate-500 uppercase">To Date</label>
-                            <input id="to-date" type="date" onchange="applyFilters()" class="field mt-1.5">
-                        </div>
-                        <div>
-                            <label class="text-[11px] font-bold text-slate-500 uppercase">Search Details</label>
-                            <input id="search-reports" type="text" oninput="applyFilters()" placeholder="Search user, action, details..." class="field mt-1.5">
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap gap-2 pt-2 lg:pt-0">
-                        <button onclick="resetFilters()" class="btn-secondary text-xs sm:text-sm">Reset</button>
-                        <button onclick="exportReport('pdf')" class="btn-secondary text-xs sm:text-sm">PDF</button>
-                        <button onclick="exportReport('word')" class="btn-secondary text-xs sm:text-sm">Word</button>
-                        <button onclick="exportReport('excel')" class="btn-primary text-xs sm:text-sm">Excel</button>
+            <section class="mb-5">
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Activity Trend</h2>
+                    <p class="text-sm cite-muted mt-1">Activity counts by Philippine date.</p>
+                    <div id="trend-wrap" class="chart-plot-trend mt-4">
+                        <p id="trend-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="trendChart"></canvas>
                     </div>
                 </div>
             </section>
 
-            <section class="grid grid-cols-1 xl:grid-cols-12 gap-6 mb-6">
-                <div class="panel rounded-2xl sm:rounded-[2rem] p-5 sm:p-6 xl:col-span-5">
-                    <div class="flex items-start justify-between gap-3 mb-4">
-                        <div>
-                            <h2 class="text-base sm:text-lg font-bold text-slate-950">Action Distribution</h2>
-                            <p class="text-xs text-slate-500 mt-0.5">Summary of actions performed.</p>
-                        </div>
-                        <span id="action-total" class="badge action-other">0 actions</span>
-                    </div>
-                    <div class="h-[260px] sm:h-[300px] flex items-center justify-center relative">
-                        <div id="actionChartSkeleton" class="skeleton-chart absolute inset-0 flex items-center justify-center">
-                            <div class="text-center w-full">
-                                <div class="skeleton-circle mx-auto" style="width:40px;height:40px;margin-bottom:12px"></div>
-                                <div class="skeleton-text mx-auto" style="width:120px"></div>
-                            </div>
-                        </div>
-                        <canvas id="actionChart"></canvas>
-                    </div>
-                </div>
-                <div class="panel rounded-2xl sm:rounded-[2rem] p-5 sm:p-6 xl:col-span-7">
-                    <div class="flex items-start justify-between gap-3 mb-4">
-                        <div>
-                            <h2 class="text-base sm:text-lg font-bold text-slate-950">Modules Activity</h2>
-                            <p class="text-xs text-slate-500 mt-0.5">Bar chart grouped by active module.</p>
-                        </div>
-                        <span id="module-total" class="badge action-other">0 modules</span>
-                    </div>
-                    <div class="h-[260px] sm:h-[300px] relative">
-                        <div id="moduleChartSkeleton" class="skeleton-chart absolute inset-0 flex items-center justify-center">
-                            <div class="text-center w-full">
-                                <div class="skeleton-circle mx-auto" style="width:40px;height:40px;margin-bottom:12px"></div>
-                                <div class="skeleton-text mx-auto" style="width:120px"></div>
-                            </div>
-                        </div>
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Activity by Module</h2>
+                    <p class="text-sm cite-muted mt-1">Modules that have matching activity.</p>
+                    <div id="module-wrap" class="chart-plot mt-4">
+                        <p id="module-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
                         <canvas id="moduleChart"></canvas>
                     </div>
                 </div>
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Activity by Department</h2>
+                    <p class="text-sm cite-muted mt-1">BSIT, BIT, and BSIE in the current results.</p>
+                    <div id="department-wrap" class="chart-plot mt-4">
+                        <p id="department-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="departmentChart"></canvas>
+                    </div>
+                </div>
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Workflow Activity</h2>
+                    <p class="text-sm cite-muted mt-1">Workflow Approval submissions and decisions.</p>
+                    <div id="workflow-wrap" class="chart-plot mt-4">
+                        <p id="workflow-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="workflowChart"></canvas>
+                    </div>
+                </div>
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Activity by Action</h2>
+                    <p class="text-sm cite-muted mt-1">Most common actions in the current results.</p>
+                    <div id="action-wrap" class="chart-plot mt-4">
+                        <p id="action-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="actionChart"></canvas>
+                    </div>
+                </div>
             </section>
 
-            <section class="panel rounded-2xl sm:rounded-[2rem] overflow-hidden">
-                <div class="px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+            <section class="panel rounded-xl overflow-hidden">
+                <div class="px-4 py-4 sm:px-5 border-b cite-line flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h2 class="text-base sm:text-lg font-bold text-slate-950">System Activity Logs</h2>
-                        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Record of user activity, module actions, and detailed changes.</p>
+                        <h2 class="text-base font-bold cite-title">System Activity</h2>
+                        <p class="text-xs cite-muted mt-0.5">Newest activity first.</p>
                     </div>
-                    <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                        <span class="w-2 h-2 rounded-full bg-[#621708]"></span>
-                        <span id="log-count-label">0 records</span>
-                    </div>
+                    <p id="log-count-label" class="text-xs font-semibold cite-muted">0 records</p>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-xs sm:text-sm min-w-[700px]">
-                        <thead class="bg-slate-50 text-slate-500 border-b border-slate-100 text-[11px] uppercase tracking-wider font-bold">
+                    <table class="w-full text-sm min-w-[880px]">
+                        <thead class="cite-table-head border-b cite-line text-[11px] uppercase tracking-wide font-bold">
                             <tr>
-                                <th class="px-4 sm:px-6 py-3.5 text-left">Date and Time</th>
-                                <th class="px-4 sm:px-6 py-3.5 text-left">User</th>
-                                <th class="px-4 sm:px-6 py-3.5 text-left">Module</th>
-                                <th class="px-4 sm:px-6 py-3.5 text-left">Action</th>
-                                <th class="px-4 sm:px-6 py-3.5 text-left">Details</th>
+                                <th class="px-4 py-3 text-left">Date &amp; Time</th>
+                                <th class="px-4 py-3 text-left">User</th>
+                                <th class="px-4 py-3 text-left">Department</th>
+                                <th class="px-4 py-3 text-left">Module</th>
+                                <th class="px-4 py-3 text-left">Action</th>
+                                <th class="px-4 py-3 text-left">Details</th>
                             </tr>
                         </thead>
-                        <tbody id="activity-table" class="divide-y divide-slate-100 bg-white">
-                            <tr>
-                                <td colspan="5">
-                                    <div class="skeleton-row">
-                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
-                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                                        <div class="skeleton-text" style="width:80px"></div>
-                                        <div class="skeleton-text" style="width:60px"></div>
-                                    </div>
-                                    <div class="skeleton-row">
-                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
-                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                                        <div class="skeleton-text" style="width:80px"></div>
-                                        <div class="skeleton-text" style="width:60px"></div>
-                                    </div>
-                                    <div class="skeleton-row">
-                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
-                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                                        <div class="skeleton-text" style="width:80px"></div>
-                                        <div class="skeleton-text" style="width:60px"></div>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
+                        <tbody id="activity-table" class="divide-y cite-line bg-white"></tbody>
                     </table>
                 </div>
-                <div id="empty-state" class="hidden px-6 py-16 text-center">
-                    <div class="mx-auto w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mb-3">
-                        <svg class="w-6 h-6 sm:w-7 sm:h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7 15l4-4 3 3 5-7"/></svg>
+                <div id="empty-state" class="hidden px-6 py-14 text-center">
+                    <h3 class="font-bold cite-title">No activity found</h3>
+                    <p class="text-sm cite-muted mt-1">No activity matches the current filters.</p>
+                </div>
+                <div id="pager" class="hidden px-4 py-3 border-t cite-line flex items-center justify-between gap-3">
+                    <p id="pager-label" class="text-xs cite-muted"></p>
+                    <div class="flex gap-2">
+                        <button type="button" id="pager-prev" onclick="changePage(-1)" class="btn-secondary">Previous</button>
+                        <button type="button" id="pager-next" onclick="changePage(1)" class="btn-secondary">Next</button>
                     </div>
-                    <h3 class="font-bold text-slate-900 text-sm sm:text-base">No activity found</h3>
-                    <p class="text-xs sm:text-sm text-slate-500 mt-1">Try changing the module or date filters.</p>
                 </div>
             </section>
         </div>
@@ -371,384 +408,1104 @@
 
 <script>
 const supabaseClient = window.supabaseClient;
-
-let currentUser = null, currentProfile = null, actionChart = null, moduleChart = null;
-let allLogs = [], filteredLogs = [];
-const defaultModules = [
-    'Workflow Approval', 'Document Vault', 'Workload Tracker',
-    'Engagement Logs', 'Faculty Profiles', 'Calendar & Events',
-    'Seminar Feedback', 'User Management', 'Reports and Analytics',
-    'Notifications'
+const MANILA = 'Asia/Manila';
+const PAGE_SIZE = 50;
+const FETCH_LIMIT = 1000;
+const STATUS_OPTIONS = [
+    ['submitted', 'Submitted'],
+    ['late', 'Late'],
+    ['underreview', 'Under Review'],
+    ['approved', 'Approved'],
+    ['revision', 'Revision'],
+    ['rejected', 'Rejected']
 ];
-const actionColors = ['#621708', '#059669', '#d97706', '#dc2626', '#2563eb', '#7c3aed', '#475569', '#0891b2', '#db2777', '#ca8a04', '#0284c7', '#10b981', '#6366f1'];
+const MANUAL_ENGAGEMENT_TYPES = new Set([
+    'workshop', 'seminar', 'training', 'download', 'extension', 'community service',
+    'research', 'meeting', 'feedback summary', 'profile update', 'document action', 'system event'
+]);
 
-function esc(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
-function formatDate(v) { return v ? new Date(v).toLocaleString([], {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '—'; }
+let currentUser = null;
+let currentProfile = null;
+let allLogs = [];
+let filteredLogs = [];
+let sourceErrors = [];
+let sourceCapped = false;
+let tablePage = 1;
+let trendChart = null;
+let moduleChart = null;
+let departmentChart = null;
+let workflowChart = null;
+let actionChart = null;
+let chartSignature = '';
+let loadInFlight = false;
+let loadQueued = false;
+let realtimeTimer = null;
+let reportsChannel = null;
 
+function esc(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[c]));
+}
+function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+function isNumericId(value) {
+    return /^\d+$/.test(String(value || '').trim());
+}
+function cleanText(value) {
+    return String(value ?? '')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/CITEFLOW_[A-Z0-9_:%]+/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+function clipText(value, max) {
+    const text = cleanText(value);
+    if (text.length <= max) return text;
+    return text.slice(0, max - 1).trim() + '…';
+}
+function displayText(value) {
+    const text = cleanText(value);
+    return text || '—';
+}
+function manilaDateKeyFromDate(date) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: MANILA, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(date);
+    const bag = {};
+    parts.forEach((part) => { bag[part.type] = part.value; });
+    return `${bag.year}-${bag.month}-${bag.day}`;
+}
+function manilaTodayKey() {
+    return manilaDateKeyFromDate(new Date());
+}
+function normalizeActivityAt(value) {
+    if (value == null || value === '') return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T12:00:00+08:00`;
+    const time = Date.parse(raw);
+    if (!Number.isFinite(time)) return '';
+    return new Date(time).toISOString();
+}
+function dateKeyOf(activityAt) {
+    if (!activityAt) return '';
+    const time = Date.parse(activityAt);
+    if (!Number.isFinite(time)) return '';
+    return manilaDateKeyFromDate(new Date(time));
+}
+function formatWhen(activityAt) {
+    if (!activityAt) return '—';
+    const time = Date.parse(activityAt);
+    if (!Number.isFinite(time)) return '—';
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: MANILA,
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    }).format(new Date(time));
+}
+function formatGeneratedAt() {
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: MANILA,
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit'
+    }).format(new Date());
+}
+function formatFilterDate(dateKey) {
+    if (!dateKey) return '';
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric'
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+function formatDayLabel(dateKey) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'UTC', month: 'short', day: 'numeric'
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+function formatMonthLabel(monthKey) {
+    const [year, month] = monthKey.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'UTC', month: 'short', year: 'numeric'
+    }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+function daysBetween(start, end) {
+    const [ay, am, ad] = start.split('-').map(Number);
+    const [by, bm, bd] = end.split('-').map(Number);
+    return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+}
+function eachDate(start, end) {
+    const out = [];
+    let [year, month, day] = start.split('-').map(Number);
+    for (let guard = 0; guard < 800; guard += 1) {
+        const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        out.push(key);
+        if (key >= end) break;
+        const next = new Date(Date.UTC(year, month - 1, day + 1));
+        year = next.getUTCFullYear();
+        month = next.getUTCMonth() + 1;
+        day = next.getUTCDate();
+    }
+    return out;
+}
+function eachMonth(start, end) {
+    const out = [];
+    let year = Number(start.slice(0, 4));
+    let month = Number(start.slice(5, 7));
+    const last = end.slice(0, 7);
+    for (let guard = 0; guard < 240; guard += 1) {
+        const key = `${year}-${String(month).padStart(2, '0')}`;
+        out.push(key);
+        if (key >= last) break;
+        month += 1;
+        if (month > 12) { month = 1; year += 1; }
+    }
+    return out;
+}
+
+function notifyUser(message, type, title) {
+    if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+        window.CiteFlowUI.alert(message, type || 'info', title || 'Reports & Analytics');
+        return;
+    }
+    console.warn(message);
+}
+
+async function fetchRows(table, attempts) {
+    let lastError = 'Request failed';
+    for (const attempt of attempts) {
+        try {
+            let query = supabaseClient.from(table).select(attempt.columns).limit(FETCH_LIMIT);
+            if (attempt.order) query = query.order(attempt.order, { ascending: false });
+            const { data, error } = await query;
+            if (!error) {
+                const rows = data || [];
+                return { rows, error: null, capped: rows.length >= FETCH_LIMIT };
+            }
+            lastError = error.message || lastError;
+            if (!/column|schema cache|does not exist/i.test(lastError)) break;
+        } catch (error) {
+            lastError = error.message || lastError;
+            break;
+        }
+    }
+    console.error(`Reports source failed: ${table}`, lastError);
+    return { rows: null, error: lastError, capped: false };
+}
+
+function personName(person) {
+    if (!person) return '';
+    return cleanText(person.full_name || [person.first_name, person.last_name].filter(Boolean).join(' ') || person.email || person.name || '');
+}
+function personRole(person, fallback) {
+    return cleanText(person?.position || person?.role || fallback || '');
+}
+function buildDirectories(facultyRows, adminRows) {
+    const facultyById = new Map();
+    const facultyByAuth = new Map();
+    const facultyByEmail = new Map();
+    (facultyRows || []).forEach((row) => {
+        if (row.id != null && row.id !== '') facultyById.set(String(row.id), row);
+        if (isUuid(row.auth_user_id)) facultyByAuth.set(String(row.auth_user_id).toLowerCase(), row);
+        if (row.email) facultyByEmail.set(String(row.email).trim().toLowerCase(), row);
+    });
+    const adminById = new Map();
+    const adminByEmail = new Map();
+    (adminRows || []).forEach((row) => {
+        if (isUuid(row.id)) adminById.set(String(row.id).toLowerCase(), row);
+        if (row.email) adminByEmail.set(String(row.email).trim().toLowerCase(), row);
+    });
+    function facultyIdentity(person) {
+        if (!person || person.id == null || person.id === '') return null;
+        if (!facultyById.has(String(person.id))) return null;
+        const facultyName = personName(person);
+        if (!facultyName) return null;
+        return { facultyKey: `id:${person.id}`, facultyName };
+    }
+    function facultyFromStoredId(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return null;
+        if (isUuid(raw)) return facultyByAuth.get(raw.toLowerCase()) || null;
+        if (isNumericId(raw)) return facultyById.get(raw) || null;
+        return null;
+    }
+    function personFromAuthId(value) {
+        const raw = String(value || '').trim();
+        if (!isUuid(raw)) return null;
+        const key = raw.toLowerCase();
+        return facultyByAuth.get(key) || adminById.get(key) || null;
+    }
+    function personFromUploader(value) {
+        const raw = cleanText(value);
+        if (!raw) return { name: '', role: '', department: '' };
+        if (isUuid(raw)) {
+            const person = personFromAuthId(raw);
+            const identity = facultyIdentity(person);
+            return {
+                name: personName(person),
+                role: personRole(person),
+                department: cleanText(person?.department || ''),
+                facultyKey: identity ? identity.facultyKey : '',
+                facultyName: identity ? identity.facultyName : ''
+            };
+        }
+        if (raw.includes('@')) {
+            const person = facultyByEmail.get(raw.toLowerCase()) || adminByEmail.get(raw.toLowerCase()) || null;
+            return {
+                name: personName(person) || raw,
+                role: personRole(person),
+                department: cleanText(person?.department || ''),
+                facultyKey: '',
+                facultyName: ''
+            };
+        }
+        return { name: raw, role: '', department: '', facultyKey: '', facultyName: '' };
+    }
+    return { facultyFromStoredId, personFromAuthId, personFromUploader, facultyIdentity };
+}
+
+function detailMap(details) {
+    let value = details;
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return {};
+        try { value = JSON.parse(trimmed); } catch (_) { return { details: trimmed }; }
+    }
+    const map = {};
+    if (Array.isArray(value)) {
+        value.forEach((item) => {
+            if (!item || item.label == null) return;
+            map[String(item.label).trim().toLowerCase()] = item.value;
+        });
+        return map;
+    }
+    if (value && typeof value === 'object') {
+        Object.entries(value).forEach(([key, item]) => {
+            map[String(key).trim().toLowerCase()] = item;
+        });
+    }
+    return map;
+}
+function exactTitle(value) {
+    return cleanText(value).toLowerCase();
+}
+function linkedTitle(row) {
+    const map = detailMap(row.details);
+    const fromDetails = map.title || map['activity title'] || map.file || map.event;
+    if (cleanText(fromDetails)) return cleanText(fromDetails);
+    const title = cleanText(row.activity_title);
+    const prefixed = title.match(/^(?:added|updated|uploaded|recorded|created|submitted)\b[^:]{0,40}:\s*(.+)$/i);
+    return prefixed ? cleanText(prefixed[1]) : title;
+}
+function sourceIdFromDetails(details) {
+    const map = detailMap(details);
+    const keys = ['source_id', 'source id', 'record_id', 'record id', 'document_id', 'research_id', 'accomplishment_id', 'extension_id', 'project_id', 'leave_id', 'event_id', 'submission_id', 'vault_id'];
+    for (const key of keys) {
+        const value = cleanText(map[key]);
+        if (value) return value;
+    }
+    return '';
+}
+function sourceTableFromDetails(details) {
+    const map = detailMap(details);
+    return cleanText(map.source_table || map['source table']).toLowerCase();
+}
+function isMirrorCreate(row) {
+    const blob = `${row.activity_title || ''} ${row.status || ''} ${row.description || ''}`.toLowerCase();
+    if (/\bdownload/.test(blob)) return false;
+    if (/\b(updated|update|edited|edit)\b/.test(blob)) return false;
+    return true;
+}
+function normalizeModuleLabel(value) {
+    const key = cleanText(value).toLowerCase();
+    const aliases = {
+        'faculty profile': 'Faculty Profiles',
+        'faculty profiles': 'Faculty Profiles',
+        'research': 'Research',
+        'extension': 'Extension',
+        'community service': 'Extension',
+        'accomplishments': 'Accomplishments',
+        'accomplishment': 'Accomplishments',
+        'documents': 'Documents',
+        'document': 'Documents',
+        'faculty documents': 'Documents',
+        'document vault': 'Document Vault',
+        'workflow': 'Workflow Approval',
+        'workflow approval': 'Workflow Approval',
+        'calendar': 'Calendar & Events',
+        'calendar & events': 'Calendar & Events',
+        'seminar feedback': 'Calendar & Events',
+        'leave': 'Leave Records',
+        'leave records': 'Leave Records',
+        'faculty leaves': 'Leave Records',
+        'engagement logs': 'Engagement Logs',
+        'engagement log': 'Engagement Logs'
+    };
+    return aliases[key] || cleanText(value);
+}
+function engagementModule(row) {
+    const type = cleanText(row.activity_type).toLowerCase();
+    const source = cleanText(row.source_module).toLowerCase();
+    if (type === 'research' || type.includes('research document')) return 'Research';
+    if (type === 'extension' || type === 'community service' || type.includes('extension document')) return 'Extension';
+    if (source.includes('document vault') || (type === 'download' && source.includes('vault'))) return 'Document Vault';
+    if (type === 'download') return 'Document Vault';
+    if (type === 'document action' || type.includes('document')) return 'Documents';
+    if (type === 'profile update') return 'Faculty Profiles';
+    if (source === 'calendar' || source.includes('seminar') || source.includes('feedback') || type === 'feedback summary') return 'Calendar & Events';
+    if (type.includes('leave')) return 'Leave Records';
+    if ((source === 'faculty profile' || source === 'faculty profiles') && !MANUAL_ENGAGEMENT_TYPES.has(type)) return 'Accomplishments';
+    if (source.includes('workflow')) return 'Workflow Approval';
+    if (source.includes('notification') || type.includes('notification')) return '';
+    if (source === 'engagement logs' || source === 'engagement log') return 'Engagement Logs';
+    return normalizeModuleLabel(row.source_module) || 'Engagement Logs';
+}
+function documentModule(row) {
+    const type = `${row.document_type || ''} ${row.sub_category || ''}`.toLowerCase();
+    if (type.includes('extension')) return 'Extension';
+    if (type.includes('research')) return 'Research';
+    return 'Documents';
+}
+function normalizeWorkflowStatus(value, actionText) {
+    const action = String(actionText || '').toLowerCase();
+    if (/\bcomment\b/.test(action)) return '';
+    const raw = String(value || '').toLowerCase().replace(/[\s-]+/g, '');
+    if (!raw || raw === 'notsubmitted' || raw === 'pending' || raw === 'created' || raw === 'system') return '';
+    if (raw.includes('approv')) return 'approved';
+    if (raw.includes('revision') || raw.includes('returned')) return 'revision';
+    if (raw.includes('reject') || raw.includes('declin')) return 'rejected';
+    if (raw.includes('underreview')) return 'underreview';
+    if (raw === 'late' || raw.includes('submittedlate')) return 'late';
+    if (raw.includes('submit')) return 'submitted';
+    return '';
+}
+function isApprovalDecision(action, logType) {
+    const blob = `${action || ''} ${logType || ''}`.toLowerCase();
+    if (/comment|task created|task updated|task deleted|recurring|access granted|notification/.test(blob)) return false;
+    if (/\b(submit|submitted)\b/.test(blob) && !/approv|revision|reject|declin/.test(blob)) return false;
+    return /(approved|approval|revision|rejected|rejection|declined)/.test(blob);
+}
+function actionLabel(action, logType) {
+    const raw = cleanText(action || logType);
+    const key = raw.toLowerCase();
+    const known = {
+        approved: 'Approved',
+        chairperson_approved: 'Chairperson Approved',
+        final_approved: 'Final Approved',
+        revision: 'Requested Revision',
+        chairperson_revision: 'Requested Revision',
+        final_revision: 'Requested Revision',
+        rejected: 'Rejected',
+        declined: 'Declined',
+        submitted: 'Submitted',
+        late: 'Submitted Late',
+        underreview: 'Under Review',
+        created: 'Created',
+        uploaded: 'Uploaded',
+        verified: 'Verified',
+        notification: 'Notification',
+        'task created': 'Task Created',
+        'task updated': 'Task Updated',
+        'task deleted': 'Task Deleted',
+        'comment added': 'Comment Added'
+    };
+    if (known[key]) return known[key];
+    if (!raw) return 'Recorded';
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
 function actionClass(action) {
-    const a = String(action || '').toLowerCase().replace(/\s+/g, '-');
-    if (a.includes('approv') || a === 'completed') return 'action-approved';
-    if (a.includes('revis') || a.includes('request')) return 'action-requested-edit';
-    if (a.includes('reject') || a.includes('declin')) return 'action-rejected';
-    if (a.includes('admin-upload')) return 'action-admin-upload';
-    if (a.includes('submit') || a.includes('creat') || a.includes('upload') || a.includes('add')) return 'action-created';
-    if (a.includes('updat') || a.includes('edit')) return 'action-updated';
-    if (a.includes('export') || a.includes('download')) return 'action-download';
-    if (a.includes('notif')) return 'action-notification';
+    const value = String(action || '').toLowerCase();
+    if (value.includes('approv')) return 'action-approved';
+    if (value.includes('revision') || value.includes('request')) return 'action-requested-edit';
+    if (value.includes('reject') || value.includes('declin')) return 'action-rejected';
+    if (value.includes('submit') || value.includes('creat') || value.includes('upload') || value.includes('add')) return 'action-created';
+    if (value.includes('updat') || value.includes('edit') || value.includes('verif')) return 'action-updated';
+    if (value.includes('export') || value.includes('download')) return 'action-download';
+    if (value.includes('notif')) return 'action-notification';
     return 'action-other';
 }
-
-function normalizeAction(action) {
-    const a = String(action || '').trim();
-    if (!a) return 'Activity Recorded';
-    const lower = a.toLowerCase();
-    if (lower.includes('chairperson approval') || lower.includes('final approval') || lower === 'approved') return 'Approved';
-    if (lower.includes('revision') || lower.includes('returned')) return 'Revision Requested';
-    if (lower.includes('reject') || lower.includes('decline')) return 'Rejected';
-    if (lower.includes('submit')) return 'Submitted';
-    if (lower.includes('admin upload')) return 'Admin Upload';
-    if (lower.includes('upload')) return 'Uploaded';
-    if (lower.includes('export')) return 'Exported';
-    if (lower.includes('create') || lower.includes('add')) return 'Created';
-    if (lower.includes('update') || lower.includes('edit')) return 'Updated';
-    if (lower.includes('notif')) return 'Notification';
-    return a.charAt(0).toUpperCase() + a.slice(1);
+function isNotificationActivity(moduleName, action) {
+    const blob = `${moduleName || ''} ${action || ''}`.toLowerCase();
+    return blob.includes('notification');
+}
+function isExportAudit(row) {
+    const moduleName = cleanText(row.module).toLowerCase();
+    const action = cleanText(row.action).toLowerCase();
+    const details = cleanText(row.details_text || row.details).toLowerCase();
+    const reportsModule = moduleName.includes('report');
+    const exportAction = action === 'exported' || action.includes('export') || details.startsWith('exported ');
+    return reportsModule && exportAction;
+}
+function facultyKeyOf(person) {
+    if (!person || person.id == null || person.id === '') return '';
+    return `id:${person.id}`;
+}
+function blankActivity(partial) {
+    const activityAt = normalizeActivityAt(partial.activityAt);
+    return {
+        dedupeKey: partial.dedupeKey,
+        activityAt,
+        dateKey: dateKeyOf(activityAt),
+        userName: cleanText(partial.userName),
+        userRole: cleanText(partial.userRole),
+        department: cleanText(partial.department),
+        module: partial.module,
+        action: partial.action || 'Recorded',
+        details: clipText(partial.details, 4000),
+        workflowStatus: partial.workflowStatus || '',
+        reviewEvent: partial.reviewEvent === true,
+        facultyKey: partial.facultyKey && partial.facultyName ? String(partial.facultyKey) : '',
+        facultyName: partial.facultyKey && partial.facultyName ? cleanText(partial.facultyName) : ''
+    };
 }
 
-async function safeFetch(table, query = '*') {
-    try {
-        const { data, error } = await supabaseClient.from(table).select(query).limit(500);
-        if (error) throw error;
-        return data || [];
-    } catch (e) {
-        console.warn(`Fetch ${table} skipped:`, e.message);
-        return [];
+function buildCanonical(data, directories) {
+    const logs = [];
+    const sourceIds = new Set();
+    const titleBuckets = new Map();
+    const { facultyFromStoredId, personFromAuthId, personFromUploader, facultyIdentity } = directories;
+
+    function rememberSource(table, id) {
+        if (id == null || id === '') return;
+        sourceIds.add(`${String(table).toLowerCase()}:${String(id)}`);
     }
+    function rememberTitle(moduleName, facultyKey, title, activityAt) {
+        const titleKey = exactTitle(title);
+        const day = dateKeyOf(normalizeActivityAt(activityAt));
+        if (!moduleName || !facultyKey || !titleKey || !day) return;
+        const key = `${moduleName}|${facultyKey}|${titleKey}`;
+        const list = titleBuckets.get(key) || [];
+        list.push(day);
+        titleBuckets.set(key, list);
+    }
+    function pushActivity(partial) {
+        if (!partial || !partial.dedupeKey) return;
+        logs.push(blankActivity(partial));
+    }
+    function describeFaculty(storedId, storedName, storedDepartment, storedRole) {
+        const person = facultyFromStoredId(storedId);
+        return {
+            name: personName(person) || cleanText(storedName),
+            role: personRole(person, storedRole),
+            department: cleanText(person?.department || storedDepartment || ''),
+            facultyKey: person ? facultyKeyOf(person) : '',
+            facultyName: person ? personName(person) : ''
+        };
+    }
+    function facultyLink(identity) {
+        if (!identity || !identity.facultyKey || !identity.facultyName) return {};
+        return { facultyKey: identity.facultyKey, facultyName: identity.facultyName };
+    }
+
+    (data.research || []).forEach((row) => {
+        rememberSource('faculty_research_projects', row.id);
+        const who = describeFaculty(row.faculty_id);
+        const title = cleanText(row.title) || 'Untitled research';
+        const when = row.created_at;
+        rememberTitle('Research', who.facultyKey, title, when);
+        pushActivity({
+            dedupeKey: `src:faculty_research_projects:${row.id}`,
+            activityAt: when,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Research',
+            action: 'Created',
+            details: `Research project “${title}”${row.status ? ` (${cleanText(row.status)})` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    (data.extension || []).forEach((row) => {
+        rememberSource('extension_projects', row.id);
+        const who = describeFaculty(row.faculty_id);
+        const title = cleanText(row.project_title) || 'Untitled extension project';
+        const when = row.created_at;
+        rememberTitle('Extension', who.facultyKey, title, when);
+        const partner = cleanText(row.partner_organization);
+        pushActivity({
+            dedupeKey: `src:extension_projects:${row.id}`,
+            activityAt: when,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Extension',
+            action: 'Created',
+            details: `Extension project “${title}”${partner ? ` with ${partner}` : ''}${row.status ? ` (${cleanText(row.status)})` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    (data.accomplishments || []).forEach((row) => {
+        rememberSource('faculty_accomplishments', row.id);
+        const who = describeFaculty(row.faculty_id);
+        const title = cleanText(row.title) || 'Untitled accomplishment';
+        const when = row.created_at;
+        rememberTitle('Accomplishments', who.facultyKey, title, when);
+        pushActivity({
+            dedupeKey: `src:faculty_accomplishments:${row.id}`,
+            activityAt: when,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Accomplishments',
+            action: 'Created',
+            details: `Accomplishment “${title}”${row.accomplishment_type ? ` (${cleanText(row.accomplishment_type)})` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    (data.documents || []).forEach((row) => {
+        rememberSource('faculty_documents', row.id);
+        const who = describeFaculty(row.faculty_id);
+        const moduleName = documentModule(row);
+        const title = cleanText(row.title || row.document_name) || 'Untitled document';
+        const when = row.uploaded_at || row.created_at;
+        const adminUpload = row.status === 'Uploaded by Admin' || row.status === 'Admin Upload';
+        const uploader = adminUpload ? personFromUploader(row.verified_by_name) : null;
+        rememberTitle(moduleName, who.facultyKey, title, when);
+        pushActivity({
+            dedupeKey: `src:faculty_documents:${row.id}`,
+            activityAt: when,
+            userName: adminUpload ? (uploader?.name || cleanText(row.verified_by_name)) : who.name,
+            userRole: adminUpload ? (uploader?.role || '') : who.role,
+            department: adminUpload ? (uploader?.department || who.department) : who.department,
+            module: moduleName,
+            action: adminUpload ? 'Admin Upload' : 'Uploaded',
+            details: `${adminUpload ? `Uploaded document${who.name ? ` for ${who.name}` : ''}` : 'Uploaded document'} “${title}”${row.document_type ? ` (${cleanText(row.document_type)})` : ''}`,
+            ...(adminUpload ? {} : facultyLink(who))
+        });
+        const verification = cleanText(row.verification_status).toLowerCase();
+        if (verification && verification !== 'pending' && row.verified_at) {
+            const verifier = personFromUploader(row.verified_by_name);
+            const declined = /reject|declin/.test(verification);
+            pushActivity({
+                dedupeKey: `src:faculty_documents:${row.id}:verification`,
+                activityAt: row.verified_at,
+                userName: verifier.name || cleanText(row.verified_by_name),
+                userRole: verifier.role,
+                department: verifier.department || who.department,
+                module: moduleName,
+                action: declined ? 'Verification declined' : 'Verified',
+                details: `${declined ? 'Declined verification for' : 'Verified'} “${title}”${who.name ? ` (${who.name})` : ''}`,
+                reviewEvent: false,
+                ...facultyLink(verifier)
+            });
+        }
+    });
+
+    (data.vault || []).forEach((row) => {
+        rememberSource('documents', row.id);
+        const uploader = personFromUploader(row.uploaded_by);
+        const folder = data.folderMap.get(String(row.folder_id || ''));
+        const title = cleanText(row.name) || 'Untitled file';
+        const when = row.uploaded_at || row.created_at;
+        const faculty = isUuid(row.uploaded_by) ? facultyFromStoredId(row.uploaded_by) : null;
+        rememberTitle('Document Vault', facultyKeyOf(faculty), title, when);
+        pushActivity({
+            dedupeKey: `src:documents:${row.id}`,
+            activityAt: when,
+            userName: uploader.name,
+            userRole: uploader.role,
+            department: uploader.department,
+            module: 'Document Vault',
+            action: 'Uploaded',
+            details: `Vault file “${title}”${folder ? ` in ${cleanText(folder)}` : ''}`,
+            ...facultyLink(uploader)
+        });
+    });
+
+    (data.leaves || []).forEach((row) => {
+        rememberSource('faculty_leaves', row.id);
+        const who = describeFaculty(row.faculty_id || row.auth_user_id, [row.first_name, row.last_name].filter(Boolean).join(' ') || row.faculty_name);
+        const leaveType = cleanText(row.leave_type) || 'Leave';
+        const span = row.start_date ? ` from ${row.start_date} to ${row.end_date || row.start_date}` : '';
+        pushActivity({
+            dedupeKey: `src:faculty_leaves:${row.id}`,
+            activityAt: row.created_at || row.date_of_filing,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Leave Records',
+            action: 'Submitted',
+            details: `Leave record: ${leaveType}${span}${row.status ? ` (${cleanText(row.status)})` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    const eventMap = new Map((data.events || []).map((row) => [String(row.id), row]));
+    (data.events || []).forEach((row) => {
+        rememberSource('calendar_events', row.id);
+        const creator = personFromAuthId(row.created_by);
+        const named = personFromUploader(row.created_by_name);
+        pushActivity({
+            dedupeKey: `src:calendar_events:${row.id}`,
+            activityAt: row.created_at || row.start_at,
+            userName: personName(creator) || named.name,
+            userRole: personRole(creator, named.role),
+            department: cleanText(creator?.department || named.department || ''),
+            module: 'Calendar & Events',
+            action: 'Scheduled',
+            details: `Calendar event “${cleanText(row.title) || 'Untitled event'}”${row.event_type ? ` (${cleanText(row.event_type)})` : ''}${row.location ? ` at ${cleanText(row.location)}` : ''}`,
+            ...(row.created_by ? facultyLink(facultyIdentity(creator)) : {})
+        });
+    });
+
+    (data.feedback || []).forEach((row) => {
+        rememberSource('calendar_event_feedback', row.id);
+        const who = describeFaculty(row.faculty_id, row.faculty_name);
+        const event = eventMap.get(String(row.event_id || ''));
+        const eventTitle = cleanText(event?.title);
+        pushActivity({
+            dedupeKey: `src:calendar_event_feedback:${row.id}`,
+            activityAt: row.submitted_at,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Calendar & Events',
+            action: 'Submitted',
+            details: `Event feedback${eventTitle ? ` for “${eventTitle}”` : ''}${row.overall_rating ? ` (rating ${row.overall_rating}/5)` : ''}${row.feedback_summary ? `: ${cleanText(row.feedback_summary)}` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    (data.submissions || []).forEach((row) => rememberSource('wf_submissions', row.id));
+    (data.workflow || []).forEach((row) => {
+        if (row.submission_id) rememberSource('wf_submissions', row.submission_id);
+    });
+
+    (data.engagement || []).forEach((row) => {
+        const moduleName = engagementModule(row);
+        if (!moduleName || isNotificationActivity(moduleName, row.activity_type)) return;
+        const who = describeFaculty(row.faculty_id, row.faculty_name, row.department);
+        const sourceId = sourceIdFromDetails(row.details);
+        const sourceTable = sourceTableFromDetails(row.details);
+        let covered = false;
+        if (isMirrorCreate(row) && sourceId) {
+            if (sourceTable && sourceIds.has(`${sourceTable}:${sourceId}`)) covered = true;
+            else {
+                const hits = [...sourceIds].filter((key) => key.endsWith(`:${sourceId}`));
+                covered = hits.length === 1;
+            }
+        }
+        if (!covered && isMirrorCreate(row) && who.facultyKey) {
+            const titleKey = `${moduleName}|${who.facultyKey}|${exactTitle(linkedTitle(row))}`;
+            const day = dateKeyOf(normalizeActivityAt(row.activity_at || row.created_at));
+            const matches = (titleBuckets.get(titleKey) || []).filter((item) => item === day);
+            covered = matches.length === 1;
+        }
+        if (covered) return;
+        const actor = personFromAuthId(row.created_by);
+        const linkedFaculty = who.facultyKey
+            ? facultyLink(who)
+            : (cleanText(row.faculty_id) ? {} : facultyLink(facultyIdentity(actor)));
+        pushActivity({
+            dedupeKey: `eng:${row.id}`,
+            activityAt: row.activity_at || row.created_at,
+            userName: who.name || personName(actor) || cleanText(row.created_by_name),
+            userRole: who.role || personRole(actor),
+            department: who.department,
+            module: moduleName,
+            action: actionLabel(row.activity_type || row.status),
+            details: cleanText(row.description) || cleanText(row.activity_title) || 'Engagement log',
+            workflowStatus: moduleName === 'Workflow Approval' ? normalizeWorkflowStatus(row.status, row.activity_type) : '',
+            ...linkedFaculty
+        });
+    });
+
+    const taskMap = new Map((data.tasks || []).map((row) => [String(row.id), cleanText(row.title)]));
+    const submissions = data.submissions || [];
+    const submissionsByTask = new Map();
+    submissions.forEach((row) => {
+        const key = String(row.task_id || '');
+        const list = submissionsByTask.get(key) || [];
+        list.push(row);
+        submissionsByTask.set(key, list);
+    });
+    const reviewCovered = new Set();
+    const submitCovered = new Set();
+    (data.workflow || []).forEach((row) => {
+        let submissionId = row.submission_id ? String(row.submission_id) : '';
+        if (!submissionId && row.task_id) {
+            const related = submissionsByTask.get(String(row.task_id)) || [];
+            if (related.length === 1) submissionId = String(related[0].id);
+        }
+        const review = isApprovalDecision(row.action, row.log_type);
+        const submit = /\bsubmit/.test(`${row.action || ''} ${row.log_type || ''}`.toLowerCase()) && !review;
+        if (submissionId && review) reviewCovered.add(submissionId);
+        if (submissionId && submit) submitCovered.add(submissionId);
+        const actor = personFromUploader(row.actor_name);
+        pushActivity({
+            dedupeKey: `wf:${row.id}`,
+            activityAt: row.created_at,
+            userName: actor.name,
+            userRole: actor.role,
+            department: actor.department,
+            module: 'Workflow Approval',
+            action: actionLabel(row.action, row.log_type),
+            details: cleanText(row.target) || actionLabel(row.action, row.log_type),
+            workflowStatus: /task deleted|task created|task updated|comment|recurring|access/i.test(`${row.action || ''} ${row.log_type || ''}`)
+                ? ''
+                : normalizeWorkflowStatus(row.log_type || row.action, row.action),
+            reviewEvent: review,
+            ...facultyLink(actor)
+        });
+    });
+
+    submissions.forEach((row) => {
+        const submissionId = String(row.id);
+        const who = describeFaculty(row.faculty_id);
+        const taskTitle = taskMap.get(String(row.task_id || '')) || 'Workflow submission';
+        if (row.submitted_at && !submitCovered.has(submissionId)) {
+            pushActivity({
+                dedupeKey: `wfsub:${submissionId}:submit`,
+                activityAt: row.submitted_at,
+                userName: who.name,
+                userRole: who.role,
+                department: who.department,
+                module: 'Workflow Approval',
+                action: String(row.status || '').toLowerCase() === 'late' ? 'Submitted Late' : 'Submitted',
+                details: `Submitted “${taskTitle}”`,
+                workflowStatus: normalizeWorkflowStatus(row.status) === 'late' ? 'late' : 'submitted',
+                reviewEvent: false,
+                ...facultyLink(who)
+            });
+        }
+        const reviewStatus = normalizeWorkflowStatus(row.status);
+        const decision = reviewStatus === 'approved' || reviewStatus === 'revision' || reviewStatus === 'rejected';
+        if (row.reviewed_at && decision && !reviewCovered.has(submissionId)) {
+            const reviewer = personFromUploader(row.reviewed_by_name);
+            pushActivity({
+                dedupeKey: `wfsub:${submissionId}:review`,
+                activityAt: row.reviewed_at,
+                userName: reviewer.name,
+                userRole: reviewer.role,
+                department: reviewer.department,
+                module: 'Workflow Approval',
+                action: actionLabel(row.status),
+                details: `Reviewed “${taskTitle}”${who.name ? ` for ${who.name}` : ''}${row.review_remarks ? `: ${cleanText(row.review_remarks)}` : ''}`,
+                workflowStatus: reviewStatus,
+                reviewEvent: true,
+                ...facultyLink(reviewer)
+            });
+        }
+    });
+
+    (data.system || []).forEach((row) => {
+        if (isExportAudit(row) || isNotificationActivity(row.module, row.action)) return;
+        const person = personFromAuthId(row.user_id);
+        const moduleName = normalizeModuleLabel(row.module) || 'System';
+        if (isNotificationActivity(moduleName, row.action)) return;
+        pushActivity({
+            dedupeKey: `syslog:${row.id}`,
+            activityAt: row.created_at,
+            userName: cleanText(row.user_name) || personName(person),
+            userRole: cleanText(row.user_role) || personRole(person),
+            department: cleanText(person?.department || ''),
+            module: moduleName,
+            action: actionLabel(row.action),
+            details: cleanText(row.details_text || row.details) || 'System activity',
+            workflowStatus: moduleName === 'Workflow Approval' ? normalizeWorkflowStatus(row.action, row.action) : '',
+            reviewEvent: moduleName === 'Workflow Approval' && isApprovalDecision(row.action, row.action),
+            ...(row.user_id ? facultyLink(facultyIdentity(person)) : {})
+        });
+    });
+
+    (data.facultyRows || []).forEach((row) => {
+        const who = describeFaculty(row.id, '', row.department);
+        const name = who.name || cleanText(row.email);
+        const email = cleanText(row.email).toLowerCase();
+        const person = name.toLowerCase();
+        function mentionsPerson(item) {
+            const blob = `${item.userName} ${item.details} ${item.action}`.toLowerCase();
+            return (person && blob.includes(person)) || (email && blob.includes(email));
+        }
+        if (row.created_at) {
+            const day = dateKeyOf(normalizeActivityAt(row.created_at));
+            const already = logs.some((item) => {
+                if (item.dateKey !== day) return false;
+                const blob = `${item.action} ${item.details}`.toLowerCase();
+                return /account/.test(blob) && /creat/.test(blob) && mentionsPerson(item);
+            });
+            if (!already) {
+                pushActivity({
+                    dedupeKey: `faculty:${row.id}:account`,
+                    activityAt: row.created_at,
+                    userName: who.name,
+                    userRole: who.role,
+                    department: who.department,
+                    module: 'Faculty Profiles',
+                    action: 'Account Created',
+                    details: name ? `Faculty account created for ${name}` : 'Faculty account created',
+                    ...facultyLink(who)
+                });
+            }
+        }
+        if (row.first_login_completed_at) {
+            const day = dateKeyOf(normalizeActivityAt(row.first_login_completed_at));
+            const already = logs.some((item) => item.dateKey === day && /first login|profile setup/.test(`${item.action} ${item.details}`.toLowerCase()) && mentionsPerson(item));
+            if (!already) {
+                const setupNote = row.profile_completed === true ? ' Profile setup was completed.' : '';
+                pushActivity({
+                    dedupeKey: `faculty:${row.id}:first-login`,
+                    activityAt: row.first_login_completed_at,
+                    userName: who.name,
+                    userRole: who.role,
+                    department: who.department,
+                    module: 'Faculty Profiles',
+                    action: 'First Login',
+                    details: `${name ? `${name} completed first login.` : 'Faculty first login completed.'}${setupNote}`,
+                    ...facultyLink(who)
+                });
+            }
+        }
+    });
+
+    const seen = new Set();
+    return logs.filter((row) => {
+        if (!row.module || isNotificationActivity(row.module, row.action)) return false;
+        if (seen.has(row.dedupeKey)) return false;
+        seen.add(row.dedupeKey);
+        return true;
+    }).sort((a, b) => {
+        const left = Date.parse(a.activityAt);
+        const right = Date.parse(b.activityAt);
+        const leftValue = Number.isFinite(left) ? left : Number.NEGATIVE_INFINITY;
+        const rightValue = Number.isFinite(right) ? right : Number.NEGATIVE_INFINITY;
+        return rightValue - leftValue;
+    });
 }
 
 async function loadReports() {
-    const [
-        sysLogs,
-        wfLogs,
-        engagementLogs,
-        facultyList,
-        wfTasks,
-        wfSubmissions,
-        docList,
-        resList,
-        accList,
-        extList,
-        vaultList,
-        foldersList,
-        leaveList,
-        feedbackList,
-        wfNotifs,
-        directNotifs
-    ] = await Promise.all([
-        safeFetch('system_activity_logs', '*'),
-        safeFetch('wf_activity_log', '*'),
-        safeFetch('engagement_logs', '*'),
-        safeFetch('faculty', 'id, full_name, first_name, last_name, email, department, role, created_at'),
-        safeFetch('wf_tasks', 'id, title, created_by_name, created_at'),
-        safeFetch('wf_submissions', 'id, task_id, faculty_id, status, submitted_at, reviewed_at, reviewed_by_name, review_remarks'),
-        safeFetch('faculty_documents', 'id, faculty_id, title, document_name, document_type, sub_category, status, verification_status, verified_by_name, verified_at, created_at'),
-        safeFetch('faculty_research_projects', 'id, faculty_id, title, description, status, start_date, created_at'),
-        safeFetch('faculty_accomplishments', 'id, faculty_id, title, accomplishment_type, description, date_achieved, created_at'),
-        safeFetch('extension_projects', 'id, faculty_id, project_title, partner_organization, status, start_date, created_at'),
-        safeFetch('documents', 'id, name, folder_id, uploaded_at'),
-        safeFetch('folders', 'id, name'),
-        safeFetch('faculty_leaves', 'id, faculty_id, faculty_name, first_name, last_name, leave_type, start_date, end_date, status, date_of_filing, created_at'),
-        safeFetch('calendar_event_feedback', 'id, event_id, faculty_id, faculty_name, overall_rating, feedback_summary, submitted_at'),
-        safeFetch('wf_notifications', 'id, faculty_id, title, message, type, is_read, created_at'),
-        safeFetch('notifications', 'id, user_id, title, message, type, is_read, created_at')
-    ]);
-
-    const facultyMap = {};
-    for (const f of facultyList) {
-        facultyMap[f.id] = f.full_name || [f.first_name, f.last_name].filter(Boolean).join(' ') || f.email || 'Faculty Member';
+    if (!supabaseClient) {
+        sourceErrors = ['The database connection is not available.'];
+        allLogs = [];
+        applyFilters();
+        return;
     }
-
-    const taskMap = {};
-    for (const t of wfTasks) {
-        taskMap[t.id] = t.title || 'Task';
+    if (loadInFlight) {
+        loadQueued = true;
+        return;
     }
+    loadInFlight = true;
+    try {
+        const specs = [
+            ['system', 'System activity', () => fetchRows('system_activity_logs', [
+                { columns: 'id, created_at, user_id, user_name, user_role, module, action, details_text', order: 'created_at' },
+                { columns: 'id, created_at, user_name, user_role, module, action, details_text', order: 'created_at' }
+            ])],
+            ['workflow', 'Workflow activity', () => fetchRows('wf_activity_log', [
+                { columns: 'id, action, actor_name, target, log_type, created_at, task_id, submission_id', order: 'created_at' },
+                { columns: 'id, action, actor_name, target, log_type, created_at', order: 'created_at' }
+            ])],
+            ['engagement', 'Engagement logs', () => fetchRows('engagement_logs', [
+                { columns: 'id, faculty_id, faculty_name, department, activity_type, activity_title, description, source_module, activity_at, status, details, created_by, created_by_name, created_at', order: 'activity_at' },
+                { columns: 'id, faculty_id, faculty_name, department, activity_type, activity_title, description, source_module, activity_at, status, details, created_by, created_by_name, created_at', order: 'created_at' }
+            ])],
+            ['faculty', 'Faculty directory', () => fetchRows('faculty', [
+                { columns: 'id, auth_user_id, full_name, first_name, last_name, email, department, role, position, created_at, first_login_completed_at, profile_completed' },
+                { columns: 'id, auth_user_id, full_name, first_name, last_name, email, department, role, position, created_at' },
+                { columns: 'id, auth_user_id, full_name, first_name, last_name, email, department, role, position' }
+            ])],
+            ['admins', 'Administrator directory', () => fetchRows('admin_profiles', [
+                { columns: 'id, first_name, last_name, email, role' }
+            ])],
+            ['tasks', 'Workflow tasks', () => fetchRows('wf_tasks', [
+                { columns: 'id, title, created_by_name, created_at', order: 'created_at' }
+            ])],
+            ['submissions', 'Workflow submissions', () => fetchRows('wf_submissions', [
+                { columns: 'id, task_id, faculty_id, status, submitted_at, reviewed_at, reviewed_by_name, review_remarks', order: 'submitted_at' }
+            ])],
+            ['profileDocs', 'Documents', () => fetchRows('faculty_documents', [
+                { columns: 'id, faculty_id, title, document_name, document_type, sub_category, status, verification_status, verified_by_name, verified_at, created_at, uploaded_at', order: 'created_at' },
+                { columns: 'id, faculty_id, title, document_name, document_type, sub_category, status, verification_status, verified_by_name, verified_at, created_at', order: 'created_at' }
+            ])],
+            ['research', 'Research', () => fetchRows('faculty_research_projects', [
+                { columns: 'id, faculty_id, title, description, status, start_date, created_at', order: 'created_at' }
+            ])],
+            ['accomplishments', 'Accomplishments', () => fetchRows('faculty_accomplishments', [
+                { columns: 'id, faculty_id, title, accomplishment_type, description, date_achieved, created_at', order: 'created_at' }
+            ])],
+            ['extension', 'Extension', () => fetchRows('extension_projects', [
+                { columns: 'id, faculty_id, project_title, partner_organization, status, start_date, created_at', order: 'created_at' }
+            ])],
+            ['vault', 'Document Vault', () => fetchRows('documents', [
+                { columns: 'id, name, folder_id, uploaded_at, uploaded_by, created_at', order: 'uploaded_at' },
+                { columns: 'id, name, folder_id, uploaded_at, uploaded_by', order: 'uploaded_at' }
+            ])],
+            ['folders', 'Document folders', () => fetchRows('folders', [
+                { columns: 'id, name' }
+            ])],
+            ['leaves', 'Leave records', () => fetchRows('faculty_leaves', [
+                { columns: 'id, faculty_id, auth_user_id, faculty_name, first_name, last_name, leave_type, start_date, end_date, status, date_of_filing, created_at', order: 'created_at' },
+                { columns: 'id, faculty_id, faculty_name, first_name, last_name, leave_type, start_date, end_date, status, date_of_filing, created_at', order: 'created_at' }
+            ])],
+            ['feedback', 'Calendar feedback', () => fetchRows('calendar_event_feedback', [
+                { columns: 'id, event_id, faculty_id, faculty_name, overall_rating, feedback_summary, submitted_at', order: 'submitted_at' }
+            ])],
+            ['events', 'Calendar events', () => fetchRows('calendar_events', [
+                { columns: 'id, title, event_type, location, start_at, end_at, created_at, created_by, created_by_name', order: 'start_at' },
+                { columns: 'id, title, event_type, location, start_at, created_at, created_by', order: 'start_at' },
+                { columns: 'id, title, event_type, location, start_at', order: 'start_at' }
+            ])]
+        ];
 
-    const folderMap = {};
-    for (const f of foldersList) {
-        folderMap[f.id] = f.name || 'Folder';
-    }
+        const loaded = {};
+        const errors = [];
+        let capped = false;
+        await Promise.all(specs.map(async ([key, label, run]) => {
+            const result = await run();
+            loaded[key] = result.rows;
+            if (result.error) errors.push(label);
+            if (result.capped) capped = true;
+        }));
 
-    const aggregated = [];
-
-    for (const row of sysLogs) {
-        aggregated.push({
-            id: 'sys_' + row.id,
-            created_at: row.created_at || new Date().toISOString(),
-            user_name: row.user_name || 'System',
-            user_role: row.user_role || 'Administrator',
-            module: row.module || 'System',
-            action: normalizeAction(row.action),
-            details: row.details_text || row.details || 'System log recorded'
-        });
-    }
-
-    for (const row of wfLogs) {
-        aggregated.push({
-            id: 'wf_' + row.id,
-            created_at: row.created_at || new Date().toISOString(),
-            user_name: row.actor_name || 'Administrator',
-            user_role: 'Administrator',
-            module: 'Workflow Approval',
-            action: normalizeAction(row.action),
-            details: `${row.target || 'Workflow item'}${row.details ? ' — ' + row.details : ''}`
-        });
-    }
-
-    for (const row of engagementLogs) {
-        aggregated.push({
-            id: 'eng_' + row.id,
-            created_at: row.created_at || row.activity_at || new Date().toISOString(),
-            user_name: row.faculty_name || row.created_by_name || 'Faculty Member',
-            user_role: 'Faculty',
-            module: 'Engagement Logs',
-            action: normalizeAction(row.activity_type || 'Activity Recorded'),
-            details: `${row.activity_title || 'Engagement'} (${row.department || 'CITE'}) — ${row.description || 'Record saved'}`
-        });
-    }
-
-    for (const row of wfSubmissions) {
-        if (row.submitted_at) {
-            const fName = facultyMap[row.faculty_id] || 'Faculty Member';
-            const tTitle = taskMap[row.task_id] || 'Task';
-            aggregated.push({
-                id: 'sub_' + row.id,
-                created_at: row.submitted_at,
-                user_name: fName,
-                user_role: 'Faculty',
-                module: 'Workflow Approval',
-                action: 'Submitted',
-                details: `Submitted task: "${tTitle}" (Status: ${row.status || 'Pending Review'})`
-            });
-        }
-        if (row.reviewed_at && row.status) {
-            const fName = facultyMap[row.faculty_id] || 'Faculty Member';
-            const tTitle = taskMap[row.task_id] || 'Task';
-            aggregated.push({
-                id: 'rev_' + row.id,
-                created_at: row.reviewed_at,
-                user_name: row.reviewed_by_name || 'Reviewer',
-                user_role: 'Administrator',
-                module: 'Workflow Approval',
-                action: normalizeAction(row.status),
-                details: `Reviewed submission for ${fName} on "${tTitle}"${row.review_remarks ? ' — Notes: ' + row.review_remarks : ''}`
-            });
-        }
-    }
-
-    for (const row of docList) {
-        const fName = facultyMap[row.faculty_id] || 'Faculty Member';
-        const docTitle = row.title || row.document_name || 'Document';
-        const docType = row.document_type || row.sub_category || 'Profile Document';
-        const isAdminUpload = row.status === 'Uploaded by Admin' || row.status === 'Admin Upload';
-
-        aggregated.push({
-            id: 'doc_' + row.id,
-            created_at: row.created_at || new Date().toISOString(),
-            user_name: isAdminUpload ? (row.verified_by_name || 'Administrator') : fName,
-            user_role: isAdminUpload ? 'Administrator' : 'Faculty',
-            module: 'Faculty Profiles',
-            action: isAdminUpload ? 'Admin Upload' : 'Uploaded',
-            details: isAdminUpload
-                ? `Admin uploaded document for ${fName}: "${docTitle}" (${docType})`
-                : `Uploaded document to profile: "${docTitle}" (${docType})`
-        });
-
-        if (row.verification_status && row.verification_status !== 'pending' && row.verified_at) {
-            const isVerified = row.verification_status === 'verified';
-            aggregated.push({
-                id: 'doc_ver_' + row.id,
-                created_at: row.verified_at,
-                user_name: row.verified_by_name || 'Administrator',
-                user_role: 'Administrator',
-                module: 'Faculty Profiles',
-                action: isVerified ? 'Approved' : 'Rejected',
-                details: `${isVerified ? 'Verified' : 'Rejected verification for'} document: "${docTitle}" (${fName})`
-            });
+        sourceErrors = errors;
+        sourceCapped = capped;
+        const directories = buildDirectories(loaded.faculty || [], loaded.admins || []);
+        const folderMap = new Map((loaded.folders || []).map((row) => [String(row.id), row.name]));
+        allLogs = buildCanonical({
+            system: loaded.system || [],
+            workflow: loaded.workflow || [],
+            engagement: loaded.engagement || [],
+            tasks: loaded.tasks || [],
+            submissions: loaded.submissions || [],
+            documents: loaded.profileDocs || [],
+            research: loaded.research || [],
+            accomplishments: loaded.accomplishments || [],
+            extension: loaded.extension || [],
+            vault: loaded.vault || [],
+            folderMap,
+            leaves: loaded.leaves || [],
+            feedback: loaded.feedback || [],
+            events: loaded.events || [],
+            facultyRows: loaded.faculty || []
+        }, directories);
+        populateFilters();
+        applyFilters({ keepPage: true });
+    } catch (error) {
+        console.error('Reports could not be assembled:', error);
+        sourceErrors = ['The activity report could not be assembled.'];
+        allLogs = [];
+        applyFilters({ keepPage: true });
+    } finally {
+        loadInFlight = false;
+        if (loadQueued) {
+            loadQueued = false;
+            loadReports();
         }
     }
-
-    for (const row of resList) {
-        const fName = facultyMap[row.faculty_id] || 'Faculty Member';
-        aggregated.push({
-            id: 'res_' + row.id,
-            created_at: row.created_at || row.start_date || new Date().toISOString(),
-            user_name: fName,
-            user_role: 'Faculty',
-            module: 'Faculty Profiles',
-            action: 'Created',
-            details: `Added research project: "${row.title || 'Untitled'}" (Status: ${row.status || 'Ongoing'})`
-        });
-    }
-
-    for (const row of accList) {
-        const fName = facultyMap[row.faculty_id] || 'Faculty Member';
-        aggregated.push({
-            id: 'acc_' + row.id,
-            created_at: row.created_at || row.date_achieved || new Date().toISOString(),
-            user_name: fName,
-            user_role: 'Faculty',
-            module: 'Faculty Profiles',
-            action: 'Created',
-            details: `Recorded accomplishment: "${row.title || 'Untitled'}" (${row.accomplishment_type || 'General'})`
-        });
-    }
-
-    for (const row of extList) {
-        const fName = facultyMap[row.faculty_id] || 'Faculty Member';
-        const partner = row.partner_organization ? ` with ${row.partner_organization}` : '';
-        const status = row.status ? ` (Status: ${row.status})` : '';
-        aggregated.push({
-            id: 'ext_' + row.id,
-            created_at: row.created_at || row.start_date || new Date().toISOString(),
-            user_name: fName,
-            user_role: 'Faculty',
-            module: 'Faculty Profiles',
-            action: 'Created',
-            details: `Added extension project: "${row.project_title || 'Untitled'}"${partner}${status}`
-        });
-    }
-
-    for (const row of vaultList) {
-        const folderName = folderMap[row.folder_id] ? ` (Folder: ${folderMap[row.folder_id]})` : '';
-        aggregated.push({
-            id: 'vault_' + row.id,
-            created_at: row.uploaded_at || new Date().toISOString(),
-            user_name: 'Administrator',
-            user_role: 'Administrator',
-            module: 'Document Vault',
-            action: 'Uploaded',
-            details: `Uploaded file to vault: "${row.name || 'File'}"${folderName}`
-        });
-    }
-
-    for (const row of leaveList) {
-        const fName = facultyMap[row.faculty_id]
-            || [row.first_name, row.last_name].filter(Boolean).join(' ')
-            || row.faculty_name
-            || 'Faculty Member';
-        const dates = row.start_date ? ` from ${row.start_date} to ${row.end_date || row.start_date}` : '';
-        aggregated.push({
-            id: 'leave_' + row.id,
-            created_at: row.created_at || (row.date_of_filing ? row.date_of_filing + 'T08:00:00Z' : new Date().toISOString()),
-            user_name: fName,
-            user_role: 'Faculty',
-            module: 'Calendar & Events',
-            action: 'Submitted',
-            details: `Filed leave application: ${row.leave_type || 'Leave'}${dates} (Status: ${row.status || 'Pending'})`
-        });
-    }
-
-    for (const row of feedbackList) {
-        const fName = row.faculty_name || facultyMap[row.faculty_id] || 'Faculty Member';
-        const ratingStr = row.overall_rating ? ` (Rating: ${row.overall_rating}/5)` : '';
-        const summaryStr = row.feedback_summary ? ` — "${row.feedback_summary}"` : '';
-        aggregated.push({
-            id: 'fb_' + row.id,
-            created_at: row.submitted_at || new Date().toISOString(),
-            user_name: fName,
-            user_role: 'Faculty',
-            module: 'Seminar Feedback',
-            action: 'Submitted',
-            details: `Submitted event feedback${ratingStr}${summaryStr}`
-        });
-    }
-
-    const seenNotifIds = new Set();
-    for (const row of wfNotifs) {
-        seenNotifIds.add('wf_' + row.id);
-        const recipient = facultyMap[row.faculty_id] || (row.faculty_id ? 'Faculty Member' : 'All Faculty');
-        aggregated.push({
-            id: 'notif_wf_' + row.id,
-            created_at: row.created_at || new Date().toISOString(),
-            user_name: recipient,
-            user_role: 'Faculty',
-            module: 'Notifications',
-            action: 'Notification',
-            details: `${row.title || 'Notification'}: ${row.message || 'Notification sent'} (Recipient: ${recipient})`
-        });
-    }
-
-    for (const row of directNotifs) {
-        if (seenNotifIds.has('wf_' + row.id)) continue;
-        const recipient = facultyMap[row.user_id] || 'System User';
-        aggregated.push({
-            id: 'notif_dir_' + row.id,
-            created_at: row.created_at || new Date().toISOString(),
-            user_name: recipient,
-            user_role: 'User',
-            module: 'Notifications',
-            action: 'Notification',
-            details: `${row.title || 'Notification'}: ${row.message || 'Notification sent'}`
-        });
-    }
-
-    allLogs = aggregated.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-    populateModuleFilter();
-    applyFilters();
 }
 
 function refreshReports() {
     loadReports();
 }
-
-function populateModuleFilter() {
-    const select = document.getElementById('module-filter');
-    const current = select.value;
-    const names = [...new Set([...defaultModules, ...allLogs.map(l => l.module).filter(Boolean)])].sort();
-    select.innerHTML = '<option value="">All Modules</option>' + names.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
-    select.value = current;
-    if (typeof refreshCompactSelect === 'function') {
-        refreshCompactSelect(select);
-    }
+function scheduleReload() {
+    clearTimeout(realtimeTimer);
+    realtimeTimer = setTimeout(() => loadReports(), 800);
 }
 
-function applyFilters() {
-    const module = document.getElementById('module-filter').value;
+function fillSelect(select, placeholder, options, current) {
+    if (!select) return;
+    const value = current != null ? current : select.value;
+    select.innerHTML = `<option value="">${esc(placeholder)}</option>` + options.map((option) => {
+        const item = typeof option === 'string' ? { value: option, label: option } : option;
+        return `<option value="${esc(item.value)}">${esc(item.label)}</option>`;
+    }).join('');
+    const values = [...select.options].map((option) => option.value);
+    select.value = values.includes(value) ? value : '';
+    if (typeof refreshCompactSelect === 'function') refreshCompactSelect(select);
+}
+function populateFilters() {
+    const modules = [...new Set(allLogs.map((row) => row.module).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const statuses = new Map(STATUS_OPTIONS);
+    allLogs.forEach((row) => {
+        if (row.workflowStatus && !statuses.has(row.workflowStatus)) {
+            statuses.set(row.workflowStatus, row.workflowStatus.charAt(0).toUpperCase() + row.workflowStatus.slice(1));
+        }
+    });
+    fillSelect(document.getElementById('module-filter'), 'All Modules', modules);
+    fillSelect(document.getElementById('status-filter'), 'All Statuses', [...statuses].map(([value, label]) => ({ value, label })));
+}
+
+function selectedLabel(id, fallback) {
+    const select = document.getElementById(id);
+    if (!select || !select.value) return fallback;
+    return select.selectedOptions[0] ? select.selectedOptions[0].textContent : fallback;
+}
+function dateRangeLabel() {
     const from = document.getElementById('from-date').value;
     const to = document.getElementById('to-date').value;
-    const q = document.getElementById('search-reports').value.toLowerCase().trim();
-
-    filteredLogs = allLogs.filter(log => {
-        const d = new Date(log.created_at);
-        const matchesModule = !module || log.module === module;
-        const matchesFrom = !from || d >= new Date(from + 'T00:00:00');
-        const matchesTo = !to || d <= new Date(to + 'T23:59:59');
-        const hay = [log.user_name, log.user_role, log.module, log.action, log.details].join(' ').toLowerCase();
-        const matchesQ = !q || hay.includes(q);
-        return matchesModule && matchesFrom && matchesTo && matchesQ;
-    });
-
-    renderAll();
+    if (from && to) return `${formatFilterDate(from)}–${formatFilterDate(to)}`;
+    if (from) return `From ${formatFilterDate(from)}`;
+    if (to) return `Through ${formatFilterDate(to)}`;
+    return 'All dates';
+}
+function activeFilterText() {
+    const status = document.getElementById('status-filter').value
+        ? selectedLabel('status-filter', 'All Statuses')
+        : '';
+    return [
+        selectedLabel('module-filter', 'All Modules'),
+        selectedLabel('department-filter', 'All Departments'),
+        status,
+        dateRangeLabel()
+    ].filter(Boolean).join(' · ');
+}
+function summaryText() {
+    const count = filteredLogs.length;
+    return `Showing ${count} ${count === 1 ? 'activity' : 'activities'} · ${activeFilterText()}`;
 }
 
+function applyFilters(options) {
+    if (!options || !options.keepPage) tablePage = 1;
+    const moduleName = document.getElementById('module-filter').value;
+    const department = document.getElementById('department-filter').value;
+    const status = document.getElementById('status-filter').value;
+    const from = document.getElementById('from-date').value;
+    const to = document.getElementById('to-date').value;
+    const query = document.getElementById('search-reports').value.toLowerCase().trim();
+    filteredLogs = allLogs.filter((row) => {
+        if (moduleName && row.module !== moduleName) return false;
+        if (department && String(row.department || '').trim().toUpperCase() !== department.toUpperCase()) return false;
+        if (status && row.workflowStatus !== status) return false;
+        if ((from || to) && !row.dateKey) return false;
+        if (from && row.dateKey < from) return false;
+        if (to && row.dateKey > to) return false;
+        if (!query) return true;
+        const haystack = [row.userName, row.userRole, row.department, row.module, row.action, row.details].join(' ').toLowerCase();
+        return haystack.includes(query);
+    });
+    const maxPage = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+    if (tablePage > maxPage) tablePage = 1;
+    renderAll();
+}
 function resetFilters() {
     document.getElementById('module-filter').value = '';
+    document.getElementById('department-filter').value = '';
+    document.getElementById('status-filter').value = '';
     document.getElementById('from-date').value = '';
     document.getElementById('to-date').value = '';
     document.getElementById('search-reports').value = '';
-    if (typeof refreshCompactSelect === 'function') {
-        refreshCompactSelect(document.getElementById('module-filter'));
-    }
+    tablePage = 1;
+    ['module-filter', 'department-filter', 'status-filter'].forEach((id) => {
+        if (typeof refreshCompactSelect === 'function') refreshCompactSelect(document.getElementById(id));
+    });
     applyFilters();
 }
-
-function countBy(list, key) {
-    return list.reduce((acc, item) => {
-        const k = item[key] || 'Unknown';
-        acc[k] = (acc[k] || 0) + 1;
-        return acc;
-    }, {});
+function changePage(step) {
+    const maxPage = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+    tablePage = Math.min(maxPage, Math.max(1, tablePage + step));
+    renderTable();
 }
 
 function renderAll() {
@@ -756,294 +1513,736 @@ function renderAll() {
     renderTable();
     renderCharts();
 }
-
 function renderSummary() {
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const total = filteredLogs.length;
-    const today = filteredLogs.filter(l => String(l.created_at).slice(0, 10) === todayKey).length;
-    const activeModules = Object.keys(countBy(filteredLogs, 'module')).length;
-    const approvals = filteredLogs.filter(l => {
-        const a = String(l.action).toLowerCase();
-        return a.includes('approv') || a.includes('revis') || a.includes('reject');
-    }).length;
-
-    const totalEl = document.getElementById('card-total');
-    const todayEl = document.getElementById('card-today');
-    const modulesEl = document.getElementById('card-modules');
-    const approvalsEl = document.getElementById('card-approvals');
-
-    if (totalEl) totalEl.textContent = total;
-    if (todayEl) todayEl.textContent = today;
-    if (modulesEl) modulesEl.textContent = activeModules;
-    if (approvalsEl) approvalsEl.textContent = approvals;
+    const today = filteredLogs.filter((row) => row.dateKey === manilaTodayKey()).length;
+    const modules = new Set(filteredLogs.map((row) => row.module).filter(Boolean)).size;
+    const approvals = filteredLogs.filter((row) => row.reviewEvent).length;
+    document.getElementById('card-total').textContent = String(filteredLogs.length);
+    document.getElementById('card-today').textContent = String(today);
+    document.getElementById('card-modules').textContent = String(modules);
+    document.getElementById('card-approvals').textContent = String(approvals);
+    document.getElementById('result-summary').textContent = summaryText();
 }
-
 function renderTable() {
     const body = document.getElementById('activity-table');
     const empty = document.getElementById('empty-state');
     const countLabel = document.getElementById('log-count-label');
-
-    if (countLabel) countLabel.textContent = `${filteredLogs.length} record${filteredLogs.length === 1 ? '' : 's'}`;
-
-    if (!filteredLogs.length) {
+    const pager = document.getElementById('pager');
+    const total = filteredLogs.length;
+    countLabel.textContent = `${total} record${total === 1 ? '' : 's'}`;
+    if (!total) {
         body.innerHTML = '';
         empty.classList.remove('hidden');
+        pager.classList.add('hidden');
         return;
     }
-
     empty.classList.add('hidden');
-    body.innerHTML = filteredLogs.map(log => `
-        <tr class="table-row">
-            <td class="px-4 sm:px-6 py-3.5 whitespace-nowrap text-slate-600 font-medium">${formatDate(log.created_at)}</td>
-            <td class="px-4 sm:px-6 py-3.5">
-                <div class="font-bold text-slate-900">${esc(log.user_name)}</div>
-                <div class="text-[11px] text-slate-400">${esc(log.user_role || 'User')}</div>
+    const start = (tablePage - 1) * PAGE_SIZE;
+    const pageRows = filteredLogs.slice(start, start + PAGE_SIZE);
+    body.innerHTML = pageRows.map((row) => `
+        <tr>
+            <td class="px-4 py-3 whitespace-nowrap cite-muted">${esc(formatWhen(row.activityAt))}</td>
+            <td class="px-4 py-3">
+                <div class="font-semibold cite-title">${esc(displayText(row.userName))}</div>
+                ${row.userRole ? `<div class="text-[11px] cite-faint">${esc(row.userRole)}</div>` : ''}
             </td>
-            <td class="px-4 sm:px-6 py-3.5">
-                <span class="badge action-other font-semibold">${esc(log.module)}</span>
-            </td>
-            <td class="px-4 sm:px-6 py-3.5">
-                <span class="badge ${actionClass(log.action)}">${esc(log.action)}</span>
-            </td>
-            <td class="px-4 sm:px-6 py-3.5 min-w-[240px]">
-                <div class="text-slate-700 leading-relaxed">${esc(log.details)}</div>
-            </td>
+            <td class="px-4 py-3 cite-ink">${esc(displayText(row.department))}</td>
+            <td class="px-4 py-3 cite-ink">${esc(row.module)}</td>
+            <td class="px-4 py-3 cite-ink">${esc(row.action)}</td>
+            <td class="px-4 py-3"><div class="details-clamp" title="${esc(row.details)}">${esc(displayText(row.details))}</div></td>
         </tr>
     `).join('');
+    const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    pager.classList.toggle('hidden', total <= PAGE_SIZE);
+    document.getElementById('pager-label').textContent = `Showing ${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total}`;
+    document.getElementById('pager-prev').disabled = tablePage <= 1;
+    document.getElementById('pager-next').disabled = tablePage >= maxPage;
 }
 
+function themePaint(expression) {
+    const probe = document.createElement('span');
+    probe.style.color = expression;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+}
+function themePalette() {
+    return {
+        theme: themePaint('var(--cite-theme)'),
+        hover: themePaint('var(--cite-theme-hover)'),
+        onTheme: themePaint('var(--cite-theme-text)'),
+        ink: themePaint('color-mix(in srgb, var(--cite-theme) 55%, black)'),
+        grid: themePaint('color-mix(in srgb, var(--cite-theme) 12%, white)'),
+        wash: themePaint('color-mix(in srgb, var(--cite-theme) 14%, white)')
+    };
+}
+function chartShades(count) {
+    const fills = [
+        'var(--cite-theme)',
+        'color-mix(in srgb, var(--cite-theme) 74%, black)',
+        'color-mix(in srgb, var(--cite-theme) 82%, white)',
+        'color-mix(in srgb, var(--cite-theme) 56%, black)',
+        'color-mix(in srgb, var(--cite-theme) 70%, white)',
+        'color-mix(in srgb, var(--cite-theme) 40%, black)',
+        'color-mix(in srgb, var(--cite-theme) 64%, white)',
+        'color-mix(in srgb, var(--cite-theme) 28%, black)'
+    ];
+    const hovers = [
+        'var(--cite-theme-hover)',
+        'color-mix(in srgb, var(--cite-theme) 62%, black)',
+        'color-mix(in srgb, var(--cite-theme) 72%, white)',
+        'color-mix(in srgb, var(--cite-theme) 46%, black)',
+        'color-mix(in srgb, var(--cite-theme) 60%, white)',
+        'color-mix(in srgb, var(--cite-theme) 32%, black)',
+        'color-mix(in srgb, var(--cite-theme) 54%, white)',
+        'color-mix(in srgb, var(--cite-theme) 22%, black)'
+    ];
+    const total = Math.max(1, count);
+    return {
+        fill: Array.from({ length: total }, (_, index) => themePaint(fills[index % fills.length])),
+        hover: Array.from({ length: total }, (_, index) => themePaint(hovers[index % hovers.length]))
+    };
+}
+function rgbTuple(color) {
+    const match = String(color || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : [98, 23, 8];
+}
 function renderCharts() {
-    const actionCounts = countBy(filteredLogs, 'action');
-    const moduleCounts = countBy(filteredLogs, 'module');
-
-    const actionLabels = Object.keys(actionCounts);
-    const moduleLabels = Object.keys(moduleCounts);
-
-    const actionTotalEl = document.getElementById('action-total');
-    const moduleTotalEl = document.getElementById('module-total');
-
-    if (actionTotalEl) actionTotalEl.textContent = `${filteredLogs.length} actions`;
-    if (moduleTotalEl) moduleTotalEl.textContent = `${moduleLabels.length} modules`;
-
-    if (actionChart) actionChart.destroy();
-    if (moduleChart) moduleChart.destroy();
-
-    const actionCtx = document.getElementById('actionChart');
-    const moduleCtx = document.getElementById('moduleChart');
-
-    if (actionCtx) {
-        actionChart = new Chart(actionCtx, {
-            type: 'doughnut',
-            data: {
-                labels: actionLabels.length ? actionLabels : ['No Data'],
-                datasets: [{
-                    data: actionLabels.length ? Object.values(actionCounts) : [1],
-                    backgroundColor: actionLabels.length ? actionColors.slice(0, actionLabels.length) : ['#e5e7eb'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: { boxWidth: 10, usePointStyle: true, font: { size: 11, weight: '600' }, padding: 12 }
-                    }
-                }
+    const palette = themePalette();
+    const series = {
+        trend: buildTrend(filteredLogs),
+        module: countModules(filteredLogs),
+        department: countDepartments(filteredLogs),
+        workflow: countWorkflow(filteredLogs),
+        action: countActions(filteredLogs)
+    };
+    const signature = JSON.stringify({ series, theme: palette.theme });
+    if (signature === chartSignature) return;
+    chartSignature = signature;
+    trendChart = drawAnalyticsChart('trend', series.trend, trendChart, palette, false);
+    moduleChart = drawAnalyticsChart('module', series.module, moduleChart, palette, true);
+    departmentChart = drawAnalyticsChart('department', series.department, departmentChart, palette, false);
+    workflowChart = drawAnalyticsChart('workflow', series.workflow, workflowChart, palette, true);
+    actionChart = drawAnalyticsChart('action', series.action, actionChart, palette, true);
+}
+function drawAnalyticsChart(id, series, existing, palette, horizontal) {
+    const canvas = document.getElementById(`${id}Chart`);
+    const empty = document.getElementById(`${id}-empty`);
+    const ready = series.labels.length > 0 && series.values.some((value) => value > 0);
+    if (!ready) {
+        if (existing) existing.destroy();
+        if (canvas) canvas.classList.add('hidden');
+        if (empty) {
+            empty.textContent = 'No activity data available';
+            empty.classList.remove('hidden');
+        }
+        return null;
+    }
+    if (empty) empty.classList.add('hidden');
+    if (canvas) canvas.classList.remove('hidden');
+    if (existing) existing.destroy();
+    const shades = chartShades(series.labels.length);
+    const dataset = id === 'trend'
+        ? {
+            label: 'Activities',
+            data: series.values,
+            borderColor: palette.theme,
+            backgroundColor: palette.wash,
+            pointBackgroundColor: palette.theme,
+            pointBorderColor: palette.onTheme,
+            pointBorderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            borderWidth: 2.5,
+            tension: 0.35,
+            fill: true
+        }
+        : {
+            label: 'Activities',
+            data: series.values,
+            backgroundColor: shades.fill,
+            hoverBackgroundColor: shades.hover,
+            borderRadius: 6,
+            maxBarThickness: horizontal ? 22 : 42
+        };
+    return new Chart(canvas, {
+        type: id === 'trend' ? 'line' : 'bar',
+        data: { labels: series.labels, datasets: [dataset] },
+        options: chartOptions(horizontal, series.full, palette, id !== 'trend'),
+        plugins: id === 'trend' ? [] : [barValuePlugin]
+    });
+}
+const barValuePlugin = {
+    id: 'barValues',
+    afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        const meta = chart.getDatasetMeta(0);
+        const horizontal = chart.options.indexAxis === 'y';
+        const color = horizontal ? chart.options.scales.x.ticks.color : chart.options.scales.y.ticks.color;
+        if (!color) return;
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.font = '600 11px Inter, sans-serif';
+        meta.data.forEach((bar, index) => {
+            const value = chart.data.datasets[0].data[index];
+            if (horizontal) {
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(String(value), bar.x + 6, bar.y);
+            } else {
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(String(value), bar.x, bar.y - 4);
             }
         });
+        ctx.restore();
     }
-
-    if (moduleCtx) {
-        moduleChart = new Chart(moduleCtx, {
-            type: 'bar',
-            data: {
-                labels: moduleLabels.length ? moduleLabels : ['No Data'],
-                datasets: [{
-                    label: 'Activities',
-                    data: moduleLabels.length ? Object.values(moduleCounts) : [0],
-                    backgroundColor: '#621708',
-                    borderRadius: 8
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: {
-                        grid: { display: false },
-                        ticks: { font: { size: 11, weight: '600' }, color: '#64748b' }
+};
+function chartOptions(horizontal, fullLabels, palette, showValues) {
+    const colors = palette || themePalette();
+    return {
+        indexAxis: horizontal ? 'y' : 'x',
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 380 },
+        layout: { padding: { right: horizontal ? 36 : 8, top: showValues && !horizontal ? 18 : 8, bottom: 4, left: 4 } },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: colors.theme,
+                titleColor: colors.onTheme,
+                bodyColor: colors.onTheme,
+                titleFont: { size: 13, weight: '600' },
+                bodyFont: { size: 13 },
+                padding: 12,
+                cornerRadius: 8,
+                displayColors: false,
+                callbacks: {
+                    title(items) {
+                        const item = items[0];
+                        const index = item ? item.dataIndex : 0;
+                        if (!horizontal && fullLabels && fullLabels[index]) return fullLabels[index];
+                        const stored = item && item.chart && item.chart.data.labels ? item.chart.data.labels[index] : '';
+                        return stored || (item ? item.label : '');
                     },
-                    y: {
-                        beginAtZero: true,
-                        ticks: { precision: 0, color: '#94a3b8' },
-                        grid: { color: '#eef2f7' }
+                    label(item) {
+                        const count = horizontal ? item.parsed.x : item.parsed.y;
+                        return `${count} ${count === 1 ? 'activity' : 'activities'}`;
                     }
                 }
             }
-        });
+        },
+        scales: {
+            x: {
+                beginAtZero: true,
+                ticks: {
+                    precision: 0,
+                    color: colors.ink,
+                    font: { size: 12, weight: '600' },
+                    maxRotation: 0,
+                    autoSkip: true,
+                    maxTicksLimit: horizontal ? 8 : 10
+                },
+                grid: { display: !horizontal, color: colors.grid }
+            },
+            y: {
+                beginAtZero: !horizontal,
+                ticks: {
+                    precision: 0,
+                    color: colors.ink,
+                    font: { size: horizontal ? 12 : 13, weight: '600' },
+                    autoSkip: false,
+                    callback(value) {
+                        if (!horizontal) return value;
+                        const label = String(this.getLabelForValue(value) || '');
+                        return label.length > 32 ? `${label.slice(0, 31)}…` : label;
+                    }
+                },
+                grid: { display: horizontal, color: colors.grid }
+            }
+        }
+    };
+}
+function buildTrend(logs) {
+    const dated = logs.filter((row) => row.dateKey);
+    if (!dated.length) return { labels: [], values: [] };
+    const keys = dated.map((row) => row.dateKey).sort();
+    const from = document.getElementById('from-date').value || keys[0];
+    const to = document.getElementById('to-date').value || keys[keys.length - 1];
+    const start = from <= to ? from : to;
+    const end = from <= to ? to : from;
+    if (daysBetween(start, end) <= 45) {
+        const counts = {};
+        dated.forEach((row) => { counts[row.dateKey] = (counts[row.dateKey] || 0) + 1; });
+        const days = eachDate(start, end);
+        return {
+            labels: days.map(formatDayLabel),
+            full: days.map(formatFilterDate),
+            values: days.map((day) => counts[day] || 0)
+        };
     }
-
-    const asc = document.getElementById('actionChartSkeleton'); if(asc) asc.style.display = 'none';
-    const msc = document.getElementById('moduleChartSkeleton'); if(msc) msc.style.display = 'none';
+    const counts = {};
+    dated.forEach((row) => {
+        const month = row.dateKey.slice(0, 7);
+        counts[month] = (counts[month] || 0) + 1;
+    });
+    const months = eachMonth(start, end);
+    return {
+        labels: months.map(formatMonthLabel),
+        full: months.map(formatMonthLabel),
+        values: months.map((month) => counts[month] || 0)
+    };
+}
+function countModules(logs) {
+    const counts = new Map();
+    logs.forEach((row) => {
+        if (!row.module) return;
+        counts.set(row.module, (counts.get(row.module) || 0) + 1);
+    });
+    const entries = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return { labels: entries.map((entry) => entry[0]), values: entries.map((entry) => entry[1]) };
+}
+const REPORT_DEPARTMENTS = ['BSIT', 'BIT', 'BSIE'];
+function countDepartments(logs) {
+    const counts = { BSIT: 0, BIT: 0, BSIE: 0 };
+    logs.forEach((row) => {
+        const code = String(row.department || '').trim().toUpperCase();
+        if (Object.prototype.hasOwnProperty.call(counts, code)) counts[code] += 1;
+    });
+    const selected = String(document.getElementById('department-filter').value || '').trim().toUpperCase();
+    const labels = REPORT_DEPARTMENTS.includes(selected)
+        ? [selected]
+        : REPORT_DEPARTMENTS.slice();
+    return { labels, values: labels.map((code) => counts[code]) };
+}
+function workflowChartAction(row) {
+    if (!row || row.module !== 'Workflow Approval') return '';
+    if (isNotificationActivity(row.module, row.action)) return '';
+    const action = String(row.action || '').toLowerCase();
+    if (/\b(submit|submitted)\b/.test(action)) return 'Submitted';
+    if (action.includes('approv')) return 'Approved';
+    if (action.includes('revision')) return 'Requested Revision';
+    if (action.includes('reject')) return 'Rejected';
+    if (action.includes('declin')) return 'Declined';
+    return '';
+}
+function countWorkflow(logs) {
+    const labels = ['Submitted', 'Approved', 'Requested Revision', 'Rejected', 'Declined'];
+    const counts = Object.fromEntries(labels.map((label) => [label, 0]));
+    logs.forEach((row) => {
+        const label = workflowChartAction(row);
+        if (label) counts[label] += 1;
+    });
+    return { labels, values: labels.map((label) => counts[label]) };
+}
+function countActions(logs) {
+    const counts = new Map();
+    logs.forEach((row) => {
+        const action = actionChartLabel(row.action);
+        if (!action || isNotificationActivity(row.module, row.action)) return;
+        counts.set(action, (counts.get(action) || 0) + 1);
+    });
+    const entries = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, 8);
+    return { labels: entries.map((entry) => entry[0]), values: entries.map((entry) => entry[1]) };
+}
+function actionChartLabel(action) {
+    const value = cleanText(action);
+    const key = value.toLowerCase();
+    if (!value || key.includes('notification')) return '';
+    if (key.includes('approv')) return 'Approved';
+    if (key.includes('revision')) return 'Requested Revision';
+    if (/\b(submit|submitted)\b/.test(key)) return 'Submitted';
+    if (key === 'uploaded' || key === 'admin upload') return 'Uploaded';
+    return value;
 }
 
-function exportRows() {
-    return filteredLogs.map(l => ({
-        'Date and Time': formatDate(l.created_at),
-        'User': l.user_name,
-        'Role': l.user_role,
-        'Module': l.module,
-        'Action': l.action,
-        'Details': l.details
+function exportRecords() {
+    return filteredLogs.map((row) => ({
+        'Date and Time': formatWhen(row.activityAt),
+        'User': row.userName || '',
+        'Role': row.userRole || '',
+        'Department': row.department || '',
+        'Module': row.module || '',
+        'Action': row.action || '',
+        'Details': row.details || ''
     }));
 }
-
+function csvCell(value) {
+    const text = String(value ?? '');
+    if (/[",\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+    return text;
+}
 function downloadBlob(content, filename, type) {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     URL.revokeObjectURL(url);
+}
+function toggleExportMenu(event) {
+    if (event) event.stopPropagation();
+    document.getElementById('export-panel').classList.toggle('hidden');
+}
+function closeExportMenu() {
+    document.getElementById('export-panel').classList.add('hidden');
 }
 
 async function recordExport(format, count) {
     try {
+        const name = currentProfile
+            ? formatFullName(currentProfile.first_name, currentProfile.last_name, currentUser?.email)
+            : '';
         await supabaseClient.from('system_activity_logs').insert({
-            user_name: currentProfile ? formatFullName(currentProfile.first_name, currentProfile.last_name, currentUser?.email) : 'Administrator',
+            user_name: name || cleanText(currentUser?.email) || 'Administrator',
             user_role: 'Administrator',
             module: 'Reports and Analytics',
             action: 'Exported',
-            details_text: `Exported ${count} filtered report record(s) as ${format.toUpperCase()}.`,
-            metadata: { format, count }
+            details_text: `Exported ${count} filtered report record(s) as ${String(format).toUpperCase()}.`,
+            metadata: { format, count, source: 'reports-analytics' }
         });
-    } catch (e) {
-        console.warn('Record export log skipped:', e.message);
+    } catch (error) {
+        console.warn('Export audit was not recorded:', error.message);
     }
 }
 
-async function exportReport(format) {
-    const rows = exportRows();
-    if (!rows.length) return alert('No filtered activity logs available to export.');
-    const stamp = new Date().toISOString().slice(0, 10);
-
-    if (format === 'excel') {
-        const ws = XLSX.utils.json_to_sheet(rows);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Activity Logs');
-        XLSX.writeFile(wb, `citeflow-reports-analytics-${stamp}.xlsx`);
-        await recordExport(format, rows.length);
-        return;
+function pdfImageKind(data) {
+    return String(data || '').indexOf('image/jpeg') >= 0 ? 'JPEG' : 'PNG';
+}
+function pdfBannerSize(doc, data, maxW, maxH) {
+    if (!data) return { w: 0, h: 0 };
+    try {
+        const props = doc.getImageProperties(data);
+        let width = maxW;
+        let height = width * (props.height / props.width);
+        if (height > maxH) {
+            height = maxH;
+            width = height * (props.width / props.height);
+        }
+        return { w: width, h: height };
+    } catch (_) {
+        return { w: 0, h: 0 };
     }
+}
+async function loadPdfBanners() {
+    if (window.__citeReportPdfBanners) return window.__citeReportPdfBanners;
+    const files = { seal: 'ctu-seal.png', bagong: 'bagong-pilipinas.png', footer: 'ctu-rankings-banner.png' };
+    const bases = ['../assets/', 'assets/'];
+    const toData = (response) => response.blob().then((blob) => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+    }));
+    const loadOne = async (file) => {
+        for (const base of bases) {
+            try {
+                const response = await fetch(base + file, { cache: 'force-cache' });
+                if (response && response.ok) {
+                    const data = await toData(response);
+                    if (data) return data;
+                }
+            } catch (_) {}
+        }
+        return '';
+    };
+    const [seal, bagong, footer] = await Promise.all([
+        loadOne(files.seal), loadOne(files.bagong), loadOne(files.footer)
+    ]);
+    window.__citeReportPdfBanners = { seal, bagong, footer };
+    return window.__citeReportPdfBanners;
+}
+function drawPdfLetterhead(doc, banners, themeRgb) {
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 12;
+    const accent = themeRgb || rgbTuple(themePaint('var(--cite-theme)'));
+    const rows = [
+        { font: ['times', 'normal'], size: 9, text: 'Republic of the Philippines' },
+        { font: ['helvetica', 'bold'], size: 12, text: 'CEBU TECHNOLOGICAL UNIVERSITY' },
+        { font: ['helvetica', 'bold'], size: 10.5, text: 'ARGAO CAMPUS' },
+        { font: ['helvetica', 'normal'], size: 8, text: 'Ed Kintanar Street, Lamacan, Argao, Cebu' },
+        { font: ['helvetica', 'normal'], size: 8, color: [29, 78, 216], text: 'Website: http://www.argao.ctu.edu.ph' },
+        { font: ['helvetica', 'normal'], size: 8, color: [29, 78, 216], text: 'E-mail: cdargao@ctu.edu.ph' },
+        { font: ['helvetica', 'normal'], size: 8, text: 'Phone No.: (032) 401-0737 local 1700' },
+        { font: ['times', 'bold'], size: 11, text: 'REPORTS & ANALYTICS' }
+    ];
+    let textW = 0;
+    rows.forEach((row) => {
+        doc.setFont(row.font[0], row.font[1]);
+        doc.setFontSize(row.size);
+        textW = Math.max(textW, doc.getTextWidth(row.text));
+    });
+    const seal = banners && banners.seal ? pdfBannerSize(doc, banners.seal, 18, 18) : { w: 0, h: 0 };
+    const bagong = banners && banners.bagong ? pdfBannerSize(doc, banners.bagong, 18, 18) : { w: 0, h: 0 };
+    const gap = 3;
+    const blockW = seal.w + (seal.w ? gap : 0) + textW + (bagong.w ? gap : 0) + bagong.w;
+    const x0 = Math.max(margin, (pageW - blockW) / 2);
+    const center = x0 + seal.w + (seal.w ? gap : 0) + textW / 2;
+    let y = 8;
+    rows.forEach((row) => {
+        doc.setFont(row.font[0], row.font[1]);
+        doc.setFontSize(row.size);
+        const color = row.color || [17, 17, 17];
+        doc.setTextColor(color[0], color[1], color[2]);
+        doc.text(row.text, center, y, { align: 'center' });
+        y += 4.2;
+    });
+    const logoH = Math.max(seal.h, bagong.h);
+    const logoY = 6;
+    try {
+        if (seal.w && banners.seal) doc.addImage(banners.seal, pdfImageKind(banners.seal), x0, logoY, seal.w, seal.h, undefined, 'FAST');
+    } catch (_) {}
+    try {
+        if (bagong.w && banners.bagong) doc.addImage(banners.bagong, pdfImageKind(banners.bagong), x0 + seal.w + (seal.w ? gap : 0) + textW + gap, logoY, bagong.w, bagong.h, undefined, 'FAST');
+    } catch (_) {}
+    const after = Math.max(y, logoY + logoH) + 1.5;
+    doc.setDrawColor(accent[0], accent[1], accent[2]);
+    doc.setLineWidth(0.3);
+    doc.line(margin, after, pageW - margin, after);
+    return after + 5;
+}
 
-    if (format === 'pdf') {
-        const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-        doc.setFontSize(16);
-        doc.setTextColor(98, 23, 8);
-        doc.text('CITE-Flow Management System — Reports and Analytics', 40, 40);
-        doc.setFontSize(9);
+async function exportPdf(rows) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        notifyUser('PDF export is unavailable in this browser.', 'error', 'Export');
+        return false;
+    }
+    const { jsPDF } = window.jspdf;
+    const banners = await loadPdfBanners();
+    const palette = themePalette();
+    const themeRgb = rgbTuple(palette.theme);
+    const onThemeRgb = rgbTuple(palette.onTheme);
+    const inkRgb = rgbTuple(themePaint('color-mix(in srgb, var(--cite-theme) 55%, black)'));
+    const mutedRgb = rgbTuple(themePaint('color-mix(in srgb, var(--cite-theme) 32%, black)'));
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+    const margin = 12;
+    const pageW = doc.internal.pageSize.getWidth();
+    let y = drawPdfLetterhead(doc, banners, themeRgb);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(mutedRgb[0], mutedRgb[1], mutedRgb[2]);
+    doc.text(`Generated: ${formatGeneratedAt()} (Philippine time)`, margin, y);
+    y += 4;
+    const filterLines = doc.splitTextToSize(`Filters: ${activeFilterText()}`, pageW - margin * 2);
+    doc.text(filterLines, margin, y);
+    y += filterLines.length * 3.6;
+    doc.text(`Results: ${rows.length} ${rows.length === 1 ? 'activity' : 'activities'}`, margin, y);
+    y += 4;
+    doc.autoTable({
+        startY: y,
+        margin: { top: 18, bottom: 32, left: margin, right: margin },
+        showHead: 'everyPage',
+        head: [['Date & Time', 'User', 'Department', 'Module', 'Action', 'Details']],
+        body: rows.length
+            ? rows.map((row) => [row['Date and Time'], row.User, row.Department, row.Module, row.Action, row.Details])
+            : [['—', '—', '—', '—', '—', 'No activity in the current filters']],
+        styles: { fontSize: 8, cellPadding: 1.8, overflow: 'linebreak', valign: 'top', textColor: inkRgb },
+        headStyles: { fillColor: themeRgb, textColor: onThemeRgb, fontStyle: 'bold', fontSize: 8 },
+        columnStyles: {
+            0: { cellWidth: 32 },
+            1: { cellWidth: 32 },
+            2: { cellWidth: 28 },
+            3: { cellWidth: 32 },
+            4: { cellWidth: 28 },
+            5: { cellWidth: 112 }
+        },
+        didDrawPage(data) {
+            if (data.pageNumber === 1) return;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(themeRgb[0], themeRgb[1], themeRgb[2]);
+            doc.text('CEBU TECHNOLOGICAL UNIVERSITY', margin, 8);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(mutedRgb[0], mutedRgb[1], mutedRgb[2]);
+            doc.text('Reports & Analytics', margin, 12);
+        }
+    });
+    const pages = doc.getNumberOfPages();
+    for (let page = 1; page <= pages; page += 1) {
+        doc.setPage(page);
+        const pageH = doc.internal.pageSize.getHeight();
+        const footerTop = pageH - 22;
+        doc.setDrawColor(themeRgb[0], themeRgb[1], themeRgb[2]);
+        doc.setLineWidth(0.3);
+        doc.line(margin, footerTop, pageW - margin, footerTop);
+        let drewBanner = false;
+        if (banners && banners.footer) {
+            try {
+                const size = pdfBannerSize(doc, banners.footer, 120, 10);
+                if (size.w) {
+                    doc.addImage(banners.footer, pdfImageKind(banners.footer), (pageW - size.w) / 2, footerTop + 2, size.w, size.h, undefined, 'FAST');
+                    drewBanner = true;
+                }
+            } catch (_) {}
+        }
+        if (!drewBanner) {
+            doc.setFont('times', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(17, 17, 17);
+            doc.text('CEBU TECHNOLOGICAL UNIVERSITY', pageW / 2, footerTop + 6, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.text('ARGAO CAMPUS', pageW / 2, footerTop + 10, { align: 'center' });
+        }
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Generated: ${new Date().toLocaleString()} | Total Records: ${rows.length}`, 40, 58);
-        doc.autoTable({
-            startY: 74,
-            head: [['Date and Time', 'User', 'Role', 'Module', 'Action', 'Details']],
-            body: rows.map(r => [r['Date and Time'], r.User, r.Role, r.Module, r.Action, r.Details]),
-            styles: { fontSize: 8, cellPadding: 5, overflow: 'linebreak' },
-            headStyles: { fillColor: [98, 23, 8], textColor: [255, 255, 255], fontStyle: 'bold' },
-            columnStyles: { 5: { cellWidth: 260 } }
+        doc.text(`Page ${page} of ${pages}`, pageW - margin, pageH - 4, { align: 'right' });
+    }
+    doc.save(`CITE-Flow-Reports-Analytics-${manilaTodayKey()}.pdf`);
+    return true;
+}
+
+function exportExcel(rows) {
+    if (!window.XLSX) {
+        notifyUser('Excel export is unavailable in this browser.', 'error', 'Export');
+        return false;
+    }
+    const header = ['Date and Time', 'User', 'Role', 'Department', 'Module', 'Action', 'Details'];
+    const preamble = [
+        ['Republic of the Philippines'],
+        ['CEBU TECHNOLOGICAL UNIVERSITY'],
+        ['ARGAO CAMPUS'],
+        ['Ed Kintanar Street, Lamacan, Argao, Cebu'],
+        ['Website: http://www.argao.ctu.edu.ph    E-mail: cdargao@ctu.edu.ph    Phone No.: (032) 401-0737 local 1700'],
+        ['REPORTS & ANALYTICS'],
+        [`Generated: ${formatGeneratedAt()} (Philippine time)`],
+        [`Filters: ${activeFilterText()}`],
+        [`Results: ${rows.length} ${rows.length === 1 ? 'activity' : 'activities'}`],
+        [],
+        header
+    ];
+    const body = rows.map((row) => header.map((key) => row[key]));
+    const sheet = XLSX.utils.aoa_to_sheet(preamble.concat(body));
+    sheet['!cols'] = [
+        { wch: 24 }, { wch: 24 }, { wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 72 }
+    ];
+    const headerIndex = preamble.length - 1;
+    const lastExcelRow = headerIndex + body.length + 1;
+    sheet['!autofilter'] = { ref: `A${headerIndex + 1}:G${lastExcelRow}` };
+    sheet['!pageSetup'] = {
+        orientation: 'landscape',
+        paperSize: 9,
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0
+    };
+    sheet['!margins'] = { left: 0.5, right: 0.5, top: 0.6, bottom: 0.6, header: 0.2, footer: 0.2 };
+    header.forEach((_, index) => {
+        const cell = sheet[XLSX.utils.encode_cell({ r: headerIndex, c: index })];
+        if (cell) cell.s = { font: { bold: true }, alignment: { vertical: 'center', wrapText: true } };
+    });
+    body.forEach((record, rowIndex) => {
+        record.forEach((_, colIndex) => {
+            const cell = sheet[XLSX.utils.encode_cell({ r: headerIndex + 1 + rowIndex, c: colIndex })];
+            if (cell) cell.s = { alignment: { vertical: 'top', wrapText: colIndex === 6 } };
         });
-        doc.save(`citeflow-reports-analytics-${stamp}.pdf`);
-        await recordExport(format, rows.length);
+    });
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, 'Activity');
+    XLSX.writeFile(book, `CITE-Flow-Reports-Analytics-${manilaTodayKey()}.xlsx`);
+    return true;
+}
+
+function exportCsv(rows) {
+    const header = ['Date and Time', 'User', 'Role', 'Department', 'Module', 'Action', 'Details'];
+    const lines = [
+        csvCell('Cebu Technological University — Reports & Analytics'),
+        csvCell(`Generated: ${formatGeneratedAt()} (Philippine time)`),
+        csvCell(`Filters: ${activeFilterText()}`),
+        csvCell(`Results: ${rows.length} ${rows.length === 1 ? 'activity' : 'activities'}`),
+        '',
+        header.map(csvCell).join(','),
+        ...rows.map((row) => header.map((key) => csvCell(row[key])).join(','))
+    ];
+    downloadBlob('\ufeff' + lines.join('\r\n'), `CITE-Flow-Reports-Analytics-${manilaTodayKey()}.csv`, 'text/csv;charset=utf-8');
+    return true;
+}
+
+async function exportReport(format) {
+    closeExportMenu();
+    const rows = exportRecords();
+    if (!rows.length) {
+        notifyUser('No filtered activity is available to export.', 'warning', 'Nothing to export');
         return;
     }
-
-    if (format === 'word') {
-        const trs = rows.map(r => `<tr><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r['Date and Time'])}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.User)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.Role)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.Module)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.Action)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${esc(r.Details)}</td></tr>`).join('');
-        const docContent = '\ufeff<div style="font-family:Arial,sans-serif;padding:24px;"><h1 style="font-size:18px;color:#621708;">CITE-Flow — System Activity Reports</h1><p style="font-size:11px;color:#6b7280;">Generated: ' + new Date().toLocaleString() + ' | Total Records: ' + rows.length + '</p><table style="border-collapse:collapse;width:100%;margin-top:14px;"><thead><tr style="background:#f3f4f6;"><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Date and Time</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">User</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Role</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Module</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Action</th><th style="border:1px solid #d1d5db;padding:8px;font-size:11px;text-align:left;">Details</th></tr></thead><tbody>' + trs + '</tbody></table></div>';
-        downloadBlob(docContent, `citeflow-reports-analytics-${stamp}.doc`, 'application/msword');
-        await recordExport(format, rows.length);
-        return;
+    try {
+        let saved = false;
+        if (format === 'pdf') saved = await exportPdf(rows);
+        else if (format === 'excel') saved = exportExcel(rows);
+        else if (format === 'csv') saved = exportCsv(rows);
+        if (saved) await recordExport(format, rows.length);
+    } catch (error) {
+        console.error('Report export failed:', error);
+        notifyUser('The export could not be completed.', 'error', 'Export');
     }
 }
 
 function subscribeReports() {
-    supabaseClient.channel('reports-analytics-realtime')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'system_activity_logs' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_research_projects' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_accomplishments' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'extension_projects' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_leaves' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_event_feedback' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, loadReports)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, loadReports)
-        .subscribe();
+    if (!supabaseClient || reportsChannel) return;
+    const tables = [
+        'system_activity_logs', 'wf_activity_log', 'wf_submissions', 'engagement_logs',
+        'faculty_documents', 'faculty_research_projects', 'faculty_accomplishments',
+        'extension_projects', 'documents', 'faculty_leaves', 'calendar_event_feedback',
+        'calendar_events', 'faculty'
+    ];
+    reportsChannel = supabaseClient.channel('reports-analytics-realtime');
+    tables.forEach((table) => {
+        reportsChannel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleReload);
+    });
+    reportsChannel.subscribe();
 }
 
 function formatFullName(firstName, lastName, fallback) {
-    return [firstName, lastName].filter(Boolean).join(' ').trim() || fallback || 'Administrator';
+    return [firstName, lastName].filter(Boolean).join(' ').trim() || fallback || '';
 }
-
 function renderProfile(profile, user) {
     const nameEl = document.getElementById('profileName');
     const roleEl = document.getElementById('profileRole');
     if (nameEl) nameEl.textContent = formatFullName(profile.first_name, profile.last_name, user?.email);
     if (roleEl) roleEl.textContent = profile.role || 'Administrator';
 }
-
 async function loadAdminProfile() {
     try {
         const { data: authData } = await supabaseClient.auth.getUser();
         if (!authData?.user) return;
         currentUser = authData.user;
-        const m = currentUser.user_metadata || {};
+        const meta = currentUser.user_metadata || {};
         let profile = {
-            first_name: m.first_name || '',
-            last_name: m.last_name || '',
+            first_name: meta.first_name || '',
+            last_name: meta.last_name || '',
             email: currentUser.email || '',
-            role: m.role || 'Administrator'
+            role: meta.role || 'Administrator'
         };
-        const { data: dbProfile } = await supabaseClient.from('admin_profiles').select('*').eq('id', currentUser.id).maybeSingle();
-        if (dbProfile) {
-            profile = { ...profile, ...dbProfile };
-        }
+        const { data: dbProfile } = await supabaseClient.from('admin_profiles').select('id, first_name, last_name, email, role').eq('id', currentUser.id).maybeSingle();
+        if (dbProfile) profile = { ...profile, ...dbProfile };
         currentProfile = profile;
         renderProfile(profile, currentUser);
-    } catch (e) {
-        console.warn('loadAdminProfile skipped:', e.message);
+    } catch (error) {
+        console.warn('Administrator profile was not loaded:', error.message);
     }
 }
 
-/* Compact Select Handler (Same as Calendar) */
 function closeAllCompactSelects(exceptPanel) {
     document.querySelectorAll('.compact-select-panel').forEach((panel) => {
         if (panel === exceptPanel) return;
-        panel.classList.remove('open', 'open-up');
-        panel.style.position = '';
-        panel.style.left = '';
-        panel.style.width = '';
-        panel.style.top = '';
-        panel.style.bottom = '';
-        panel.style.zIndex = '';
+        panel.classList.remove('open');
     });
 }
 function positionCompactPanel(panel, wrap) {
     const rect = wrap.getBoundingClientRect();
-    const openUp = rect.bottom + 230 > window.innerHeight && rect.top > 230;
-    panel.classList.toggle('open-up', openUp);
+    const openUp = rect.bottom + 240 > window.innerHeight && rect.top > 240;
     panel.style.position = 'fixed';
     panel.style.left = `${Math.max(12, rect.left)}px`;
-    panel.style.width = `${Math.max(rect.width, 160)}px`;
+    panel.style.width = `${Math.max(rect.width, 180)}px`;
     panel.style.zIndex = '100050';
     if (openUp) {
         panel.style.top = 'auto';
@@ -1053,34 +2252,21 @@ function positionCompactPanel(panel, wrap) {
         panel.style.bottom = 'auto';
     }
 }
-function compactEsc(value) {
-    return String(value ?? '').replace(/[&<>'"]/g, c => ({
-        '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
-    }[c]));
-}
 function refreshCompactSelect(select) {
     if (!select) return;
     const wrap = select.closest('.compact-select');
     if (!wrap) return;
-    const trigger = wrap.querySelector('.compact-select-trigger');
     const triggerLabel = wrap.querySelector('.compact-select-trigger span');
     const panel = wrap.querySelector('.compact-select-panel');
     const selected = select.selectedOptions[0];
-    if (trigger) {
-        const copied = [...select.classList].filter((c) =>
-            c !== 'compact-select-native' && c !== 'appearance-none'
-        );
-        trigger.className = ['compact-select-trigger', ...copied].join(' ');
-    }
     if (triggerLabel) triggerLabel.textContent = selected ? selected.textContent : '';
     if (!panel) return;
-    panel.innerHTML = [...select.options].filter((option) => !option.hidden).map((option) => `
-        <button type="button" class="compact-select-option ${option.selected ? 'active' : ''}" data-value="${compactEsc(option.value)}">${compactEsc(option.textContent)}</button>
+    panel.innerHTML = [...select.options].map((option) => `
+        <button type="button" class="compact-select-option ${option.selected ? 'active' : ''}" data-value="${esc(option.value)}">${esc(option.textContent)}</button>
     `).join('');
 }
 function initCompactSelects() {
     document.querySelectorAll('select:not([multiple])').forEach((select) => {
-        if (select.closest('.csc-form')) return;
         if (select.dataset.compact === 'true') {
             refreshCompactSelect(select);
             return;
@@ -1091,18 +2277,14 @@ function initCompactSelects() {
         select.parentNode.insertBefore(wrap, select);
         wrap.appendChild(select);
         select.classList.add('compact-select-native');
-
         const trigger = document.createElement('button');
         trigger.type = 'button';
-        trigger.className = 'compact-select-trigger';
+        trigger.className = 'compact-select-trigger field';
         trigger.innerHTML = '<span></span>';
-
         const panel = document.createElement('div');
         panel.className = 'compact-select-panel';
-
         wrap.appendChild(trigger);
         wrap.appendChild(panel);
-
         trigger.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -1112,7 +2294,6 @@ function initCompactSelects() {
             positionCompactPanel(panel, wrap);
             panel.classList.add('open');
         });
-
         panel.addEventListener('click', (event) => {
             const option = event.target.closest('.compact-select-option');
             if (!option) return;
@@ -1121,13 +2302,12 @@ function initCompactSelects() {
             refreshCompactSelect(select);
             closeAllCompactSelects();
         });
-
         refreshCompactSelect(select);
     });
 }
 document.addEventListener('click', (event) => {
-    if (event.target.closest('.compact-select-option')) return;
-    if (event.target.closest('.compact-select-trigger')) return;
+    if (!event.target.closest('#export-menu')) closeExportMenu();
+    if (event.target.closest('.compact-select-option, .compact-select-trigger')) return;
     closeAllCompactSelects();
 });
 document.addEventListener('scroll', () => {
@@ -1140,9 +2320,9 @@ window.addEventListener('resize', () => closeAllCompactSelects());
 
 window.addEventListener('load', async () => {
     if (typeof loadSidebar === 'function') await loadSidebar();
+    initCompactSelects();
     await loadAdminProfile();
     await loadReports();
-    initCompactSelects();
     subscribeReports();
 });
 </script>
