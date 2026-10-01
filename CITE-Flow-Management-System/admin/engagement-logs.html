@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
     <link rel="stylesheet" href="../nav.css">
@@ -23,14 +25,122 @@
         .card {
             background: #ffffff;
             border: 1px solid #e5e7eb;
-            border-radius: 24px;
-            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.04);
+            border-radius: 12px;
+            box-shadow: none;
+        }
+
+        .filter-label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        .category-card {
+            background: #ffffff;
+            color: #334155;
+        }
+        .category-card:hover {
+            background: #f8fafc;
+            color: #0f172a;
+        }
+        .category-card .cat-label {
+            color: #64748b;
+        }
+        .category-card.active {
+            background: #fff7f5;
+            border-color: #621708;
+            box-shadow: inset 3px 0 0 #621708;
+            color: #1e293b;
+        }
+        .category-card.active .cat-label {
+            color: #621708;
+        }
+        .category-card:focus-visible,
+        .breakdown-btn:focus-visible,
+        .export-menu button:focus-visible,
+        .view-btn:focus-visible {
+            outline: 2px solid #621708;
+            outline-offset: 2px;
+        }
+
+        .breakdown-btn {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 10px;
+            background: transparent;
+            color: #334155;
+            text-align: left;
+        }
+        .breakdown-btn:hover {
+            background: #f8fafc;
+            color: #0f172a;
+        }
+        .breakdown-btn.is-selected {
+            background: #fff7f5;
+            color: #1e293b;
+            box-shadow: inset 3px 0 0 #621708;
+        }
+        .breakdown-btn .breakdown-label { color: #334155; font-weight: 500; }
+        .breakdown-btn .breakdown-count { color: #0f172a; font-weight: 700; }
+        .breakdown-btn.is-selected .breakdown-label { color: #621708; }
+        .breakdown-btn.is-selected .breakdown-count { color: #0f172a; }
+
+        .export-menu {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 6px);
+            z-index: 40;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+            padding: 4px;
+        }
+        .export-menu button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e293b;
+            background: #ffffff;
+        }
+        .export-menu button:hover {
+            background: #f8fafc;
+            color: #621708;
+        }
+        @media (min-width: 640px) {
+            .export-menu { left: auto; width: 11.5rem; }
+        }
+
+        .log-record { cursor: pointer; }
+        .log-record:focus-visible {
+            outline: 2px solid #621708;
+            outline-offset: 2px;
+        }
+
+        .detail-label {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #64748b;
         }
 
         .field {
             width: 100%;
             border: 1px solid #d1d5db;
-            border-radius: 16px;
+            border-radius: 10px;
             padding: 10px 14px;
             font-size: 14px;
             outline: none;
@@ -63,9 +173,18 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.1);
         }
 
-        .view-btn.active {
-            background: var(--cite-theme);
-            color: #fff;
+        .view-btn {
+            color: #334155;
+            background: #ffffff;
+        }
+        .view-btn:hover {
+            background: #f8fafc;
+            color: #0f172a;
+        }
+        .view-btn.active,
+        .view-btn.active:hover {
+            background: #621708 !important;
+            color: #ffffff !important;
             border-color: #621708;
         }
 
@@ -147,8 +266,8 @@
                 border: 0;
             }
             .compact-select-option.active {
-                background: #621708;
-                color: #ffffff;
+                background: #621708 !important;
+                color: #ffffff !important;
             }
         }
     </style>
@@ -161,139 +280,158 @@
     <main class="flex-1 min-h-screen bg-slate-100 ml-0 md:ml-[220px] w-full overflow-x-hidden transition-all duration-300">
         <div id="navbar-container"></div>
 
-        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
-            <section class="bg-white border border-slate-200 rounded-2xl sm:rounded-[2rem] p-5 sm:p-7 mb-6 sm:mb-8">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#621708]/10 text-[#621708] text-[11px] sm:text-xs font-semibold uppercase tracking-widest">
-                            <i class="fas fa-chart-line"></i>
-                            Academic & Faculty Activity
-                        </div>
-                        <h1 class="text-2xl sm:text-3xl font-bold text-slate-950 mt-1.5 sm:mt-2">Engagement Log</h1>
-                        <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl">
-                            Monitor faculty participation in workshops, seminars, research, extension, document access, and institutional activities for evaluation, reporting, and accreditation.
-                        </p>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                        <button onclick="exportLogs()"
-                                class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs sm:text-sm transition-all shadow-sm">
-                            <i class="fas fa-download"></i> Export
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 mt-14 sm:mt-16">
+            <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+                <div class="min-w-0">
+                    <h1 class="text-xl font-semibold text-slate-950 tracking-tight">Engagement Log</h1>
+                    <p class="text-sm text-slate-500 mt-1 max-w-2xl">
+                        Faculty workshops, seminars, research, extension, documents, and other recorded institutional activity.
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <div id="exportMenuWrap" class="relative flex-1 sm:flex-initial">
+                        <button type="button" onclick="toggleExportMenu(event)"
+                                class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-sm"
+                                aria-haspopup="menu" aria-controls="exportMenu">
+                            <i class="fas fa-download text-xs"></i> Export
                         </button>
-                        <button onclick="openLogModal()"
-                                class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-2xl font-semibold text-xs sm:text-sm transition-all shadow-sm">
-                            <i class="fas fa-plus"></i> Add Log Entry
-                        </button>
+                        <div id="exportMenu" class="export-menu hidden" role="menu">
+                            <button type="button" role="menuitem" onclick="exportLogs('excel')">Excel (.xlsx)</button>
+                            <button type="button" role="menuitem" onclick="exportLogs('csv')">CSV (.csv)</button>
+                            <button type="button" role="menuitem" onclick="exportLogs('pdf')">PDF (.pdf)</button>
+                        </div>
                     </div>
+                    <button type="button" onclick="openLogModal()"
+                            class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-3.5 py-2 rounded-lg font-semibold text-sm">
+                        <i class="fas fa-plus text-xs"></i> Add Log Entry
+                    </button>
+                </div>
+            </header>
+
+            <section class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+                <div class="card px-4 py-3">
+                    <p class="text-xs text-slate-500 font-medium">Total Activities</p>
+                    <p id="totalActivities" class="text-2xl font-semibold text-slate-900 mt-1"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                </div>
+                <div class="card px-4 py-3">
+                    <p class="text-xs text-slate-500 font-medium">This Month</p>
+                    <p id="thisMonthActivities" class="text-2xl font-semibold text-slate-900 mt-1"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                </div>
+                <div class="card px-4 py-3">
+                    <p class="text-xs text-slate-500 font-medium">Faculty Involved</p>
+                    <p id="facultyInvolved" class="text-2xl font-semibold text-slate-900 mt-1"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                </div>
+                <div class="card px-4 py-3">
+                    <p class="text-xs text-slate-500 font-medium">Departments</p>
+                    <p id="departmentCount" class="text-2xl font-semibold text-slate-900 mt-1"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
                 </div>
             </section>
 
-            <section class="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-5">
-                <div class="card p-4 sm:p-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Total Activities</p>
-                            <p id="totalActivities" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
-                        </div>
-                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 text-lg shrink-0">
-                            <i class="fas fa-list-ul"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="card p-4 sm:p-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs sm:text-sm text-slate-500 font-medium">This Month</p>
-                            <p id="thisMonthActivities" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
-                        </div>
-                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 text-lg shrink-0">
-                            <i class="fas fa-calendar"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="card p-4 sm:p-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Faculty Involved</p>
-                            <p id="facultyInvolved" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
-                        </div>
-                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-violet-50 rounded-2xl flex items-center justify-center text-violet-600 text-lg shrink-0">
-                            <i class="fas fa-user-check"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="card p-4 sm:p-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Departments</p>
-                            <p id="departmentCount" class="text-2xl sm:text-4xl font-bold text-slate-900 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
-                        </div>
-                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 text-lg shrink-0">
-                            <i class="fas fa-building-columns"></i>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                <button type="button" onclick="filterByCategory('workshop')" class="card p-4 text-left hover:border-purple-200 transition">
-                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Workshops</p>
-                    <p id="workshopActivities" class="text-xl sm:text-3xl font-bold text-purple-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+            <section class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
+                <button type="button" onclick="filterByCategory('workshop')" data-category-card="workshop" aria-pressed="false" class="category-card card p-3.5 text-left hover:border-purple-200">
+                    <p class="cat-label text-[11px] sm:text-xs font-semibold uppercase tracking-wide">Workshops</p>
+                    <p id="workshopActivities" class="text-xl sm:text-2xl font-bold text-purple-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
                 </button>
-                <button type="button" onclick="filterByCategory('seminar')" class="card p-4 text-left hover:border-emerald-200 transition">
-                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Seminars</p>
-                    <p id="seminarActivities" class="text-xl sm:text-3xl font-bold text-emerald-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                <button type="button" onclick="filterByCategory('seminar')" data-category-card="seminar" aria-pressed="false" class="category-card card p-3.5 text-left hover:border-emerald-200">
+                    <p class="cat-label text-[11px] sm:text-xs font-semibold uppercase tracking-wide">Seminars</p>
+                    <p id="seminarActivities" class="text-xl sm:text-2xl font-bold text-emerald-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
                 </button>
-                <button type="button" onclick="filterByCategory('download')" class="card p-4 text-left hover:border-sky-200 transition">
-                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Downloads</p>
-                    <p id="downloadActivities" class="text-xl sm:text-3xl font-bold text-sky-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                <button type="button" onclick="filterByCategory('download')" data-category-card="download" aria-pressed="false" class="category-card card p-3.5 text-left hover:border-sky-200">
+                    <p class="cat-label text-[11px] sm:text-xs font-semibold uppercase tracking-wide">Downloads</p>
+                    <p id="downloadActivities" class="text-xl sm:text-2xl font-bold text-sky-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
                 </button>
-                <button type="button" onclick="filterByCategory('extension')" class="card p-4 text-left hover:border-orange-200 transition">
-                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Extension</p>
-                    <p id="extensionActivities" class="text-xl sm:text-3xl font-bold text-orange-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                <button type="button" onclick="filterByCategory('extension')" data-category-card="extension" aria-pressed="false" class="category-card card p-3.5 text-left hover:border-orange-200">
+                    <p class="cat-label text-[11px] sm:text-xs font-semibold uppercase tracking-wide">Extension</p>
+                    <p id="extensionActivities" class="text-xl sm:text-2xl font-bold text-orange-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
                 </button>
-                <button type="button" onclick="filterByCategory('research')" class="card p-4 text-left hover:border-cyan-200 transition">
-                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Research</p>
-                    <p id="researchActivities" class="text-xl sm:text-3xl font-bold text-cyan-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                <button type="button" onclick="filterByCategory('research')" data-category-card="research" aria-pressed="false" class="category-card card p-3.5 text-left hover:border-cyan-200">
+                    <p class="cat-label text-[11px] sm:text-xs font-semibold uppercase tracking-wide">Research</p>
+                    <p id="researchActivities" class="text-xl sm:text-2xl font-bold text-cyan-600 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
                 </button>
-                <button type="button" onclick="filterByCategory('institutional')" class="card p-4 text-left hover:border-slate-300 transition">
-                    <p class="text-[11px] sm:text-xs text-slate-500 font-semibold uppercase tracking-wide">Institutional</p>
-                    <p id="institutionalActivities" class="text-xl sm:text-3xl font-bold text-slate-700 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
+                <button type="button" onclick="filterByCategory('institutional')" data-category-card="institutional" aria-pressed="false" class="category-card card p-3.5 text-left hover:border-slate-300">
+                    <p class="cat-label text-[11px] sm:text-xs font-semibold uppercase tracking-wide">Institutional</p>
+                    <p id="institutionalActivities" class="text-xl sm:text-2xl font-bold text-slate-700 mt-1"><span class="skeleton-text inline-block" style="width:40px; height:24px;"></span></p>
                 </button>
             </section>
 
-            <div class="card p-4 sm:p-5 mb-6 sm:mb-8">
-                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
-                    <div class="relative xl:col-span-2">
-                        <input id="logSearch" oninput="applyLogFilters()" type="text" placeholder="Search faculty, title, or details..."
-                               class="field pl-9 text-xs sm:text-sm py-2.5">
-                        <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                    </div>
-                    <select id="facultyFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
-                        <option value="all">All Faculty</option>
-                    </select>
-                    <select id="departmentFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
-                        <option value="all">All Departments</option>
-                    </select>
-                    <select id="categoryFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
-                        <option value="all">All Categories</option>
-                        <option value="workshop">Workshops</option>
-                        <option value="seminar">Seminars</option>
-                        <option value="download">Downloads</option>
-                        <option value="extension">Extension</option>
-                        <option value="research">Research</option>
-                        <option value="institutional">Institutional</option>
-                        <option value="other">Other</option>
-                    </select>
-                    <select id="typeFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
-                        <option value="all">All Types</option>
-                    </select>
-                    <input id="dateFrom" type="date" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5" title="From date">
-                    <input id="dateTo" type="date" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5" title="To date">
+            <div class="card p-4 sm:p-5 mb-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <label class="block sm:col-span-2">
+                        <span class="filter-label">Search</span>
+                        <span class="relative block">
+                            <input id="logSearch" oninput="applyLogFilters()" type="text" placeholder="Search faculty, title, source, or status..."
+                                   class="field pl-9 text-xs sm:text-sm py-2.5">
+                            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        </span>
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">Faculty</span>
+                        <select id="facultyFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                            <option value="all">All Faculty</option>
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">Department</span>
+                        <select id="departmentFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                            <option value="all">All Departments</option>
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">Category</span>
+                        <select id="categoryFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                            <option value="all">All Categories</option>
+                            <option value="workshop">Workshops</option>
+                            <option value="seminar">Seminars</option>
+                            <option value="download">Downloads</option>
+                            <option value="extension">Extension</option>
+                            <option value="research">Research</option>
+                            <option value="institutional">Institutional</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">Activity Type</span>
+                        <select id="typeFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                            <option value="all">All Types</option>
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">Source Module</span>
+                        <select id="sourceFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                            <option value="all">All Sources</option>
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">Status</span>
+                        <select id="statusFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                            <option value="all">All Statuses</option>
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">From</span>
+                        <input id="dateFrom" type="date" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5" title="From">
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">To</span>
+                        <input id="dateTo" type="date" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5" title="To">
+                    </label>
+                    <label class="block">
+                        <span class="filter-label">Sort</span>
+                        <select id="sortFilter" onchange="applyLogFilters()" class="field text-xs sm:text-sm py-2.5">
+                            <option value="newest">Newest</option>
+                            <option value="oldest">Oldest</option>
+                            <option value="faculty">Faculty A–Z</option>
+                            <option value="department">Department A–Z</option>
+                            <option value="type">Activity Type A–Z</option>
+                            <option value="title">Title A–Z</option>
+                            <option value="status">Status A–Z</option>
+                        </select>
+                    </label>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 sm:gap-7">
-                <section class="xl:col-span-8 card p-5 sm:p-7">
+            <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5">
+                <section class="xl:col-span-8 card p-4 sm:p-5">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-5 gap-3">
                         <div>
                             <h2 class="text-lg sm:text-xl font-semibold text-slate-900">Faculty Activity Records</h2>
@@ -318,15 +456,15 @@
                     <div id="tableContainer" class="hidden overflow-x-auto min-h-[300px]"></div>
                 </section>
 
-                <aside class="xl:col-span-4 space-y-5 sm:space-y-6">
-                    <div class="card p-5 sm:p-6">
+                <aside class="xl:col-span-4 space-y-4">
+                    <div class="card p-4 sm:p-5">
                         <h3 class="font-semibold text-sm sm:text-base mb-3 sm:mb-4 flex items-center gap-2">
                             <i class="fas fa-tags text-[#621708]"></i> Category Breakdown
                         </h3>
                         <div id="categoryCounts" class="space-y-2 sm:space-y-2.5"></div>
                     </div>
 
-                    <div class="card p-5 sm:p-6">
+                    <div class="card p-4 sm:p-5">
                         <h3 class="font-semibold text-sm sm:text-base mb-3 sm:mb-4 flex items-center gap-2">
                             <i class="fas fa-users text-[#621708]"></i> Faculty Participation
                         </h3>
@@ -338,8 +476,8 @@
     </main>
 </div>
 
-<div id="logModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[2500] flex items-center justify-center p-3 sm:p-5 overflow-y-auto min-h-screen">
-    <div class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
+<div id="logModal" class="hidden fixed inset-0 bg-slate-950/50 z-[2500] flex items-center justify-center p-3 sm:p-5 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-2xl w-full max-w-2xl border border-slate-200 shadow-xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-6 py-4 sm:px-8 sm:py-6 border-b flex justify-between items-start bg-slate-50/50">
             <div>
                 <h2 class="text-lg sm:text-2xl font-semibold text-slate-900">Add Engagement Log</h2>
@@ -429,6 +567,19 @@
                         class="px-5 py-2.5 bg-[#621708] text-white rounded-xl hover:bg-[#8c2a10] text-xs sm:text-sm font-bold shadow-sm">Save Log Entry</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="detailModal" class="hidden fixed inset-0 bg-slate-950/50 z-[2600] flex items-center justify-center p-3 sm:p-5 overflow-y-auto min-h-screen" onclick="if (event.target === this) closeDetailModal()">
+    <div class="bg-white rounded-2xl w-full max-w-2xl border border-slate-200 shadow-xl overflow-hidden max-h-[90vh] flex flex-col my-auto" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+        <div class="px-5 py-4 sm:px-6 border-b border-slate-200 flex justify-between items-start gap-3 bg-slate-50">
+            <div class="min-w-0">
+                <p class="detail-label">Activity</p>
+                <h2 id="detailTitle" class="text-lg sm:text-xl font-semibold text-slate-900 mt-0.5 break-words"></h2>
+            </div>
+            <button type="button" onclick="closeDetailModal()" class="w-8 h-8 shrink-0 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center text-2xl leading-none" aria-label="Close details">&times;</button>
+        </div>
+        <div id="detailBody" class="p-5 sm:p-6 overflow-y-auto"></div>
     </div>
 </div>
 
@@ -565,6 +716,7 @@ function initCompactSelects() {
 
 document.addEventListener('click', (event) => {
     if (!event.target.closest('.compact-select')) closeAllCompactSelects();
+    if (!event.target.closest('#exportMenuWrap')) closeExportMenu();
 });
 
 function facultyById(id) {
@@ -821,9 +973,13 @@ function populateFilterOptions() {
     const facultySelect = document.getElementById('facultyFilter');
     const deptSelect = document.getElementById('departmentFilter');
     const typeSelect = document.getElementById('typeFilter');
+    const sourceSelect = document.getElementById('sourceFilter');
+    const statusSelect = document.getElementById('statusFilter');
     const currentFaculty = facultySelect.value;
     const currentDept = deptSelect.value;
     const currentType = typeSelect.value;
+    const currentSource = sourceSelect.value;
+    const currentStatus = statusSelect.value;
 
     facultySelect.innerHTML = '';
     addOption(facultySelect, 'all', 'All Faculty');
@@ -844,6 +1000,12 @@ function populateFilterOptions() {
 
     const types = [...new Set(unifiedRecords.map(r => r.activity_type).filter(Boolean))].sort();
     fillSelect(typeSelect, { value: 'all', label: 'All Types' }, types, currentType);
+
+    const sources = [...new Set(unifiedRecords.map(r => r.source_module).filter(Boolean))].sort();
+    fillSelect(sourceSelect, { value: 'all', label: 'All Sources' }, sources, currentSource);
+
+    const statuses = [...new Set(unifiedRecords.map(r => r.status).filter(Boolean))].sort();
+    fillSelect(statusSelect, { value: 'all', label: 'All Statuses' }, statuses, currentStatus);
     refreshCompactSelects();
 }
 
@@ -857,9 +1019,11 @@ function populateFacultySelect() {
     select.appendChild(empty);
     facultyList.filter(f => !['Inactive', 'Archived'].includes(f.status)).forEach((f) => {
         const option = document.createElement('option');
-        option.value = f.id;
+        option.value = String(f.id);
         option.textContent = facultyLabel(f);
         option.dataset.department = f.department || '';
+        option.dataset.facultyNumericId = String(f.id);
+        option.dataset.authUserId = isUuid(f.auth_user_id) ? String(f.auth_user_id) : '';
         select.appendChild(option);
     });
     if ([...select.options].some(o => o.value === current)) select.value = current;
@@ -872,27 +1036,66 @@ function fillFacultyDepartment() {
     document.getElementById('logDepartment').value = option?.dataset.department || '';
 }
 
-function getFilteredLogs() {
+function sortLogs(records, mode) {
+    const list = records.slice();
+    const text = (value) => String(value || '').toLowerCase();
+    const byText = (pick) => (a, b) => text(pick(a)).localeCompare(text(pick(b)));
+    if (mode === 'oldest') {
+        list.sort((a, b) => new Date(a.activity_at || 0) - new Date(b.activity_at || 0));
+    } else if (mode === 'faculty') {
+        list.sort(byText(r => r.faculty_name));
+    } else if (mode === 'department') {
+        list.sort(byText(r => r.department));
+    } else if (mode === 'type') {
+        list.sort(byText(r => r.activity_type));
+    } else if (mode === 'title') {
+        list.sort(byText(r => r.activity_title));
+    } else if (mode === 'status') {
+        list.sort(byText(r => r.status));
+    } else {
+        list.sort((a, b) => new Date(b.activity_at || 0) - new Date(a.activity_at || 0));
+    }
+    return list;
+}
+
+function getFilteredLogs(options = {}) {
+    const ignoreCategory = options.ignoreCategory === true;
     const search = (document.getElementById('logSearch')?.value || '').toLowerCase().trim();
     const faculty = document.getElementById('facultyFilter')?.value || 'all';
     const department = document.getElementById('departmentFilter')?.value || 'all';
     const category = document.getElementById('categoryFilter')?.value || 'all';
     const type = document.getElementById('typeFilter')?.value || 'all';
+    const source = document.getElementById('sourceFilter')?.value || 'all';
+    const status = document.getElementById('statusFilter')?.value || 'all';
     const dateFrom = document.getElementById('dateFrom')?.value || '';
     const dateTo = document.getElementById('dateTo')?.value || '';
+    const sort = document.getElementById('sortFilter')?.value || 'newest';
 
-    return unifiedRecords.filter(log => {
+    const matched = unifiedRecords.filter(log => {
         const matchFaculty = faculty === 'all'
             || String(log.faculty_id) === faculty
             || log.faculty_name === faculty;
         const matchDept = department === 'all' || log.department === department;
-        const matchCategory = category === 'all' || log.category === category;
+        const matchCategory = ignoreCategory || category === 'all' || log.category === category;
         const matchType = type === 'all' || log.activity_type === type;
-        const matchSearch = !search || `${log.activity_title} ${log.faculty_name} ${log.description} ${log.department} ${log.activity_type}`.toLowerCase().includes(search);
+        const matchSource = source === 'all' || log.source_module === source;
+        const matchStatus = status === 'all' || log.status === status;
+        const haystack = `${log.activity_title} ${log.faculty_name} ${log.description} ${log.department} ${log.activity_type} ${log.source_module} ${log.status}`;
+        const matchSearch = !search || haystack.toLowerCase().includes(search);
         const time = log.activity_at ? new Date(log.activity_at) : null;
         const matchFrom = !dateFrom || (time && time >= new Date(`${dateFrom}T00:00:00`));
         const matchTo = !dateTo || (time && time <= new Date(`${dateTo}T23:59:59`));
-        return matchFaculty && matchDept && matchCategory && matchType && matchSearch && matchFrom && matchTo;
+        return matchFaculty && matchDept && matchCategory && matchType && matchSource && matchStatus && matchSearch && matchFrom && matchTo;
+    });
+    return sortLogs(matched, sort);
+}
+
+function syncCategorySelection() {
+    const category = document.getElementById('categoryFilter')?.value || 'all';
+    document.querySelectorAll('[data-category-card]').forEach((btn) => {
+        const selected = btn.getAttribute('data-category-card') === category;
+        btn.classList.toggle('active', selected);
+        btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
     });
 }
 
@@ -921,33 +1124,36 @@ function renderAll() {
     renderCategoryCounts();
     renderFacultyParticipation();
     renderRecords();
+    syncCategorySelection();
 }
 
 function renderSummary() {
+    const base = getFilteredLogs({ ignoreCategory: true });
     const filtered = getFilteredLogs();
     const now = new Date();
-    const thisMonth = filtered.filter(log => {
+    const thisMonth = base.filter(log => {
         const date = new Date(log.activity_at);
         return !Number.isNaN(date.getTime()) && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
     }).length;
-    const facultyNames = new Set(filtered.map(l => l.faculty_name).filter(name => name && name !== 'Faculty' && name !== 'System'));
-    const departments = new Set(filtered.map(l => l.department).filter(dept => dept && dept !== '—'));
+    const facultyNames = new Set(base.map(l => l.faculty_name).filter(name => name && name !== 'Faculty' && name !== 'System'));
+    const departments = new Set(base.map(l => l.department).filter(dept => dept && dept !== '—'));
 
-    document.getElementById('totalActivities').textContent = filtered.length;
+    document.getElementById('totalActivities').textContent = base.length;
     document.getElementById('thisMonthActivities').textContent = thisMonth;
     document.getElementById('facultyInvolved').textContent = facultyNames.size;
     document.getElementById('departmentCount').textContent = departments.size;
-    document.getElementById('workshopActivities').textContent = filtered.filter(l => l.category === 'workshop').length;
-    document.getElementById('seminarActivities').textContent = filtered.filter(l => l.category === 'seminar').length;
-    document.getElementById('downloadActivities').textContent = filtered.filter(l => l.category === 'download').length;
-    document.getElementById('extensionActivities').textContent = filtered.filter(l => l.category === 'extension').length;
-    document.getElementById('researchActivities').textContent = filtered.filter(l => l.category === 'research').length;
-    document.getElementById('institutionalActivities').textContent = filtered.filter(l => l.category === 'institutional').length;
+    document.getElementById('workshopActivities').textContent = base.filter(l => l.category === 'workshop').length;
+    document.getElementById('seminarActivities').textContent = base.filter(l => l.category === 'seminar').length;
+    document.getElementById('downloadActivities').textContent = base.filter(l => l.category === 'download').length;
+    document.getElementById('extensionActivities').textContent = base.filter(l => l.category === 'extension').length;
+    document.getElementById('researchActivities').textContent = base.filter(l => l.category === 'research').length;
+    document.getElementById('institutionalActivities').textContent = base.filter(l => l.category === 'institutional').length;
     document.getElementById('resultCount').textContent = `${filtered.length} record${filtered.length === 1 ? '' : 's'} matching the current filters`;
 }
 
 function renderCategoryCounts() {
-    const filtered = getFilteredLogs();
+    const filtered = getFilteredLogs({ ignoreCategory: true });
+    const active = document.getElementById('categoryFilter')?.value || 'all';
     const rows = Object.entries(CATEGORY_META).map(([key, meta]) => ({
         key,
         label: meta.label,
@@ -955,9 +1161,9 @@ function renderCategoryCounts() {
     })).filter(row => row.key !== 'other' || row.count > 0);
 
     document.getElementById('categoryCounts').innerHTML = rows.map(row => `
-        <button type="button" onclick="filterByCategory('${row.key}')" class="w-full flex justify-between items-center bg-slate-50 hover:bg-slate-100 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm">
-            <span class="font-medium text-slate-700">${esc(row.label)}</span>
-            <span class="font-bold text-slate-900">${row.count}</span>
+        <button type="button" onclick="filterByCategory('${row.key}')" aria-pressed="${active === row.key ? 'true' : 'false'}" class="breakdown-btn text-xs sm:text-sm ${active === row.key ? 'is-selected' : ''}">
+            <span class="breakdown-label">${esc(row.label)}</span>
+            <span class="breakdown-count">${row.count}</span>
         </button>
     `).join('');
 }
@@ -1004,7 +1210,25 @@ function statusClass(status) {
     return 'bg-slate-100 text-slate-600';
 }
 
+function bindLogOpen(container) {
+    if (!container || container.dataset.openBound === 'true') return;
+    container.dataset.openBound = 'true';
+    const openFromEvent = (event) => {
+        const el = event.target.closest('[data-open-index]');
+        if (!el || !container.contains(el)) return;
+        if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+        if (event.type === 'keydown') event.preventDefault();
+        const index = Number(el.getAttribute('data-open-index'));
+        const log = getFilteredLogs()[index];
+        if (log) openDetailModal(log);
+    };
+    container.addEventListener('click', openFromEvent);
+    container.addEventListener('keydown', openFromEvent);
+}
+
 function renderRecords() {
+    bindLogOpen(document.getElementById('timelineContainer'));
+    bindLogOpen(document.getElementById('tableContainer'));
     const filtered = getFilteredLogs();
     if (viewMode === 'table') renderTable(filtered);
     else renderTimeline(filtered);
@@ -1017,7 +1241,7 @@ function renderTimeline(filtered) {
         return;
     }
 
-    container.innerHTML = filtered.map(log => {
+    container.innerHTML = filtered.map((log, index) => {
         const style = categoryStyle(log.category);
         const descText = cleanDescription(log.description);
 
@@ -1026,7 +1250,7 @@ function renderTimeline(filtered) {
                 <div class="timeline-dot bg-white border-2 ${style.border}">
                     <i class="fas fa-circle text-[8px] ${style.text}"></i>
                 </div>
-                <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+                <div class="log-record bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 hover:border-[#621708]/30" role="button" tabindex="0" data-open-index="${index}">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                         <div class="min-w-0 pr-2 flex-1">
                             <div class="flex flex-wrap items-center gap-2">
@@ -1072,10 +1296,10 @@ function renderTable(filtered) {
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-                ${filtered.map(log => {
+                ${filtered.map((log, index) => {
                     const descText = cleanDescription(log.description);
                     return `
-                        <tr class="align-top hover:bg-slate-50/50 transition">
+                        <tr class="log-record align-top hover:bg-slate-50 transition" role="button" tabindex="0" data-open-index="${index}">
                             <td class="py-3 px-3 text-slate-500 whitespace-nowrap">${formatDate(log.activity_at)}<div class="text-[11px]">${formatTime(log.activity_at)}</div></td>
                             <td class="py-3 px-3 font-semibold text-slate-900">${esc(log.faculty_name)}</td>
                             <td class="py-3 px-3 text-slate-600">${esc(log.department)}</td>
@@ -1105,55 +1329,579 @@ function closeLogModal() {
     closeAllCompactSelects();
 }
 
+function isHiddenDetailKey(key) {
+    const normalized = String(key || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (!normalized) return false;
+    return normalized === 'id'
+        || normalized.endsWith('_id')
+        || normalized === 'persisted'
+        || normalized === 'created_by'
+        || normalized === 'created_by_name';
+}
+
+function formatDetailValue(value) {
+    if (value == null || value === '') return '—';
+    if (typeof value === 'object') {
+        try { return JSON.stringify(value); } catch (error) { return '—'; }
+    }
+    return String(value);
+}
+
+function detailEntries(details) {
+    if (details == null || details === '') return [];
+    if (Array.isArray(details)) {
+        return details.map((item) => {
+            if (item && typeof item === 'object') {
+                const label = item.label != null ? String(item.label) : '';
+                if (isHiddenDetailKey(label)) return null;
+                if (!label && (item.value == null || item.value === '')) return null;
+                return { label: label || 'Detail', value: formatDetailValue(item.value) };
+            }
+            if (item == null || item === '') return null;
+            return { label: 'Detail', value: formatDetailValue(item) };
+        }).filter(Boolean);
+    }
+    if (typeof details === 'object') {
+        return Object.entries(details).map(([label, value]) => {
+            if (isHiddenDetailKey(label)) return null;
+            return { label: String(label), value: formatDetailValue(value) };
+        }).filter(Boolean);
+    }
+    return [{ label: 'Details', value: formatDetailValue(details) }];
+}
+
+function formatDetailsText(details) {
+    return detailEntries(details).map((entry) => `${entry.label}: ${entry.value}`).join('\n');
+}
+
+function showCiteMessage(message, type, title) {
+    console.error(message);
+    if (window.CiteFlowUI?.alert) {
+        CiteFlowUI.alert(message, type || 'error', title);
+        return;
+    }
+}
+
+function detailField(label, value, wide) {
+    const text = value == null || value === '' ? '—' : String(value);
+    return `<div class="${wide ? 'sm:col-span-2' : ''}"><p class="detail-label">${esc(label)}</p><p class="text-sm text-slate-800 mt-0.5 break-words whitespace-pre-wrap">${esc(text)}</p></div>`;
+}
+
+function openDetailModal(log) {
+    const categoryLabel = CATEGORY_META[log.category]?.label || 'Other';
+    const when = `${formatDate(log.activity_at)} · ${formatTime(log.activity_at)}`;
+    const description = cleanDescription(log.description);
+    const entries = detailEntries(log.details);
+    document.getElementById('detailTitle').textContent = log.activity_title || 'Activity';
+    document.getElementById('detailBody').innerHTML = `
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            ${detailField('Category', categoryLabel)}
+            ${detailField('Activity type', log.activity_type)}
+            ${detailField('Status', log.status)}
+            ${detailField('Faculty', log.faculty_name)}
+            ${detailField('Department', log.department)}
+            ${detailField('Source module', log.source_module)}
+            ${detailField('Date/time', when, true)}
+            ${detailField('Description', description || 'No description recorded.', true)}
+        </dl>
+        <div class="mt-4">
+            <p class="detail-label">Details</p>
+            ${entries.length ? `<dl class="mt-2 border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">${entries.map((entry) => `
+                <div class="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-1 sm:gap-3 px-3 py-2.5">
+                    <dt class="text-xs font-semibold text-slate-500">${esc(entry.label)}</dt>
+                    <dd class="text-sm text-slate-800 break-words">${esc(entry.value)}</dd>
+                </div>
+            `).join('')}</dl>` : '<p class="text-sm text-slate-400 mt-1">No additional details.</p>'}
+        </div>
+    `;
+    document.getElementById('detailModal').classList.remove('hidden');
+}
+
+function closeDetailModal() {
+    document.getElementById('detailModal').classList.add('hidden');
+}
+
+function activityTimestamp(dateValue, timeValue) {
+    const date = String(dateValue || '').trim();
+    const time = String(timeValue || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}/.test(time)) return '';
+    const clock = time.length === 5 ? time + ':00' : time.slice(0, 8);
+    const parsed = new Date(date + 'T' + clock);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return date + 'T' + clock;
+}
+
+async function currentSessionUser() {
+    if (!supabaseClient?.auth?.getSession) return null;
+    const read = supabaseClient._citeFlowOriginalGetSession || supabaseClient.auth.getSession.bind(supabaseClient.auth);
+    const { data, error } = await read();
+    if (error) {
+        console.error(error);
+        return null;
+    }
+    return data?.session?.user || null;
+}
+
+function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
+function saveErrorMessage(error) {
+    const parts = [error?.message, error?.details, error?.hint].filter(Boolean);
+    const code = error?.code ? ' (' + error.code + ')' : '';
+    if (error?.code === '42501') {
+        return (parts.join(' ') || 'The database rejected this entry.') + code + ' Sign in with an account allowed to add engagement logs.';
+    }
+    return (parts.join(' ') || 'The entry could not be saved.') + code;
+}
+
 async function saveLogEntry(e) {
     e.preventDefault();
-
+    const saveButton = document.getElementById('saveLogButton');
     const formData = new FormData(e.target);
-    const facultyId = formData.get('faculty_id');
-    const faculty = facultyById(facultyId);
+    const selectedFacultyKey = formData.get('faculty_id');
+    const faculty = facultyById(selectedFacultyKey);
+    const selectedOption = document.getElementById('logFacultySelect')?.selectedOptions?.[0];
+    const facultyAuthId = isUuid(faculty?.auth_user_id)
+        ? String(faculty.auth_user_id)
+        : (isUuid(selectedOption?.dataset?.authUserId) ? selectedOption.dataset.authUserId : null);
+    const activityAt = activityTimestamp(formData.get('activity_date'), formData.get('activity_time'));
+    if (!activityAt) {
+        showCiteMessage('Enter a valid date and time before saving.', 'error', 'Unable to save');
+        return;
+    }
+    if (!String(formData.get('activity_title') || '').trim() || !String(formData.get('description') || '').trim()) {
+        showCiteMessage('Activity title and description are required.', 'error', 'Unable to save');
+        return;
+    }
+
+    const user = await currentSessionUser();
+    if (!user?.id) {
+        showCiteMessage('You need to be signed in before an engagement log can be saved.', 'error', 'Unable to save');
+        return;
+    }
+    const meta = user.user_metadata || {};
+    const actorName = [meta.first_name, meta.last_name].filter(Boolean).join(' ').trim() || user.email || 'Administrator';
     const logData = {
-        faculty_id: facultyId || null,
+        faculty_id: facultyAuthId,
         faculty_name: faculty ? facultyLabel(faculty) : 'Faculty',
         department: formData.get('department') || faculty?.department || null,
         activity_type: formData.get('activity_type'),
         source_module: formData.get('source_module'),
         activity_title: formData.get('activity_title'),
         description: cleanDescription(formData.get('description')),
-        activity_at: formData.get('activity_date') + 'T' + formData.get('activity_time'),
-        status: formData.get('status')
+        activity_at: activityAt,
+        status: formData.get('status'),
+        details: [],
+        created_by: user.id,
+        created_by_name: actorName
     };
+    console.log('[engagement-logs] insert payload', logData, {
+        faculty_numeric_id: faculty?.id == null || faculty?.id === '' ? null : Number(faculty.id),
+        faculty_id: facultyAuthId == null ? 'null' : 'uuid',
+        created_by: 'uuid'
+    });
 
-    const { error } = await supabaseClient.from('engagement_logs').insert([logData]);
-    if (error) {
-        console.error(error);
-        alert('Failed to save log entry');
+    if (saveButton) saveButton.disabled = true;
+    let data = null;
+    let error = null;
+    try {
+        const inserted = await supabaseClient.from('engagement_logs').insert([logData]).select().single();
+        data = inserted.data;
+        error = inserted.error;
+    } catch (insertError) {
+        error = insertError;
+    } finally {
+        if (saveButton) saveButton.disabled = false;
+    }
+    if (error || !data) {
+        console.error(error || 'Insert returned no row.');
+        showCiteMessage(saveErrorMessage(error || {}), 'error', 'Unable to save');
         return;
     }
 
     closeLogModal();
-    await refreshEngagementData();
-}
-
-function exportLogs() {
-    if (!window.XLSX) {
-        alert('XLSX library not loaded');
+    try {
+        await refreshEngagementData();
+    } catch (refreshError) {
+        console.error(refreshError);
+        showCiteMessage('The entry was saved, but the list could not refresh. Reload the page to see it.', 'warning', 'Saved');
         return;
     }
-    const rows = getFilteredLogs().map(log => ({
+    CiteFlowUI.alert('Engagement log entry saved.', 'success', 'Saved');
+}
+
+function toggleExportMenu(event) {
+    if (event) event.stopPropagation();
+    document.getElementById('exportMenu').classList.toggle('hidden');
+}
+
+function closeExportMenu() {
+    document.getElementById('exportMenu')?.classList.add('hidden');
+}
+
+const EXPORT_HEADERS = ['Date', 'Time', 'Faculty', 'Department', 'Category', 'Activity Type', 'Activity Title', 'Description', 'Status', 'Source Module', 'Details'];
+
+function buildExportRows() {
+    const logs = getFilteredLogs();
+    const rows = logs.map((log) => ({
         Date: formatDate(log.activity_at),
         Time: formatTime(log.activity_at),
         Faculty: log.faculty_name,
         Department: log.department,
         Category: CATEGORY_META[log.category]?.label || 'Other',
-        Type: log.activity_type,
-        Title: log.activity_title,
+        'Activity Type': log.activity_type,
+        'Activity Title': log.activity_title,
         Description: cleanDescription(log.description),
         Status: log.status,
-        Source: log.source_module
+        'Source Module': log.source_module,
+        Details: formatDetailsText(log.details)
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
+    return { rows, includeDetails: rows.some((row) => row.Details) };
+}
+
+function csvCell(value) {
+    const text = value == null ? '' : String(value);
+    if (/[",\n\r]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+    return text;
+}
+
+function downloadBlob(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function exportStamp() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+}
+
+function exportCsv(rows) {
+    const lines = [
+        csvCell('Cebu Technological University'),
+        csvCell('College of Technology'),
+        csvCell('Engagement Logs'),
+        csvCell('Generated: ' + exportStamp()),
+        ''
+    ];
+    lines.push(EXPORT_HEADERS.map(csvCell).join(','));
+    rows.forEach((row) => {
+        lines.push(EXPORT_HEADERS.map((header) => csvCell(row[header])).join(','));
+    });
+    downloadBlob('\ufeff' + lines.join('\r\n'), 'engagement_logs.csv', 'text/csv;charset=utf-8');
+}
+
+function activeFilterSummary() {
+    const parts = [];
+    const search = (document.getElementById('logSearch')?.value || '').trim();
+    if (search) parts.push('Search: ' + search);
+    [
+        ['facultyFilter', 'Faculty'],
+        ['departmentFilter', 'Department'],
+        ['categoryFilter', 'Category'],
+        ['typeFilter', 'Activity type'],
+        ['sourceFilter', 'Source'],
+        ['statusFilter', 'Status']
+    ].forEach(([id, label]) => {
+        const el = document.getElementById(id);
+        if (!el || !el.value || el.value === 'all') return;
+        const text = el.selectedOptions?.[0]?.textContent || el.value;
+        parts.push(label + ': ' + text);
+    });
+    const from = document.getElementById('dateFrom')?.value || '';
+    const to = document.getElementById('dateTo')?.value || '';
+    const sort = document.getElementById('sortFilter');
+    if (from) parts.push('From: ' + from);
+    if (to) parts.push('To: ' + to);
+    if (sort && sort.value && sort.value !== 'newest') {
+        parts.push('Sort: ' + (sort.selectedOptions?.[0]?.textContent || sort.value));
+    }
+    return parts.length ? parts.join(' · ') : 'All records';
+}
+
+function pdfImageKind(data) {
+    return String(data || '').indexOf('image/jpeg') >= 0 ? 'JPEG' : 'PNG';
+}
+
+function pdfBannerSize(doc, data, maxW, maxH) {
+    if (!data) return { w: 0, h: 0 };
+    try {
+        const props = doc.getImageProperties(data);
+        let w = maxW;
+        let h = w * (props.height / props.width);
+        if (h > maxH) {
+            h = maxH;
+            w = h * (props.width / props.height);
+        }
+        return { w, h };
+    } catch (error) {
+        return { w: 0, h: 0 };
+    }
+}
+
+async function loadPdfBanners() {
+    if (window.__citePdfBanners) return window.__citePdfBanners;
+    const files = { seal: 'ctu-seal.png', bagong: 'bagong-pilipinas.png', footer: 'ctu-rankings-banner.png' };
+    const bases = ['../assets/', 'assets/', '../shared/', 'shared/'];
+    const toData = (res) => res.blob().then(blob => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+    }));
+    const loadOne = async (file) => {
+        for (const base of bases) {
+            try {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 2000);
+                const res = await fetch(base + file, { cache: 'force-cache', signal: ctrl.signal });
+                clearTimeout(timer);
+                if (res && res.ok) {
+                    const data = await toData(res);
+                    if (data) return data;
+                }
+            } catch (error) { /* try the next path */ }
+        }
+        return '';
+    };
+    const [seal, bagong, footer] = await Promise.all([
+        loadOne(files.seal),
+        loadOne(files.bagong),
+        loadOne(files.footer)
+    ]);
+    window.__citePdfBanners = { seal, bagong, footer };
+    return window.__citePdfBanners;
+}
+
+function drawOfficialPdfHeader(doc, banners) {
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 10;
+    const rows = [
+        { font: ['times', 'normal'], size: 8.5, color: [17, 17, 17], text: 'Republic of the Philippines' },
+        { font: ['helvetica', 'bold'], size: 11.2, color: [17, 17, 17], text: 'CEBU TECHNOLOGICAL UNIVERSITY' },
+        { font: ['helvetica', 'bold'], size: 10, color: [17, 17, 17], text: 'ARGAO CAMPUS' },
+        { font: ['helvetica', 'normal'], size: 7.4, color: [17, 17, 17], text: 'Ed Kintanar Street, Lamacan, Argao, Cebu' },
+        { font: ['helvetica', 'normal'], size: 7.2, color: [29, 78, 216], text: 'Website: http://www.argao.ctu.edu.ph' },
+        { font: ['helvetica', 'normal'], size: 7.2, color: [29, 78, 216], text: 'E-mail: cdargao@ctu.edu.ph' },
+        { font: ['helvetica', 'normal'], size: 7.2, color: [17, 17, 17], text: 'Phone No.: (032) 401-0737 local 1700' },
+        { font: ['times', 'bold'], size: 9.5, color: [17, 17, 17], text: 'ENGAGEMENT LOGS', extra: 1.4 }
+    ];
+    let textW = 0;
+    rows.forEach((row) => {
+        doc.setFont(row.font[0], row.font[1]);
+        doc.setFontSize(row.size);
+        textW = Math.max(textW, doc.getTextWidth(row.text));
+    });
+    textW += 1.2;
+    const top = 4;
+    const logoMax = 20;
+    const gap = 3.2;
+    const sealS = banners?.seal ? pdfBannerSize(doc, banners.seal, logoMax, logoMax) : { w: 0, h: 0 };
+    const bagS = banners?.bagong ? pdfBannerSize(doc, banners.bagong, logoMax + 1, logoMax + 1) : { w: 0, h: 0 };
+    const blockW = sealS.w + (sealS.w ? gap : 0) + textW + (bagS.w ? gap : 0) + bagS.w;
+    const x0 = (pageW - blockW) / 2;
+    const cx = x0 + sealS.w + (sealS.w ? gap : 0) + textW / 2;
+    let ty = top + 3.2;
+    rows.forEach((row) => {
+        ty += row.extra || 0;
+        doc.setFont(row.font[0], row.font[1]);
+        doc.setFontSize(row.size);
+        doc.setTextColor(row.color[0], row.color[1], row.color[2]);
+        doc.text(row.text, cx, ty, { align: 'center' });
+        ty += 3.4;
+    });
+    const logoH = Math.max(sealS.h, bagS.h);
+    const logoY = top + Math.max(0, ((ty - top) - logoH) / 2);
+    if (sealS.w) doc.addImage(banners.seal, pdfImageKind(banners.seal), x0, logoY, sealS.w, sealS.h, undefined, 'FAST');
+    if (bagS.w) doc.addImage(banners.bagong, pdfImageKind(banners.bagong), x0 + sealS.w + (sealS.w ? gap : 0) + textW + gap, logoY, bagS.w, bagS.h, undefined, 'FAST');
+    const after = Math.max(ty, logoY + logoH) + 2.2;
+    doc.setDrawColor(98, 23, 8);
+    doc.setLineWidth(0.28);
+    doc.line(Math.max(margin, x0 - 6), after, Math.min(pageW - margin, x0 + blockW + 6), after);
+    return after + 2;
+}
+
+async function exportPdf(rows, includeDetails) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        CiteFlowUI.alert('The PDF exporter is not available. Refresh the page and try again.', 'error');
+        return;
+    }
+    const banners = await loadPdfBanners();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+    const pageW = doc.internal.pageSize.getWidth();
+    const startY = drawOfficialPdfHeader(doc, banners);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    const generated = 'Generated: ' + exportStamp() + '    Records: ' + rows.length;
+    doc.text(generated, 10, startY + 4);
+    const filterLines = doc.splitTextToSize('Filters: ' + activeFilterSummary(), pageW - 20);
+    doc.text(filterLines, 10, startY + 8);
+    const footerSize = banners?.footer ? pdfBannerSize(doc, banners.footer, pageW - 20, 14) : { w: 0, h: 0 };
+    const pageH = doc.internal.pageSize.getHeight();
+    const bottomReserve = footerSize.h + 14;
+    if (!rows.length) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
+        doc.setTextColor(71, 85, 105);
+        doc.text('No engagement records found for the selected filters.', 10, startY + 8 + (filterLines.length * 4) + 6);
+    } else if (typeof doc.autoTable !== 'function') {
+        CiteFlowUI.alert('The PDF exporter is not available. Refresh the page and try again.', 'error');
+        return;
+    } else {
+        const head = ['Date', 'Time', 'Faculty', 'Department', 'Category', 'Activity Type', 'Activity Title', 'Status', 'Source Module', 'Details'];
+        const body = rows.map((row) => [
+            row.Date,
+            row.Time,
+            row.Faculty,
+            row.Department,
+            row.Category,
+            row['Activity Type'],
+            row['Activity Title'],
+            row.Status,
+            row['Source Module'],
+            row.Details || ''
+        ]);
+        doc.autoTable({
+            startY: startY + 8 + (filterLines.length * 3.6) + 2,
+            margin: { top: 16, right: 10, bottom: bottomReserve, left: 10 },
+            head: [head],
+            body,
+            showHead: 'everyPage',
+            rowPageBreak: 'auto',
+            styles: { fontSize: 7.5, cellPadding: 1.5, overflow: 'linebreak', valign: 'top', textColor: [30, 41, 59], lineColor: [226, 232, 240] },
+            headStyles: { fillColor: [98, 23, 8], textColor: [255, 255, 255], fontStyle: 'bold', valign: 'middle' },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
+            columnStyles: {
+                0: { cellWidth: 22 },
+                1: { cellWidth: 16 },
+                2: { cellWidth: 30 },
+                3: { cellWidth: 26 },
+                4: { cellWidth: 22 },
+                5: { cellWidth: 24 },
+                6: { cellWidth: 42 },
+                7: { cellWidth: 20 },
+                8: { cellWidth: 28 },
+                9: { cellWidth: 43 }
+            },
+            didDrawPage: (data) => {
+                if (data.pageNumber > 1) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(9);
+                    doc.setTextColor(98, 23, 8);
+                    doc.text('ENGAGEMENT LOGS', 10, 10);
+                }
+            }
+        });
+    }
+    const total = doc.getNumberOfPages();
+    for (let i = 1; i <= total; i++) {
+        doc.setPage(i);
+        if (footerSize.w) {
+            doc.addImage(banners.footer, pdfImageKind(banners.footer), (pageW - footerSize.w) / 2, pageH - footerSize.h - 4, footerSize.w, footerSize.h, undefined, 'FAST');
+        }
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(71, 85, 105);
+        doc.text('CITE-Flow', 10, pageH - footerSize.h - 8);
+        doc.text('Page ' + i + ' of ' + total, pageW - 10, pageH - footerSize.h - 8, { align: 'right' });
+    }
+    doc.save('engagement_logs.pdf');
+}
+
+function exportLogs(format) {
+    closeExportMenu();
+    const kind = format || 'excel';
+    const { rows, includeDetails } = buildExportRows();
+    if (kind === 'csv') {
+        try {
+            exportCsv(rows);
+        } catch (error) {
+            console.error(error);
+            showCiteMessage('The CSV file could not be created.', 'error', 'Unable to export');
+        }
+        return;
+    }
+    if (kind === 'pdf') {
+        exportPdf(rows, includeDetails).catch((error) => {
+            console.error(error);
+            showCiteMessage(error?.message || 'The PDF file could not be created.', 'error', 'Unable to export');
+        });
+        return;
+    }
+    try {
+        exportExcel(rows);
+    } catch (error) {
+        console.error(error);
+        showCiteMessage('The Excel file could not be created.', 'error', 'Unable to export');
+    }
+}
+
+function exportExcel(rows) {
+    if (!window.XLSX) {
+        showCiteMessage('The Excel exporter is not available. Refresh the page and try again.', 'error', 'Unable to export');
+        return;
+    }
+    const headerRow = 8;
+    const ws = XLSX.utils.json_to_sheet(rows, { header: EXPORT_HEADERS, origin: 'A' + headerRow });
+    const lastCol = EXPORT_HEADERS.length - 1;
+    const lastColName = XLSX.utils.encode_col(lastCol);
+    XLSX.utils.sheet_add_aoa(ws, [
+        ['Republic of the Philippines'],
+        ['CEBU TECHNOLOGICAL UNIVERSITY'],
+        ['ARGAO CAMPUS'],
+        ['Ed Kintanar Street, Lamacan, Argao, Cebu'],
+        ['ENGAGEMENT LOGS'],
+        ['Generated: ' + exportStamp()],
+        ['Filters: ' + activeFilterSummary()]
+    ], { origin: 'A1' });
+    ws['!merges'] = [0, 1, 2, 3, 4, 5, 6].map((rowIndex) => ({
+        s: { r: rowIndex, c: 0 },
+        e: { r: rowIndex, c: lastCol }
+    }));
+    ws['!cols'] = [
+        { wch: 14 },
+        { wch: 10 },
+        { wch: 22 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 36 },
+        { wch: 42 },
+        { wch: 14 },
+        { wch: 20 },
+        { wch: 36 }
+    ];
+    const lastDataRow = headerRow + Math.max(rows.length, 1) - 1;
+    ws['!autofilter'] = { ref: 'A' + headerRow + ':' + lastColName + lastDataRow };
+    ws['!rows'] = [];
+    ws['!rows'][headerRow - 1] = { hpt: 18 };
+    rows.forEach((row, index) => {
+        const lines = Math.max(
+            String(row.Description || '').split('\n').length,
+            String(row.Details || '').split('\n').length,
+            1
+        );
+        ws['!rows'][headerRow + index] = { hpt: Math.min(72, 15 * lines) };
+    });
+    ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+    ws['!margins'] = { left: 0.5, right: 0.5, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Engagement Log');
+    if (!wb.Workbook) wb.Workbook = {};
+    wb.Workbook.Names = [{
+        Name: 'Print_Titles',
+        Ref: "'Engagement Log'!$" + headerRow + ':$' + headerRow
+    }];
     XLSX.writeFile(wb, 'engagement_logs.xlsx');
 }
 
@@ -1185,6 +1933,12 @@ function cleanupRealtime() {
         realtimeChannel = null;
     }
 }
+
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const modal = document.getElementById('detailModal');
+    if (modal && !modal.classList.contains('hidden')) closeDetailModal();
+});
 
 window.addEventListener('beforeunload', cleanupRealtime);
 
