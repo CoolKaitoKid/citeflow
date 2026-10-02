@@ -709,10 +709,6 @@
                                 <option value="Active">Active</option>
                                 <option value="Inactive">Inactive</option>
                                 <option value="On Leave">On Leave</option>
-                                <option value="On Maternity Leave">On Maternity Leave</option>
-                                <option value="On Study Leave">On Study Leave</option>
-                                <option value="On Sabbatical Leave">On Sabbatical Leave</option>
-                                <option value="On Vacation/Sick Leave">On Vacation/Sick Leave</option>
                             </select>
                         </div>
                         <button
@@ -1950,6 +1946,28 @@ function avatarHtml(
    LOAD FACULTY
 ============================================================= */
 
+function applyDashboardFacultyLink() {
+    const department = new URLSearchParams(window.location.search).get('department') || '';
+    const wanted = department.trim().toUpperCase();
+    if (!wanted || !Array.isArray(facultyData)) return;
+
+    const deptEl = document.getElementById('deptFilter');
+    if (deptEl) {
+        const match = [...deptEl.options].find(option => option.value.toUpperCase() === wanted);
+        if (match) deptEl.value = match.value;
+    }
+
+    const filtered = facultyData.filter(faculty => String(faculty.department || '').trim().toUpperCase() === wanted);
+    renderFacultyCards(filtered);
+
+    const countEl = document.getElementById('filterResultCount');
+    if (countEl) {
+        countEl.textContent = `${filtered.length} of ${facultyData.length} results`;
+        countEl.classList.remove('hidden');
+    }
+    if (typeof refreshCompactSelects === 'function') refreshCompactSelects();
+}
+
 async function loadFacultyProfiles() {
 
     const grid =
@@ -2056,6 +2074,12 @@ async function loadFacultyProfiles() {
         }
     } catch (e) {
         console.warn('Could not load research counts:', e);
+    }
+
+    try {
+        applyDashboardFacultyLink();
+    } catch (error) {
+        console.warn('Dashboard faculty link skipped:', error);
     }
 
 }
@@ -2670,6 +2694,13 @@ function renderProfileAvatar(photoUrl, name) {
     avatar.textContent = initials(safeName);
 }
 
+const REMOVED_EMPLOYMENT_STATUSES = new Set([
+    'on maternity leave',
+    'on study leave',
+    'on sabbatical leave',
+    'on vacation/sick leave'
+]);
+
 function syncStatusSelect(status) {
     const select = document.getElementById('profile-status');
     const value = String(status || '').trim();
@@ -2677,7 +2708,8 @@ function syncStatusSelect(status) {
     if (!select) return;
     select.querySelectorAll('option[data-temporary="true"]').forEach(option => option.remove());
     const known = Array.from(select.options).some(option => option.value === value);
-    if (value && !known) {
+    const removedStatus = REMOVED_EMPLOYMENT_STATUSES.has(value.toLowerCase());
+    if (value && !known && !removedStatus) {
         const option = document.createElement('option');
         option.value = value;
         option.textContent = value;
@@ -5361,9 +5393,8 @@ function profileNumber(value) {
 }
 
 function stripStoredComment(text) {
-    return String(text || '')
-        .replace(/<!--\s*CITEFLOW_[A-Z0-9_]+:[\s\S]*?-->/gi, '')
-        .trim();
+    const storedComment = new RegExp('<' + '!--\\s*CITEFLOW_[A-Z0-9_]+:[\\s\\S]*?--' + '>', 'gi');
+    return String(text || '').replace(storedComment, '').trim();
 }
 
 function fileAction(url, label) {

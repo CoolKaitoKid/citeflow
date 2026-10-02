@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/workflow.js"></script>
     <script src="../shared/auth.js?v=auth-nav-2"></script>
     <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -32,6 +33,31 @@
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(15,23,42,.08);
         }
+        a.metric-link {
+            display: block;
+            color: inherit;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        a.metric-link:hover {
+            border-color: #d6d3d1;
+        }
+        a.metric-link:focus-visible,
+        #recentActivityList > a.activity-link:focus-visible {
+            outline: 2px solid #621708;
+            outline-offset: 3px;
+        }
+        #recentActivityList > a.activity-link {
+            display: flex;
+            color: inherit;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        #recentActivityList > a.activity-link:hover {
+            background: #ffffff;
+            border-color: #cbd5e1;
+        }
+        .metric-error { color: #b91c1c !important; }
         .metric-card {
             position: relative;
             overflow: hidden;
@@ -233,9 +259,10 @@
                 <div>
                     <h1 class="text-2xl sm:text-3xl font-bold text-slate-950">Dashboard Overview</h1>
                     <p id="welcomeMessage" class="text-xs sm:text-sm text-slate-500 mt-1">Monitor total documents, approvals, and submission status.</p>
+                    <p id="dashboardLiveStatus" class="hidden text-xs text-amber-700 mt-1" role="status"></p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <select id="departmentFilter" onchange="loadDashboardData()" class="field w-full sm:w-auto min-w-[180px]">
+                    <select id="departmentFilter" onchange="requestDashboardLoad()" class="field w-full sm:w-auto min-w-[180px]">
                         <option value="">All Departments</option>
                         <option>BSIT</option>
                         <option>BSIE</option>
@@ -246,7 +273,7 @@
             </header>
 
             <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                <div class="dashboard-card metric-card metric-4 p-5 sm:p-6">
+                <a id="activeFacultyCard" href="faculty-profiles.html" class="dashboard-card metric-card metric-4 metric-link p-5 sm:p-6" aria-label="Active Faculty, open Faculty Profiles">
                     <div class="relative flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Active Faculty</p>
@@ -257,8 +284,8 @@
                             <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         </div>
                     </div>
-                </div>
-                <div class="dashboard-card metric-card metric-1 p-5 sm:p-6">
+                </a>
+                <a id="totalSubmissionsCard" href="workflow-approval.html#queue=all" class="dashboard-card metric-card metric-1 metric-link p-5 sm:p-6" aria-label="Total Submissions, open Submissions">
                     <div class="relative flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Total Submissions</p>
@@ -269,8 +296,8 @@
                             <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                         </div>
                     </div>
-                </div>
-                <div class="dashboard-card metric-card metric-2 p-5 sm:p-6">
+                </a>
+                <a id="approvedSubmissionsCard" href="workflow-approval.html#queue=approved" class="dashboard-card metric-card metric-2 metric-link p-5 sm:p-6" aria-label="Approved submissions, open the Approved queue">
                     <div class="relative flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Approved</p>
@@ -281,8 +308,8 @@
                             <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="m5 12 5 5L20 7"/></svg>
                         </div>
                     </div>
-                </div>
-                <div class="dashboard-card metric-card metric-3 p-5 sm:p-6">
+                </a>
+                <a id="pendingReviewCard" href="workflow-approval.html#queue=review" class="dashboard-card metric-card metric-3 metric-link p-5 sm:p-6" aria-label="Pending Review, open Needs Review">
                     <div class="relative flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Pending Review</p>
@@ -293,7 +320,7 @@
                             <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>
                         </div>
                     </div>
-                </div>
+                </a>
             </section>
 
             <section class="grid grid-cols-1 xl:grid-cols-12 gap-6 mb-6 sm:mb-7">
@@ -305,7 +332,7 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <label class="text-xs sm:text-sm text-slate-500 font-medium">View</label>
-                            <select id="trendsMode" class="field min-w-[130px]" onchange="loadDashboardData()">
+                            <select id="trendsMode" class="field min-w-[130px]" onchange="requestDashboardLoad()">
                                 <option value="overview">Overview</option>
                                 <option value="submissions">Submissions</option>
                                 <option value="workload">Workload</option>
@@ -468,6 +495,13 @@ let currentUser = null;
 let currentProfile = null;
 let performanceChart = null;
 let trendsChart = null;
+const tableErrors = {};
+const lastMetricText = {};
+let dashboardChannel = null;
+let dashboardLoadTimer = null;
+let dashboardLoadRunning = false;
+let dashboardLoadAgain = false;
+let lastDashboardErrorToast = '';
 
 /* ─── Utility helpers ─── */
 function formatFullName(firstName, lastName, fallback) {
@@ -605,6 +639,7 @@ async function safeSelect(table, query = '*', filters = null) {
     try {
         const client = window.supabaseClient || supabaseClient;
         if (!client) {
+            tableErrors[table] = 'Database is not connected.';
             console.warn(`safeSelect: supabase client not available for ${table}`);
             return [];
         }
@@ -616,11 +651,197 @@ async function safeSelect(table, query = '*', filters = null) {
         }
         const { data, error } = await q;
         if (error) throw error;
+        delete tableErrors[table];
         return data || [];
     } catch (error) {
+        tableErrors[table] = error.message || 'Unable to load';
         console.warn(`${table} unavailable:`, error.message);
         return [];
     }
+}
+
+function notifyCardQueryErrors() {
+    const problems = [];
+    if (tableErrors.faculty) problems.push(`Active Faculty: ${tableErrors.faculty}`);
+    else if (tableErrors.faculty_leaves) problems.push(`Active Faculty leave records: ${tableErrors.faculty_leaves}`);
+    if (tableErrors.wf_submissions) problems.push(`Submissions: ${tableErrors.wf_submissions}`);
+    if (tableErrors.wf_tasks) problems.push(`Submission tasks: ${tableErrors.wf_tasks}`);
+    if (tableErrors.wf_task_assignments) problems.push(`Task assignments: ${tableErrors.wf_task_assignments}`);
+    if (tableErrors.wf_report_configs) problems.push(`Report settings: ${tableErrors.wf_report_configs}`);
+    if (!problems.length) {
+        lastDashboardErrorToast = '';
+        return;
+    }
+    const message = problems.join(' · ');
+    if (message === lastDashboardErrorToast) return;
+    lastDashboardErrorToast = message;
+    if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(message, 5000, 'error');
+        return;
+    }
+    let toast = document.getElementById('citeflowGlobalToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'citeflowGlobalToast';
+        toast.className = 'citeflow-toast';
+        document.body.appendChild(toast);
+    }
+    toast.innerHTML = `<i class="fa-solid fa-circle-xmark" style="color:#f87171;"></i> <span>${esc(message)}</span>`;
+    toast.classList.add('show');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => toast.classList.remove('show'), 5000);
+}
+
+function setLiveStatus(message) {
+    const el = document.getElementById('dashboardLiveStatus');
+    if (!el) return;
+    if (!message) {
+        el.textContent = '';
+        el.classList.add('hidden');
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
+function cardHref(path, paramName) {
+    const department = document.getElementById('departmentFilter')?.value || '';
+    if (!department) return path;
+    const hashIndex = path.indexOf('#');
+    const hash = hashIndex >= 0 ? path.slice(hashIndex) : '';
+    const base = hashIndex >= 0 ? path.slice(0, hashIndex) : path;
+    const join = base.includes('?') ? '&' : '?';
+    return `${base}${join}${paramName}=${encodeURIComponent(department)}${hash}`;
+}
+
+function paintMetric(valueId, trendId, cardId, href, value, trend, hasError) {
+    const valueEl = document.getElementById(valueId);
+    const trendEl = document.getElementById(trendId);
+    const card = document.getElementById(cardId);
+    if (card && href) card.setAttribute('href', href);
+    if (!valueEl) return;
+    if (hasError && lastMetricText[valueId] != null) {
+        if (trendEl) {
+            trendEl.textContent = 'Showing the last count. Refresh failed.';
+            trendEl.classList.add('metric-error');
+        }
+        card?.classList.add('is-error');
+        return;
+    }
+    if (hasError) {
+        valueEl.textContent = '—';
+        if (trendEl) {
+            trendEl.textContent = 'Could not load this count';
+            trendEl.classList.add('metric-error');
+        }
+        card?.classList.add('is-error');
+        return;
+    }
+    lastMetricText[valueId] = String(value);
+    valueEl.textContent = String(value);
+    card?.classList.remove('is-error');
+    if (trendEl) {
+        trendEl.classList.remove('metric-error');
+        trendEl.textContent = trend;
+    }
+}
+
+function isAdminDirectoryRole(role, position) {
+    const value = String(role || position || 'faculty').toLowerCase().trim();
+    return value.includes('admin') || value.includes('dean') || value.includes('director') || value.includes('superadmin') || value.includes('secretary');
+}
+
+function todayDateKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function dateKeyFrom(value) {
+    const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${match[1]}-${match[2]}-${match[3]}` : '';
+}
+
+function leaveCoversToday(row, today) {
+    const start = dateKeyFrom(row?.start_date);
+    const end = dateKeyFrom(row?.end_date);
+    const from = start || end;
+    const to = end || start;
+    if (!from || !to) return false;
+    return from <= today && today <= to;
+}
+
+function countActiveFaculty(facultyList, leaves, department) {
+    const today = todayDateKey();
+    const wanted = String(department || '').trim().toUpperCase();
+    let onLeave = 0;
+    let active = 0;
+    (facultyList || []).forEach((faculty) => {
+        if (isAdminDirectoryRole(faculty.role, faculty.position)) return;
+        if (wanted && String(faculty.department || '').trim().toUpperCase() !== wanted) return;
+        const covered = (leaves || []).some((row) => {
+            const sameFaculty = row.faculty_id != null && String(row.faculty_id) === String(faculty.id);
+            const sameUser = faculty.auth_user_id && row.auth_user_id && String(row.auth_user_id) === String(faculty.auth_user_id);
+            return (sameFaculty || sameUser) && leaveCoversToday(row, today);
+        });
+        if (covered) onLeave += 1;
+        if (String(faculty.status || 'Active').trim().toLowerCase() === 'active' && !covered) active += 1;
+    });
+    return { active, onLeave };
+}
+
+function submissionQueueBucket(sub, task, config) {
+    const wf = window.CiteFlowWorkflow;
+    const probe = sub && (sub.id || sub.submitted_at) ? sub : null;
+    const stage = wf && typeof wf.getWorkflowStage === 'function'
+        ? wf.getWorkflowStage(probe, task || null, config || null)
+        : '';
+    const status = String(sub?.status || '').toLowerCase();
+    if (stage === 'revision_required' || status === 'revision') return 'returned';
+    if (stage === 'completed' || status === 'approved') return 'approved';
+    if (stage === 'final_approval') return 'review';
+    return 'other';
+}
+
+function countSubmissionQueue(submissions, tasks, assignments, configs, facultyList, department) {
+    const taskById = {};
+    const configById = {};
+    const facultyById = {};
+    const subByPair = {};
+    (tasks || []).forEach((task) => { taskById[String(task.id)] = task; });
+    (configs || []).forEach((config) => { configById[String(config.id)] = config; });
+    (facultyList || []).forEach((faculty) => { facultyById[String(faculty.id)] = faculty; });
+    (submissions || []).forEach((sub) => { subByPair[`${sub.task_id}|${sub.faculty_id}`] = sub; });
+
+    const rows = [];
+    const seen = new Set();
+    const push = (taskId, facultyId, sub) => {
+        const key = `${taskId}|${facultyId}`;
+        if (seen.has(key)) return;
+        const task = taskById[String(taskId)] || null;
+        if (!task && !sub) return;
+        seen.add(key);
+        rows.push({ facultyId, sub, task });
+    };
+    (assignments || []).forEach((assign) => {
+        push(assign.task_id, assign.faculty_id, subByPair[`${assign.task_id}|${assign.faculty_id}`] || null);
+    });
+    (submissions || []).forEach((sub) => push(sub.task_id, sub.faculty_id, sub));
+
+    const wanted = String(department || '').trim().toUpperCase();
+    const visible = wanted
+        ? rows.filter((row) => {
+            const faculty = facultyById[String(row.facultyId)] || {};
+            return String(faculty.department || '').trim().toUpperCase() === wanted;
+        })
+        : rows;
+
+    const counts = { all: visible.length, approved: 0, review: 0 };
+    visible.forEach((row) => {
+        const config = row.task?.report_config_id ? (configById[String(row.task.report_config_id)] || null) : null;
+        const bucket = submissionQueueBucket(row.sub, row.task, config);
+        if (bucket === 'approved' || bucket === 'review') counts[bucket] += 1;
+    });
+    return counts;
 }
 
 /* ─── Build a faculty_id → department lookup map ─── */
@@ -681,24 +902,26 @@ async function loadDashboardData() {
 
     // Fetch all data sources in parallel (workflow + vault documents)
     const [
-        facultyList, submissions, wfTasks, vaultDocuments, documents, research,
+        facultyList, submissions, wfTasks, taskAssignments, reportConfigs, vaultDocuments, documents, research,
         teaching, advisory, adminRoles, activities, engagement, accomplishments,
         extensionProjects, leaves
     ] = await Promise.all([
-        safeSelect('faculty', 'id, department, status, full_name, first_name, last_name, created_at'),
-        safeSelect('wf_submissions', 'id, task_id, faculty_id, status, submitted_at, reviewed_at'),
-        safeSelect('wf_tasks', 'id, title, created_by_name, created_at'),
+        safeSelect('faculty', 'id, department, status, role, position, auth_user_id, full_name, first_name, last_name, created_at'),
+        safeSelect('wf_submissions', 'id, task_id, faculty_id, status, approval_stage, submitted_at, reviewed_at'),
+        safeSelect('wf_tasks', 'id, title, created_by_name, created_at, deadline_at, due_at, report_config_id'),
+        safeSelect('wf_task_assignments', 'task_id, faculty_id'),
+        safeSelect('wf_report_configs', 'id, requires_chairperson_review, report_name'),
         safeSelect('documents', '*'),
         safeSelect('faculty_documents', 'id, faculty_id, title, document_name, status, created_at'),
         safeSelect('faculty_research_projects', 'id, faculty_id, title, status, start_date, end_date, created_at'),
         safeSelect('faculty_teaching_loads', 'id, faculty_id, units, status, academic_year, semester, created_at'),
         safeSelect('faculty_advisory_loads', 'id, faculty_id, units, status, created_at'),
         safeSelect('faculty_admin_role_loads', 'id, faculty_id, units, role_title, status, created_at'),
-        safeSelect('wf_activity_log', 'id, actor_name, action, target, log_type, created_at'),
+        safeSelect('wf_activity_log', 'id, actor_name, action, target, log_type, task_id, created_at'),
         safeSelect('engagement_logs', 'id, faculty_id, faculty_name, department, activity_type, activity_title, description, created_at'),
         safeSelect('faculty_accomplishments', 'id, faculty_id, title, accomplishment_type, description, date_achieved, created_at'),
         safeSelect('extension_projects', 'id, faculty_id, project_title, status, beneficiary_count, start_date, end_date, created_at'),
-        safeSelect('faculty_leaves', 'id, faculty_id, faculty_name, leave_type, status, start_date, end_date, created_at')
+        safeSelect('faculty_leaves', 'id, faculty_id, auth_user_id, faculty_name, leave_type, status, start_date, end_date, created_at')
     ]);
 
     // Build department lookup map
@@ -708,9 +931,6 @@ async function loadDashboardData() {
     const filteredFaculty = department
         ? facultyList.filter(f => f.department === department)
         : facultyList;
-    const activeFaculty = filteredFaculty.filter(f =>
-        !['Inactive', 'Archived'].includes(f.status)
-    );
 
     // Get faculty IDs for this department
     const deptFacultyIds = new Set(filteredFaculty.map(f => f.id));
@@ -773,50 +993,68 @@ async function loadDashboardData() {
         ['rejected', 'revisions requested'].includes(String(s.status || '').toLowerCase())
     ).length;
 
-    // ─── Update Metric Cards ───
-    const activeFacultyCountEl = document.getElementById('activeFacultyCount');
-    if (activeFacultyCountEl) activeFacultyCountEl.textContent = activeFaculty.length;
+    // ─── Update Metric Cards (counts match the page each card opens) ───
+    const facultyCardError = !!(tableErrors.faculty || tableErrors.faculty_leaves);
+    const queueError = !!(tableErrors.wf_submissions || tableErrors.wf_tasks || tableErrors.wf_task_assignments || tableErrors.wf_report_configs);
+    const facultyMetrics = countActiveFaculty(facultyList, leaves, department);
+    const queueMetrics = countSubmissionQueue(submissions, wfTasks, taskAssignments, reportConfigs, facultyList, department);
+    const deptLabel = department ? `${department} · ` : '';
 
-    const onLeave = filteredLeaves.filter(l => String(l.status || '').toLowerCase() === 'approved').length;
-    const activeFacultyTrendEl = document.getElementById('activeFacultyTrend');
-    if (activeFacultyTrendEl) {
-        activeFacultyTrendEl.textContent = onLeave > 0
-            ? `${activeFaculty.length} active, ${onLeave} on leave`
-            : `${activeFaculty.length} active faculty member${activeFaculty.length === 1 ? '' : 's'}`;
+    try {
+        paintMetric(
+            'activeFacultyCount',
+            'activeFacultyTrend',
+            'activeFacultyCard',
+            cardHref('faculty-profiles.html', 'department'),
+            facultyMetrics.active,
+            facultyMetrics.onLeave > 0
+                ? `${deptLabel}${facultyMetrics.onLeave} currently on leave`
+                : `${deptLabel}${facultyMetrics.active} active faculty member${facultyMetrics.active === 1 ? '' : 's'}`,
+            facultyCardError
+        );
+    } catch (error) {
+        console.warn('Active Faculty card update failed:', error);
     }
-
-    const totalDocsEl = document.getElementById('totalDocuments');
-    if (totalDocsEl) totalDocsEl.textContent = totalSubmissions;
-
-    const totalDocsTrendEl = document.getElementById('totalDocumentsTrend');
-    if (totalDocsTrendEl) {
-        totalDocsTrendEl.textContent = totalSubmissions > 0
-            ? (filteredSubmissions.length > 0
-                ? `${safeCount(filteredSubmissions)} workflow + ${safeCount(filteredDocs) + safeCount(filteredVaultDocs)} documents`
-                : `${totalSubmissions} documents on file`)
-            : documentTrendLabel(filteredVaultDocs);
+    try {
+        paintMetric(
+            'totalDocuments',
+            'totalDocumentsTrend',
+            'totalSubmissionsCard',
+            cardHref('workflow-approval.html#queue=all', 'dept'),
+            queueMetrics.all,
+            queueMetrics.all > 0 ? `${deptLabel}All records in Submissions` : `${deptLabel}No submission records yet`,
+            queueError
+        );
+    } catch (error) {
+        console.warn('Total Submissions card update failed:', error);
     }
-
-    const approvedDocsEl = document.getElementById('approvedDocuments');
-    if (approvedDocsEl) approvedDocsEl.textContent = totalApproved;
-
-    const approvedTrendEl = document.getElementById('approvedTrend');
-    if (approvedTrendEl) {
-        const reviewTotal = filteredSubmissions.length + filteredDocs.length;
-        approvedTrendEl.textContent = reviewTotal > 0
-            ? `${percent(totalApproved, reviewTotal)}% approval rate`
-            : (totalSubmissions > 0 ? `${totalApproved} approved / verified` : 'No approved records');
+    try {
+        paintMetric(
+            'approvedDocuments',
+            'approvedTrend',
+            'approvedSubmissionsCard',
+            cardHref('workflow-approval.html#queue=approved', 'dept'),
+            queueMetrics.approved,
+            queueMetrics.approved > 0 ? `${deptLabel}Approved in Submissions` : `${deptLabel}No approved submissions`,
+            queueError
+        );
+    } catch (error) {
+        console.warn('Approved card update failed:', error);
     }
-
-    const pendingDocsEl = document.getElementById('pendingDocuments');
-    if (pendingDocsEl) pendingDocsEl.textContent = totalPending;
-
-    const pendingTrendEl = document.getElementById('pendingTrend');
-    if (pendingTrendEl) {
-        pendingTrendEl.textContent = totalPending > 0
-            ? `${totalPending} awaiting review`
-            : 'No pending reviews';
+    try {
+        paintMetric(
+            'pendingDocuments',
+            'pendingTrend',
+            'pendingReviewCard',
+            cardHref('workflow-approval.html#queue=review', 'dept'),
+            queueMetrics.review,
+            queueMetrics.review > 0 ? `${deptLabel}Waiting for final approval` : `${deptLabel}No submissions waiting for review`,
+            queueError
+        );
+    } catch (error) {
+        console.warn('Pending Review card update failed:', error);
     }
+    notifyCardQueryErrors();
 
     // ─── Expiring Documents Alert ───
     const now = new Date();
@@ -1200,6 +1438,7 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
             title: item.action || 'System Activity',
             meta: item.target || item.log_type || item.actor_name || 'Activity recorded',
             time: item.created_at,
+            href: item.task_id ? `workflow-approval.html#task=${encodeURIComponent(item.task_id)}` : 'workflow-approval.html#queue=all',
             icon: 'fa-bolt',
             color: 'text-violet-600 bg-violet-50 border-violet-200'
         })),
@@ -1207,6 +1446,7 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
             title: item.activity_title || item.activity_type || 'Engagement Activity',
             meta: `${item.faculty_name || 'Faculty'} — ${item.description || item.department || 'Engagement'}`,
             time: item.created_at || item.activity_at,
+            href: 'engagement-logs.html',
             icon: 'fa-star',
             color: 'text-amber-600 bg-amber-50 border-amber-200'
         })),
@@ -1214,6 +1454,7 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
             title: item.title || 'Faculty Accomplishment',
             meta: `${item.accomplishment_type || 'Accomplishment'}${item.description ? ' — ' + item.description : ''}`,
             time: item.created_at || item.date_achieved,
+            href: 'faculty-profiles.html',
             icon: 'fa-award',
             color: 'text-amber-600 bg-amber-50 border-amber-200'
         })),
@@ -1222,13 +1463,15 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
             const statusLower = String(item.status || '').toLowerCase();
             let icon = 'fa-file-arrow-up';
             let color = 'text-blue-600 bg-blue-50 border-blue-200';
-            if (statusLower === 'approved') { icon = 'fa-circle-check'; color = 'text-emerald-600 bg-emerald-50 border-emerald-200'; }
-            else if (statusLower === 'rejected') { icon = 'fa-circle-xmark'; color = 'text-red-600 bg-red-50 border-red-200'; }
-            else if (statusLower.includes('revision')) { icon = 'fa-pen-to-square'; color = 'text-orange-600 bg-orange-50 border-orange-200'; }
+            let queue = 'review';
+            if (statusLower === 'approved') { icon = 'fa-circle-check'; color = 'text-emerald-600 bg-emerald-50 border-emerald-200'; queue = 'approved'; }
+            else if (statusLower === 'rejected') { icon = 'fa-circle-xmark'; color = 'text-red-600 bg-red-50 border-red-200'; queue = 'all'; }
+            else if (statusLower.includes('revision')) { icon = 'fa-pen-to-square'; color = 'text-orange-600 bg-orange-50 border-orange-200'; queue = 'returned'; }
             return {
                 title: task ? `Submission: ${task.title}` : 'Workflow Submission',
                 meta: `Status: ${item.status || 'Submitted'}`,
                 time: item.submitted_at || item.reviewed_at,
+                href: item.task_id ? `workflow-approval.html#task=${encodeURIComponent(item.task_id)}` : `workflow-approval.html#queue=${queue}`,
                 icon,
                 color
             };
@@ -1237,6 +1480,7 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
             title: item.document_name || item.title || item.name || 'Document uploaded',
             meta: `${item.category || item.document_type || item.mime_type || 'Document'} — ${item.status || 'Submitted'}`,
             time: item.uploaded_at || item.created_at,
+            href: 'faculty-profiles.html',
             icon: 'fa-folder-open',
             color: 'text-slate-600 bg-slate-50 border-slate-200'
         })),
@@ -1244,6 +1488,7 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
             title: item.name || item.document_name || item.title || 'Document stored',
             meta: `${item.mime_type ? item.mime_type.split('/').pop().toUpperCase() + ' · ' : ''}Vault Document`,
             time: item.uploaded_at || item.created_at,
+            href: 'document-vault.html',
             icon: 'fa-box-archive',
             color: 'text-slate-600 bg-slate-50 border-slate-200'
         })),
@@ -1251,6 +1496,7 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
             title: `Leave Application: ${item.leave_type || 'Leave'}`,
             meta: `${item.faculty_name || 'Faculty Member'} — Status: ${item.status || 'Pending'}`,
             time: item.created_at || item.start_date,
+            href: 'faculty-profiles.html',
             icon: 'fa-calendar-day',
             color: 'text-teal-600 bg-teal-50 border-teal-200'
         }))
@@ -1258,6 +1504,19 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
 
     const list = document.getElementById('recentActivityList');
     if (!list) return;
+    const activityTables = ['wf_activity_log', 'engagement_logs', 'faculty_accomplishments', 'wf_submissions', 'faculty_documents', 'documents', 'faculty_leaves'];
+    const failedSources = activityTables.filter((table) => tableErrors[table]);
+    if (!combined.length && failedSources.length === activityTables.length) {
+        list.innerHTML = `
+            <div class="text-center py-8">
+                <div class="w-14 h-14 rounded-full bg-red-50 mx-auto flex items-center justify-center mb-3">
+                    <i class="fas fa-triangle-exclamation text-red-400 text-xl"></i>
+                </div>
+                <p class="text-sm text-slate-600 font-medium">Could not load recent activity</p>
+                <p class="text-xs text-slate-400 mt-1">The latest records will appear here when the connection recovers</p>
+            </div>`;
+        return;
+    }
     if (!combined.length) {
         list.innerHTML = `
             <div class="text-center py-8">
@@ -1271,7 +1530,7 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
     }
 
     list.innerHTML = combined.map(item => `
-        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3.5 flex gap-3 hover:bg-white hover:border-slate-300 transition-all cursor-default">
+        <a href="${esc(item.href || 'dashboard.html')}" class="activity-link rounded-2xl border border-slate-200 bg-slate-50 p-3.5 gap-3 hover:bg-white hover:border-slate-300 transition-all">
             <div class="w-9 h-9 rounded-xl ${item.color} border flex items-center justify-center flex-shrink-0">
                 <i class="fas ${item.icon} text-sm"></i>
             </div>
@@ -1280,7 +1539,7 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
                 <div class="text-xs text-slate-500 mt-0.5 line-clamp-1">${esc(item.meta)}</div>
                 <div class="text-[11px] text-slate-400 mt-1.5">${formatDate(item.time)}</div>
             </div>
-        </div>
+        </a>
     `).join('');
 }
 
@@ -1361,28 +1620,61 @@ async function loadAdminProfile() {
 /* ═══════════════════════════════════════════════════
    REALTIME SUBSCRIPTIONS
    ═══════════════════════════════════════════════════ */
+function requestDashboardLoad() {
+    clearTimeout(dashboardLoadTimer);
+    dashboardLoadTimer = setTimeout(runDashboardLoad, 300);
+}
+
+async function runDashboardLoad() {
+    if (dashboardLoadRunning) {
+        dashboardLoadAgain = true;
+        return;
+    }
+    dashboardLoadRunning = true;
+    try {
+        await loadDashboardData();
+    } catch (error) {
+        console.error('Dashboard data load failed:', error);
+        setLiveStatus('Could not refresh the dashboard.');
+    } finally {
+        dashboardLoadRunning = false;
+        if (dashboardLoadAgain) {
+            dashboardLoadAgain = false;
+            requestDashboardLoad();
+        }
+    }
+}
+
 function subscribeRealtime() {
     const client = window.supabaseClient || supabaseClient;
-    if (!client || typeof client.channel !== 'function') return;
+    if (!client || typeof client.channel !== 'function') {
+        setLiveStatus('Live updates are unavailable.');
+        return;
+    }
     try {
-        client.channel('dashboard-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_submissions' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_tasks' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_documents' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_research_projects' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_teaching_loads' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_advisory_loads' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_admin_role_loads' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_activity_log' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'engagement_logs' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_accomplishments' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'extension_projects' }, loadDashboardData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_leaves' }, loadDashboardData)
-            .subscribe();
+        if (dashboardChannel) {
+            client.removeChannel(dashboardChannel);
+            dashboardChannel = null;
+        }
+        const tables = [
+            'documents', 'faculty', 'wf_submissions', 'wf_tasks', 'wf_task_assignments', 'wf_report_configs',
+            'faculty_documents', 'faculty_research_projects', 'faculty_teaching_loads', 'faculty_advisory_loads',
+            'faculty_admin_role_loads', 'wf_activity_log', 'engagement_logs', 'faculty_accomplishments',
+            'extension_projects', 'faculty_leaves'
+        ];
+        let channel = client.channel('admin-dashboard-live');
+        tables.forEach((table) => {
+            channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, requestDashboardLoad);
+        });
+        dashboardChannel = channel.subscribe((status) => {
+            if (status === 'SUBSCRIBED') setLiveStatus('');
+            else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setLiveStatus('Live updates paused. Counts stay as last loaded until the connection recovers.');
+            }
+        });
     } catch (err) {
         console.warn('Dashboard realtime setup error:', err);
+        setLiveStatus('Live updates are unavailable.');
     }
 }
 
@@ -1393,7 +1685,7 @@ window.addEventListener('load', async () => {
     try { if (typeof loadSidebar === 'function') await loadSidebar(); } catch (error) { console.warn('Dashboard navigation load skipped:', error); }
     try { initCompactSelects(); } catch (error) { console.warn('Dashboard compact selects skipped:', error); }
     try { await loadAdminProfile(); } catch (error) { console.warn('Dashboard profile load skipped:', error); }
-    try { await loadDashboardData(); } catch (error) { console.error('Dashboard data load failed:', error); }
+    try { await runDashboardLoad(); } catch (error) { console.error('Dashboard data load failed:', error); }
     try { subscribeRealtime(); } catch (error) { console.warn('Dashboard realtime skipped:', error); }
 });
 </script>

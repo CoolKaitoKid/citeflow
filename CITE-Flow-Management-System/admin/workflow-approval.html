@@ -6927,10 +6927,26 @@ async function init() {
         `);
     }
 
+    const incomingQueue = readIncomingQueueBucket();
+    if (incomingQueue) {
+        queueBucket = incomingQueue;
+        document.querySelectorAll('#queueBucketTabs .wf-category-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.getAttribute('data-bucket') === queueBucket);
+        });
+    }
+
     await fetchAllData();
     renderSpecificUsers();
     openTaskFromHash();
     initRealtime();
+}
+
+function readIncomingQueueBucket() {
+    const hash = window.location.hash.replace(/^#/, '');
+    let bucket = '';
+    if (hash.startsWith('queue=')) bucket = decodeURIComponent(hash.slice('queue='.length)).split('&')[0];
+    else if (hash.includes('=')) bucket = new URLSearchParams(hash).get('queue') || '';
+    return ['review', 'returned', 'approved', 'all'].includes(bucket) ? bucket : '';
 }
 
 
@@ -7404,7 +7420,9 @@ function renderSubmissionQueue() {
     const body = document.getElementById('queueTableBody');
     if (!body) return;
     const query = String(document.getElementById('queueSearch')?.value || '').trim().toLowerCase();
+    const deptParam = String(new URLSearchParams(window.location.search).get('dept') || '').trim().toUpperCase();
     const rows = (allSubmissions || []).filter(row => {
+        if (deptParam && String(row.department_code || '').trim().toUpperCase() !== deptParam) return false;
         const bucket = submissionQueueBucket(row);
         if (queueBucket !== 'all' && bucket !== queueBucket) return false;
         if (!query) return true;
