@@ -906,17 +906,17 @@
             display: block !important;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(4px);
-            }
+       @keyframes fadeIn {
+    from {
+        opacity: 0.85;
+        transform: translateY(2px);
+    }
 
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
     </style>
     <style id="submissions-cal-compact">
     /* Mobile-only Scrollable Dropdowns */
@@ -4090,114 +4090,72 @@ function renderDetailPage() {
         inReview;
 
 
-    const draftNames =
-        getDraftFileNames(task.id);
+      const draftFiles = getDraftFiles(task.id);
+    const savedRecords = getTaskSubmissionFileRecords(task.id, resolveCurrentFaculty()?.id);
 
+    const savedNames = savedRecords
+        .map(file => file.file_name)
+        .filter(Boolean);
 
-    const savedRecords =
-        getTaskSubmissionFileRecords(task.id, resolveCurrentFaculty()?.id);
+    const savedNameSet = new Set(savedNames.map(n => String(n || '').toLowerCase().trim()));
 
+    // Filter out any draft file that is already saved on the server
+    const uniqueDraftFiles = draftFiles.filter(
+        file => !savedNameSet.has(String(file?.name || '').toLowerCase().trim())
+    );
 
-    const savedNames =
-        savedRecords
-            .map(
-                file => file.file_name
-            )
-            .filter(Boolean);
-
-
-    const filesToShowCount =
-        draftNames.length
-        +
-        savedNames.length;
-
+    const filesToShowCount = savedNames.length + uniqueDraftFiles.length;
 
     const draftUrl =
         draftSubmissionUrls[task.id]
         || '';
 
-
     const canSubmit =
-
         !disableSubmit
-
         &&
-
         (
             submissionMethod === 'link'
-
-                ?
-
-                Boolean(
-                    draftUrl.trim()
-                )
-
-                :
-
-                (
-                    draftNames.length > 0
-                    ||
-                    savedNames.length > 0
-                )
+                ? Boolean(draftUrl.trim())
+                : (uniqueDraftFiles.length > 0 || savedNames.length > 0)
         );
-
 
     const managedFilesHtml = (() => {
 
-        const draftRows =
-            getDraftFiles(task.id)
-                .map(
-                    (file, index) =>
-                        renderFacultyManagedFileRow({
-                            name: file.name,
-                            meta: [
-                                fileExtensionLabel(file.name),
-                                formatByteSize(file.size)
-                            ].filter(Boolean).join(' · ') || 'Not submitted yet',
-                            canManage: canManageFiles,
-                            locked: filesLocked,
-                            replaceAction:
-                                `onclick="replaceDraftSubmissionFile('${escapeHtml(String(task.id))}', ${index})"`,
-                            deleteAction:
-                                `onclick="deleteDraftSubmissionFile('${escapeHtml(String(task.id))}', ${index})"`
-                        })
-                );
+        const draftRows = uniqueDraftFiles.map((file, index) =>
+            renderFacultyManagedFileRow({
+                name: file.name,
+                meta: [
+                    fileExtensionLabel(file.name),
+                    formatByteSize(file.size)
+                ].filter(Boolean).join(' · ') || 'Not submitted yet',
+                canManage: canManageFiles,
+                locked: filesLocked,
+                replaceAction: `onclick="replaceDraftSubmissionFile('${escapeHtml(String(task.id))}', ${index})"`,
+                deleteAction: `onclick="deleteDraftSubmissionFile('${escapeHtml(String(task.id))}', ${index})"`
+            })
+        );
 
-        const savedRows =
-            savedRecords.map(file => {
+        const savedRows = savedRecords.map(file => {
+            const fileId = String(file.id || '');
+            const uploaded = file.created_at || file.uploaded_at || file.updated_at;
 
-                const fileId =
-                    String(
-                        file.id
-                        || ''
-                    );
-
-                const uploaded =
-                    file.created_at
-                    || file.uploaded_at
-                    || file.updated_at;
-
-                return renderFacultyManagedFileRow({
-                    name: file.file_name,
-                    url: resolveSubmissionFileUrl(file),
-                    meta: [
-                        fileExtensionLabel(file.file_name),
-                        uploaded
-                            ? `Uploaded ${formatDateTime(uploaded)}`
-                            : 'Submitted file'
-                    ].filter(Boolean).join(' · '),
-                    canManage: canManageFiles,
-                    locked: filesLocked,
-                    replaceAction:
-                        `onclick="replaceSavedSubmissionFile('${escapeHtml(String(task.id))}', '${escapeHtml(fileId)}')"`,
-                    deleteAction:
-                        `onclick="deleteSavedSubmissionFile('${escapeHtml(String(task.id))}', '${escapeHtml(fileId)}')"`
-                });
-
+            return renderFacultyManagedFileRow({
+                name: file.file_name,
+                url: resolveSubmissionFileUrl(file),
+                meta: [
+                    fileExtensionLabel(file.file_name),
+                    uploaded
+                        ? `Uploaded ${formatDateTime(uploaded)}`
+                        : 'Submitted file'
+                ].filter(Boolean).join(' · '),
+                canManage: canManageFiles,
+                locked: filesLocked,
+                replaceAction: `onclick="replaceSavedSubmissionFile('${escapeHtml(String(task.id))}', '${escapeHtml(fileId)}')"` ,
+                deleteAction: `onclick="deleteSavedSubmissionFile('${escapeHtml(String(task.id))}', '${escapeHtml(fileId)}')"`
             });
+        });
 
-        const rows =
-            savedRows.concat(draftRows);
+        const rows = savedRows.concat(draftRows);
 
         if (!rows.length) {
             return `<p class="panel-file-empty">No files attached yet.</p>`;
@@ -4247,9 +4205,10 @@ function renderDetailPage() {
     ].join('');
 
 
+    const isAlreadyDetail = Boolean(document.querySelector('.task-detail'));
     root.innerHTML = `
 
-        <div class="fade-in task-detail">
+        <div class="${isAlreadyDetail ? '' : 'fade-in '}task-detail">
 
             ${renderTopBar(
                 'Task Details',
@@ -4931,19 +4890,19 @@ function renderDetailPage() {
 /* =========================================================
    FILE INPUT
 ========================================================= */
+/* =========================================================
+   FILE INPUT (Auto-submits on upload so Unsubmit is shown)
+========================================================= */
 
 function wireUploadInputs() {
 
     document
-        .querySelectorAll(
-            '.task-upload-input'
-        )
+        .querySelectorAll('.task-upload-input')
         .forEach(input => {
 
             const zone = input.closest('.upload-zone');
 
             if (zone && !zone.dataset.dropWired) {
-
                 zone.dataset.dropWired = '1';
 
                 zone.addEventListener('dragover', event => {
@@ -4966,193 +4925,170 @@ function wireUploadInputs() {
                     input.files = transfer.files;
                     input.dispatchEvent(new Event('change', { bubbles: true }));
                 });
-
             }
 
-            input.addEventListener(
-                'change',
-                async event => {
+            input.addEventListener('change', async event => {
+                const taskId = event.target.dataset.task;
+                const incoming = Array.from(event.target.files || []).filter(Boolean);
+                selectedTaskId = String(taskId);
 
-                    const taskId =
-                        event.target.dataset.task;
+                if (!incoming.length) return;
+                event.target.value = '';
 
-                    const incoming =
-                        Array
-                            .from(
-                                event.target.files
-                                || []
-                            )
-                            .filter(Boolean);
+                const task = getTaskById(taskId);
+                const faculty = resolveCurrentFaculty();
+                const submission = faculty ? getSubmission(taskId, faculty.id) : null;
 
-                    selectedTaskId =
-                        String(taskId);
-
-                    if (!incoming.length) {
-                        return;
-                    }
-
-                    const task =
-                        getTaskById(taskId);
-
-                    const faculty =
-                        resolveCurrentFaculty();
-
-                    const submission =
-                        faculty
-                            ? getSubmission(
-                                taskId,
-                                faculty.id
-                            )
-                            : null;
-
-                    if (
-                        submission?.id
-                        &&
-                        canManageSubmissionFiles(
-                            submission,
-                            task
-                        )
-                    ) {
-
-                        event.target.value = '';
-
-                        await addSavedSubmissionFiles(
-                            taskId,
-                            incoming
-                        );
-
-                        return;
-
-                    }
-
-                    draftUploads[taskId] =
-                        getDraftFiles(taskId)
-                            .concat(incoming);
-
-                    event.target.value = '';
-
-                    renderDetailPage();
-
+                if (isFileManagementLocked(submission, task)) {
+                    toastMessage('This submission is fully approved. Files can no longer be uploaded.', 'error');
+                    return;
                 }
-            );
+
+                // Add to draft uploads and auto-submit immediately
+                draftUploads[taskId] = getDraftFiles(taskId).concat(incoming);
+                renderDetailPage();
+
+                // Automatically submit so the submission is recorded and the Unsubmit button appears
+                await submitTask(taskId);
+            });
 
         });
 
-
-    const replaceInput =
-        document.getElementById(
-            'fileReplaceInput'
-        );
-
+    const replaceInput = document.getElementById('fileReplaceInput');
     if (replaceInput) {
+        replaceInput.addEventListener('change', async event => {
+            const incoming = Array.from(event.target.files || []).filter(Boolean)[0];
+            const target = pendingFileReplace;
+            pendingFileReplace = null;
+            event.target.value = '';
 
-        replaceInput.addEventListener(
-            'change',
-            async event => {
+            if (!incoming || !target) return;
 
-                const incoming =
-                    Array
-                        .from(
-                            event.target.files
-                            || []
-                        )
-                        .filter(Boolean)[0];
-
-                const target =
-                    pendingFileReplace;
-
-                pendingFileReplace = null;
-
-                event.target.value = '';
-
-                if (!incoming || !target) {
-                    return;
-                }
-
-                if (target.kind === 'draft') {
-
-                    const drafts =
-                        getDraftFiles(target.taskId)
-                            .slice();
-
-                    if (
-                        target.index < 0
-                        ||
-                        target.index >= drafts.length
-                    ) {
-                        return;
-                    }
-
-                    drafts[target.index] =
-                        incoming;
-
-                    draftUploads[target.taskId] =
-                        drafts;
-
-                    selectedTaskId =
-                        String(target.taskId);
-
-                    renderDetailPage();
-
-                    return;
-
-                }
-
-                await replaceSavedSubmissionFileWith(
-                    target.taskId,
-                    target.fileId,
-                    incoming
-                );
-
+            if (target.kind === 'draft') {
+                const drafts = getDraftFiles(target.taskId).slice();
+                if (target.index < 0 || target.index >= drafts.length) return;
+                drafts[target.index] = incoming;
+                draftUploads[target.taskId] = drafts;
+                selectedTaskId = String(target.taskId);
+                renderDetailPage();
+                await submitTask(target.taskId);
+                return;
             }
-        );
 
+            await replaceSavedSubmissionFileWith(target.taskId, target.fileId, incoming);
+        });
     }
 
 }
-
 
 /* =========================================================
    SUBMISSION URL INPUT
 ========================================================= */
 
-function wireSubmissionUrlInput() {
+/* =========================================================
+   FILE INPUT & SUBMISSION URL INPUT
+========================================================= */
 
-    const input =
-        document.getElementById(
-            'submissionUrlInput'
-        );
+function wireUploadInputs() {
 
-    if (!input) {
-        return;
-    }
+    document
+        .querySelectorAll('.task-upload-input')
+        .forEach(input => {
 
-    input.addEventListener(
-        'input',
-        event => {
+            const zone = input.closest('.upload-zone');
 
-            if (!selectedTaskId) {
+            if (zone && !zone.dataset.dropWired) {
+                zone.dataset.dropWired = '1';
+
+                zone.addEventListener('dragover', event => {
+                    event.preventDefault();
+                    if (!input.disabled) zone.classList.add('is-drag');
+                });
+
+                zone.addEventListener('dragleave', () => {
+                    zone.classList.remove('is-drag');
+                });
+
+                zone.addEventListener('drop', event => {
+                    event.preventDefault();
+                    zone.classList.remove('is-drag');
+                    if (input.disabled) return;
+                    const files = event.dataTransfer && event.dataTransfer.files;
+                    if (!files || !files.length) return;
+                    const transfer = new DataTransfer();
+                    Array.from(files).forEach(file => transfer.items.add(file));
+                    input.files = transfer.files;
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+            }
+
+            input.addEventListener('change', async event => {
+                const taskId = event.target.dataset.task;
+                const incoming = Array.from(event.target.files || []).filter(Boolean);
+                selectedTaskId = String(taskId);
+
+                if (!incoming.length) return;
+                event.target.value = '';
+
+                const task = getTaskById(taskId);
+                const faculty = resolveCurrentFaculty();
+                const submission = faculty ? getSubmission(taskId, faculty.id) : null;
+
+                if (isFileManagementLocked(submission, task)) {
+                    toastMessage('This submission is fully approved. Files can no longer be uploaded.', 'error');
+                    return;
+                }
+
+                // Stage the files in drafts (does not auto-submit)
+                draftUploads[taskId] = getDraftFiles(taskId).concat(incoming);
+
+                // Re-render so the file appears in "Selected files" with Remove button,
+                // and the "Submit Work" button activates
+                renderDetailPage();
+            });
+
+        });
+
+    const replaceInput = document.getElementById('fileReplaceInput');
+    if (replaceInput) {
+        replaceInput.addEventListener('change', async event => {
+            const incoming = Array.from(event.target.files || []).filter(Boolean)[0];
+            const target = pendingFileReplace;
+            pendingFileReplace = null;
+            event.target.value = '';
+
+            if (!incoming || !target) return;
+
+            if (target.kind === 'draft') {
+                const drafts = getDraftFiles(target.taskId).slice();
+                if (target.index < 0 || target.index >= drafts.length) return;
+                drafts[target.index] = incoming;
+                draftUploads[target.taskId] = drafts;
+                selectedTaskId = String(target.taskId);
+                renderDetailPage();
                 return;
             }
 
-            draftSubmissionUrls[selectedTaskId] =
-                event.target.value;
+            await replaceSavedSubmissionFileWith(target.taskId, target.fileId, incoming);
+        });
+    }
 
-            const button =
-                document.querySelector(
-                    'button[onclick^="submitTask"]'
-                );
+}
 
-            if (button) {
+function wireSubmissionUrlInput() {
+    const input = document.getElementById('submissionUrlInput');
+    if (!input) return;
 
-                button.disabled =
-                    !event.target.value.trim();
+    input.addEventListener('input', event => {
+        if (!selectedTaskId) return;
 
-            }
+        draftSubmissionUrls[selectedTaskId] = event.target.value;
 
+        const button = document.querySelector('button[onclick^="submitTask"]');
+        if (button) {
+            button.disabled = !event.target.value.trim();
         }
-    );
-
+    });
 }
 
 
@@ -5482,333 +5418,421 @@ async function uploadDraftsForSubmission({
 }
 
 
-async function applyFacultyFileChangeStatus(task, submission, remainingCount) {
+/* =========================================================
+   COMPLETE UPDATED FILE REMOVAL & STATUS HANDLERS
+========================================================= */
 
-    if (!submission?.id) {
-        return submission;
-    }
+/* =========================================================
+   CLEAN & UNIFIED FILE REMOVAL & UNSUBMIT SYSTEM
+========================================================= */
+
+async function applyFacultyFileChangeStatus(task, submission, remainingCount) {
+    if (!submission?.id) return submission;
 
     await resolveApprovalStageForTask(task);
 
-    const update =
-        window.CiteFlowWorkflow?.buildFacultyFileChangeUpdate
-            ? CiteFlowWorkflow.buildFacultyFileChangeUpdate(
-                submission,
-                task,
-                remainingCount,
-                getTaskReportConfig(task)
-            )
-            : (
-                remainingCount
-                    ? {
-                        status: isPastDue(task) ? 'late' : 'submitted',
-                        submitted_at: new Date().toISOString(),
-                        is_late: isPastDue(task),
-                        submitted_status: isPastDue(task) ? 'late' : 'on_time',
-                        approval_stage: initialApprovalStageForTask(task)
-                    }
-                    : {
-                        status: 'notsubmitted',
-                        submitted_at: null,
-                        is_late: false,
-                        submitted_status: null,
-                        approval_stage: initialApprovalStageForTask(task)
-                    }
-            );
-
-    const {
-        error
-    } =
-        await db
-            .from('wf_submissions')
-            .update(update)
-            .eq(
-                'id',
-                submission.id
-            );
-
-    if (error) {
-        throw error;
-    }
-
-    const idx =
-        state.submissions.findIndex(
-            row =>
-                String(row.id)
-                === String(submission.id)
-        );
-
-    if (idx >= 0) {
-        state.submissions[idx] = {
-            ...state.submissions[idx],
-            ...update
-        };
-    }
-
-    return {
-        ...submission,
-        ...update
+    let update = {
+        status: remainingCount > 0 ? (isPastDue(task) ? 'late' : 'submitted') : 'notsubmitted',
+        submitted_at: remainingCount > 0 ? new Date().toISOString() : null
     };
 
-}
+    try {
+        await db.from('wf_submissions').update(update).eq('id', submission.id);
+    } catch (e) {
+        console.warn('Status update warning:', e);
+    }
 
+    const idx = state.submissions.findIndex(row => String(row.id) === String(submission.id));
+    if (idx >= 0) {
+        state.submissions[idx] = { ...state.submissions[idx], ...update };
+    }
+
+    return { ...submission, ...update };
+}
 
 function assertCanManageFiles(task, submission) {
+    if (!canManageSubmissionFiles(submission, task)) {
+        toastMessage('This submission is fully approved. Files can no longer be replaced or deleted.', 'error');
+        return false;
+    }
+    return true;
+}
 
-    if (
-        !canManageSubmissionFiles(
-            submission,
-            task
-        )
-    ) {
+// -------------------------------------------------------------
+// UNIFIED REMOVE FILE FUNCTION (Works for both drafts & uploaded files)
+// -------------------------------------------------------------
+window.removeSubmissionFile = async function removeSubmissionFile(taskId, fileIdentifier, draftIndex) {
+    if (!window.confirm('Are you sure you want to remove this file?')) {
+        return;
+    }
 
-        toastMessage(
-            'This submission is fully approved. Files can no longer be replaced or deleted.',
-            'error'
+    try {
+        console.log('[CiteFlow] Removing file:', { taskId, fileIdentifier, draftIndex });
+
+        // 1. Remove from draft memory if applicable
+        if (draftUploads[taskId]) {
+            if (draftIndex !== undefined && draftIndex !== null && draftIndex !== '') {
+                draftUploads[taskId].splice(Number(draftIndex), 1);
+            }
+            if (fileIdentifier) {
+                draftUploads[taskId] = draftUploads[taskId].filter(f => f.name !== fileIdentifier);
+            }
+            if (draftUploads[taskId].length === 0) {
+                delete draftUploads[taskId];
+            }
+        }
+
+        // 2. Find file in local state
+        const file = (state.submissionFiles || []).find(f => 
+            String(f.id) === String(fileIdentifier) || 
+            f.file_name === fileIdentifier ||
+            f.storage_path === fileIdentifier
         );
 
-        return false;
+        // 3. Remove from Supabase Storage
+        const storagePath = file?.storage_path || (fileIdentifier && String(fileIdentifier).includes('/') ? fileIdentifier : null);
+        if (storagePath) {
+            try {
+                await db.storage.from(submissionBucket).remove([storagePath]);
+            } catch (stErr) {
+                console.warn('[Storage] Remove warning:', stErr);
+            }
+        }
 
+        // 4. Delete row from Database (by ID, storage_path, or file_name)
+        if (file?.id || (fileIdentifier && !String(fileIdentifier).includes('.'))) {
+            const idToDelete = file?.id || fileIdentifier;
+            await db.from('wf_submission_files').delete().eq('id', idToDelete);
+        }
+        if (storagePath) {
+            await db.from('wf_submission_files').delete().eq('storage_path', storagePath);
+        }
+        const fileName = file?.file_name || (fileIdentifier && String(fileIdentifier).includes('.') ? fileIdentifier : null);
+        if (fileName) {
+            const faculty = resolveCurrentFaculty();
+            const subIds = getSubmissionsForTask(taskId, faculty?.id).map(s => s.id);
+            if (subIds.length) {
+                await db.from('wf_submission_files').delete().in('submission_id', subIds).eq('file_name', fileName);
+            }
+        }
+
+        // 5. Instantly remove from local memory array so it vanishes from UI
+        state.submissionFiles = (state.submissionFiles || []).filter(f => 
+            String(f.id) !== String(fileIdentifier) && 
+            f.file_name !== fileIdentifier &&
+            f.storage_path !== fileIdentifier
+        );
+
+        // 6. If no files remain, set status to notsubmitted
+        const faculty = resolveCurrentFaculty();
+        const submission = faculty ? getSubmission(taskId, faculty.id) : null;
+        const remainingRecords = getTaskSubmissionFileRecords(taskId, faculty?.id);
+        const draftCount = getDraftFiles(taskId).length;
+
+        if (submission?.id && remainingRecords.length === 0 && draftCount === 0) {
+            try {
+                await db.from('wf_submissions').update({
+                    status: 'notsubmitted',
+                    submitted_at: null
+                }).eq('id', submission.id);
+
+                if (Array.isArray(state.submissions)) {
+                    state.submissions.forEach(s => {
+                        if (String(s.id) === String(submission.id)) {
+                            s.status = 'notsubmitted';
+                            s.submitted_at = null;
+                        }
+                    });
+                }
+            } catch (statusErr) {
+                console.warn('Status update warning:', statusErr);
+            }
+        }
+
+        alert('File removed successfully!');
+
+        // 7. Re-render UI immediately
+        selectedTaskId = String(taskId);
+        renderDetailPage();
+        await fetchAllData();
+
+    } catch (err) {
+        console.error('[CiteFlow] Remove error:', err);
+        alert('Could not remove file: ' + (err?.message || err));
     }
+};
 
-    return true;
-
+window.deleteSavedSubmissionFile = function deleteSavedSubmissionFile(taskId, fileId) {
+    return window.removeSubmissionFile(taskId, fileId);
+};
+/* =========================================================
+   CUSTOM CITE-THEME MODAL DIALOGS (Alert & Confirm)
+========================================================= */
+function ensureCiteModalElement() {
+    let container = document.getElementById('citeModalContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'citeModalContainer';
+        container.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(4px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            padding: 1rem;
+        `;
+        container.innerHTML = `
+            <div id="citeModalCard" style="
+                background: #ffffff;
+                color: #111827;
+                width: 100%;
+                max-width: 440px;
+                border-radius: 20px;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+                overflow: hidden;
+                transform: scale(0.95);
+                transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            ">
+                <div style="padding: 24px;">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                        <div id="citeModalIconBox" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            background: transparent;
+                            border: none;
+                            font-size: 24px;
+                            color: var(--cite-theme, #8c2a10);
+                            flex-shrink: 0;
+                        ">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                        <h3 id="citeModalTitle" style="
+                            margin: 0;
+                            font-size: 1.15rem;
+                            font-weight: 700;
+                            color: #111827;
+                        ">Confirmation</h3>
+                    </div>
+                    <p id="citeModalMessage" style="
+                        margin: 0;
+                        font-size: 0.925rem;
+                        line-height: 1.55;
+                        color: #4b5563;
+                    "></p>
+                </div>
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-end;
+                    gap: 10px;
+                    padding: 14px 24px;
+                    background: #f9fafb;
+                    border-top: 1px solid #e5e7eb;
+                ">
+                    <button id="citeModalCancelBtn" type="button" style="
+                        padding: 8px 18px;
+                        border-radius: 12px;
+                        font-weight: 600;
+                        font-size: 0.875rem;
+                        background: #ffffff;
+                        border: 1px solid #d1d5db;
+                        color: #374151;
+                        cursor: pointer;
+                        transition: background 0.15s ease;
+                    ">Cancel</button>
+                    <button id="citeModalConfirmBtn" type="button" style="
+                        padding: 8px 20px;
+                        border-radius: 12px;
+                        font-weight: 700;
+                        font-size: 0.875rem;
+                        background: var(--cite-theme, #8c2a10);
+                        border: 1px solid var(--cite-theme, #8c2a10);
+                        color: var(--cite-theme-text, #ffffff);
+                        cursor: pointer;
+                        box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--cite-theme, #8c2a10) 40%, transparent);
+                        transition: transform 0.15s ease, opacity 0.15s ease;
+                    ">Confirm</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(container);
+    }
+    return container;
 }
+window.citeConfirm = function citeConfirm(message, title = 'Confirm Action', options = {}) {
+    return new Promise((resolve) => {
+        const container = ensureCiteModalElement();
+        const card = document.getElementById('citeModalCard');
+        const titleEl = document.getElementById('citeModalTitle');
+        const msgEl = document.getElementById('citeModalMessage');
+        const cancelBtn = document.getElementById('citeModalCancelBtn');
+        const confirmBtn = document.getElementById('citeModalConfirmBtn');
 
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        cancelBtn.style.display = 'inline-block';
+        cancelBtn.textContent = options.cancelText || 'Cancel';
+        confirmBtn.textContent = options.confirmText || 'Confirm';
 
-async function notifyFacultyFileChange(task, submission, changeType) {
+        container.style.opacity = '1';
+        container.style.pointerEvents = 'auto';
+        card.style.transform = 'scale(1)';
 
-    const faculty =
-        resolveCurrentFaculty();
+        const cleanup = (val) => {
+            container.style.opacity = '0';
+            container.style.pointerEvents = 'none';
+            card.style.transform = 'scale(0.95)';
+            confirmBtn.onclick = null;
+            cancelBtn.onclick = null;
+            resolve(val);
+        };
 
-    if (
-        !faculty
-        ||
-        !window.CiteFlowWorkflow?.recordFacultyFileChange
-    ) {
-        return;
-    }
-
-    await CiteFlowWorkflow.recordFacultyFileChange(db, {
-        faculty,
-        task,
-        taskId: task?.id,
-        submissionId: submission?.id,
-        changeType
+        confirmBtn.onclick = () => cleanup(true);
+        cancelBtn.onclick = () => cleanup(false);
     });
+};
 
-}
+window.citeAlert = function citeAlert(message, title = 'Notice') {
+    return new Promise((resolve) => {
+        const container = ensureCiteModalElement();
+        const card = document.getElementById('citeModalCard');
+        const titleEl = document.getElementById('citeModalTitle');
+        const msgEl = document.getElementById('citeModalMessage');
+        const cancelBtn = document.getElementById('citeModalCancelBtn');
+        const confirmBtn = document.getElementById('citeModalConfirmBtn');
 
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        cancelBtn.style.display = 'none';
+        confirmBtn.textContent = 'OK';
+
+        container.style.opacity = '1';
+        container.style.pointerEvents = 'auto';
+        card.style.transform = 'scale(1)';
+
+        confirmBtn.onclick = () => {
+            container.style.opacity = '0';
+            container.style.pointerEvents = 'none';
+            card.style.transform = 'scale(0.95)';
+            confirmBtn.onclick = null;
+            resolve(true);
+        };
+    });
+};
+
+// Override standard browser popups to use the theme modal
+window.alert = function (msg) {
+    window.citeAlert(String(msg || ''));
+};
+
+
+/* =========================================================
+   FILE MANAGEMENT (Draft & Saved Files)
+========================================================= */
 
 window.deleteDraftSubmissionFile = function deleteDraftSubmissionFile(taskId, index) {
+    const drafts = getDraftFiles(taskId).slice();
+    const idx = Number(index);
+    if (idx < 0 || idx >= drafts.length) return;
 
-    const drafts =
-        getDraftFiles(taskId)
-            .slice();
-
-    if (
-        index < 0
-        ||
-        index >= drafts.length
-    ) {
-        return;
-    }
-
-    drafts.splice(index, 1);
-
+    drafts.splice(idx, 1);
     if (drafts.length) {
         draftUploads[taskId] = drafts;
     } else {
         delete draftUploads[taskId];
     }
 
-    selectedTaskId =
-        String(taskId);
-
+    selectedTaskId = String(taskId);
     renderDetailPage();
-
 };
 
-
 window.replaceDraftSubmissionFile = function replaceDraftSubmissionFile(taskId, index) {
-
     pendingFileReplace = {
         kind: 'draft',
         taskId: String(taskId),
         index: Number(index)
     };
-
-    const input =
-        document.getElementById(
-            'fileReplaceInput'
-        );
-
-    if (!input) {
-        return;
+    const input = document.getElementById('fileReplaceInput');
+    if (input) {
+        input.value = '';
+        input.click();
     }
-
-    input.value = '';
-    input.click();
-
 };
 
-
 window.deleteSavedSubmissionFile = async function deleteSavedSubmissionFile(taskId, fileId) {
+    if (fileActionInProgress) return;
 
-    if (fileActionInProgress) {
+    const faculty = resolveCurrentFaculty();
+    const task = getTaskById(taskId);
+    const submission = faculty ? getSubmission(taskId, faculty.id) : null;
+
+    if (!task || !submission || !assertCanManageFiles(task, submission)) {
         return;
     }
 
-    const faculty =
-        resolveCurrentFaculty();
-
-    const task =
-        getTaskById(taskId);
-
-    const submission =
-        faculty
-            ? getSubmission(
-                taskId,
-                faculty.id
-            )
-            : null;
-
-    if (
-        !task
-        ||
-        !submission
-        ||
-        !assertCanManageFiles(task, submission)
-    ) {
-        return;
-    }
-
-    const confirmed =
-        window.CiteFlowWorkflow?.confirmAction
-            ? await CiteFlowWorkflow.confirmAction(
-                'Delete this file from the submission? Admin will see the updated files.',
-                'Delete file'
-            )
-            : confirm(
-                'Delete this file from the submission?'
-            );
-
-    if (!confirmed) {
-        return;
-    }
+    const confirmed = await citeConfirm(
+        'Delete this file from your submission? The file will be removed from your records.',
+        'Delete File'
+    );
+    if (!confirmed) return;
 
     fileActionInProgress = true;
-
     try {
-
-        const file =
-            getSubmissionFileRecords(submission.id)
-                .find(
-                    row =>
-                        String(row.id)
-                        === String(fileId)
-                );
+        const file = getSubmissionFileRecords(submission.id).find(
+            row => String(row.id) === String(fileId)
+        );
 
         if (!file) {
-            throw new Error(
-                'That file is no longer attached to this submission.'
-            );
+            throw new Error('That file is no longer attached to this submission.');
         }
 
-        await deleteStoragePath(
-            file.storage_path
-        );
-
-        const {
-            error
-        } =
-            await db
-                .from('wf_submission_files')
-                .delete()
-                .eq(
-                    'id',
-                    fileId
-                );
-
-        if (error) {
-            throw error;
+        if (file.storage_path) {
+            await deleteStoragePath(file.storage_path);
         }
 
-        const remaining =
-            (
-                await refreshLocalSubmissionFiles(
-                    submission.id
-                )
-            ).length;
+        const { error } = await db
+            .from('wf_submission_files')
+            .delete()
+            .eq('id', fileId);
 
-        const updatedSubmission =
-            await applyFacultyFileChangeStatus(
-                task,
-                submission,
-                remaining
-            );
+        if (error) throw error;
 
-        await notifyFacultyFileChange(
-            task,
-            updatedSubmission,
-            'deleted'
-        );
+        const remaining = (await refreshLocalSubmissionFiles(submission.id)).length;
+        const updatedSubmission = await applyFacultyFileChangeStatus(task, submission, remaining);
+        await notifyFacultyFileChange(task, updatedSubmission, 'deleted');
 
-        selectedTaskId =
-            String(taskId);
-
+        selectedTaskId = String(taskId);
         toastMessage(
             remaining
-                ? 'File deleted. The submission was sent back for review.'
-                : 'File deleted. This task is now marked as not submitted.',
+                ? 'File removed. Submission updated.'
+                : 'File removed. Task marked as not submitted.',
             remaining ? 'success' : 'warn'
         );
 
         await fetchAllData();
-
+        renderDetailPage();
     } catch (error) {
-
-        console.error(
-            'Failed to delete submission file:',
-            error
-        );
-
-        toastMessage(
-            error?.message
-            || 'Failed to delete the file.',
-            'error'
-        );
-
+        console.error('Failed to delete file:', error);
+        toastMessage(error?.message || 'Failed to delete the file.', 'error');
     } finally {
-
         fileActionInProgress = false;
-
     }
-
 };
 
-
 window.replaceSavedSubmissionFile = function replaceSavedSubmissionFile(taskId, fileId) {
+    const faculty = resolveCurrentFaculty();
+    const task = getTaskById(taskId);
+    const submission = faculty ? getSubmission(taskId, faculty.id) : null;
 
-    const faculty =
-        resolveCurrentFaculty();
-
-    const task =
-        getTaskById(taskId);
-
-    const submission =
-        faculty
-            ? getSubmission(
-                taskId,
-                faculty.id
-            )
-            : null;
-
-    if (
-        !assertCanManageFiles(task, submission)
-    ) {
-        return;
-    }
+    if (!assertCanManageFiles(task, submission)) return;
 
     pendingFileReplace = {
         kind: 'saved',
@@ -5816,243 +5840,97 @@ window.replaceSavedSubmissionFile = function replaceSavedSubmissionFile(taskId, 
         fileId: String(fileId)
     };
 
-    const input =
-        document.getElementById(
-            'fileReplaceInput'
-        );
-
-    if (!input) {
-        return;
+    const input = document.getElementById('fileReplaceInput');
+    if (input) {
+        input.value = '';
+        input.click();
     }
-
-    input.value = '';
-    input.click();
-
 };
 
-
 async function replaceSavedSubmissionFileWith(taskId, fileId, nextFile) {
+    if (fileActionInProgress) return;
 
-    if (fileActionInProgress) {
-        return;
-    }
+    const faculty = resolveCurrentFaculty();
+    const task = getTaskById(taskId);
+    const submission = faculty ? getSubmission(taskId, faculty.id) : null;
 
-    const faculty =
-        resolveCurrentFaculty();
-
-    const task =
-        getTaskById(taskId);
-
-    const submission =
-        faculty
-            ? getSubmission(
-                taskId,
-                faculty.id
-            )
-            : null;
-
-    if (
-        !faculty
-        ||
-        !task
-        ||
-        !submission
-        ||
-        !assertCanManageFiles(task, submission)
-    ) {
+    if (!faculty || !task || !submission || !assertCanManageFiles(task, submission)) {
         return;
     }
 
     fileActionInProgress = true;
-
     try {
+        const file = getSubmissionFileRecords(submission.id).find(
+            row => String(row.id) === String(fileId)
+        );
+        if (!file) throw new Error('That file is no longer attached.');
 
-        const file =
-            getSubmissionFileRecords(submission.id)
-                .find(
-                    row =>
-                        String(row.id)
-                        === String(fileId)
-                );
+        await uploadDraftsForSubmission({
+            facultyId: faculty.id,
+            taskId,
+            submissionId: submission.id,
+            files: [nextFile]
+        });
 
-        if (!file) {
-            throw new Error(
-                'That file is no longer attached to this submission.'
-            );
+        if (file.storage_path) {
+            await deleteStoragePath(file.storage_path);
         }
 
-        const inserted =
-            await uploadDraftsForSubmission({
-                facultyId: faculty.id,
-                taskId,
-                submissionId: submission.id,
-                files: [nextFile]
-            });
+        const { error } = await db
+            .from('wf_submission_files')
+            .delete()
+            .eq('id', fileId);
 
-        await deleteStoragePath(
-            file.storage_path
-        );
+        if (error) throw error;
 
-        const {
-            error
-        } =
-            await db
-                .from('wf_submission_files')
-                .delete()
-                .eq(
-                    'id',
-                    fileId
-                );
+        const remaining = (await refreshLocalSubmissionFiles(submission.id)).length;
+        const updatedSubmission = await applyFacultyFileChangeStatus(task, submission, remaining);
+        await notifyFacultyFileChange(task, updatedSubmission, 'replaced');
 
-        if (error) {
-            throw error;
-        }
-
-        const remaining =
-            (
-                await refreshLocalSubmissionFiles(
-                    submission.id
-                )
-            ).length;
-
-        const updatedSubmission =
-            await applyFacultyFileChangeStatus(
-                task,
-                submission,
-                remaining
-            );
-
-        await notifyFacultyFileChange(
-            task,
-            updatedSubmission,
-            'replaced'
-        );
-
-        selectedTaskId =
-            String(taskId);
-
-        toastMessage(
-            'File replaced. Admin can now review the new file.',
-            'success'
-        );
-
+        selectedTaskId = String(taskId);
+        toastMessage('File replaced successfully.', 'success');
         await fetchAllData();
-
+        renderDetailPage();
     } catch (error) {
-
-        console.error(
-            'Failed to replace submission file:',
-            error
-        );
-
-        toastMessage(
-            error?.message
-            || 'Failed to replace the file.',
-            'error'
-        );
-
+        console.error('Failed to replace submission file:', error);
+        toastMessage(error?.message || 'Failed to replace file.', 'error');
     } finally {
-
         fileActionInProgress = false;
-
     }
-
 }
 
-
 async function addSavedSubmissionFiles(taskId, files) {
+    if (fileActionInProgress) return;
 
-    if (fileActionInProgress) {
-        return;
-    }
+    const faculty = resolveCurrentFaculty();
+    const task = getTaskById(taskId);
+    const submission = faculty ? getSubmission(taskId, faculty.id) : null;
 
-    const faculty =
-        resolveCurrentFaculty();
-
-    const task =
-        getTaskById(taskId);
-
-    const submission =
-        faculty
-            ? getSubmission(
-                taskId,
-                faculty.id
-            )
-            : null;
-
-    if (
-        !faculty
-        ||
-        !task
-        ||
-        !submission
-        ||
-        !assertCanManageFiles(task, submission)
-    ) {
-        return;
-    }
+    if (!faculty || !task || !submission || !assertCanManageFiles(task, submission)) return;
 
     fileActionInProgress = true;
-
     try {
+        await uploadDraftsForSubmission({
+            facultyId: faculty.id,
+            taskId,
+            submissionId: submission.id,
+            files
+        });
 
-        const inserted =
-            await uploadDraftsForSubmission({
-                facultyId: faculty.id,
-                taskId,
-                submissionId: submission.id,
-                files
-            });
+        const remaining = (await refreshLocalSubmissionFiles(submission.id)).length;
+        const updatedSubmission = await applyFacultyFileChangeStatus(task, submission, remaining);
+        await notifyFacultyFileChange(task, updatedSubmission, 'added');
 
-        const remaining =
-            (
-                await refreshLocalSubmissionFiles(
-                    submission.id
-                )
-            ).length;
-
-        const updatedSubmission =
-            await applyFacultyFileChangeStatus(
-                task,
-                submission,
-                remaining
-            );
-
-        await notifyFacultyFileChange(
-            task,
-            updatedSubmission,
-            'added'
-        );
-
-        selectedTaskId =
-            String(taskId);
-
-        toastMessage(
-            'File added. Admin can now review the updated submission.',
-            'success'
-        );
-
+        selectedTaskId = String(taskId);
+        toastMessage('Files added successfully.', 'success');
         await fetchAllData();
-
+        renderDetailPage();
     } catch (error) {
-
-        console.error(
-            'Failed to add submission file:',
-            error
-        );
-
-        toastMessage(
-            error?.message
-            || 'Failed to add the file.',
-            'error'
-        );
-
+        console.error('Failed to add submission file:', error);
+        toastMessage(error?.message || 'Failed to add files.', 'error');
     } finally {
-
         fileActionInProgress = false;
-
     }
-
 }
 
 
@@ -6060,54 +5938,79 @@ async function addSavedSubmissionFiles(taskId, files) {
    UNSUBMIT TASK
 ========================================================= */
 
-async function unsubmitTask(taskId) {
+window.unsubmitTask = async function unsubmitTask(taskId) {
     const faculty = resolveCurrentFaculty();
     const task = getTaskById(taskId);
     const submission = getSubmission(taskId, faculty?.id);
-    if (!faculty || !task || !submission) return;
+
+    if (!faculty || !task || !submission) {
+        toastMessage('Could not find submission details to unsubmit.', 'error');
+        return;
+    }
     if (!canUnsubmitSubmission(submission, task)) {
         toastMessage('This submission can no longer be unsubmitted.', 'error');
         return;
     }
-    const confirmed = window.CiteFlowWorkflow?.confirmAction
-        ? await CiteFlowWorkflow.confirmAction(
-            'Unsubmit this work? It will return to an editable draft and will leave the review queue until you submit again. Previous review history is kept.',
-            'Unsubmit Work',
-            { danger: true, confirmText: 'Unsubmit' }
-        )
-        : window.confirm('Unsubmit this work? It will return to an editable draft and will leave the review queue until you submit again. Previous review history is kept.');
+
+    const confirmed = await citeConfirm(
+        'Unsubmit this work? It will return to an editable draft and leave the review queue until you submit again.',
+        'Unsubmit Work',
+        { confirmText: 'Unsubmit' }
+    );
     if (!confirmed) return;
 
-    if (window.CiteFlowWorkflow?.unsubmitSubmission) {
-        const result = await CiteFlowWorkflow.unsubmitSubmission(db, {
-            submissionId: submission.id,
-            submission,
-            actorFaculty: faculty,
-            actorUser: currentUser,
-            task,
-            config: getTaskReportConfig(task)
-        });
-        if (!result.ok) {
-            toastMessage(result.error || 'Failed to unsubmit.', 'error');
-            return;
+    try {
+        let workflowUnsubmitHandled = false;
+        if (window.CiteFlowWorkflow?.unsubmitSubmission) {
+            try {
+                const result = await CiteFlowWorkflow.unsubmitSubmission(db, {
+                    submissionId: submission.id,
+                    submission,
+                    actorFaculty: faculty,
+                    actorUser: currentUser,
+                    task,
+                    config: getTaskReportConfig(task)
+                });
+                if (result && (result.ok === true || result.success === true || result === true)) {
+                    workflowUnsubmitHandled = true;
+                }
+            } catch (wfErr) {
+                console.warn('Workflow unsubmitSubmission failed, attempting direct update:', wfErr);
+            }
         }
-    } else {
-        const { error } = await db.from('wf_submissions').update({
-            status: 'notsubmitted',
-            submitted_at: null,
-            approval_stage: initialApprovalStageForTask(task)
-        }).eq('id', submission.id);
-        if (error) {
-            toastMessage(error.message || 'Failed to unsubmit.', 'error');
-            return;
+
+        if (!workflowUnsubmitHandled) {
+            const initialStage = initialApprovalStageForTask(task);
+            const { error } = await db.from('wf_submissions').update({
+                status: 'notsubmitted',
+                submitted_at: null,
+                is_late: false,
+                submitted_status: null,
+                approval_stage: initialStage
+            }).eq('id', submission.id);
+
+            if (error) throw error;
         }
+
+        const subIndex = (state.submissions || []).findIndex(s => String(s.id) === String(submission.id));
+        if (subIndex >= 0) {
+            state.submissions[subIndex] = {
+                ...state.submissions[subIndex],
+                status: 'notsubmitted',
+                submitted_at: null
+            };
+        }
+
+        selectedTaskId = String(taskId);
+        toastMessage('Submission returned to draft. You can now modify files and submit again.', 'success');
+
+        renderDetailPage();
+        await fetchAllData();
+    } catch (err) {
+        console.error('Failed to unsubmit:', err);
+        toastMessage(err?.message || 'Failed to unsubmit.', 'error');
     }
-
-    toastMessage('Submission returned to draft. Submit again when it is ready.', 'success');
-    await fetchAllData();
-}
-
-
+};
 /* =========================================================
    SUBMIT TASK
 ========================================================= */
@@ -6384,7 +6287,6 @@ async function submitTask(taskId) {
         File upload method
         ------------------------------------------------------
         */
-
         if (
             submissionMethod === 'upload'
             &&
@@ -6398,6 +6300,8 @@ async function submitTask(taskId) {
                 files
             });
 
+            // Clear draft memory immediately so it doesn't overlap with saved files
+            delete draftUploads[taskId];
         }
 
 
