@@ -68,6 +68,7 @@ input:-webkit-autofill:focus {
 #leave-file-input::-webkit-file-upload-button {
     background: var(--cite-theme) !important;
     color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important; /* <--- Forces white text in Chrome & Edge */
     padding: 8px 16px;
     border-radius: 12px;
     border: none;
@@ -330,7 +331,7 @@ select.modal-field {
     cursor: pointer;
 }
 .cite-leave-date-wrap input.csc-line.cite-leave-date-input {
-    display: block !important;
+      display: block;
     width: 100% !important;
     min-height: 22px !important;
     height: 24px !important;
@@ -362,20 +363,7 @@ select.modal-field {
     color: #475569;
     opacity: 0.85;
 }
-@media print {
-    .cite-leave-cal-icon {
-        display: none !important;
-    }
-    .cite-leave-date-wrap {
-        display: block !important;
-        width: 100% !important;
-    }
-    .cite-leave-date-wrap input,
-    .cite-leave-date-wrap input.csc-line,
-    .cite-leave-date-wrap input.cite-leave-date-input {
-        display: none !important;
-    }
-}
+
 
 /* =========================================================
    LEAVE CALENDAR DATEPICKER (BLUE BOX DESIGN FROM PHOTO)
@@ -583,27 +571,178 @@ select.modal-field {
     color: #ffffff !important;
     border-color: #0078d4 !important;
 }
-
 /* =========================================================
-   UNIVERSAL PRINT ENGINE: FITS ANY SIZE OF BONDPAPER
+   PERFECT GRID ALIGNMENT & BORDER COLLAPSE FOR ROWS 1–5
+   ========================================================= */
+/* Hide print values on screen so only the input line is visible */
+.csc-print-val {
+    display: none !important;
+}
+
+/* Align columns: 1fr + 2fr (Row 1) perfectly matches 1fr + 1fr + 1fr (Row 2) */
+.csc-row-office {
+    display: grid !important;
+    grid-template-columns: 1fr 2fr !important;
+}
+.csc-row-meta {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1fr !important;
+}
+
+/* Push inputs & underlines to the LOWER BOTTOM of the cells */
+.csc-row-meta .csc-cell,
+.csc-row-office > .csc-cell:first-child {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    min-height: 48px !important;
+}
+.csc-row-meta .csc-line,
+.csc-row-meta .cite-leave-date-wrap,
+.csc-row-meta .csc-print-val,
+.csc-row-office > .csc-cell:first-child .csc-line,
+.csc-row-office > .csc-cell:first-child .csc-print-val {
+    margin-top: auto !important;
+    margin-bottom: 2px !important;
+}
+
+/* Seamless single borders (removes jagged step & overlapping ticks) */
+.csc-row-office > .csc-cell:first-child {
+    border-right: 1px solid #111 !important;
+    border-bottom: 1px solid #111 !important;
+}
+.csc-row-office > .csc-cell:last-child {
+    border-left: none !important;
+    border-bottom: 1px solid #111 !important;
+}
+.csc-row-meta > .csc-cell {
+    border-top: none !important;
+}
+.csc-row-meta > .csc-cell:not(:last-child) {
+    border-right: 1px solid #111 !important;
+}
+.csc-row-meta > .csc-cell:not(:first-child) {
+    border-left: none !important;
+}
+
+/* Fix text color: solid black instead of blue */
+.csc-form input,
+.csc-form textarea,
+.csc-form select,
+.csc-form .csc-line,
+.csc-form .csc-print-val,
+#leave-last-name,
+#leave-first-name,
+#leave-middle-name,
+#leave-position,
+#leave-office,
+#leave-salary,
+#leave-start-date,
+#leave-end-date ,
+#leave-date-filing {
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+}
+/* =========================================================
+   UNIVERSAL 1-PAGE PRINT ENGINE: FITS ANY BONDPAPER (PORTRAIT & LANDSCAPE)
+   Short (Letter 8.5x11), A4 (8.27x11.69), Long (Folio 8.5x13), Legal (8.5x14)
+/* =========================================================
+   CSC FORM NO. 6 - MASTER FULL-PAGE PRINT STYLESHEET
+ /* =========================================================
+   CSC FORM NO. 6 - MASTER PRINT STYLESHEET
    ========================================================= */
 @media print {
     @page {
         size: auto;
-        margin: 4mm 5mm;
+        margin: 3.5mm 4mm;
     }
     html, body {
         width: 100% !important;
+        height: auto !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #fff !important;
         color: #111 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
-    body.cite-print-leave > *:not(#leave-modal) { display: none !important; }
+    body.cite-print-leave > *:not(#leave-modal) { 
+        display: none !important; 
+    }
     body.cite-print-leave .leave-no-print,
-    body.cite-print-leave .leave-no-print * { display: none !important; }
+    body.cite-print-leave .leave-no-print *,
+    body.cite-print-leave button { 
+        display: none !important; 
+    }
+
+    /* 1. HIDE ALL INPUTS & TEXTAREAS (Overrides screen CSS !important) */
+    body.cite-print-leave #leave-others-specify,
+    body.cite-print-leave #leave-vac-abroad,
+    body.cite-print-leave #leave-sick-hospital,
+    body.cite-print-leave #leave-sick-outpatient,
+    body.cite-print-leave #leave-study-other,
+    body.cite-print-leave #leave-women-illness,
+    body.cite-print-leave #leave-office,
+    body.cite-print-leave #leave-last-name,
+    body.cite-print-leave #leave-first-name,
+    body.cite-print-leave #leave-middle-name,
+    body.cite-print-leave #leave-position,
+    body.cite-print-leave #leave-salary,
+    body.cite-print-leave #leave-working-days,
+    body.cite-print-leave #leave-start-date,
+    body.cite-print-leave #leave-end-date,
+    body.cite-print-leave #leave-date-filing,
+    body.cite-print-leave #leave-signature,
+    body.cite-print-leave #leave-file-input,
+    body.cite-print-leave input:not(.csc-check),
+    body.cite-print-leave textarea,
+    body.cite-print-leave select,
+    body.cite-print-leave .csc-line,
+    body.cite-print-leave .cite-leave-cal-icon,
+    body.cite-print-leave .cite-leave-datepicker-popover {
+        display: none !important;
+    }
+
+    /* Fail-safe: placeholder text remains invisible */
+    body.cite-print-leave input::placeholder,
+    body.cite-print-leave textarea::placeholder {
+        color: transparent !important;
+        -webkit-text-fill-color: transparent !important;
+    }
+
+    /* 2. BULLET / CHECKBOX BOXES */
+    body.cite-print-leave .csc-opt {
+        display: flex !important;
+        align-items: flex-start !important;
+        gap: 5px !important;
+        margin: 1.8px 0 !important;
+        font-size: 8.8px !important;
+        line-height: 1.15 !important;
+    }
+    body.cite-print-leave .csc-check {
+        display: inline-block !important;
+        -webkit-appearance: none !important;
+        appearance: none !important;
+        width: 10px !important;
+        height: 10px !important;
+        min-width: 10px !important;
+        min-height: 10px !important;
+        border: 1.2px solid #000 !important;
+        border-radius: 2px !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        margin-top: 1px !important;
+        flex-shrink: 0 !important;
+        position: relative !important;
+    }
+    body.cite-print-leave .csc-check.csc-print-on,
+    body.cite-print-leave .csc-check:checked {
+        background: #000 !important;
+        box-shadow: inset 0 0 0 2px #fff !important;
+    }
+
+    /* 3. MODAL & SCROLLER CONTAINER RESET */
     body.cite-print-leave #leave-modal {
         display: block !important;
         position: static !important;
@@ -624,8 +763,10 @@ select.modal-field {
         max-height: none !important;
         box-shadow: none !important;
         border-radius: 0 !important;
+        border: none !important;
         overflow: visible !important;
         margin: 0 !important;
+        padding: 0 !important;
     }
     body.cite-print-leave #leave-form-scroll {
         display: block !important;
@@ -633,306 +774,256 @@ select.modal-field {
         max-height: none !important;
         background: #fff !important;
         padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
     }
+
+    /* 4. EXACT 1-PAGE PER SHEET CALIBRATION */
+    /* Page 1 (Application Form) */
     body.cite-print-leave #leave-page-1 {
         display: block !important;
-        break-inside: avoid !important;
+        width: 100% !important;
+        max-width: 100% !important;
         page-break-inside: avoid !important;
-        break-after: page !important;
+        break-inside: avoid !important;
+        page-break-before: avoid !important;
+        break-before: avoid !important;
         page-break-after: always !important;
+        break-after: page !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+        zoom: 0.94 !important;
     }
+    /* Page 2 (Instructions - scaled up to fill sheet naturally) */
     body.cite-print-leave #leave-page-2 {
         display: block !important;
-        break-inside: avoid !important;
-        page-break-inside: avoid !important;
-        break-before: page !important;
+        width: 100% !important;
+        max-width: 100% !important;
         page-break-before: always !important;
+        break-before: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+        zoom: 0.95 !important;
     }
+
+    /* 5. FORM LAYOUT & NATURAL PROPORTIONAL SPACING */
     body.cite-print-leave .csc-form {
         color: #111 !important;
-        font-size: 10px !important;
+        font-size: 9px !important;
         line-height: 1.15 !important;
         border-width: 1.5px !important;
     }
-    body.cite-print-leave .csc-header {
-        padding: 4px 6px 2px !important;
-    }
+    body.cite-print-leave .csc-header { padding: 3px 6px 2px !important; }
     body.cite-print-leave .csc-header-top {
         display: grid !important;
-        grid-template-columns: 110px minmax(0,1fr) 60px !important;
+        grid-template-columns: 100px minmax(0,1fr) 55px !important;
         column-gap: 4px !important;
+        align-items: center !important;
     }
-    body.cite-print-leave .csc-seal {
-        width: 54px !important;
-        height: 54px !important;
-        display: block !important;
-    }
-    body.cite-print-leave .csc-bagong {
-        width: 56px !important;
-        height: 56px !important;
-        display: block !important;
-    }
-    body.cite-print-leave .csc-agency .rep { font-size: 9.5px !important; }
-    body.cite-print-leave .csc-agency .uni { font-size: 12px !important; }
-    body.cite-print-leave .csc-agency .campus { font-size: 11px !important; }
-    body.cite-print-leave .csc-agency .addr { font-size: 8.5px !important; }
-    body.cite-print-leave .csc-agency .meta { font-size: 8px !important; }
-    body.cite-print-leave .csc-hrmo {
-        margin-top: 2px !important;
-        font-size: 10.5px !important;
-    }
-    body.cite-print-leave .csc-app-title-wrap {
-        margin: 2px 2px 3px !important;
-    }
-    body.cite-print-leave .csc-app-title {
-        font-size: 17px !important;
-        letter-spacing: .04em !important;
-    }
-    body.cite-print-leave .csc-stamp {
-        font-size: 8px !important;
-    }
-    body.cite-print-leave .csc-title-bar {
-        font-size: 10px !important;
-        padding: 2.5px 4px !important;
-    }
-    body.cite-print-leave .csc-cell {
-        padding: 3px 5px !important;
-    }
-    body.cite-print-leave .csc-head {
-        font-size: 9.5px !important;
-        margin-bottom: 2px !important;
-    }
-    body.cite-print-leave .csc-opt {
-        margin: 1px 0 !important;
-        gap: 5px !important;
-    }
-    body.cite-print-leave .csc-row-office {
-        display: grid !important;
-        grid-template-columns: 1.1fr 2fr !important;
-    }
-    body.cite-print-leave .csc-row-meta {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr 1fr !important;
-    }
-    body.cite-print-leave .csc-row-split {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-    }
-    body.cite-print-leave .csc-row-names {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr 1fr !important;
-    }
-    body.cite-print-leave .csc-row-dates {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-        gap: 6px !important;
-    }
-    body.cite-print-leave .csc-credits th,
-    body.cite-print-leave .csc-credits td {
-        padding: 2px 3px !important;
-        height: 16px !important;
-        font-size: 9.5px !important;
-    }
-    body.cite-print-leave .csc-quad {
-        min-height: 0 !important;
+    body.cite-print-leave .csc-seal { width: 44px !important; height: 44px !important; display: block !important; }
+    body.cite-print-leave .csc-bagong { width: 46px !important; height: 46px !important; display: block !important; }
+    body.cite-print-leave .csc-agency .rep { font-size: 8.5px !important; }
+    body.cite-print-leave .csc-agency .uni { font-size: 11.5px !important; font-weight: 800 !important; }
+    body.cite-print-leave .csc-agency .campus { font-size: 10px !important; font-weight: 800 !important; }
+    body.cite-print-leave .csc-agency .addr { font-size: 7.8px !important; }
+    body.cite-print-leave .csc-agency .meta { font-size: 7.5px !important; }
+    body.cite-print-leave .csc-hrmo { margin-top: 1.5px !important; font-size: 9.2px !important; font-weight: 700 !important; }
+    body.cite-print-leave .csc-app-title-wrap { margin: 2px 2px 3px !important; }
+    body.cite-print-leave .csc-app-title { font-size: 15.5px !important; letter-spacing: .03em !important; font-weight: 800 !important; }
+    body.cite-print-leave .csc-stamp { font-size: 7px !important; line-height: 1.05 !important; }
+    body.cite-print-leave .csc-title-bar { font-size: 9.2px !important; padding: 2.5px 5px !important; font-weight: 700 !important; }
+    body.cite-print-leave .csc-cell { padding: 3px 5px !important; }
+    body.cite-print-leave .csc-head { font-size: 8.8px !important; margin-bottom: 2px !important; font-weight: 700 !important; }
+
+    /* 6. GRID ROWS */
+    body.cite-print-leave .csc-row-office { display: grid !important; grid-template-columns: 1.1fr 2fr !important; }
+    body.cite-print-leave .csc-row-meta { display: grid !important; grid-template-columns: 1fr 1fr 1fr !important; }
+    body.cite-print-leave .csc-row-split { display: grid !important; grid-template-columns: 1fr 1fr !important; }
+    body.cite-print-leave .csc-row-names { display: grid !important; grid-template-columns: 1fr 1fr 1fr !important; gap: 4px !important; }
+    body.cite-print-leave .csc-row-dates { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 5px !important; }
+
+    /* Row 2 (Box 3 Date of Filing, Box 4 Position, Box 5 Salary) */
+    body.cite-print-leave .csc-row-meta .csc-cell,
+    body.cite-print-leave .csc-row-office > .csc-cell:first-child {
         display: flex !important;
         flex-direction: column !important;
         justify-content: space-between !important;
+        min-height: 38px !important;
     }
-    body.cite-print-leave .csc-sign {
-        margin-top: 4px !important;
-        padding-top: 4px !important;
+    body.cite-print-leave .csc-row-meta .csc-print-val,
+    body.cite-print-leave .csc-row-meta .cite-leave-date-wrap,
+    body.cite-print-leave .csc-row-office > .csc-cell:first-child .csc-print-val {
+        margin-top: auto !important;
+        margin-bottom: 1px !important;
     }
-    body.cite-print-leave .csc-sign .name {
-        font-size: 10.5px !important;
-        min-width: 170px !important;
-    }
-    body.cite-print-leave .csc-sign .role {
-        font-size: 9px !important;
-    }
-    body.cite-print-leave .csc-cd-cols {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-    }
-    body.cite-print-leave .csc-cd-left {
-        border-right: 1px solid #111 !important;
-        border-bottom: none !important;
-        min-height: 0 !important;
-        padding: 4px 6px !important;
-    }
-    body.cite-print-leave .csc-cd-right {
-        min-height: 0 !important;
-        padding: 4px 6px !important;
-    }
-    body.cite-print-leave .csc-director {
-        text-align: center !important;
-        padding: 6px 6px 4px !important;
-    }
-    body.cite-print-leave .csc-director .name {
-        font-size: 10.5px !important;
-    }
-    body.cite-print-leave .csc-director .role {
-        font-size: 9px !important;
-    }
-    body.cite-print-leave .csc-rankings-wrap {
+
+    body.cite-print-leave .csc-row-dates > div {
         display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        padding: 3px 6px 4px !important;
+        align-items: flex-end !important;
+        gap: 3px !important;
+        min-width: 0 !important;
     }
-    body.cite-print-leave .csc-rankings {
+    body.cite-print-leave .csc-row-dates span {
+        color: #111 !important;
+        font-size: 8px !important;
+        font-weight: 700 !important;
+    }
+    body.cite-print-leave .csc-row-dates .cite-leave-date-wrap {
+        flex: 1 1 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
         display: block !important;
-        max-height: 48px !important;
     }
-    body.cite-print-leave .csc-line,
-    body.cite-print-leave input.csc-line,
-    body.cite-print-leave textarea.csc-line,
-    body.cite-print-leave select.csc-line,
-    body.cite-print-leave .cite-leave-date-wrap input,
-    body.cite-print-leave .cite-leave-date-wrap input.csc-line,
-    body.cite-print-leave .cite-leave-date-wrap input.cite-leave-date-input {
-        display: none !important;
-    }
-    body.cite-print-leave .cite-leave-cal-icon {
-        display: none !important;
-    }
-    body.cite-print-leave .cite-leave-date-wrap {
-        display: block !important;
-        width: 100% !important;
-    }
-    body.cite-print-leave .cite-leave-datepicker-popover { display: none !important; }
+
+    /* 7. PRINTED VALUES & UNDERLINES */
     body.cite-print-leave .csc-print-val {
         display: block !important;
         width: 100%;
-        border: none;
-        border-bottom: 1px solid #111;
-        min-height: 15px;
-        padding: 1px 3px;
-        font-size: 10.5px;
+        border: none !important;
+        border-bottom: 1px solid #111 !important;
+        min-height: 13px;
+        padding: 0 2px;
+        font-size: 9px;
         line-height: 1.15;
         color: #111 !important;
+        -webkit-text-fill-color: #111 !important;
         font-family: "Times New Roman", Times, serif;
         white-space: pre-wrap;
         word-break: break-word;
     }
+    body.cite-print-leave .csc-row-meta .csc-print-val {
+        white-space: nowrap !important;
+        font-size: 8px !important;
+    }
+    body.cite-print-leave .csc-row-dates .csc-print-val {
+        white-space: nowrap !important;
+        font-size: 7.5px !important;
+        line-height: 1.05 !important;
+    }
     body.cite-print-leave .csc-print-center { text-align: center; }
     body.cite-print-leave .csc-print-bold { font-weight: 700; }
     body.cite-print-leave .csc-print-indent { 
-        margin-left: 1.5rem !important; 
-        width: calc(100% - 2.5rem) !important; 
-        max-width: calc(100% - 2.5rem) !important; 
+        margin-left: 1.25rem !important; 
+        width: calc(100% - 2.25rem) !important; 
+        max-width: calc(100% - 2.25rem) !important; 
     }
-    body.cite-print-leave .csc-print-mb { margin-bottom: 0.25rem; }
-    body.cite-print-leave .csc-print-mt { margin-top: 0.25rem; }
-    body.cite-print-leave .csc-lines {
-        height: 13px !important;
-        margin-top: 3px !important;
+
+    /* Credits table & Action Section */
+    body.cite-print-leave .csc-credits th, 
+    body.cite-print-leave .csc-credits td { 
+        padding: 2.5px 3px !important; 
+        height: 16px !important; 
+        font-size: 8.5px !important; 
     }
-    body.cite-print-leave .csc-check {
-        -webkit-appearance: none !important;
-        appearance: none !important;
-        width: 10px !important;
-        height: 10px !important;
-        min-width: 10px;
-        min-height: 10px;
-        border: 1px solid #111 !important;
-        border-radius: 2px !important;
-        background: #fff !important;
-        box-shadow: none !important;
-        margin-top: 1px;
+    body.cite-print-leave .csc-quad { 
+        min-height: 0 !important; 
+        display: flex !important; 
+        flex-direction: column !important; 
+        justify-content: space-between !important; 
     }
-    body.cite-print-leave .csc-check.csc-print-on {
-        background: #111 !important;
-        box-shadow: inset 0 0 0 2px #fff !important;
+    body.cite-print-leave .csc-sign { margin-top: 6px !important; padding-top: 3px !important; text-align: center !important; }
+    body.cite-print-leave .csc-sign .name { font-size: 9.2px !important; min-width: 140px !important; }
+    body.cite-print-leave .csc-sign .role { font-size: 8.2px !important; }
+    body.cite-print-leave .csc-cd-cols { display: grid !important; grid-template-columns: 1fr 1fr !important; }
+    body.cite-print-leave .csc-cd-left { border-right: 1px solid #111 !important; border-bottom: none !important; min-height: 0 !important; padding: 3px 5px !important; }
+    body.cite-print-leave .csc-cd-right { min-height: 0 !important; padding: 3px 5px !important; }
+    body.cite-print-leave .csc-director { text-align: center !important; padding: 7px 4px 4px !important; }
+    body.cite-print-leave .csc-director .name { font-size: 9.5px !important; font-weight: 700 !important; }
+    body.cite-print-leave .csc-director .role { font-size: 8.2px !important; }
+    body.cite-print-leave .csc-rankings-wrap { display: flex !important; justify-content: center !important; align-items: center !important; padding: 3px 4px 2px !important; }
+    body.cite-print-leave .csc-rankings { display: block !important; max-height: 34px !important; }
+    body.cite-print-leave .csc-lines { height: 13.5px !important; margin-top: 2px !important; }
+    body.cite-print-leave #leave-signature + .csc-print-val { width: 190px !important; max-width: 90% !important; margin: 0 auto !important; display: inline-block !important; }
+
+    /* 8. PAGE 2 INSTRUCTIONS (EXPANDED TO FILL FULL SHEET) */
+    body.cite-print-leave .csc-instr { 
+        font-size: 10.2px !important; 
+        line-height: 1.42 !important; 
     }
-    body.cite-print-leave .csc-instr {
-        font-size: 9.5px !important;
-        line-height: 1.25 !important;
+    body.cite-print-leave .csc-instr-title { 
+        font-size: 12.5px !important; 
+        padding: 8px 10px !important; 
+        font-weight: 800 !important; 
+        letter-spacing: .04em !important; 
     }
-    body.cite-print-leave .csc-instr-title {
-        font-size: 11px !important;
-        padding: 5px 8px !important;
+    body.cite-print-leave .csc-instr-grid { 
+        display: grid !important; 
+        grid-template-columns: 1fr 1fr !important; 
     }
-    body.cite-print-leave .csc-instr-grid {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
+    body.cite-print-leave .csc-instr-col { 
+        padding: 10px 14px !important; 
     }
-    body.cite-print-leave .csc-instr-col {
-        padding: 6px 8px !important;
+    body.cite-print-leave .csc-instr-col + .csc-instr-col { 
+        border-left: 1px solid #111 !important; 
+        border-top: none !important; 
     }
-    body.cite-print-leave .csc-instr-col + .csc-instr-col {
-        border-left: 1px solid #111 !important;
-        border-top: none !important;
+    body.cite-print-leave .csc-instr-intro { 
+        margin: 0 0 8px !important; 
+        font-size: 10px !important; 
+        font-style: italic !important; 
     }
-    body.cite-print-leave .csc-instr-item {
-        margin: 0 0 5px !important;
+    body.cite-print-leave .csc-instr-item { 
+        margin: 0 0 9.5px !important; 
+        font-size: 10px !important; 
+        line-height: 1.38 !important; 
     }
-    body.cite-print-leave .csc-instr-intro {
-        margin: 0 0 6px !important;
+    body.cite-print-leave .csc-instr-item .n { 
+        font-weight: 700 !important; 
+        font-size: 10.5px !important; 
+        display: inline-block !important; 
+        margin-bottom: 2px !important; 
     }
-    body.cite-print-leave .csc-instr-note {
-        padding: 5px 8px !important;
-        font-size: 9px !important;
+    body.cite-print-leave .csc-instr-item ul {
+        list-style-type: disc !important;
+        list-style: disc !important;
+        margin: 3.5px 0 0 18px !important;
+        padding: 0 !important; 
+    }
+    body.cite-print-leave .csc-instr-item li {
+        display: list-item !important;
+        margin: 3px 0 !important;
+        font-size: 9.8px !important;
+        line-height: 1.35 !important; 
+    }
+    body.cite-print-leave .csc-instr-note { 
+        padding: 9px 14px !important; 
+        font-size: 9px !important; 
+        line-height: 1.35 !important; 
+        border-top: 1px solid #111 !important; 
     }
 }
 
-/* =========================================================
-   SPECIALIZED LANDSCAPE AUTO-FIT SCALING ENGINE
-   ========================================================= */
+/* Landscape mode adjustments */
 @media print and (orientation: landscape) {
     @page {
         size: auto landscape;
         margin: 2.5mm 4mm;
     }
-    body.cite-print-leave #leave-page-1,
-    body.cite-print-leave #leave-page-2 {
-        zoom: 0.69;
-        width: 100% !important;
-        max-width: 100% !important;
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-    }
     body.cite-print-leave #leave-page-1 {
-        page-break-after: always !important;
-        break-after: page !important;
+        zoom: 0.68 !important;
     }
     body.cite-print-leave #leave-page-2 {
-        page-break-before: always !important;
-        break-before: page !important;
+        zoom: 0.64 !important;
     }
-    body.cite-print-leave .csc-form {
-        font-size: 9px !important;
-        line-height: 1.1 !important;
-    }
-    body.cite-print-leave .csc-header {
-        padding: 2px 4px 1px !important;
-    }
-    body.cite-print-leave .csc-seal {
-        width: 44px !important;
-        height: 44px !important;
-    }
-    body.cite-print-leave .csc-bagong {
-        width: 46px !important;
-        height: 46px !important;
-    }
-    body.cite-print-leave .csc-agency .rep { font-size: 8.5px !important; }
-    body.cite-print-leave .csc-agency .uni { font-size: 11px !important; }
-    body.cite-print-leave .csc-agency .campus { font-size: 10px !important; }
-    body.cite-print-leave .csc-app-title { font-size: 15px !important; }
-    body.cite-print-leave .csc-app-title-wrap { margin: 1px 0 2px !important; }
-    body.cite-print-leave .csc-hrmo { margin-top: 1px !important; font-size: 9.5px !important; }
-    body.cite-print-leave .csc-title-bar { font-size: 9px !important; padding: 2px 4px !important; }
-    body.cite-print-leave .csc-cell { padding: 2px 4px !important; }
-    body.cite-print-leave .csc-head { font-size: 8.5px !important; margin-bottom: 1px !important; }
-    body.cite-print-leave .csc-opt { margin: 0.5px 0 !important; }
-    body.cite-print-leave .csc-lines { height: 11px !important; margin-top: 2px !important; }
-    body.cite-print-leave .csc-director { padding: 4px 4px 2px !important; }
-    body.cite-print-leave .csc-sign { margin-top: 2px !important; padding-top: 2px !important; }
-    body.cite-print-leave .csc-rankings { max-height: 38px !important; }
-    body.cite-print-leave .csc-rankings-wrap { padding: 2px 4px !important; }
-    body.cite-print-leave .csc-instr { font-size: 8.5px !important; line-height: 1.15 !important; }
-    body.cite-print-leave .csc-instr-col { padding: 4px 6px !important; }
-    body.cite-print-leave .csc-instr-item { margin: 0 0 3px !important; }
+}
+
+/* Hard-lock Date of Filing and its container from ANY clicks */
+#leave-date-filing,
+.cite-leave-date-wrap:has(#leave-date-filing) {
+    pointer-events: none !important;
+    cursor: default !important;
+    user-select: none !important;
+    background: transparent !important;
+}
+
+#leave-date-filing ~ .cite-leave-cal-icon {
+    display: none !important;
 }
     </style>
 </head>
@@ -1086,10 +1177,11 @@ select.modal-field {
                     </div>
                 </div>
 
-                <div class="csc-row-office grid grid-cols-1 md:grid-cols-[1.1fr_2fr]">
-                    <div class="csc-cell">
+                                <!-- 1. OFFICE/DEPARTMENT & 2. NAME -->
+                <div class="csc-row-office grid grid-cols-1 md:grid-cols-[1fr_2fr]">
+                    <div class="csc-cell flex flex-col justify-between">
                         <div class="csc-head">1. OFFICE/DEPARTMENT</div>
-                        <input id="leave-office" class="csc-line mt-2" type="text" placeholder="e.g. CITE / BSIT">
+                        <input id="leave-office" class="csc-line mt-auto mb-0.5" type="text" placeholder="e.g. CITE / BSIT">
                     </div>
                     <div class="csc-cell">
                         <div class="csc-head">2. NAME</div>
@@ -1109,30 +1201,39 @@ select.modal-field {
                         </div>
                     </div>
                 </div>
-                <div class="csc-row-meta grid grid-cols-1 md:grid-cols-3">
-                    <div class="csc-cell">
-                        <div class="csc-head">3. DATE OF FILING</div>
-                        <div class="cite-leave-date-wrap">
-                            <input id="leave-date-filing" class="csc-line cite-leave-date-input mt-2" type="text" readonly placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" inputmode="none">
-                            <span class="cite-leave-cal-icon" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                                    <line x1="16" y1="2" x2="16" y2="6"></line>
-                                    <line x1="8" y1="2" x2="8" y2="6"></line>
-                                    <line x1="3" y1="10" x2="21" y2="10"></line>
-                                </svg>
-                            </span>
-                        </div>
-                    </div>
-                    <div class="csc-cell">
-                        <div class="csc-head">4. POSITION</div>
-                        <input id="leave-position" class="csc-line mt-2" type="text" placeholder="e.g. Instructor I">
-                    </div>
-                    <div class="csc-cell">
-                        <div class="csc-head">5. SALARY</div>
-                        <input id="leave-salary" class="csc-line mt-2" type="text" placeholder="Optional">
-                    </div>
-                </div>
+
+      <!-- 3. DATE OF FILING, 4. POSITION, 5. SALARY -->
+<div class="csc-row-meta grid grid-cols-1 md:grid-cols-3">
+    <div class="csc-cell flex flex-col justify-between">
+    <div class="csc-head">3. DATE OF FILING</div>
+    <!-- Added pointer-events-none and cursor-default to the wrapper div -->
+    <div class="cite-leave-date-wrap mt-auto mb-0.5 pointer-events-none cursor-default select-none">
+        <input 
+            id="leave-date-filing" 
+            class="csc-line cite-leave-date-input pointer-events-none cursor-default select-none" 
+            type="text" 
+            readonly 
+            tabindex="-1"
+            placeholder="YYYY-MM-DD" 
+            autocomplete="off" 
+            spellcheck="false"
+        >
+        <!-- Visible only when printed -->
+        <span id="leave-print-date-filing" class="csc-print-val"></span>
+    </div>
+</div>
+    <div class="csc-cell flex flex-col justify-between">
+        <div class="csc-head">4. POSITION</div>
+        <input id="leave-position" class="csc-line mt-auto mb-0.5" type="text" placeholder="e.g. Instructor I">
+    </div>
+    <div class="csc-cell flex flex-col justify-between">
+        <div class="csc-head">5. SALARY</div>
+        <input id="leave-salary" class="csc-line mt-auto mb-0.5" type="text" placeholder="Optional">
+    </div>
+</div>
+
+                
+               
 
                 <div class="csc-title-bar">6. DETAILS OF APPLICATION</div>
                 <div class="csc-row-split grid grid-cols-1 lg:grid-cols-2">
@@ -1305,7 +1406,7 @@ select.modal-field {
             </div>
             </div>
 
-            <div id="leave-page-2" class="hidden">
+                       <div id="leave-page-2" class="hidden">
                 <div class="csc-form csc-paper csc-instr">
                     <div class="csc-instr-title">INSTRUCTIONS AND REQUIREMENTS</div>
                     <div class="csc-instr-grid">
@@ -1391,7 +1492,7 @@ select.modal-field {
                     <i class="fa-solid fa-print text-xs mr-1.5"></i>Print
                 </button>
                 <button type="button" id="leave-back-btn" onclick="showLeavePage(1)" class="hidden px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Back to Form</button>
-                <button type="button" id="leave-next-btn" onclick="showLeavePage(2)" class="hidden px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Next: Instructions</button>
+                <button type="button" id="leave-next-btn" onclick="showLeavePage(2)" class="px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50">Next: Instructions</button>
                 <button type="button" onclick="submitLeaveFiling()" id="leave-submit-btn" style="background: var(--cite-theme, #621708);" class="hidden px-5 py-2.5 hover:opacity-90 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm">Submit Leave</button>
             </div>
         </div>
@@ -1521,6 +1622,23 @@ function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','announc
 function facultyCanSee(row){
     if(!window.CalendarNotifications) return true;
     return CalendarNotifications.facultySeesEvent(row, currentFacultyProfile);
+}
+
+function formatPrintDate(value) {
+    if (!value) return '';
+    const str = String(value).trim();
+    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return str;
+    
+    const [_, y, m, d] = match;
+    const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const monthName = months[parseInt(m, 10) - 1] || '';
+    const dayStr = String(parseInt(d, 10)).padStart(2, '0');
+    
+    return `${y}-${m}-${dayStr} (${monthName} ${dayStr}, ${y})`;
 }
 
 function parseDateKey(value){
@@ -2221,35 +2339,26 @@ function goToday(){now=new Date();currentMonth=now.getMonth();currentYear=now.ge
 function leaveVal(id){return (document.getElementById(id)?.value||'').trim()}
 function leaveChecked(name){let el=document.querySelector(`input[name="${name}"]:checked`);return el?el.value:''}
 
-function countWorkingDays(start,end){
-    if(!start||!end) return '';
-    let a=new Date(start+'T00:00:00'), b=new Date(end+'T00:00:00');
-    if(Number.isNaN(a.getTime())||Number.isNaN(b.getTime())||b<a) return '';
-    let n=0, d=new Date(a);
-    while(d<=b){let day=d.getDay(); if(day!==0&&day!==6) n++; d.setDate(d.getDate()+1);}
-    return String(n);
+function countWorkingDays(start, end) {
+    if (!start || !end) return '';
+    let a = new Date(start + 'T00:00:00'), b = new Date(end + 'T00:00:00');
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b < a) return '';
+    
+    // Inclusive days difference (e.g. Oct 02 to Oct 05 = 4 days)
+    const diff = Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return String(diff);
 }
 
-function addWorkingDays(startDateStr, daysCount){
+function addWorkingDays(startDateStr, daysCount) {
     const n = Math.ceil(parseFloat(daysCount));
-    if(isNaN(n) || n <= 0 || !startDateStr) return startDateStr || '';
+    if (isNaN(n) || n <= 0 || !startDateStr) return startDateStr || '';
     let d = new Date(startDateStr + 'T00:00:00');
-    if(Number.isNaN(d.getTime())) return startDateStr || '';
+    if (Number.isNaN(d.getTime())) return startDateStr || '';
 
-    while(d.getDay() === 0 || d.getDay() === 6){
-        d.setDate(d.getDate() + 1);
-    }
-
-    let added = 1;
-    while(added < n){
-        d.setDate(d.getDate() + 1);
-        if(d.getDay() !== 0 && d.getDay() !== 6){
-            added++;
-        }
-    }
-    return key(d);
+    // Inclusive calculation (e.g. Oct 02 + 4 days = Oct 05)
+    d.setDate(d.getDate() + (n - 1));
+    return key(d); // Uses your file's native key() helper
 }
-
 function updateDatesFromWorkingDays(){
     let val = leaveVal('leave-working-days');
     let days = parseFloat(val);
@@ -2280,19 +2389,13 @@ function updateDatesFromWorkingDays(){
 function onLeaveStartDateChange(){
     let start = leaveVal('leave-start-date');
     let end = leaveVal('leave-end-date');
-    let daysVal = leaveVal('leave-working-days');
-    let days = parseFloat(daysVal);
 
     if(start && end && end < start){
         let endEl = document.getElementById('leave-end-date');
         if(endEl) endEl.value = start;
     }
 
-    if(!isNaN(days) && days > 0 && start){
-        updateDatesFromWorkingDays();
-    } else {
-        updateLeaveWorkingDays();
-    }
+    updateLeaveWorkingDays();
 }
 
 function onLeaveEndDateChange(){
@@ -2353,11 +2456,13 @@ function showLeavePage(page){
     const title = document.getElementById('leave-modal-title');
     const subtitle = document.getElementById('leave-modal-subtitle');
     const isSecond = Number(page) === 2;
+
     if (page1) page1.classList.toggle('hidden', isSecond);
     if (page2) page2.classList.toggle('hidden', !isSecond);
     if (backBtn) backBtn.classList.toggle('hidden', !isSecond);
     if (nextBtn) nextBtn.classList.toggle('hidden', isSecond);
     if (submitBtn) submitBtn.classList.toggle('hidden', leaveViewMode || !isSecond);
+
     if (title) {
         title.textContent = isSecond
             ? 'Instructions and Requirements'
@@ -2420,7 +2525,7 @@ function toggleCustomLeaveDatePicker(inputEl){
 }
 
 function initCustomLeaveDatePickers(){
-    const dateInputIds = ['leave-date-filing', 'leave-start-date', 'leave-end-date'];
+    const dateInputIds = ['leave-date-filing', 'leave-start-date'];
     dateInputIds.forEach(id => {
         const input = document.getElementById(id);
         if (!input || input.dataset.customPickerBound === '1') return;
@@ -2690,7 +2795,13 @@ function renderCustomLeaveDatePicker(){
 function applyLeaveDateSelection(dateStr){
     if (!activeLeaveDatePicker || !activeLeaveDatePicker.input) return;
     const input = activeLeaveDatePicker.input;
-    input.value = dateStr;
+
+    // Format filing date as 2026-10-02 (October 02, 2026)
+    if (input.id === 'leave-date-filing') {
+        input.value = dateStr ? formatPrintDate(dateStr) : '';
+    } else {
+        input.value = dateStr;
+    }
 
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2705,6 +2816,7 @@ function applyLeaveDateSelection(dateStr){
 
     closeCustomLeaveDatePicker();
 }
+
 
 function collectLeaveDetails(){
     let parts=[];
@@ -2844,67 +2956,102 @@ function mountLeaveModal(){
     bindDeselectableRadios();
     initCustomLeaveDatePickers();
 }
-function formatPrintDate(value){
-    const k=parseDateKey(value);
-    if(!k) return String(value||'').trim();
-    const [y,m,d]=k.split('-').map(Number);
-    return new Intl.DateTimeFormat('en-US',{month:'long',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d));
+function formatPrintDate(val) {
+    if (!val) return '';
+    const clean = val.trim();
+    if (clean.includes('(')) return clean; // Prevent double-formatting
+    const m = clean.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return clean;
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+    const monthIndex = parseInt(m[2], 10) - 1;
+    const day = String(parseInt(m[3], 10)).padStart(2, '0');
+    const year = m[1];
+    if (monthIndex < 0 || monthIndex > 11) return clean;
+    return `${year}-${m[2]}-${day} (${monthNames[monthIndex]} ${day}, ${year})`;
 }
 function clearLeavePrintValues(){
     document.querySelectorAll('#leave-modal .csc-print-val').forEach(n=>n.remove());
     document.querySelectorAll('#leave-modal .csc-print-on').forEach(el=>el.classList.remove('csc-print-on'));
 }
+// Dynamically stamps printable spans right below each field
 function stampLeavePrintValues(){
-    const modal=document.getElementById('leave-modal');
-    if(!modal) return;
+    const modal = document.getElementById('leave-modal');
+    if (!modal) return;
     clearLeavePrintValues();
-    modal.querySelectorAll('input.csc-line, textarea.csc-line, select.csc-line').forEach(el=>{
-        if(el.type==='file' || el.type==='radio' || el.type==='checkbox') return;
-        let text=(el.value||'').trim();
-        if((el.type==='date' || el.classList.contains('cite-leave-date-input') || el.id==='leave-date-filing' || el.id==='leave-start-date' || el.id==='leave-end-date') && parseDateKey(text)) {
-            text=formatPrintDate(text);
+
+    modal.querySelectorAll('input.csc-line, textarea.csc-line, select.csc-line').forEach(el => {
+        if (el.type === 'file' || el.type === 'radio' || el.type === 'checkbox') return;
+        
+        // Use only the typed value, never the placeholder
+        let text = (el.value || '').trim();
+
+        // Format dates into YYYY-MM-DD (Month DD, YYYY)
+        if ((el.id === 'leave-date-filing' || el.id === 'leave-start-date' || el.id === 'leave-end-date') && text) {
+            text = formatPrintDate(text);
         }
-        const span=document.createElement('span');
-        span.className='csc-print-val';
-        if(el.classList.contains('text-center')) span.classList.add('csc-print-center');
-        if(el.classList.contains('font-bold') || el.id==='leave-signature') span.classList.add('csc-print-bold');
-        if(el.classList.contains('ml-6')) span.classList.add('csc-print-indent');
-        if(el.classList.contains('mb-2')) span.classList.add('csc-print-mb');
-        if(el.classList.contains('mt-2')) span.classList.add('csc-print-mt');
-        span.textContent=text;
+
+        const span = document.createElement('span');
+        span.className = 'csc-print-val';
+        if (el.classList.contains('text-center')) span.classList.add('csc-print-center');
+        if (el.classList.contains('font-bold') || el.id === 'leave-signature') span.classList.add('csc-print-bold');
+        if (el.classList.contains('ml-6')) span.classList.add('csc-print-indent');
+        if (el.classList.contains('mb-2')) span.classList.add('csc-print-mb');
+        if (el.classList.contains('mt-2')) span.classList.add('csc-print-mt');
+        span.textContent = text;
+        
         el.insertAdjacentElement('afterend', span);
     });
-    modal.querySelectorAll('input.csc-check').forEach(el=>{
+
+    modal.querySelectorAll('input.csc-check').forEach(el => {
         el.classList.toggle('csc-print-on', !!el.checked);
     });
 }
+
 function printLeaveForm(){
     mountLeaveModal();
     hydrateLeaveFormImages();
     closeCustomLeaveDatePicker();
-    const modal=document.getElementById('leave-modal');
-    if(!modal) return;
-    const page2=document.getElementById('leave-page-2');
-    const wasHidden=page2 && page2.classList.contains('hidden');
-    if(page2) page2.classList.remove('hidden');
+    const modal = document.getElementById('leave-modal');
+    if (!modal) return;
+
+    const page1 = document.getElementById('leave-page-1');
+    const page2 = document.getElementById('leave-page-2');
+
+    // Remember the user's active screen state
+    const wasPage1Hidden = page1 && page1.classList.contains('hidden');
+    const wasPage2Hidden = page2 && page2.classList.contains('hidden');
+
+    // Both pages must be active for the print engine to generate:
+    // Page 1 on 1st bondpaper, Page 2 on 2nd bondpaper
+    if (page1) page1.classList.remove('hidden');
+    if (page2) page2.classList.remove('hidden');
+
     stampLeavePrintValues();
     document.body.classList.add('cite-print-leave');
-    const cleanup=()=>{
+
+    const cleanup = () => {
         document.body.classList.remove('cite-print-leave');
         clearLeavePrintValues();
-        if(page2 && wasHidden) page2.classList.add('hidden');
+        // Restore screen view back to what the user was seeing
+        if (page1 && wasPage1Hidden) page1.classList.add('hidden');
+        if (page2 && wasPage2Hidden) page2.classList.add('hidden');
         window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);
-    const go=()=>{
+
+    const go = () => {
         window.print();
-        setTimeout(()=>{ if(document.body.classList.contains('cite-print-leave')) cleanup(); }, 1500);
+        setTimeout(() => { if (document.body.classList.contains('cite-print-leave')) cleanup(); }, 1500);
     };
-    const imgs=Array.from(modal.querySelectorAll('img')).filter(img=>img.getAttribute('src') && !img.complete);
-    if(!imgs.length){ go(); return; }
-    Promise.all(imgs.map(img=>new Promise(resolve=>{
-        img.addEventListener('load', resolve, { once:true });
-        img.addEventListener('error', resolve, { once:true });
+
+    const imgs = Array.from(modal.querySelectorAll('img')).filter(img => img.getAttribute('src') && !img.complete);
+    if (!imgs.length) { go(); return; }
+    Promise.all(imgs.map(img => new Promise(resolve => {
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
         setTimeout(resolve, 900);
     }))).then(go);
 }
@@ -2929,27 +3076,42 @@ async function openFileLeaveModal(){
     hydrateLeaveFormImages();
     resetLeaveForm();
     applyLeaveViewMode();
+
     const needsMiddle = !currentFacultyProfile || !String(currentFacultyProfile.middle_name || '').trim() || isInitialOnly(currentFacultyProfile.middle_name);
     if (needsMiddle) {
         currentFacultyProfile = await hydrateFacultyProfile(currentFacultyUser, currentFacultyProfile);
     }
     let p = currentFacultyProfile || {};
     fillLeaveNameFields(p);
-    document.getElementById('leave-office').value = p.department || p.program || p.office || 'CITE';
-    document.getElementById('leave-position').value = p.position || p.academic_rank || p.role || '';
-    document.getElementById('leave-date-filing').value = key(new Date());
-    document.getElementById('leave-start-date').value = selectedDate;
-    document.getElementById('leave-end-date').value = selectedDate;
+
+    const officeEl = document.getElementById('leave-office');
+    if (officeEl) officeEl.value = p.department || p.program || p.office || 'CITE';
+
+    const posEl = document.getElementById('leave-position');
+    if (posEl) posEl.value = p.position || p.academic_rank || p.role || '';
+
+    // Set plain 2026-10-02 for screen view
+    const filingEl = document.getElementById('leave-date-filing');
+    if (filingEl) filingEl.value = key(new Date());
+
+    const startEl = document.getElementById('leave-start-date');
+    if (startEl) startEl.value = selectedDate || key(new Date());
+
+    const endEl = document.getElementById('leave-end-date');
+    if (endEl) endEl.value = selectedDate || key(new Date());
+
     updateLeaveSignature();
     updateLeaveWorkingDays();
     showLeavePage(1);
+    
     document.getElementById('leave-modal').classList.remove('hidden');
 }
 function closeLeaveModal(){
-    const modal=document.getElementById('leave-modal');
-    if(modal) modal.classList.add('hidden');
-    leaveViewMode=false;
-    leaveViewStatusLabel='';
+    const modal = document.getElementById('leave-modal');
+    if (modal) modal.classList.add('hidden');
+    clearLeavePrintValues();
+    leaveViewMode = false;
+    leaveViewStatusLabel = '';
     applyLeaveViewMode();
     showLeavePage(1);
     closeCustomLeaveDatePicker();
