@@ -121,8 +121,32 @@
         .document-primary-btn:hover:not(:disabled) { background: #8c2a10; }
         .document-secondary-btn { background: #fff; color: #334155; border: 1px solid #e2e8f0; }
         .document-secondary-btn:hover:not(:disabled) { border-color: #cbd5e1; background: #f8fafc; }
-        .document-toast { position: fixed; right: 20px; bottom: 20px; z-index: 90; background: #0f172a; color: white; border-radius: 16px; padding: 12px 18px; box-shadow: 0 18px 45px rgba(15,23,42,0.28); font-size: 0.875rem; font-weight: 700; display: none; align-items: center; gap: 10px; }
-        .document-toast.show { display: flex; }
+        /* Same toast as shared/messenger.css .citeflow-toast / CiteFlowModal.toast */
+        .citeflow-toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #1e293b;
+            color: #ffffff;
+            padding: 11px 22px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+            z-index: 100001;
+            opacity: 0;
+            transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .citeflow-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .context-menu { position: absolute; right: 12px; top: 48px; min-width: 180px; z-index: 30; }
         .color-choice.active { outline: 3px solid rgba(98, 23, 8, 0.22); outline-offset: 3px; }
@@ -704,7 +728,6 @@
     </div>
 </div>
 
-<div id="documentToast" class="document-toast"><i class="fa-solid fa-circle-check"></i><span id="documentToastText">Done</span></div>
 <script>
 const STORAGE_BUCKET = 'documents';
 function getVaultClient(){
@@ -774,11 +797,11 @@ function recreateSupabaseClient(){
 async function recoverFromInvalidApiKey(error){
     if(hasPromptedForApiKey || !isInvalidApiKeyError(error)) return false;
     hasPromptedForApiKey = true;
-    const pastedKey = prompt('Supabase rejected the API key for Document Vault.\nPaste your latest Supabase anon public key to continue:');
+    const pastedKey = await askVaultInput('Supabase rejected the API key for Document Vault.\nPaste your latest Supabase anon public key to continue:', 'Supabase API key');
     if(!pastedKey){ hasPromptedForApiKey = false; return false; }
     saveSupabaseAnonKey(pastedKey);
     if(!recreateSupabaseClient()){
-        alert('Supabase library failed to reinitialize. Please refresh the page.');
+        showDocumentToast('Supabase library failed to reinitialize. Please refresh the page.', 'error');
         hasPromptedForApiKey = false;
         return false;
     }
@@ -892,7 +915,87 @@ function getFileExtension(filename){ return String(filename || '').split('.').po
 function getFileTypeLabel(filename,mimeType=''){ const ext=getFileExtension(filename); return ext ? ext.toUpperCase() : (mimeType || 'FILE'); }
 function getFileIconClass(filename,mimeType=''){ const ext=getFileExtension(filename); const type=String(mimeType||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'fa-file-pdf'; if(['doc','docx'].includes(ext)||type.includes('word')) return 'fa-file-word'; if(['xls','xlsx','csv'].includes(ext)||type.includes('spreadsheet')||type.includes('excel')) return 'fa-file-excel'; if(['ppt','pptx'].includes(ext)||type.includes('presentation')||type.includes('powerpoint')) return 'fa-file-powerpoint'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'fa-file-image'; if(['zip','rar','7z'].includes(ext)) return 'fa-file-zipper'; if(['txt','md'].includes(ext)||type.includes('text')) return 'fa-file-lines'; return 'fa-file-lines'; }
 function getFilePreviewKind(doc){ const ext=getFileExtension(doc.name); const type=String(doc.mime_type||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'direct'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'direct'; if(['txt','md','csv'].includes(ext)||type.includes('text')) return 'direct'; if(['doc','docx','xls','xlsx','ppt','pptx'].includes(ext)) return 'office'; return 'direct'; }
-function showDocumentToast(message, icon='fa-circle-check'){ const toast=document.getElementById('documentToast'); const text=document.getElementById('documentToastText'); if(!toast||!text) return; toast.querySelector('i').className=`fa-solid ${icon}`; text.textContent=message; toast.classList.add('show'); clearTimeout(window.__documentToastTimer); window.__documentToastTimer=setTimeout(()=>toast.classList.remove('show'),2600); }
+function vaultToastMark(type){
+    const marks = {
+        success: { icon: 'fa-circle-check', color: '#10b981' },
+        error: { icon: 'fa-circle-xmark', color: '#f87171' },
+        warning: { icon: 'fa-triangle-exclamation', color: '#fbbf24' },
+        info: { icon: 'fa-circle-notch fa-spin', color: '#93c5fd' }
+    };
+    return marks[type] || marks.success;
+}
+function showDocumentToast(message, type = 'success'){
+    const text = String(message ?? '').trim();
+    if (!text) return;
+    const toastType = vaultToastMark(type) && ['success', 'error', 'warning', 'info'].includes(type) ? type : 'success';
+    if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(text, 3000, toastType);
+        return;
+    }
+    const mark = vaultToastMark(toastType);
+    let toast = document.getElementById('citeflowGlobalToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'citeflowGlobalToast';
+        toast.className = 'citeflow-toast';
+        document.body.appendChild(toast);
+    }
+    const safe = document.createElement('div');
+    safe.textContent = text;
+    toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+    toast.classList.add('show');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function waitForCiteFlowModal(timeoutMs = 2500) {
+    if (window.CiteFlowModal && typeof window.CiteFlowModal.prompt === 'function') {
+        return Promise.resolve(window.CiteFlowModal);
+    }
+    return new Promise((resolve) => {
+        const started = Date.now();
+        const timer = window.setInterval(() => {
+            if (window.CiteFlowModal && typeof window.CiteFlowModal.prompt === 'function') {
+                window.clearInterval(timer);
+                resolve(window.CiteFlowModal);
+            } else if (Date.now() - started >= timeoutMs) {
+                window.clearInterval(timer);
+                resolve(null);
+            }
+        }, 50);
+    });
+}
+
+async function confirmVaultAction(message, title) {
+    const heading = title || 'Confirmation';
+    const citeConfirm = window.CiteFlowUI && window.CiteFlowUI.confirm;
+    if (typeof citeConfirm === 'function') {
+        return citeConfirm(message, heading);
+    }
+    const workflowConfirm = window.CiteFlowWorkflow && window.CiteFlowWorkflow.confirmAction;
+    if (typeof workflowConfirm === 'function') {
+        return workflowConfirm(message, heading, { danger: true, confirmText: 'Delete' });
+    }
+    const modal = await waitForCiteFlowModal();
+    const modalConfirm = modal && modal.confirm;
+    if (typeof modalConfirm === 'function') {
+        return modalConfirm(message, heading, { isDanger: true, confirmText: 'Delete' });
+    }
+    showDocumentToast('Unable to confirm that action. Please refresh the page.', 'error');
+    return false;
+}
+
+async function askVaultInput(message, title) {
+    const modal = window.CiteFlowModal && typeof window.CiteFlowModal.prompt === 'function'
+        ? window.CiteFlowModal
+        : await waitForCiteFlowModal();
+    const modalPrompt = modal && modal.prompt;
+    if (typeof modalPrompt === 'function') {
+        return modalPrompt(message, '', title || 'CITE-Flow');
+    }
+    showDocumentToast('Unable to request the API key. Please refresh the page.', 'error');
+    return null;
+}
 
 async function refreshVault(){
     await loadFolders();
@@ -915,7 +1018,7 @@ async function loadFolders(){
         if(folderRes.error){
             if(await recoverFromInvalidApiKey(folderRes.error)) return;
             console.error('Folders load error:', folderRes.error);
-            alert('Error loading folders: ' + folderRes.error.message);
+            showDocumentToast('Error loading folders: ' + folderRes.error.message, 'error');
             return;
         }
 
@@ -1255,12 +1358,12 @@ async function saveFolder(){
         color: document.getElementById('edit-folder-color').value || '#6b21a8'
     };
     if(!payload.name){
-        alert('Please enter a folder name.');
+        showDocumentToast('Please enter a folder name.', 'warning');
         return;
     }
     const existing = folders.find(f => f.name.toUpperCase() === payload.name && String(f.id) !== String(id));
     if(existing){
-        alert('A folder with this name already exists.');
+        showDocumentToast('A folder with this name already exists.', 'warning');
         return;
     }
     const result = id 
@@ -1269,7 +1372,7 @@ async function saveFolder(){
 
     if(result.error){
         console.error(result.error);
-        alert('Unable to save folder: ' + result.error.message);
+        showDocumentToast('Unable to save folder: ' + result.error.message, 'error');
         return;
     }
     closeFolderEditor();
@@ -1278,7 +1381,7 @@ async function saveFolder(){
     if(currentFolderId && String(currentFolderId) === String(id)){
         await openFolder(currentFolderId);
     }
-    showDocumentToast('Folder saved.');
+    showDocumentToast('Folder saved.', 'success');
 }
 
 async function deleteFolderById(folderId){
@@ -1292,27 +1395,27 @@ async function deleteFolderById(folderId){
     const message = docs.length 
         ? `Delete folder "${folder.name}" and its ${docs.length} document(s)? This cannot be undone.`
         : `Delete folder "${folder.name}"?`;
-    if(!confirm(message)) return;
+    if(!(await confirmVaultAction(message, 'Delete folder'))) return;
     for(const doc of docs){
         await removeStorageObject(doc);
     }
     const { error: docErr } = await supabaseClient.from('documents').delete().eq('folder_id', folderId);
     if(docErr){
         console.error(docErr);
-        alert('Unable to delete folder documents: ' + docErr.message);
+        showDocumentToast('Unable to delete folder documents: ' + docErr.message, 'error');
         return;
     }
     const { error } = await supabaseClient.from('folders').delete().eq('id', folderId);
     if(error){
         console.error(error);
-        alert('Unable to delete folder: ' + error.message);
+        showDocumentToast('Unable to delete folder: ' + error.message, 'error');
         return;
     }
     FOLDER_DOCS_CACHE.delete(String(folderId));
     if(String(currentFolderId) === String(folderId)) goBackToMain();
     await loadFolders();
     renderFolders();
-    showDocumentToast('Folder deleted.');
+    showDocumentToast('Folder deleted.', 'success');
 }
 
 // Staged File Handling for Uploads
@@ -1521,15 +1624,15 @@ async function uploadFilesToFolder(files, folderId, modalType='main'){
     if(!ensureSupabaseReady()) return;
     const client = getVaultClient();
     if(!client){
-        alert('Supabase client is not available. Please refresh the page.');
+        showDocumentToast('Supabase client is not available. Please refresh the page.', 'error');
         return;
     }
     if(!files || !files.length){
-        alert('Please select or drop at least one file.');
+        showDocumentToast('Please select or drop at least one file.', 'warning');
         return;
     }
     if(!folderId){
-        alert('Please choose a destination folder.');
+        showDocumentToast('Please choose a destination folder.', 'warning');
         return;
     }
 
@@ -1547,7 +1650,7 @@ async function uploadFilesToFolder(files, folderId, modalType='main'){
             await vaultStorageRequest('upload', { path: filePath, file, contentType });
         } catch(uploadError) {
             console.error('Document Vault upload error:', uploadError);
-            alert(`Failed to upload "${file.name}":\n\n${uploadError.message || 'Upload failed'}`);
+            showDocumentToast(`Failed to upload "${file.name}":\n\n${uploadError.message || 'Upload failed'}`, 'error');
             failCount++;
             continue;
         }
@@ -1563,7 +1666,7 @@ async function uploadFilesToFolder(files, folderId, modalType='main'){
 
         if(insertError){
             console.error('Database insert error:', insertError);
-            alert(`Uploaded file to storage, but failed to save database record for "${file.name}":\n${insertError.message}`);
+            showDocumentToast(`Uploaded file to storage, but failed to save database record for "${file.name}":\n${insertError.message}`, 'error');
             failCount++;
         } else {
             successCount++;
@@ -1576,7 +1679,7 @@ async function uploadFilesToFolder(files, folderId, modalType='main'){
     else hideMainUploadModal();
 
     if(successCount > 0){
-        showDocumentToast(`Uploaded ${successCount} document${successCount !== 1 ? 's' : ''}.`);
+        showDocumentToast(`Uploaded ${successCount} document${successCount !== 1 ? 's' : ''}.`, 'success');
         await refreshVault();
     }
 }
@@ -1594,12 +1697,12 @@ async function uploadToCurrentFolder(){
 }
 
 async function removeStorageObject(doc){ const paths=getCandidatePaths(doc.file_path, doc); for(const path of paths){ try { await vaultStorageRequest('delete', { path }); return; } catch(err) { console.warn('Document Vault delete attempt failed:', path, err); } } }
-async function deleteSingleDocument(id){ const doc=documents.find(d=>String(d.id)===String(id)); if(!doc) return; if(!confirm(`Delete "${doc.name}"?`)) return; await removeStorageObject(doc); const {error}=await supabaseClient.from('documents').delete().eq('id',id); if(error){ alert('Unable to delete document: '+error.message); return; } await refreshVault(); showDocumentToast('Document deleted.'); }
+async function deleteSingleDocument(id){ const doc=documents.find(d=>String(d.id)===String(id)); if(!doc) return; if(!(await confirmVaultAction(`Delete "${doc.name}"?`, 'Delete document'))) return; await removeStorageObject(doc); const {error}=await supabaseClient.from('documents').delete().eq('id',id); if(error){ showDocumentToast('Unable to delete document: '+error.message, 'error'); return; } await refreshVault(); showDocumentToast('Document deleted.', 'success'); }
 async function deleteSelectedDocuments(){
     if(!selectedDocs.size) return;
     const selectedList=documents.filter(doc=>isSelected(doc.id));
     if(!selectedList.length) return;
-    if(!confirm(`Delete ${selectedList.length} selected document(s)?`)) return;
+    if(!(await confirmVaultAction(`Delete ${selectedList.length} selected document(s)?`, 'Delete documents'))) return;
     for(const doc of selectedList){
         await removeStorageObject(doc);
         await supabaseClient.from('documents').delete().eq('id',doc.id);
@@ -1607,7 +1710,7 @@ async function deleteSelectedDocuments(){
     selectedDocs.clear();
     updateActionBar();
     await refreshVault();
-    showDocumentToast('Selected documents deleted.');
+    showDocumentToast('Selected documents deleted.', 'success');
 }
 function hideMoveDocsModal(){
     const modal=document.getElementById('move-docs-modal');
@@ -1621,7 +1724,7 @@ function moveSelectedDocuments(){
     if(!selectedList.length) return;
     const select=document.getElementById('move-target-folder');
     const options=folders.filter(f=>String(f.id)!==String(currentFolderId));
-    if(!options.length){ alert('Create another folder before moving documents.'); return; }
+    if(!options.length){ showDocumentToast('Create another folder before moving documents.', 'warning'); return; }
     select.innerHTML=options.map(f=>`<option value="${escapeHtml(f.id)}">${escapeHtml(formatVaultFolderName(f.name))}</option>`).join('');
     const modal=document.getElementById('move-docs-modal');
     modal.classList.remove('hidden');
@@ -1633,15 +1736,15 @@ async function confirmMoveDocuments(){
     if(!selectedList.length) return;
     const targetId=document.getElementById('move-target-folder')?.value;
     const target=folders.find(f=>String(f.id)===String(targetId));
-    if(!target){ alert('Please choose a destination folder.'); return; }
+    if(!target){ showDocumentToast('Please choose a destination folder.', 'warning'); return; }
     const ids=selectedList.map(doc=>doc.id);
     const {error}=await supabaseClient.from('documents').update({folder_id:target.id}).in('id',ids);
-    if(error){ alert('Unable to move documents: '+error.message); return; }
+    if(error){ showDocumentToast('Unable to move documents: '+error.message, 'error'); return; }
     selectedDocs.clear();
     updateActionBar();
     hideMoveDocsModal();
     await refreshVault();
-    showDocumentToast('Documents moved.');
+    showDocumentToast('Documents moved.', 'success');
 }
 
 function isExternalUrl(value){ return /^https?:\/\//i.test(String(value||'')); }
@@ -1716,26 +1819,26 @@ function closeDocumentPreviewModal(){ const modal=document.getElementById('docum
 function openPreviewInNewTab(){ if(!currentPreviewDocument||!currentPreviewAccess?.url) return; window.open(makePreviewUrl(currentPreviewDocument,currentPreviewAccess),'_blank'); }
 async function viewDocument(id){
     const doc=documents.find(d=>String(d.id)===String(id));
-    if(!doc){ alert('Document not found.'); return; }
+    if(!doc){ showDocumentToast('Document not found.', 'error'); return; }
     try{
-        showDocumentToast('Preparing preview...','fa-circle-notch fa-spin');
+        showDocumentToast('Preparing preview...', 'info');
         const access=await resolveDocumentAccessUrl(doc,3600,false);
-        if(!access?.url){ alert('Unable to preview this document. Check bucket name, file path, and storage policy.'); return; }
+        if(!access?.url){ showDocumentToast('Unable to preview this document. Check bucket name, file path, and storage policy.', 'error'); return; }
         openDocumentPreviewModal(doc,access);
     }catch(err){
         console.error(err);
-        alert('Unable to preview this document.');
+        showDocumentToast('Unable to preview this document.', 'error');
     }
 }
 async function downloadDocument(id){
     const doc=documents.find(d=>String(d.id)===String(id));
-    if(!doc){ alert('Document not found.'); return; }
+    if(!doc){ showDocumentToast('Document not found.', 'error'); return; }
     try{
-        showDocumentToast('Preparing download...','fa-circle-notch fa-spin');
+        showDocumentToast('Preparing download...', 'info');
         const blob=await resolveDocumentBlob(doc);
         if(blob){
             saveBlobAsFile(blob,doc.name||'document');
-            showDocumentToast('Download started.');
+            showDocumentToast('Download started.', 'success');
             if (window.EngagementLogger?.logDownload) {
                 window.EngagementLogger.logDownload({
                     fileName: doc.name,
@@ -1746,14 +1849,14 @@ async function downloadDocument(id){
             return;
         }
         const access=await resolveDocumentAccessUrl(doc,300,true);
-        if(!access?.url){ alert('Unable to download this document. Check bucket name, file path, and storage policy.'); return; }
+        if(!access?.url){ showDocumentToast('Unable to download this document. Check bucket name, file path, and storage policy.', 'error'); return; }
         const response=await fetch(access.url);
         if(response.ok){
             saveBlobAsFile(await response.blob(),doc.name||'document');
         }else{
             window.open(access.url,'_blank');
         }
-        showDocumentToast('Download started.');
+        showDocumentToast('Download started.', 'success');
         if (window.EngagementLogger?.logDownload) {
             window.EngagementLogger.logDownload({
                 fileName: doc.name,
@@ -1763,7 +1866,7 @@ async function downloadDocument(id){
         }
     }catch(err){
         console.error(err);
-        alert('Unable to download this document.');
+        showDocumentToast('Unable to download this document.', 'error');
     }
 }
 async function downloadCurrentPreviewDocument(){ if(currentPreviewDocument) await downloadDocument(currentPreviewDocument.id); }

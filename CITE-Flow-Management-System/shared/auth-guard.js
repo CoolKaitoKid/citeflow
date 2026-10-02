@@ -95,7 +95,17 @@
     }
 
     function redirectToLogin(prefix) {
-        console.warn('[AUTH TRACE] REDIRECT TO LOGIN', {
+        const persisted = usablePersistedSession();
+        if (persisted?.user && persisted?.access_token) {
+            console.warn('[AUTH TRACE] redirect to login blocked', {
+                path: window.location.pathname,
+                userId: persisted.user.id || null,
+                reason: 'access token still valid'
+            });
+            finish(AuthState.AUTHENTICATED, { session: persisted, user: persisted.user });
+            return;
+        }
+        console.warn('[AUTH TRACE] redirect to login', {
             path: window.location.pathname,
             search: window.location.search || '',
             guardState,
@@ -106,6 +116,7 @@
     }
 
     async function initAuthGuard() {
+        console.info('[AUTH TRACE] page', window.location.pathname);
         const currentPath = window.location.pathname.toLowerCase();
 
         const isAdminArea = currentPath.includes('/admin/') ||

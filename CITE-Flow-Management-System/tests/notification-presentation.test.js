@@ -18,7 +18,7 @@ function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
 
-const now = new Date('2026-09-29T12:00:00');
+const now = new Date('2026-09-29T12:00:00+08:00');
 
 function present(notification) {
     return api.present(notification);
@@ -141,9 +141,13 @@ assert(api.isProfileUpdate({ type: 'system', message: 'Faculty profile update sa
 assert(!api.isProfileUpdate({ type: 'document_uploaded', message: 'An administrator uploaded "Profile" to your documents portfolio.' }), 'document upload stays');
 assert(!api.isProfileUpdate(approved), 'approval is not a profile update');
 
-assert(api.formatRelativeTime('2026-09-29T11:55:00', now) === '5 minutes ago', api.formatRelativeTime('2026-09-29T11:55:00', now));
-assert(api.formatRelativeTime('2026-09-29T10:00:00', now) === '2 hours ago', api.formatRelativeTime('2026-09-29T10:00:00', now));
-assert(api.formatRelativeTime('2026-09-28T15:00:00', now) === 'Yesterday', api.formatRelativeTime('2026-09-28T15:00:00', now));
+assert(api.formatRelativeTime('2026-09-29T11:55:00+08:00', now) === '5 minutes ago', api.formatRelativeTime('2026-09-29T11:55:00+08:00', now));
+assert(api.formatRelativeTime('2026-09-29T03:55:00Z', now) === '5 minutes ago', api.formatRelativeTime('2026-09-29T03:55:00Z', now));
+assert(api.formatRelativeTime('2026-09-29T10:00:00+08:00', now) === '2 hours ago', api.formatRelativeTime('2026-09-29T10:00:00+08:00', now));
+assert(api.formatRelativeTime('2026-09-28T15:00:00+08:00', now) === 'Yesterday', api.formatRelativeTime('2026-09-28T15:00:00+08:00', now));
+assert(api.formatRelativeTime('2026-09-28T10:00:00Z', new Date('2026-09-29T00:30:00Z')) === 'Yesterday', api.formatRelativeTime('2026-09-28T10:00:00Z', new Date('2026-09-29T00:30:00Z')));
+assert(api.formatRelativeTime('2026-09-20T16:30:00Z', new Date('2026-10-01T16:00:00Z')) === 'Sep 21', api.formatRelativeTime('2026-09-20T16:30:00Z', new Date('2026-10-01T16:00:00Z')));
+assert(api.formatRelativeTime(new Date().toISOString()) === 'Just now', api.formatRelativeTime(new Date().toISOString()));
 
 const card = api.renderCard({
     id: 12,

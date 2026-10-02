@@ -558,14 +558,12 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
     }
 
     /**
-     * Read-only view of the submitted MFO.
+     * Opens the submitted MFO in the Chairperson review page.
      *
-     * This reuses the reviewer route that already exists in
-     * faculty/mfo-report.js (?view=review&submission=…), which renders the
-     * official template, refuses every write, and offers Approve / Request
-     * Revision / Decline. Without this link the Chairperson could only review
-     * the raw attachment list, and that reviewer mode had no entry point from
-     * the Chairperson side at all.
+     * faculty/mfo-report.js (?view=review&submission=…) keeps faculty records
+     * locked and lets the Chairperson complete the program-owned licensure,
+     * employment, and narrative fields, then save one updated PDF. Approve,
+     * Request Revision, and Decline stay on that page.
      */
     function mfoReportLink(row) {
         if (!row?.id || !submissionIsMfo(row)) return '';

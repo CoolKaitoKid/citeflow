@@ -6,10 +6,10 @@
     <title>MFO Report - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../shared/supabase-config.js?v=auth-nav-lock-1"></script>
-    <script src="../shared/auth.js?v=auth-nav-lock-1"></script>
+    <script src="../shared/supabase-config.js?v=auth-nav-session-1"></script>
+    <script src="../shared/auth.js?v=auth-mfo-rpc-1"></script>
     <script src="../shared/workflow.js?v=auth-session-9"></script>
-    <script src="../shared/auth-guard.js?v=auth-nav-lock-1"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-session-1"></script>
     <script src="../shared/cite-settings.js"></script>
     <script src="../shared/mfo-sources.js?v=mfo-accomplishment-map-2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
@@ -266,49 +266,6 @@
             border-color: #cbd5e1;
             box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
         }
-        .mfo-photo-card {
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 14px;
-            background: #f8fafc;
-            margin-bottom: 10px;
-        }
-        .mfo-photo-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-            gap: 8px;
-        }
-        .mfo-photo-thumb {
-            display: block;
-            aspect-ratio: 1;
-            border-radius: 10px;
-            overflow: hidden;
-            border: 1px solid #e5e7eb;
-            background: #f8fafc;
-        }
-        .mfo-photo-thumb img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        .mfo-photo-thumb-wrap {
-            position: relative;
-        }
-        .mfo-photo-remove {
-            position: absolute;
-            top: 4px;
-            right: 4px;
-            width: 22px;
-            height: 22px;
-            border-radius: 999px;
-            border: 0;
-            background: rgba(15, 23, 42, 0.72);
-            color: #fff;
-            font-weight: 700;
-            line-height: 1;
-            cursor: pointer;
-        }
         @keyframes modalFadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
@@ -321,7 +278,7 @@
         .mfo-review-overlay {
             position: fixed;
             inset: 0;
-            z-index: 2300;
+            z-index: 8000;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -382,7 +339,7 @@
             .mfo-review-footer { flex-direction: row; }
         }
         #mfoToast {
-            position: fixed; right: 16px; bottom: 20px; z-index: 2400;
+            position: fixed; right: 16px; bottom: 20px; z-index: 9600;
             display: none; max-width: 360px; padding: 12px 16px;
             border-radius: 14px; font-size: 13px; font-weight: 600;
             box-shadow: 0 16px 40px rgba(15,23,42,.16);
@@ -424,14 +381,44 @@
             white-space: pre-wrap;
         }
         .mfo-doc-break { break-before: page; page-break-before: always; margin-top: 18px; }
-        .mfo-doc-photos { display: flex; flex-wrap: wrap; gap: 4mm; margin-top: 5px; }
-        .mfo-doc-photo { flex: 1 1 78mm; max-width: 88mm; }
-        /* contain, never stretch: portrait and landscape both keep their ratio */
+        .mfo-doc-photos { display: block; margin-top: 5px; }
+        .mfo-doc-photo { width: 100%; max-width: 170mm; margin-top: 6mm; break-inside: avoid; page-break-inside: avoid; }
         .mfo-doc-photo img {
-            width: 100%; height: auto; max-height: 70mm;
-            object-fit: contain; border: 1px solid #000; display: block;
+            width: 160mm; max-width: 100%; height: auto; max-height: 170mm;
+            object-fit: contain; border: 1px solid #000; display: block; background: #fff;
         }
-        .mfo-doc-photo .cap { font-size: 9.5px; margin-top: 2px; text-align: center; }
+        .mfo-doc-photo .cap { font-size: 11px; margin-top: 4px; text-align: left; white-space: pre-wrap; }
+        .mfo-pdf-frame { width: 100%; height: 85vh; border: 1px solid #cbd5e1; border-radius: 12px; background: #fff; }
+        .mfo-pdf-overlay {
+            z-index: 8000;
+            padding: 20px;
+            padding-top: 20px;
+            background: rgba(15, 23, 42, 0.55);
+        }
+        .mfo-review-dialog.mfo-pdf-dialog {
+            width: min(1080px, 100%);
+            height: min(96dvh, calc(100dvh - 40px));
+            max-height: min(96dvh, calc(100dvh - 40px));
+        }
+        .mfo-pdf-dialog .mfo-review-header { padding: 14px 20px; }
+        .mfo-pdf-dialog .mfo-review-body {
+            padding: 0; background: #e8edf2;
+            display: flex; flex-direction: column; overflow: auto;
+        }
+        .mfo-pdf-dialog .mfo-pdf-frame {
+            display: block; width: 100%; flex: 1 1 auto; height: 100%; min-height: 70vh;
+            border: 0; border-radius: 0; background: #fff;
+        }
+        .mfo-pdf-waiting {
+            flex: 1 1 auto; min-height: 70vh; display: flex; align-items: center; justify-content: center;
+            color: #334155; font-weight: 600; background: #fff;
+        }
+        .mfo-pdf-footer {
+            flex-direction: row;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .mfo-overlay-front { z-index: 9100; }
         .mfo-doc table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
         .mfo-doc th, .mfo-doc td {
             border: 1px solid #000; padding: 4px 5px;
@@ -446,8 +433,6 @@
         .mfo-doc-sign { margin-top: 18px; font-size: 12px; display: flex; gap: 16mm; flex-wrap: wrap; }
         .mfo-doc-sign .box { min-width: 70mm; }
         .mfo-doc-sign .line { border-bottom: 1px solid #000; height: 12mm; display: flex; align-items: flex-end; padding-bottom: 2px; }
-        /* The signature sits on the same ruled line a wet signature would use,
-           so a signed and an unsigned report print to the same layout. */
         .mfo-doc-sign .line.sig { display: flex; align-items: flex-end; }
         .mfo-doc-sign .line.sig img { max-height: 11.5mm; max-width: 100%; object-fit: contain; }
         /* Official letterhead and accreditation strip, at the template's own
@@ -485,7 +470,7 @@
             /* The template carries the letterhead once at the top and the
                accreditation strip once at the end, so both stay in the flow:
                nothing is fixed over the page and the footer cannot cover the
-               last table or the signature area. Keeping each banner unsplit
+               last table or the submitted-by line. Keeping each banner unsplit
                prevents clipping, and avoiding a break before the footer stops
                it from stranding on a blank final page. */
             .mfo-doc-head, .mfo-doc-foot { break-inside: avoid; page-break-inside: avoid; }
@@ -633,13 +618,6 @@
             .mfo-record .text-sm { line-height: 1.35; }
             .mfo-record > .flex:first-child { padding-bottom: .1rem; }
             .mfo-record .mfo-chip { max-width: 100%; line-height: 1.35; }
-            .mfo-photo-card {
-                padding: .85rem 1rem;
-                border-color: #e2e8f0;
-                background: #f8fafc;
-            }
-            .mfo-photo-grid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: .65rem; }
-            .mfo-photo-thumb { border-radius: 8px; }
             .mfo-doc-edit { color: #64748b; }
             .mfo-doc-edit button {
                 color: #7c2d12;
@@ -709,6 +687,6 @@
 <div id="mfoToast"></div>
 <script src="faculty-nav.js?v=auth-session-9"></script>
 <script src="../shared/system-ui.js"></script>
-<script src="mfo-report.js?v=mfo-func-18"></script>
+<script src="mfo-report.js?v=mfo-faculty-token-1"></script>
 </body>
 </html>

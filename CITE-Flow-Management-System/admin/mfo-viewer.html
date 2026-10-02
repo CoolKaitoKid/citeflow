@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submitted MFO Report - CITE-Flow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/auth.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/workflow.js?v=auth-session-9"></script>
+    <script src="../shared/auth-guard.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/cite-settings.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
+    <style>
+        #mfoPdfDownload {
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #621708; color: #fff; border: 1px solid #621708;
+            border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 700;
+        }
+    </style>
+</head>
+<body class="cite-page bg-slate-50 overflow-x-hidden min-h-screen">
+<div class="flex min-h-screen w-full">
+    <div id="sidebar-container"></div>
+    <main class="main-content flex-1 min-w-0 overflow-x-hidden">
+        <div id="navbar-container"></div>
+        <div class="px-4 sm:px-6 lg:px-8 py-6 pb-24 max-w-[1100px] mx-auto">
+            <div id="mfoPdfViewer">
+                <div class="surface rounded-[16px] p-6">
+                    <div class="skeleton-text xl" style="width:220px;margin-bottom:12px"></div>
+                    <div class="skeleton-text" style="width:70%"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+<script src="../nav.js?v=admin-hook-1"></script>
+<script src="../shared/system-ui.js"></script>
+<script>
+(function () {
+    const SUBMISSIONS_HREF = 'workflow-approval.html';
+    const BUCKET = 'wf-submissions';
+    const PDF_MARKER = 'submitted_mfo_pdf';
+    const root = document.getElementById('mfoPdfViewer');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+    }
+
+    function client() {
+        return window.CiteFlowAuth?.ensureSharedClient?.()
+            || window.supabaseClient
+            || window.CiteFlowWorkflow?.getSupabaseClient?.()
+            || null;
+    }
+
+    function isSubmittedPdf(file) {
+        if (String(file?.mfo_indicator || '') === PDF_MARKER) return true;
+        return /\/submitted-report\/MFO-Accomplishment-Report\.pdf$/i.test(String(file?.storage_path || file?.file_path || ''));
+    }
+
+    function showPanel(title, message) {
+        root.innerHTML = `
+            <a href="${SUBMISSIONS_HREF}" class="text-sm font-bold text-[#621708]">← Back to Submissions</a>
+            <section class="surface rounded-[16px] p-6 mt-4">
+                <h1 class="text-xl font-bold text-slate-900">${esc(title)}</h1>
+                <p class="text-sm text-slate-600 mt-2">${esc(message)}</p>
+            </section>`;
+    }
+
+    async function signedUrl(db, file) {
+        const path = String(file?.storage_path || file?.file_path || '').trim();
+        if (path) {
+            const signed = await db.storage.from(BUCKET).createSignedUrl(path, 60 * 60);
+            if (signed.data?.signedUrl) return signed.data.signedUrl;
+        }
+        return String(file?.file_url || '').trim();
+    }
+
+    async function downloadPdf(url, fileName) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Unable to download the submitted PDF.');
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = fileName || 'MFO-Accomplishment-Report.pdf';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+    }
+
+    async function openViewer() {
+        const submissionId = new URLSearchParams(window.location.search).get('submission');
+        if (!submissionId) {
+            showPanel('No MFO selected', 'Open a submitted MFO from Admin Submissions.');
+            return;
+        }
+        const db = client();
+        if (!db) {
+            showPanel('Unable to open the report', 'The database client is not available.');
+            return;
+        }
+        if (window.CiteFlowAuthGuard?.ready) {
+            try { await window.CiteFlowAuthGuard.ready; } catch (_) { /* guard redirects on its own */ }
+        }
+        const session = await db.auth.getSession();
+        if (!session.data?.session?.user) {
+            showPanel('Sign in required', 'Sign in as Admin, then open the MFO again from Submissions.');
+            return;
+        }
+
+        const [filesRes, submissionRes] = await Promise.all([
+            db.from('wf_submission_files').select('*').eq('submission_id', submissionId),
+            db.from('wf_submissions').select('id, faculty_id, submitted_at').eq('id', submissionId).maybeSingle()
+        ]);
+        if (filesRes.error) {
+            showPanel('Unable to open the report', filesRes.error.message || 'The submitted files could not be loaded.');
+            return;
+        }
+        const file = (filesRes.data || [])
+            .filter(isSubmittedPdf)
+            .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
+        if (!file) {
+            showPanel(
+                'No submitted PDF on file',
+                'This MFO does not have a saved report PDF yet. The PDF is stored when the faculty member submits the MFO.'
+            );
+            return;
+        }
+
+        let facultyName = '';
+        const facultyId = submissionRes.data?.faculty_id;
+        if (facultyId) {
+            const facultyRes = await db.from('faculty').select('full_name').eq('id', facultyId).maybeSingle();
+            facultyName = facultyRes.data?.full_name || '';
+        }
+        const url = await signedUrl(db, file);
+        if (!url) {
+            showPanel('Unable to open the report', 'The submitted PDF is saved, but a preview link could not be created.');
+            return;
+        }
+        const fileName = file.file_name || 'MFO-Accomplishment-Report.pdf';
+        root.innerHTML = `
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                    <a href="${SUBMISSIONS_HREF}" class="text-sm font-bold text-[#621708]">← Back to Submissions</a>
+                    <h1 class="text-xl font-bold text-slate-900 mt-2">Submitted MFO Report</h1>
+                    <p class="text-sm text-slate-500 mt-1">${esc(facultyName || 'Faculty submission')} · read-only PDF</p>
+                </div>
+                <button type="button" id="mfoPdfDownload">Download PDF</button>
+            </div>
+            <iframe id="mfoPdfFrame" title="Submitted MFO report" src="${esc(url)}" style="width:100%;height:calc(100vh - 220px);min-height:720px;border:1px solid #e5e7eb;border-radius:12px;background:#fff"></iframe>`;
+        document.getElementById('mfoPdfDownload').addEventListener('click', () => {
+            downloadPdf(url, fileName).catch(() => {
+                window.open(url, '_blank', 'noopener');
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', openViewer, { once: true });
+    else openViewer();
+})();
+</script>
+</body>
+</html>

@@ -1258,46 +1258,66 @@ window.CiteFlowAuth = (function () {
             const oversized = (existing.access_token || '').length > 8000 || Object.keys(oversizedMetadataKeys(existing)).length > 0;
             if (!oversized) return existing;
 
-            const response = await fetch(`${window.__SUPABASE_URL__}/auth/v1/token?grant_type=refresh_token`, {
-                method: 'POST',
-                headers: {
-                    apikey: window.__SUPABASE_ANON__,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ refresh_token: existing.refresh_token })
-            });
-            const body = await response.json().catch(() => null);
-            if (!response.ok || !body?.access_token || !body?.refresh_token) return existing;
+            if (Date.now() < (window.__citeflowRefreshCooldownUntil || 0)) return existing;
+            try {
+                const lock = JSON.parse(localStorage.getItem('citeflow_auth_refresh_lock') || 'null');
+                if (lock && Number(lock.until) > Date.now()) return existing;
+            } catch (_) {}
+            const recoverOwner = `recover-${Date.now()}`;
+            try {
+                localStorage.setItem('citeflow_auth_refresh_lock', JSON.stringify({
+                    owner: recoverOwner,
+                    until: Date.now() + 8000
+                }));
+            } catch (_) {}
+            let response;
+            try {
+                response = await fetch(`${window.__SUPABASE_URL__}/auth/v1/token?grant_type=refresh_token`, {
+                    method: 'POST',
+                    headers: {
+                        apikey: window.__SUPABASE_ANON__,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ refresh_token: existing.refresh_token })
+                });
+                const body = await response.json().catch(() => null);
+                if (!response.ok || !body?.access_token || !body?.refresh_token) return existing;
 
-            const applied = await sb.auth.setSession({
-                access_token: body.access_token,
-                refresh_token: body.refresh_token
-            });
-            let session = applied?.data?.session || null;
-            const clear = oversizedMetadataKeys(session);
-            if (Object.keys(clear).length) {
-                const updated = await sb.auth.updateUser({ data: clear });
-                if (!updated?.error && body.refresh_token) {
-                    const again = await fetch(`${window.__SUPABASE_URL__}/auth/v1/token?grant_type=refresh_token`, {
-                        method: 'POST',
-                        headers: {
-                            apikey: window.__SUPABASE_ANON__,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ refresh_token: body.refresh_token })
-                    });
-                    const next = await again.json().catch(() => null);
-                    if (again.ok && next?.access_token && next?.refresh_token) {
-                        const replaced = await sb.auth.setSession({
-                            access_token: next.access_token,
-                            refresh_token: next.refresh_token
+                const applied = await sb.auth.setSession({
+                    access_token: body.access_token,
+                    refresh_token: body.refresh_token
+                });
+                let session = applied?.data?.session || null;
+                const clear = oversizedMetadataKeys(session);
+                if (Object.keys(clear).length) {
+                    const updated = await sb.auth.updateUser({ data: clear });
+                    if (!updated?.error && body.refresh_token) {
+                        const again = await fetch(`${window.__SUPABASE_URL__}/auth/v1/token?grant_type=refresh_token`, {
+                            method: 'POST',
+                            headers: {
+                                apikey: window.__SUPABASE_ANON__,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ refresh_token: body.refresh_token })
                         });
-                        session = replaced?.data?.session || session;
+                        const next = await again.json().catch(() => null);
+                        if (again.ok && next?.access_token && next?.refresh_token) {
+                            const replaced = await sb.auth.setSession({
+                                access_token: next.access_token,
+                                refresh_token: next.refresh_token
+                            });
+                            session = replaced?.data?.session || session;
+                        }
                     }
                 }
+                if (session?.user?.id && session?.access_token) lastKnownSession = session;
+                return session;
+            } finally {
+                try {
+                    const current = JSON.parse(localStorage.getItem('citeflow_auth_refresh_lock') || 'null');
+                    if (!current || current.owner === recoverOwner) localStorage.removeItem('citeflow_auth_refresh_lock');
+                } catch (_) {}
             }
-            if (session?.user?.id && session?.access_token) lastKnownSession = session;
-            return session;
         })().finally(() => {
             sb._citeFlowGuardBusy = false;
             sb._citeFlowRecoverInFlight = null;
@@ -1313,9 +1333,26 @@ window.CiteFlowAuth = (function () {
             if (client._citeFlowGuardBusy) return original();
             client._citeFlowGuardBusy = true;
             try {
-                const first = await original();
-                const session = first?.data?.session;
-                if (!session?.access_token) return first;
+                let first;
+                try {
+                    first = await original();
+                } catch (error) {
+                    first = { data: { session: null }, error };
+                }
+                let session = first?.data?.session;
+                if (!session?.access_token) {
+                    // GoTrue can answer getSession() with an empty session while
+                    // localStorage still holds the access token the auth guard
+                    // already accepted. Requests must use that token. Do not
+                    // refresh it and do not call setSession().
+                    const persisted = getPersistedSupabaseSession();
+                    const exp = tokenExpiry(persisted);
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    if (persisted?.user?.id && persisted?.access_token && (!exp || exp > nowSec)) {
+                        return { data: { session: persisted }, error: null };
+                    }
+                    return first;
+                }
                 const needsRecovery = session.access_token.length > 8000
                     || Object.keys(oversizedMetadataKeys(session)).length > 0;
                 if (!needsRecovery) return first;
@@ -1402,8 +1439,7 @@ window.CiteFlowAuth = (function () {
         refreshInFlight = (async () => {
             refreshState = 'IN_PROGRESS';
             try {
-                console.info('[AUTH TRACE] SESSION REFRESH start');
-                console.trace('[AUTH TRACE] SESSION REFRESH caller stack');
+                console.info('[AUTH TRACE] refresh started', { path: window.location.pathname });
                 const { data, error } = await client.auth.refreshSession();
                 if (error) {
                     refreshState = 'FAILED';
@@ -1420,7 +1456,7 @@ window.CiteFlowAuth = (function () {
                 if (session?.user?.id && session?.access_token) {
                     lastKnownSession = session;
                 }
-                console.info('[AUTH TRACE] SESSION REFRESH success', {
+                console.info('[AUTH TRACE] refresh finished', {
                     userId: session?.user?.id || null,
                     expiresAt: session?.expires_at || null
                 });
@@ -1466,6 +1502,21 @@ window.CiteFlowAuth = (function () {
 
         freshSessionInFlight = (async () => {
             const nowSec = Math.floor(Date.now() / 1000);
+            // A page change must reuse the session already in storage.
+            // getSession() asks GoTrue to refresh whenever the access token is
+            // inside its expiry margin, which rotates the refresh token and
+            // can wipe the session on the next page.
+            const persisted = getPersistedSupabaseSession();
+            const persistedExp = tokenExpiry(persisted);
+            if (persisted?.user?.id && persisted?.access_token && (!persistedExp || persistedExp > nowSec)) {
+                lastKnownSession = persisted;
+                console.info('[AUTH TRACE] session exists', {
+                    path: window.location.pathname,
+                    userId: persisted.user.id,
+                    source: 'storage'
+                });
+                return persisted;
+            }
             const before = await currentStoredSession(client);
             const recovered = await recoverOversizedSession(client);
             if ((before?.access_token || '').length > 8000 && recovered?.user?.id && recovered?.access_token && recovered.access_token.length <= 8000) {
@@ -1542,32 +1593,6 @@ window.CiteFlowAuth = (function () {
             if (waited?.user?.id && waited?.access_token) return waited;
             if (stored?.user?.id && stored?.access_token) return stored;
             if (candidate?.user?.id && candidate?.access_token) return candidate;
-
-            // getSession() can be empty for a moment during page navigation even
-            // though localStorage still has an unexpired access token. Reuse that
-            // session. Do not refresh or sign out to recover it.
-            const persisted = getPersistedSupabaseSession();
-            const persistedExp = tokenExpiry(persisted);
-            const persistedNow = Math.floor(Date.now() / 1000);
-            if (persisted?.user?.id && persisted?.access_token && (!persistedExp || persistedExp > persistedNow)) {
-                lastKnownSession = persisted;
-                try {
-                    const lockRaw = localStorage.getItem('citeflow_auth_refresh_lock');
-                    const lock = lockRaw ? JSON.parse(lockRaw) : null;
-                    const refreshBusy = lock && Number(lock.until) > Date.now();
-                    if (!refreshBusy && persisted.refresh_token && client.auth?.setSession) {
-                        const applied = await client.auth.setSession({
-                            access_token: persisted.access_token,
-                            refresh_token: persisted.refresh_token
-                        });
-                        if (applied?.data?.session?.user?.id && applied.data.session.access_token) {
-                            lastKnownSession = applied.data.session;
-                            return applied.data.session;
-                        }
-                    }
-                } catch (_) {}
-                return persisted;
-            }
 
             return null;
         })();

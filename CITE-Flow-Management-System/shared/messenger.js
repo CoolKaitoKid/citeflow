@@ -804,10 +804,23 @@ window.CiteFlowMessenger = (function () {
     }
 
     /**
-     * Toast notification system
+     * Toast notification system.
+     * type is optional: success (default) | error | warning | info.
+     * Existing callers that omit type keep the green check.
      */
-    function showCustomToast(message, duration = 3000) {
+    function citeflowToastMark(type) {
+        const marks = {
+            success: { icon: "fa-circle-check", color: "#10b981" },
+            error: { icon: "fa-circle-xmark", color: "#f87171" },
+            warning: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            info: { icon: "fa-circle-notch fa-spin", color: "#93c5fd" }
+        };
+        return marks[type] || marks.success;
+    }
+
+    function showCustomToast(message, duration = 3000, type = "success") {
         if (!message) return;
+        const mark = citeflowToastMark(type);
         let toast = document.getElementById("citeflowGlobalToast");
         if (!toast) {
             toast = document.createElement("div");
@@ -815,7 +828,7 @@ window.CiteFlowMessenger = (function () {
             toast.className = "citeflow-toast";
             document.body.appendChild(toast);
         }
-        toast.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#10b981;"></i> <span>${escapeHtml(message)}</span>`;
+        toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${escapeHtml(message)}</span>`;
         toast.classList.add("show");
         clearTimeout(toast._timer);
         toast._timer = setTimeout(() => {
@@ -940,7 +953,7 @@ window.CiteFlowMessenger = (function () {
         alert: (message, title) => showModalDialog({ type: "alert", message, title }),
         confirm: (message, title, options = {}) => showModalDialog({ type: "confirm", message, title, ...options }),
         prompt: (message, defaultValue, title) => showModalDialog({ type: "prompt", message, defaultValue, title }),
-        toast: (message, duration) => showCustomToast(message, duration)
+        toast: (message, duration, type) => showCustomToast(message, duration, type)
     };
 
     window.CiteFlowModal = CiteFlowModal;

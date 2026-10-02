@@ -116,25 +116,55 @@
         return '';
     }
 
+    const MANILA_TZ = 'Asia/Manila';
+
+    function hasExplicitZone(value) {
+        return /(?:z|[+-]\d{2}(?::?\d{2})?)$/i.test(value);
+    }
+
+    function parseInstant(value) {
+        if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+        const raw = String(value ?? '').trim();
+        if (!raw) return null;
+        let iso = raw.indexOf('T') === -1 && raw.indexOf(' ') > 0 ? raw.replace(' ', 'T') : raw;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) iso += 'T00:00:00Z';
+        else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso) && !hasExplicitZone(iso)) iso += 'Z';
+        const date = new Date(iso);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function manilaDayStamp(date) {
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: MANILA_TZ,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(date);
+        const read = (type) => Number(parts.find((part) => part.type === type)?.value);
+        return Date.UTC(read('year'), read('month') - 1, read('day'));
+    }
+
     function formatRelativeTime(iso, now) {
         if (!iso) return '';
-        const date = new Date(iso);
-        const current = now ? new Date(now) : new Date();
-        if (Number.isNaN(date.getTime()) || Number.isNaN(current.getTime())) return '';
+        const date = parseInstant(iso);
+        const current = now == null || now === '' ? new Date() : parseInstant(now);
+        if (!date || !current) return '';
         const diff = current.getTime() - date.getTime();
         if (diff < 45000) return 'Just now';
         const minutes = Math.floor(diff / 60000);
         if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
-        const startOfToday = new Date(current.getFullYear(), current.getMonth(), current.getDate());
-        const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-        const dayDiff = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86400000);
+        const dayDiff = Math.round((manilaDayStamp(current) - manilaDayStamp(date)) / 86400000);
         if (dayDiff <= 0) {
             const hours = Math.floor(diff / 3600000);
             return hours <= 1 ? '1 hour ago' : `${hours} hours ago`;
         }
         if (dayDiff === 1) return 'Yesterday';
         if (dayDiff < 7) return `${dayDiff} days ago`;
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return new Intl.DateTimeFormat('en-US', {
+            timeZone: MANILA_TZ,
+            month: 'short',
+            day: 'numeric'
+        }).format(date);
     }
 
     function view(partial) {

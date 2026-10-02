@@ -98,6 +98,20 @@
 
     const nativeSetItem = Storage.prototype.setItem;
     const nativeGetItem = Storage.prototype.getItem;
+    const nativeRemoveItem = Storage.prototype.removeItem;
+
+    // GoTrue deletes the session with storage.removeItem(), including paths that
+    // never call _removeSession(). Only an explicit Sign Out may do that.
+    Storage.prototype.removeItem = function (key) {
+        if (isSupabaseAuthKey(key) && !window.__citeflowAllowAuthStorageDelete) {
+            console.warn('[AUTH TRACE] blocked auth storage delete', {
+                key,
+                path: window.location.pathname
+            });
+            return;
+        }
+        return nativeRemoveItem.call(this, key);
+    };
 
     Storage.prototype.setItem = function (key, value) {
         if (shouldEncryptKey(key) && value !== null && value !== undefined) {
@@ -222,14 +236,14 @@
             while (Date.now() < deadline) {
                 const session = readStoredAuthSession();
                 if (session?.user && session.refresh_token && session.refresh_token !== refreshToken) {
-                    return { data: session, error: null };
+                    return { session, error: null };
                 }
                 if (!readRefreshLock()) break;
                 await wait(200);
             }
             const settled = readStoredAuthSession();
             if (settled?.user && accessTokenStillValid(settled)) {
-                return { data: settled, error: null };
+                return { session: settled, error: null };
             }
         }
 
@@ -241,14 +255,53 @@
         }
     }
 
+    function sessionFromRefreshResult(result) {
+        if (result?.session?.access_token) return result.session;
+        if (result?.data?.session?.access_token) return result.data.session;
+        if (result?.data?.access_token && result?.data?.user) return result.data;
+        return null;
+    }
+
     function patchSharedAuth(client) {
         if (!client?.auth || client.__citeflowAuthPatched) return;
         client.__citeflowAuthPatched = true;
         const originalRefresh = client.auth.refreshSession.bind(client.auth);
         const originalGetUser = client.auth.getUser.bind(client.auth);
+        const originalSignOut = client.auth.signOut.bind(client.auth);
+        const originalRemoveSession = typeof client.auth._removeSession === 'function'
+            ? client.auth._removeSession.bind(client.auth)
+            : null;
         const originalCallRefresh = typeof client.auth._callRefreshToken === 'function'
             ? client.auth._callRefreshToken.bind(client.auth)
             : null;
+
+        // GoTrue treats invalid_grant / AuthSessionMissingError as "signed out"
+        // and deletes the sb-* token. A second page refreshing the same token
+        // during navigation produces that error while the access token is still
+        // good. Only an explicit signOut may clear it.
+        if (originalRemoveSession) {
+            client.auth._removeSession = function () {
+                if (client.__citeflowExplicitSignOut || window.__citeflowAllowAuthStorageDelete) {
+                    return originalRemoveSession();
+                }
+                const stored = readStoredAuthSession();
+                console.warn('[AUTH TRACE] blocked automatic session removal', {
+                    path: window.location.pathname,
+                    userId: stored?.user?.id || null,
+                    expiresAt: stored?.expires_at || null
+                });
+                return Promise.resolve();
+            };
+        }
+        client.auth.signOut = function (options) {
+            console.warn('[AUTH TRACE] signOut called', { path: window.location.pathname });
+            client.__citeflowExplicitSignOut = true;
+            window.__citeflowAllowAuthStorageDelete = true;
+            return Promise.resolve(originalSignOut(options)).finally(() => {
+                client.__citeflowExplicitSignOut = false;
+                window.__citeflowAllowAuthStorageDelete = false;
+            });
+        };
         client.auth.refreshSession = function (currentSession) {
             if (window.__citeflowRefreshInFlight) return window.__citeflowRefreshInFlight;
             window.__citeflowRefreshInFlight = Promise.resolve()
@@ -257,12 +310,56 @@
             return window.__citeflowRefreshInFlight;
         };
         if (originalCallRefresh) {
+            // __loadSession and _refreshSession read `{ data, error }`, where
+            // `data` is the session itself. Returning `{ session }` made
+            // getSession() come back empty and the auth guard send the user
+            // to login. A still-valid access token must not be refreshed just
+            // because this page loaded.
             client.auth._callRefreshToken = function (refreshToken) {
+                const storedNow = readStoredAuthSession();
+                if (storedNow && accessTokenStillValid(storedNow)) {
+                    if (!window.__citeflowLoggedRefreshSkip) {
+                        window.__citeflowLoggedRefreshSkip = true;
+                        console.info('[AUTH TRACE] refresh skipped', {
+                            path: window.location.pathname,
+                            userId: storedNow.user?.id || null,
+                            reason: 'access token still valid'
+                        });
+                    }
+                    return Promise.resolve({ data: storedNow, error: null });
+                }
                 if (window.__citeflowCallRefreshInFlight) return window.__citeflowCallRefreshInFlight;
+                console.info('[AUTH TRACE] refresh started', { path: window.location.pathname });
                 window.__citeflowCallRefreshInFlight = coordinateRefresh(refreshToken, originalCallRefresh)
+                    .then((result) => {
+                        const session = sessionFromRefreshResult(result);
+                        const error = result?.error || null;
+                        console.info('[AUTH TRACE] refresh finished', {
+                            path: window.location.pathname,
+                            ok: Boolean(!error && session?.access_token),
+                            userId: session?.user?.id || null
+                        });
+                        if (!error && session?.access_token) return { data: session, error: null };
+                        const latest = readStoredAuthSession();
+                        if (latest && accessTokenStillValid(latest)) {
+                            window.__citeflowRefreshCooldownUntil = Date.now() + 20000;
+                            console.warn('[AUTH TRACE] refresh failed; keeping the unexpired access token', error);
+                            return { data: latest, error: null };
+                        }
+                        return { data: session || null, error };
+                    })
                     .finally(() => { window.__citeflowCallRefreshInFlight = null; });
                 return window.__citeflowCallRefreshInFlight;
             };
+        }
+        if (!client.__citeflowAuthEventLogged && typeof client.auth.onAuthStateChange === 'function') {
+            client.__citeflowAuthEventLogged = true;
+            client.auth.onAuthStateChange((event, session) => {
+                console.info('[AUTH TRACE] auth event', event, {
+                    path: window.location.pathname,
+                    userId: session?.user?.id || null
+                });
+            });
         }
         client.auth.getUser = async function (jwt) {
             if (!jwt) {

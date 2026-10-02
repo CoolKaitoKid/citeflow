@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/supabase-config.js?v=auth-mfo-keep-1"></script>
     <script src="../shared/workflow.js?v=chair-review-8"></script>
 <!--     <script src="../shared/auth-guard.js?v=chair-review-8"></script>  -->
     <script src="../shared/cite-settings.js"></script>
@@ -2328,6 +2328,22 @@ function formatDateTime(iso) {
     return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+function formatWorkflowNotificationTime(iso) {
+    if (window.CiteFlowNotifPresentation?.formatRelativeTime) {
+        return window.CiteFlowNotifPresentation.formatRelativeTime(iso);
+    }
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('en-US', {
+        timeZone: 'Asia/Manila',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -3857,7 +3873,7 @@ function renderDetailSubmissionList(rows) {
         const mfoBadge = isMfo ? `<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-weight:600;font-size:11px;padding:2px 8px;border-radius:9999px;">MFO Report</span>` : '';
         const mfoCard = (hasSubmission && isMfo && typeof mfoReportLinkHtml === 'function') ? mfoReportLinkHtml(task, s) : '';
         const mfoBtn = (hasSubmission && isMfo) ? `
-            <a href="../faculty/mfo-report.html?submission=${encodeURIComponent(s.submission_id)}&view=review" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:6px">
+            <a href="mfo-viewer.html?submission=${encodeURIComponent(s.submission_id)}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:6px">
                 <i class="fa-solid fa-file-invoice"></i> Open MFO Report
             </a>
         ` : '';
@@ -4798,7 +4814,7 @@ function renderNotifications() {
         <div class="dropdown-item notif-target ${n.is_read ? '' : 'bg-blue-50'}" onclick="openNotificationTarget('${n.id}')">
             <div class="flex-1">
                 <div class="text-sm text-gray-800">${escapeHtml(n.message)}</div>
-                <div class="text-xs text-gray-400 mt-0.5">${formatDateTime(n.created_at)}</div>
+                <div class="text-xs text-gray-400 mt-0.5">${formatWorkflowNotificationTime(n.created_at)}</div>
             </div>
             ${n.is_read ? '' : '<div class="w-2 h-2 bg-blue-500 rounded-full"></div>'}
         </div>
@@ -6562,9 +6578,9 @@ async function applyReviewRealtime(submissionId, newStatus, comment, labels, typ
 }
 
 /**
- * The evidence files are not the report. An MFO submission's report lives in
- * the mfo_* tables, and opens read-only in the same official-template renderer
- * the faculty member previews, so link it above the attachment list.
+ * The evidence files are not the report. Faculty submit stores the finished
+ * MFO as one PDF on wf_submission_files (mfo_indicator = submitted_mfo_pdf).
+ * Admin opens that stored file, not the faculty form.
  */
 /**
  * Case B indicator. A submission that requires Chairperson review, in a
@@ -6634,7 +6650,7 @@ function isMfoSubmission(task, sub) {
 function mfoReportLinkHtml(task, sub) {
     if (!sub?.submission_id) return '';
     if (!isMfoSubmission(task, sub)) return '';
-    const url = `../faculty/mfo-report.html?submission=${encodeURIComponent(sub.submission_id)}&view=review`;
+    const url = `mfo-viewer.html?submission=${encodeURIComponent(sub.submission_id)}`;
     return `
         <div style="margin-bottom:12px;padding:14px 16px;border-radius:12px;background:linear-gradient(135deg,#fff8f6 0%,#fff0eb 100%);border:1.5px solid #fbdacf;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:12px">

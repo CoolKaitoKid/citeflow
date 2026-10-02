@@ -677,10 +677,19 @@
   }
 
   function formatNotifDate(value) {
+    const api = presentationApi();
+    if (typeof api?.formatRelativeTime === 'function') return api.formatRelativeTime(value);
     if (!value) return '';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleString('en-US', {
+      timeZone: 'Asia/Manila',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
   }
 
   function notifBody(item) {

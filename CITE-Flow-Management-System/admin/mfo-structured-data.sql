@@ -969,7 +969,32 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   SELECT p_faculty_id IS NOT NULL
-     AND p_faculty_id::text = (public.wf_current_faculty()).id::text;
+     AND auth.uid() IS NOT NULL
+     AND EXISTS (
+       SELECT 1
+       FROM public.faculty f
+       WHERE f.id = p_faculty_id
+         AND (
+           f.auth_user_id::text = auth.uid()::text
+           OR (
+             f.auth_user_id IS NULL
+             AND nullif(lower(trim(coalesce(auth.jwt() ->> 'email', ''))), '') IS NOT NULL
+             AND (
+               lower(trim(coalesce(f.email, ''))) = lower(trim(auth.jwt() ->> 'email'))
+               OR lower(trim(coalesce(f.existing_email, ''))) = lower(trim(auth.jwt() ->> 'email'))
+             )
+             AND (
+               SELECT count(*)::integer
+               FROM public.faculty f2
+               WHERE f2.auth_user_id IS NULL
+                 AND (
+                   lower(trim(coalesce(f2.email, ''))) = lower(trim(auth.jwt() ->> 'email'))
+                   OR lower(trim(coalesce(f2.existing_email, ''))) = lower(trim(auth.jwt() ->> 'email'))
+                 )
+             ) = 1
+           )
+         )
+     );
 $$;
 
 CREATE OR REPLACE FUNCTION public.mfo_can_select_packet(p public.mfo_packets)
@@ -979,7 +1004,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT p IS NOT NULL AND (
+  SELECT p.id IS NOT NULL AND (
     public.wf_is_final_approver()
     OR public.mfo_owns_faculty_id(p.faculty_id)
     OR EXISTS (
@@ -1004,7 +1029,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT p IS NOT NULL AND (
+  SELECT p.id IS NOT NULL AND (
     public.wf_is_final_approver()
     OR public.mfo_owns_faculty_id(p.faculty_id)
   );
@@ -1017,7 +1042,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT p IS NOT NULL AND (
+  SELECT p.id IS NOT NULL AND (
     public.wf_is_final_approver()
     OR public.wf_normalize_dept(p.department) = public.wf_faculty_department(public.wf_current_faculty())
     OR (
@@ -1036,7 +1061,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT p IS NOT NULL AND (
+  SELECT p.id IS NOT NULL AND (
     public.wf_is_final_approver()
     OR (
       public.wf_has_active_chairperson_grant(public.wf_current_faculty())
@@ -1055,19 +1080,47 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  pack public.mfo_packets;
-  prog public.mfo_program_packets;
+  owner_id bigint;
+  submission_id uuid;
+  dept text;
 BEGIN
   IF public.wf_is_final_approver() THEN
     RETURN true;
   END IF;
   IF p_packet_id IS NOT NULL THEN
-    SELECT * INTO pack FROM public.mfo_packets WHERE id = p_packet_id;
-    RETURN public.mfo_can_select_packet(pack);
+    SELECT faculty_id, mfo_packets.submission_id, department
+    INTO owner_id, submission_id, dept
+    FROM public.mfo_packets
+    WHERE id = p_packet_id;
+    IF NOT FOUND THEN
+      RETURN false;
+    END IF;
+    RETURN public.mfo_owns_faculty_id(owner_id)
+      OR EXISTS (
+        SELECT 1
+        FROM public.wf_submissions s
+        WHERE s.id = submission_id
+          AND public.wf_chairperson_can_browse_submission(s)
+      )
+      OR (
+        public.wf_has_active_chairperson_grant(public.wf_current_faculty())
+        AND public.wf_normalize_dept(dept) = ANY (
+          public.wf_chairperson_authorized_departments(public.wf_current_faculty())
+        )
+      );
   END IF;
   IF p_program_packet_id IS NOT NULL THEN
-    SELECT * INTO prog FROM public.mfo_program_packets WHERE id = p_program_packet_id;
-    RETURN public.mfo_can_select_program_packet(prog);
+    SELECT department INTO dept FROM public.mfo_program_packets WHERE id = p_program_packet_id;
+    IF NOT FOUND THEN
+      RETURN false;
+    END IF;
+    RETURN public.wf_normalize_dept(dept) = public.wf_faculty_department(public.wf_current_faculty())
+      OR (
+        public.wf_has_active_chairperson_grant(public.wf_current_faculty())
+        AND public.wf_normalize_dept(dept) = ANY (
+          public.wf_chairperson_authorized_departments(public.wf_current_faculty())
+        )
+      );
   END IF;
   RETURN false;
 END;
@@ -1081,19 +1134,28 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  pack public.mfo_packets;
-  prog public.mfo_program_packets;
+  owner_id bigint;
+  dept text;
 BEGIN
   IF public.wf_is_final_approver() THEN
     RETURN true;
   END IF;
   IF p_packet_id IS NOT NULL THEN
-    SELECT * INTO pack FROM public.mfo_packets WHERE id = p_packet_id;
-    RETURN public.mfo_can_write_packet(pack);
+    SELECT faculty_id INTO owner_id FROM public.mfo_packets WHERE id = p_packet_id;
+    IF NOT FOUND THEN
+      RETURN false;
+    END IF;
+    RETURN public.mfo_owns_faculty_id(owner_id);
   END IF;
   IF p_program_packet_id IS NOT NULL THEN
-    SELECT * INTO prog FROM public.mfo_program_packets WHERE id = p_program_packet_id;
-    RETURN public.mfo_can_write_program_packet(prog);
+    SELECT department INTO dept FROM public.mfo_program_packets WHERE id = p_program_packet_id;
+    IF NOT FOUND THEN
+      RETURN false;
+    END IF;
+    RETURN public.wf_has_active_chairperson_grant(public.wf_current_faculty())
+      AND public.wf_normalize_dept(dept) = ANY (
+        public.wf_chairperson_authorized_departments(public.wf_current_faculty())
+      );
   END IF;
   RETURN false;
 END;
