@@ -761,11 +761,12 @@
                                         <th class="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Period</th>
                                         <th class="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
                                         <th class="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Submitted</th>
+                                        <th class="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                                         <th class="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="reportSubmissionsBody">
-                                    <tr><td colspan="4" class="py-6 text-center text-slate-400">No report submissions yet.</td></tr>
+                                    <tr><td colspan="5" class="py-6 text-center text-slate-400">No report submissions yet.</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -3095,7 +3096,8 @@ function unpackResearchProject(project) {
     let mediaFiles = Array.isArray(project.media_files) ? [...project.media_files] : [];
     let links = Array.isArray(project.links) ? [...project.links] : [];
     if (project.description && project.description.includes('CITEFLOW_RESEARCH_DATA:')) {
-        const matches = [...project.description.matchAll(/<!--\s*CITEFLOW_RESEARCH_DATA:(.*?)\s*--\>/gi)];
+        const researchMarker = new RegExp('<' + '!--\\s*CITEFLOW_RESEARCH_DATA:(.*?)\\s*--' + '>', 'gi');
+        const matches = [...project.description.matchAll(researchMarker)];
         if (matches.length > 0) {
             const lastMatch = matches[matches.length - 1];
             try {
@@ -3143,7 +3145,8 @@ function unpackDocument(doc) {
     let extensionProjectId = doc.extension_project_id || null;
     let subCategory = doc.sub_category || null;
     if (doc.description && doc.description.includes('CITEFLOW_DOC_DATA:')) {
-        const matches = [...doc.description.matchAll(/<!--\s*CITEFLOW_DOC_DATA:(.*?)\s*--\>/gi)];
+        const docMarker = new RegExp('<' + '!--\\s*CITEFLOW_DOC_DATA:(.*?)\\s*--' + '>', 'gi');
+        const matches = [...doc.description.matchAll(docMarker)];
         if (matches.length > 0) {
             const lastMatch = matches[matches.length - 1];
             try {
@@ -4763,7 +4766,7 @@ async function saveResearchUpload() {
             funding_source: fundingSource,
             budget: budget
         };
-        const metaComment = `<!-- CITEFLOW_RESEARCH_DATA:${encodeURIComponent(JSON.stringify(metaPayload))} -->`;
+        const metaComment = '<' + '!-- CITEFLOW_RESEARCH_DATA:' + encodeURIComponent(JSON.stringify(metaPayload)) + ' --' + '>';
         const fullDescription = description ? `${description}\n\n${metaComment}` : metaComment;
 
         const payload = {
@@ -6811,6 +6814,25 @@ async function loadReportSubmissions() {
     renderReportSubmissionsTable(data || []);
 }
 
+function reportSubmissionStatusLabel(status) {
+    const value = String(status || 'draft').toLowerCase();
+    const labels = {
+        draft: 'Draft',
+        submitted: 'Submitted',
+        underreview: 'Under Review',
+        chair_approved: 'Under Review',
+        revision: 'Revision Required',
+        rejected: 'Rejected',
+        approved: 'Approved',
+        dean_approved: 'Approved'
+    };
+    if (labels[value]) return labels[value];
+    if (window.CiteFlowWorkflow && typeof window.CiteFlowWorkflow.formatAccomplishmentReportStatus === 'function') {
+        return window.CiteFlowWorkflow.formatAccomplishmentReportStatus(value);
+    }
+    return 'Draft';
+}
+
 function renderReportSubmissionsTable(submissions) {
     const badge = document.getElementById('acc-subview-subs-badge');
     if (badge) badge.classList.add('hidden');
@@ -6819,7 +6841,7 @@ function renderReportSubmissionsTable(submissions) {
     if (!tbody) return;
 
     if (!submissions.length) {
-        tbody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-400">No report submissions yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-400">No report submissions yet.</td></tr>';
         return;
     }
 
@@ -6829,6 +6851,7 @@ function renderReportSubmissionsTable(submissions) {
         const typeLabel = s.report_type === 'online' ? 'Online/WFH' : 'Face-to-Face';
         const period = `${formatDate(s.period_start)} – ${formatDate(s.period_end)}`;
         const submitted = formatDate(s.submitted_at || s.created_at);
+        const statusLabel = reportSubmissionStatusLabel(s.status);
         const actions = s.report_pdf_url
             ? `<a href="${esc(s.report_pdf_url)}" target="_blank" rel="noopener" class="text-xs text-blue-600 hover:underline">View PDF</a>`
             : '<span class="text-xs text-slate-400">No PDF</span>';
@@ -6837,6 +6860,7 @@ function renderReportSubmissionsTable(submissions) {
             <td class="py-3 px-4 text-sm text-slate-700">${period}</td>
             <td class="py-3 px-4 text-sm text-slate-700">${typeLabel}</td>
             <td class="py-3 px-4 text-sm text-slate-700">${submitted}</td>
+            <td class="py-3 px-4 text-sm text-slate-700">${esc(statusLabel)}</td>
             <td class="py-3 px-4">${actions}</td>
         </tr>`;
     }).join('');
