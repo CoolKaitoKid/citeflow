@@ -1748,8 +1748,35 @@ async function readScheduleManifest(eventId){
     }
     return null;
 }
+async function loadEventMediaRow(e){
+    if(!e || e.isLeave || e.mediaLoaded) return e;
+    const id=String(e.realId||'').trim();
+    if(!id || !canUseSupabase()) return e;
+    try {
+        const result=await withTimeout(
+            supabaseClient.from('calendar_events')
+                .select('attachments,attachment_url,attachment_name,external_link,link_url,notes,feedback_instructions')
+                .eq('id', id)
+                .maybeSingle(),
+            20000
+        );
+        const row=result && !result.error ? result.data : null;
+        if(!row) return e;
+        const files=parseAttachments(row);
+        e.attachments=files;
+        e.attachmentUrl=files[0]?.url || row.attachment_url || '';
+        e.externalLink=String(row.external_link||row.link_url||e.externalLink||'').trim();
+        if(row.notes!=null) e.notes=cleanNotes(row.notes);
+        if(row.feedback_instructions) e.feedbackInstructions=row.feedback_instructions;
+        e.mediaLoaded=true;
+    } catch (err) {
+        console.warn('Could not load schedule attachments', err);
+    }
+    return e;
+}
 async function hydrateScheduleMedia(e){
     if(!e || e.isLeave) return e;
+    await loadEventMediaRow(e);
     const fromRow=parseAttachments(e);
     const colLink=String(e.externalLink||e.external_link||e.link_url||'').trim();
     if(fromRow.length || colLink){
@@ -2172,7 +2199,10 @@ async function loadOwnLeaves(){
         return [];
     }
 }
+const CALENDAR_EVENT_LIST_COLUMNS='id,title,event_type,location,start_at,end_at,all_day,priority,visibility,visibility_scope,notes,requires_feedback,feedback_instructions,external_link,link_url,attachment_name';
+let calendarLoadSeq=0;
 async function loadCalendarEvents(){
+    const seq=++calendarLoadSeq;
     status('loading calendar...');
     if(!canUseSupabase()){
         status('');
@@ -2181,20 +2211,31 @@ async function loadCalendarEvents(){
     }
     let data=null, error=null;
     try {
-        const result=await withTimeout(supabaseClient.from('calendar_events').select('*').order('start_at',{ascending:true}), 8000);
+        const result=await withTimeout(
+            supabaseClient.from('calendar_events').select(CALENDAR_EVENT_LIST_COLUMNS).order('start_at',{ascending:true}),
+            15000
+        );
         data=result && result.data;
         error=result && result.error;
     } catch (err) {
         error=err;
     }
-    if(error){console.error(error);status('Calendar table not ready.');events=[]}
-    else{
-        events=(data||[]).filter(facultyCanSee).flatMap(r=>scheduleCalendarEntries(r));
+    if(seq!==calendarLoadSeq) return;
+    let scheduleEntries=[];
+    if(error){
+        console.error(error);
+        status(events.length ? '' : 'Calendar table not ready.');
+    } else {
+        scheduleEntries=(data||[]).filter(facultyCanSee).flatMap(r=>scheduleCalendarEntries(r));
         status('');
     }
     const leaveEntries=await loadOwnLeaves();
-    const keep=events.filter(e=>!e.isLeave);
-    events=keep.concat(leaveEntries);
+    if(seq!==calendarLoadSeq) return;
+    if(!error) events=scheduleEntries.concat(leaveEntries);
+    else if(leaveEntries.length){
+        const keep=events.filter(e=>!e.isLeave);
+        events=keep.concat(leaveEntries);
+    }
 
     renderCalendar();
     openPendingCalendarNotification();
