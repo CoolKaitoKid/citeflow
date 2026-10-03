@@ -164,10 +164,10 @@
     function normalizeRoleValue(role) {
         const r = normalizeText(role);
         if (!r) return '';
-        if (r === 'administrator' || r === 'admin') return 'admin';
-        if (r === 'dean') return 'dean';
-        if (r.includes('secretary') || r === 'college secretary') return 'college_secretary';
-        if (r.includes('chair')) return 'chairperson';
+        if (r.includes('superadmin') || r.includes('administrator') || r === 'admin' || r.includes('system admin') || r.includes('workflow admin')) return 'admin';
+        if (r.includes('dean')) return 'dean';
+        if (r.includes('secretary')) return 'college_secretary';
+        if (r.includes('chair') || r.includes('oic') || r.includes('head')) return 'chairperson';
         if (r === 'faculty') return 'faculty';
         return r;
     }
@@ -196,12 +196,20 @@
         if (!faculty) return { role: '', admin_access: false };
         const fromRole = normalizeRoleValue(faculty.role);
         const fromPosition = normalizeRoleValue(faculty.position || faculty.raw_role);
-        const role = fromRole === 'chairperson' || fromPosition === 'chairperson'
-            ? 'chairperson'
-            : (fromRole || fromPosition);
+        const adminRoles = ['admin', 'dean', 'college_secretary', 'administrator', 'superadmin'];
+        let role = '';
+        if (adminRoles.includes(fromRole)) {
+            role = fromRole;
+        } else if (adminRoles.includes(fromPosition)) {
+            role = fromPosition;
+        } else if (fromRole === 'chairperson' || fromPosition === 'chairperson') {
+            role = 'chairperson';
+        } else {
+            role = fromRole || fromPosition;
+        }
         return {
             role,
-            admin_access: faculty.admin_access === true
+            admin_access: faculty.admin_access === true || faculty.is_admin === true || adminRoles.includes(role)
         };
     }
 
@@ -215,9 +223,14 @@
 
     function isWorkflowAdmin(faculty) {
         if (!faculty) return false;
-        const { role } = normalizeRole(faculty);
-        return role === 'admin' || role === 'dean' || role === 'college_secretary' ||
-            role === 'administrator' || role === 'superadmin';
+        if (faculty.admin_access === true || faculty.is_admin === true) return true;
+        const { role, admin_access } = normalizeRole(faculty);
+        if (admin_access) return true;
+        const adminRoles = ['admin', 'dean', 'college_secretary', 'administrator', 'superadmin'];
+        if (adminRoles.includes(role)) return true;
+        const fromRole = normalizeRoleValue(faculty.role);
+        const fromPosition = normalizeRoleValue(faculty.position || faculty.raw_role);
+        return adminRoles.includes(fromRole) || adminRoles.includes(fromPosition);
     }
 
     function isFinalApprover(faculty) {
@@ -395,15 +408,32 @@
         return localStage;
     }
 
+    function normalizeStageValue(stage) {
+        const s = normalizeText(stage);
+        if (!s) return '';
+        if (s === 'final' || s === 'final_approver' || s === 'final_approval' || s === 'admin') return APPROVAL_STAGES.FINAL;
+        if (s === 'chairperson' || s === 'chair') return APPROVAL_STAGES.CHAIRPERSON;
+        if (s === 'approved') return APPROVAL_STAGES.APPROVED;
+        if (s === 'revision') return APPROVAL_STAGES.REVISION;
+        if (s === 'declined' || s === 'rejected') return APPROVAL_STAGES.DECLINED;
+        return s;
+    }
+
     function getApprovalStage(submission, config, task) {
-        const stored = submission?.approval_stage;
+        const stored = normalizeStageValue(submission?.approval_stage);
         const status = sanitizeDbStatus(submission?.status);
         const required = requiresChairpersonReview(config, task);
-        if (
-            required
-            && ['submitted', 'late'].includes(status)
-            && (!stored || stored === APPROVAL_STAGES.FINAL)
-        ) {
+
+        if (stored === APPROVAL_STAGES.FINAL) {
+            const hasBeenReviewed = !!(submission?.reviewed_at || submission?.reviewed_by_name || submission?.last_reviewed_by_role);
+            const isResubmission = Number(submission?.resubmission_count || 0) > 0;
+            if (required && ['submitted', 'late'].includes(status) && !hasBeenReviewed && !isResubmission) {
+                return APPROVAL_STAGES.CHAIRPERSON;
+            }
+            return APPROVAL_STAGES.FINAL;
+        }
+
+        if (required && ['submitted', 'late'].includes(status) && !stored) {
             return APPROVAL_STAGES.CHAIRPERSON;
         }
         if (stored) return stored;
@@ -771,7 +801,7 @@
 
     function canReviewAsFinalApprover(submission, actorFaculty, context) {
         if (!submission || !actorFaculty) return false;
-        if (isChairperson(actorFaculty)) return false;
+        if (isChairperson(actorFaculty) && !isWorkflowAdmin(actorFaculty) && !isFinalApprover(actorFaculty)) return false;
         if (!isFinalApprover(actorFaculty) && !isWorkflowAdmin(actorFaculty)) return false;
         const { config, task } = resolveReviewContext(context);
         const stage = getApprovalStage(submission, config, task);
@@ -1620,7 +1650,7 @@
     }
 
     async function applySubmissionReview(sb, options) {
-        const {
+        let {
             submissionId,
             submission,
             action,
@@ -1631,7 +1661,30 @@
             task,
             config,
             delegatedAccess
-        } = options;
+        } = options || {};
+
+        if (!actorFaculty && actorUser) {
+            try {
+                actorFaculty = await getCurrentFaculty(actorUser);
+            } catch (_) {}
+        }
+        if (!actorFaculty && actorUser) {
+            const meta = actorUser.user_metadata || {};
+            const metaRole = String(meta.role || '').toLowerCase();
+            const isAdmin = !metaRole || metaRole === 'admin' || metaRole === 'administrator' ||
+                metaRole === 'superadmin' || metaRole === 'dean' || metaRole.includes('secretary');
+            if (isAdmin) {
+                actorFaculty = normalizeFaculty({
+                    id: actorUser.id,
+                    auth_user_id: actorUser.id,
+                    full_name: meta.full_name || meta.name || [meta.first_name, meta.last_name].filter(Boolean).join(' ') || actorUser.email || 'Administrator',
+                    email: actorUser.email,
+                    role: metaRole || 'admin',
+                    department: meta.department || 'All',
+                    admin_access: true
+                });
+            }
+        }
 
         const actorName = getActorDisplayName(actorFaculty, actorUser);
         const stage = getApprovalStage(submission, config, task);
