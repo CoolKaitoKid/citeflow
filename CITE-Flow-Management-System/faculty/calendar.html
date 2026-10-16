@@ -1029,6 +1029,81 @@ select.modal-field {
 </head>
 <body class="bg-gray-50 overflow-x-hidden min-h-screen" data-portal="faculty">
 
+<!-- BIRTHDAY CELEBRATION MODAL -->
+<div id="birthday-modal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[2600] p-3 sm:p-4 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[92vh] flex flex-col my-auto border border-pink-100 animate-in fade-in zoom-in-95 duration-200">
+        
+        <!-- Festive Celebration Header -->
+        <div class="relative px-6 pt-7 pb-6 bg-gradient-to-br from-[#621708] via-[#831843] to-[#9d174d] text-white overflow-hidden text-center shrink-0">
+            <canvas id="bday-confetti-canvas" class="absolute inset-0 pointer-events-none w-full h-full z-0"></canvas>
+            
+            <button onclick="closeBirthdayModal()" class="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition z-10" aria-label="Close">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+
+            <div class="relative z-10 flex flex-col items-center">
+                <div class="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center text-3xl shadow-inner mb-3">
+                    🎂
+                </div>
+                <span class="px-3 py-0.5 rounded-full bg-pink-500/30 border border-pink-300/40 text-[10.5px] font-bold tracking-widest uppercase text-pink-200 mb-1.5">
+                    Faculty Milestone Celebration
+                </span>
+                <h2 id="bday-celebrant-name" class="text-xl sm:text-2xl font-black text-white tracking-tight drop-shadow-sm"></h2>
+                <p id="bday-date-badge" class="text-xs text-pink-100 font-medium mt-1 opacity-90"></p>
+            </div>
+        </div>
+
+        <!-- Scrollable Wishes & Card Body -->
+        <div class="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1 bg-slate-50/50">
+            
+            <!-- Warm Faculty Message -->
+            <div class="bg-white rounded-2xl p-4 border border-rose-100 shadow-sm relative overflow-hidden">
+                <div class="absolute -right-2 -bottom-2 text-rose-100 opacity-50 text-5xl pointer-events-none">
+                    <i class="fa-solid fa-cake-candles"></i>
+                </div>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-rose-900 mb-1 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sparkles text-amber-500"></i> Warmest Greetings
+                </h3>
+                <p class="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                    Wishing you abundant happiness, good health, and continued fulfillment in your teaching journey and service to the university!
+                </p>
+            </div>
+
+            <!-- Wishes & Comments Section -->
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-comments text-[#621708]"></i> Birthday Wishes & Messages
+                    </h3>
+                    <span id="bday-wishes-count" class="text-[10px] font-bold px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full">0 messages</span>
+                </div>
+
+                <!-- Wishes Feed -->
+                <div id="bday-wishes-list" class="space-y-2.5 max-h-48 overflow-y-auto pr-1"></div>
+
+                <!-- Add a Wish / Comment Box -->
+                <div class="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-sm space-y-2.5">
+                    <!-- Quick Preset Wish Chips -->
+                    <div class="flex flex-wrap gap-1.5">
+                        <button type="button" onclick="setQuickWish('🎂 Happy Birthday! Wishing you good health and more blessings!')" class="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 px-2 py-1 rounded-lg transition">🎉 Good health & blessings</button>
+                        <button type="button" onclick="setQuickWish('💐 Happy Birthday Ma\'am/Sir! Enjoy your special day!')" class="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 px-2 py-1 rounded-lg transition">💐 Enjoy your day!</button>
+                        <button type="button" onclick="setQuickWish('🥳 Best wishes on your birthday from the CITE family!')" class="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 px-2 py-1 rounded-lg transition">🥳 From CITE family</button>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <input id="bday-wish-input" type="text" placeholder="Write a warm birthday wish..." class="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-[#621708] focus:bg-white text-slate-800">
+                        <button type="button" onclick="postBirthdayWish()" class="px-3.5 py-2 bg-[#621708] hover:bg-[#831843] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition">
+                            <span>Send</span>
+                            <i class="fa-solid fa-paper-plane text-[10px]"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
 <div class="flex min-h-screen">
     <div id="sidebar-container"></div>
     <main class="flex-1 min-h-screen ml-0 md:ml-[220px] app-surface w-full overflow-x-hidden transition-all duration-300">
@@ -1624,6 +1699,8 @@ function facultyCanSee(row){
     return CalendarNotifications.facultySeesEvent(row, currentFacultyProfile);
 }
 
+
+
 function formatPrintDate(value) {
     if (!value) return '';
     const str = String(value).trim();
@@ -1749,9 +1826,10 @@ async function readScheduleManifest(eventId){
     return null;
 }
 async function loadEventMediaRow(e){
-    if(!e || e.isLeave || e.mediaLoaded) return e;
+    // Added: e.isBirthday guard
+    if(!e || e.isLeave || e.isBirthday || e.mediaLoaded) return e;
     const id=String(e.realId||'').trim();
-    if(!id || !canUseSupabase()) return e;
+    if(!id || !canUseSupabase() || id.startsWith('birthday-')) return e;
     try {
         const result=await withTimeout(
             supabaseClient.from('calendar_events')
@@ -1872,14 +1950,42 @@ function formatLeaveRangeLabel(start,end){
     if(from===to) return longDate(from);
     return `${longDate(from)} – ${longDate(to)}`;
 }
-function isOwnLeave(row){
-    const authId=currentFacultyUser?.id;
-    const facultyId=currentFacultyProfile?.id;
-    if(authId && String(row.auth_user_id||'')===String(authId)) return true;
-    if(facultyId!=null && row.faculty_id!=null && String(row.faculty_id)===String(facultyId)) return true;
-    const last=String(currentFacultyProfile?.last_name||'').trim().toLowerCase();
-    const first=String(currentFacultyProfile?.first_name||'').trim().toLowerCase();
-    if(last && first && String(row.last_name||'').trim().toLowerCase()===last && String(row.first_name||'').trim().toLowerCase()===first) return true;
+function isOwnLeave(row) {
+    if (!row) return false;
+
+    const authId = currentFacultyUser?.id;
+    const facultyId = currentFacultyProfile?.id;
+
+    // 1. Match by Supabase Auth User ID
+    if (authId && row.auth_user_id && String(row.auth_user_id) === String(authId)) {
+        return true;
+    }
+
+    // 2. Match by Faculty Table ID
+    if (facultyId != null && row.faculty_id != null && String(row.faculty_id) === String(facultyId)) {
+        return true;
+    }
+
+    // 3. Fallback: Parse names (including nested form_data if unhydrated)
+    const formName = row.form_data?.name || {};
+    const rowLast = String(row.last_name || formName.last || '').trim().toLowerCase();
+    const rowFirst = String(row.first_name || formName.first || '').trim().toLowerCase();
+
+    const myLast = String(currentFacultyProfile?.last_name || '').trim().toLowerCase();
+    const myFirst = String(currentFacultyProfile?.first_name || '').trim().toLowerCase();
+
+    if (myLast && myFirst && rowLast === myLast && rowFirst === myFirst) {
+        return true;
+    }
+
+    // 4. Secondary Fallback: Match full_name / faculty_name strings
+    const rowFullName = String(row.faculty_name || `${rowFirst} ${rowLast}`).trim().toLowerCase();
+    const myFullName = String(currentFacultyProfile?.full_name || currentFacultyProfile?.name || `${myFirst} ${myLast}`).trim().toLowerCase();
+
+    if (myFullName && rowFullName && myFullName === rowFullName) {
+        return true;
+    }
+
     return false;
 }
 function isChairViewer(){
@@ -1898,18 +2004,26 @@ function looksChairperson(person){
     if(helper && typeof helper.isChairperson==='function' && helper.isChairperson(person)) return true;
     return /chair/i.test(String(person?.role || person?.position || person?.raw_role || person?.academic_rank || ''));
 }
-function applyChairCalendarChrome(){
-    const chair=isChairViewer();
-    const kicker=document.getElementById('cite-cal-kicker');
-    const title=document.getElementById('cite-cal-title');
-    const subtitle=document.getElementById('cite-cal-subtitle');
-    if(kicker) kicker.textContent = chair ? 'Chairperson Portal & Schedule' : 'Faculty Portal & Schedule';
-    if(title) title.textContent = chair ? 'Chairperson Calendar' : 'Faculty Calendar';
-    if(subtitle) {
+function applyChairCalendarChrome() {
+    const chair = isChairViewer();
+    const kicker = document.getElementById('cite-cal-kicker');
+    const title = document.getElementById('cite-cal-title');
+    const subtitle = document.getElementById('cite-cal-subtitle');
+
+    if (kicker) {
+        kicker.textContent = chair ? 'Chairperson Portal & Schedule' : 'Faculty Portal & Schedule';
+    }
+
+    if (title) {
+        title.textContent = chair ? 'Chairperson Calendar' : 'Faculty Calendar';
+    }
+
+    if (subtitle) {
         subtitle.textContent = chair
-            ? '0pen faculty File Leave filings as CSC Form No. 6. Schedules stay on this calendar.'
+            ? 'Open faculty File Leave filings as CSC Form No. 6. Schedules stay on this calendar.'
             : 'View admin schedules, announcements, and submit leave requests securely.';
     }
+
     document.title = chair ? 'Chairperson Calendar - CITE-Flow' : 'Faculty Calendar - CITE-Flow';
 }
 function chairCanSeeLeave(row){
@@ -1923,42 +2037,55 @@ function chairCanSeeLeave(row){
     if(leaveDept && (leaveDept===mine || leaveDept.includes(mine) || mine.includes(leaveDept))) return true;
     return false;
 }
-async function refreshChairpersonAccess(){
-    const profile=currentFacultyProfile || {};
-    const helper=window.CiteFlowWorkflow;
-    let access=looksChairperson(profile);
-    if(!access && helper && typeof helper.currentUserHasChairpersonGrant==='function' && canUseSupabase()){
+async function refreshChairpersonAccess() {
+    const profile = currentFacultyProfile || {};
+    const helper = window.CiteFlowWorkflow;
+    let access = looksChairperson(profile);
+
+    // 1. Check CiteFlowWorkflow helper grant
+    if (!access && helper && typeof helper.currentUserHasChairpersonGrant === 'function' && canUseSupabase()) {
         try {
-            access=!!(await helper.currentUserHasChairpersonGrant(supabaseClient, profile, currentFacultyUser));
+            access = !!(await helper.currentUserHasChairpersonGrant(supabaseClient, profile, currentFacultyUser));
         } catch (_) {}
     }
-    if(!access && canUseSupabase()){
+
+    // 2. Check delegated access table (Acting Chairperson / Temporary Delegate)
+    if (!access && canUseSupabase()) {
         try {
-            const grants=await withTimeout(supabaseClient.from('wf_delegated_access').select('*'), 2500);
-            const rows=(grants && grants.data) || [];
-            if(helper && typeof helper.hasChairpersonWorkflowAccess==='function'){
-                access=!!helper.hasChairpersonWorkflowAccess(profile, rows);
+            const grants = await withTimeout(supabaseClient.from('wf_delegated_access').select('*'), 2500);
+            const rows = (grants && grants.data) || [];
+            if (helper && typeof helper.hasChairpersonWorkflowAccess === 'function') {
+                access = !!helper.hasChairpersonWorkflowAccess(profile, rows);
             } else {
-                access=rows.some((g)=>g && g.is_active!==false && (
-                    String(g.grantee_faculty_id||'')===String(profile.id||'') ||
-                    String(g.grantee_auth_user_id||'')===String(currentFacultyUser?.id||'')
+                access = rows.some((g) => g && g.is_active !== false && (
+                    String(g.grantee_faculty_id || '') === String(profile.id || '') ||
+                    String(g.grantee_auth_user_id || '') === String(currentFacultyUser?.id || '')
                 ));
             }
         } catch (_) {}
     }
-    chairFacultyIds=new Set();
-    if(profile.id!=null) chairFacultyIds.add(String(profile.id));
-    if(access && canUseSupabase()){
+
+    // 3. Build the Set of faculty IDs belonging to this Chairperson's department
+    chairFacultyIds = new Set();
+    if (profile.id != null) chairFacultyIds.add(String(profile.id));
+
+    if (access && canUseSupabase()) {
         try {
-            const result=await withTimeout(supabaseClient.from('faculty').select('id, department, department_code, program, role, position'), 4000);
-            const mine=facultyDepartmentCode(profile);
-            (result && result.data || []).forEach((row)=>{
-                const dept=facultyDepartmentCode(row);
-                if(!mine || !dept || dept===mine) chairFacultyIds.add(String(row.id));
+            const result = await withTimeout(
+                supabaseClient.from('faculty').select('id, department, department_code, program, role, position'), 
+                4000
+            );
+            const mine = facultyDepartmentCode(profile);
+            (result && result.data || []).forEach((row) => {
+                const dept = facultyDepartmentCode(row);
+                if (!mine || !dept || dept === mine) {
+                    chairFacultyIds.add(String(row.id));
+                }
             });
         } catch (_) {}
     }
-    chairpersonAccess=!!access;
+
+    chairpersonAccess = !!access;
     applyChairCalendarChrome();
     return chairpersonAccess;
 }
@@ -2201,41 +2328,58 @@ async function loadOwnLeaves(){
 }
 const CALENDAR_EVENT_LIST_COLUMNS='id,title,event_type,location,start_at,end_at,all_day,priority,visibility,visibility_scope,notes,requires_feedback,feedback_instructions,external_link,link_url,attachment_name';
 let calendarLoadSeq=0;
-async function loadCalendarEvents(){
-    const seq=++calendarLoadSeq;
+async function loadCalendarEvents() {
+    const seq = ++calendarLoadSeq;
     status('loading calendar...');
-    if(!canUseSupabase()){
+
+    if (!canUseSupabase()) {
         status('');
         renderCalendar();
         return;
     }
-    let data=null, error=null;
+
+    let data = null, error = null;
     try {
-        const result=await withTimeout(
-            supabaseClient.from('calendar_events').select(CALENDAR_EVENT_LIST_COLUMNS).order('start_at',{ascending:true}),
+        const result = await withTimeout(
+            supabaseClient
+                .from('calendar_events')
+                .select(CALENDAR_EVENT_LIST_COLUMNS)
+                .order('start_at', { ascending: true }),
             15000
         );
-        data=result && result.data;
-        error=result && result.error;
+        data = result && result.data;
+        error = result && result.error;
     } catch (err) {
-        error=err;
+        error = err;
     }
-    if(seq!==calendarLoadSeq) return;
-    let scheduleEntries=[];
-    if(error){
+
+    // Abort if a newer request has started
+    if (seq !== calendarLoadSeq) return;
+
+    let scheduleEntries = [];
+    if (error) {
         console.error(error);
         status(events.length ? '' : 'Calendar table not ready.');
     } else {
-        scheduleEntries=(data||[]).filter(facultyCanSee).flatMap(r=>scheduleCalendarEntries(r));
+        scheduleEntries = (data || []).filter(facultyCanSee).flatMap(r => scheduleCalendarEntries(r));
         status('');
     }
-    const leaveEntries=await loadOwnLeaves();
-    if(seq!==calendarLoadSeq) return;
-    if(!error) events=scheduleEntries.concat(leaveEntries);
-    else if(leaveEntries.length){
-        const keep=events.filter(e=>!e.isLeave);
-        events=keep.concat(leaveEntries);
+
+    // Load leave entries (personal or department)
+    const leaveEntries = await loadOwnLeaves();
+    if (seq !== calendarLoadSeq) return;
+
+    if (!error) {
+        events = scheduleEntries.concat(leaveEntries);
+    } else if (leaveEntries.length) {
+        const keep = events.filter(e => !e.isLeave);
+        events = keep.concat(leaveEntries);
     }
+
+    // Load ALL faculty members' birthdays so Sir Morris's birthday shows on Jamyca's calendar
+    await loadAllFacultyBirthdays();
+    const allBdayEvents = generateAllBirthdayEvents(currentYear);
+    events = events.concat(allBdayEvents);
 
     renderCalendar();
     openPendingCalendarNotification();
@@ -2308,7 +2452,12 @@ function populateControls(){
     let ys=document.getElementById('year-select');ys.innerHTML='';for(let y=currentYear-5;y<=currentYear+6;y++)ys.innerHTML+=`<option value="${y}">${y}</option>`;
     ms.value=currentMonth;ys.value=currentYear;
 }
-function changeMonthYear(){currentMonth=+document.getElementById('month-select').value;currentYear=+document.getElementById('year-select').value;selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}
+function changeMonthYear() {
+    currentMonth = parseInt(document.getElementById('month-select').value);
+    currentYear = parseInt(document.getElementById('year-select').value);
+    updateBirthdayEventForYear(currentYear); // Added: updates birthday to selected year
+    renderCalendar();
+}
 function renderCalendar(){document.getElementById('month-select').value=currentMonth;document.getElementById('year-select').value=currentYear;renderGrid();renderMini();renderSelected();renderSeparatedUpcoming()}
 
 function renderGrid(){
@@ -2373,10 +2522,31 @@ function showAllForDate(d){
     const panel=document.getElementById('selected-day-panel');
     if(panel) panel.scrollIntoView({ behavior:'smooth', block:'start' });
 }
-function prevMonth(){currentMonth--;if(currentMonth<0){currentMonth=11;currentYear--}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}
-function nextMonth(){currentMonth++;if(currentMonth>11){currentMonth=0;currentYear++}selectedDate=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;renderCalendar()}
-function goToday(){now=new Date();currentMonth=now.getMonth();currentYear=now.getFullYear();selectedDate=key(now);renderCalendar()}
-
+function prevMonth() {
+    currentMonth--;
+    if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+    }
+    updateBirthdayEventForYear(currentYear); // Added
+    renderCalendar();
+}
+function nextMonth() {
+    currentMonth++;
+    if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+    }
+    updateBirthdayEventForYear(currentYear); // Added
+    renderCalendar();
+}
+function goToday() {
+    const now = new Date();
+    currentMonth = now.getMonth();
+    currentYear = now.getFullYear();
+    updateBirthdayEventForYear(currentYear); // Added
+    renderCalendar();
+}
 function leaveVal(id){return (document.getElementById(id)?.value||'').trim()}
 function leaveChecked(name){let el=document.querySelector(`input[name="${name}"]:checked`);return el?el.value:''}
 
@@ -2564,15 +2734,16 @@ function toggleCustomLeaveDatePicker(inputEl){
     lastLeavePickerToggleTime = now;
     openCustomLeaveDatePicker(inputEl);
 }
-
-function initCustomLeaveDatePickers(){
-    const dateInputIds = ['leave-date-filing', 'leave-start-date'];
+function initCustomLeaveDatePickers() {
+    // Added 'leave-end-date' so the end date picker also opens properly
+    const dateInputIds = ['leave-date-filing', 'leave-start-date', 'leave-end-date'];
+    
     dateInputIds.forEach(id => {
         const input = document.getElementById(id);
         if (!input || input.dataset.customPickerBound === '1') return;
         input.dataset.customPickerBound = '1';
 
-        const handleTrigger = function(e){
+        const handleTrigger = function(e) {
             if (leaveViewMode) return;
             if (e.button != null && e.button !== 0) return;
             e.preventDefault();
@@ -2583,7 +2754,7 @@ function initCustomLeaveDatePickers(){
         input.addEventListener('pointerdown', handleTrigger);
         input.addEventListener('mousedown', handleTrigger);
 
-        input.addEventListener('click', function(e){
+        input.addEventListener('click', function(e) {
             if (leaveViewMode) return;
             e.preventDefault();
             e.stopPropagation();
@@ -2595,7 +2766,7 @@ function initCustomLeaveDatePickers(){
         const wrap = input.closest('.cite-leave-date-wrap');
         if (wrap && wrap.dataset.customWrapBound !== '1') {
             wrap.dataset.customWrapBound = '1';
-            const handleWrapTrigger = function(e){
+            const handleWrapTrigger = function(e) {
                 if (leaveViewMode) return;
                 if (e.target.closest && e.target.closest('.cite-leave-datepicker-popover')) return;
                 if (e.target === input) return;
@@ -2604,7 +2775,7 @@ function initCustomLeaveDatePickers(){
                 toggleCustomLeaveDatePicker(input);
             };
             wrap.addEventListener('pointerdown', handleWrapTrigger);
-            wrap.addEventListener('click', function(e){
+            wrap.addEventListener('click', function(e) {
                 if (leaveViewMode) return;
                 if (e.target.closest && e.target.closest('.cite-leave-datepicker-popover')) return;
                 if (e.target === input) return;
@@ -2616,7 +2787,7 @@ function initCustomLeaveDatePickers(){
             });
         }
 
-        input.addEventListener('keydown', function(e){
+        input.addEventListener('keydown', function(e) {
             if (leaveViewMode) return;
             if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
                 e.preventDefault();
@@ -2629,7 +2800,7 @@ function initCustomLeaveDatePickers(){
 
     if (!window.__citeLeavePickerDocBound) {
         window.__citeLeavePickerDocBound = true;
-        document.addEventListener('pointerdown', function(e){
+        document.addEventListener('pointerdown', function(e) {
             if (!activeLeaveDatePicker) return;
             if (activeLeaveDatePicker.popover && activeLeaveDatePicker.popover.contains(e.target)) return;
             if (activeLeaveDatePicker.input && activeLeaveDatePicker.input.contains(e.target)) return;
@@ -2637,7 +2808,7 @@ function initCustomLeaveDatePickers(){
             closeCustomLeaveDatePicker();
         });
 
-        document.addEventListener('keydown', function(e){
+        document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' && activeLeaveDatePicker) {
                 closeCustomLeaveDatePicker();
             }
@@ -2895,23 +3066,162 @@ function preferFullMiddle(current, incoming){
     if (isInitialOnly(cur) && !isInitialOnly(next)) return next;
     return cur;
 }
-function mergeNameSource(target, source){
+function mergeNameSource(target, source) {
     if (!source || typeof source !== 'object') return target;
+
     const first = firstNonEmpty(source.first_name, source.firstname, source.given_name);
     const last = firstNonEmpty(source.last_name, source.lastname, source.surname);
     const middle = firstNonEmpty(source.middle_name, source.middlename, source.middle);
     if (first && !firstNonEmpty(target.first_name, target.firstname)) target.first_name = first;
     if (last && !firstNonEmpty(target.last_name, target.lastname)) target.last_name = last;
     if (middle) target.middle_name = preferFullMiddle(target.middle_name, middle);
+
     const full = firstNonEmpty(source.full_name, source.name);
     if (full && !firstNonEmpty(target.full_name, target.name)) target.full_name = full;
-    ['id','department','department_code','program','office','position','role','raw_role','academic_rank','email'].forEach(k=>{
+
+    // Added 'birthdate', 'auth_user_id', and 'faculty_id'
+    const extraKeys = [
+        'id', 'auth_user_id', 'faculty_id',
+        'department', 'department_code', 'program', 'office', 'position', 'role', 'raw_role', 'academic_rank', 'email',
+        'birthdate', 'date_of_birth', 'birth_date', 'birthday', 'dob',
+        'sex', 'gender'
+    ];
+
+    extraKeys.forEach(k => {
         if (source[k] != null && String(source[k]).trim() !== '' && (target[k] == null || String(target[k]).trim() === '')) {
             target[k] = source[k];
         }
     });
+
+    // Ensures target.birthdate is always populated if any DOB field exists
+    if (!target.birthdate) {
+        const dobVal = firstNonEmpty(target.birthdate, target.birth_date, target.date_of_birth, target.birthday, target.dob);
+        if (dobVal) target.birthdate = dobVal;
+    }
+
     return target;
 }
+
+
+let cachedAllFaculty = [];
+
+// Loads all faculty records from Supabase so everyone's birthday appears
+async function loadAllFacultyBirthdays() {
+    if (!canUseSupabase()) return;
+    try {
+        const { data, error } = await supabaseClient
+            .from('faculty')
+            .select('*');
+
+        if (error) {
+            console.error('❌ Supabase error reading faculty birthdays:', error);
+            return;
+        }
+
+        if (Array.isArray(data)) {
+            cachedAllFaculty = data;
+            console.log(`✅ Loaded ${cachedAllFaculty.length} faculty records for birthdays:`, cachedAllFaculty);
+        }
+    } catch (err) {
+        console.warn('Could not load faculty birthdays list:', err);
+    }
+}
+
+// Builds the calendar event object for any faculty member's birthday
+function getFacultyBirthdayEvent(profile, targetYear) {
+    if (!profile) return null;
+    const rawDob = profile.birthdate || profile.date_of_birth || profile.birth_date || profile.dob || profile.birthday;
+    if (!rawDob) return null;
+
+    let m = null, d = null;
+    if (typeof rawDob === 'string' && rawDob.includes('-')) {
+        const parts = rawDob.split('T')[0].split('-');
+        if (parts.length >= 3) {
+            m = parseInt(parts[1], 10);
+            d = parseInt(parts[2], 10);
+        }
+    } else {
+        const dobDate = new Date(rawDob);
+        if (!isNaN(dobDate.getTime())) {
+            m = dobDate.getMonth() + 1;
+            d = dobDate.getDate();
+        }
+    }
+
+    if (!m || !d || isNaN(m) || isNaN(d)) return null;
+
+    const mm = String(m).padStart(2, '0');
+    const dd = String(d).padStart(2, '0');
+    const targetDateKey = `${targetYear}-${mm}-${dd}`;
+
+    const facultyName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.full_name || profile.name || 'Faculty';
+    const formattedDate = (typeof longDate === 'function') ? longDate(targetDateKey) : targetDateKey;
+    const facId = profile.id || profile.auth_user_id || facultyName;
+
+    return {
+        id: `birthday-${facId}-${targetYear}`,
+        realId: `birthday-${facId}`,
+        title: `🎂 Birthday: ${facultyName}`,
+        date: targetDateKey,
+        event_date: targetDateKey,
+        startAt: `${targetDateKey}T00:00:00`,
+        endAt: `${targetDateKey}T23:59:59`,
+        start_time: '00:00:00',
+        end_time: '23:59:59',
+        time: 'All day',
+        detailTime: `${formattedDate} • Birthday`,
+        type: 'event',
+        event_type: 'birthday',
+        location: 'Celebration',
+        priority: 'Normal',
+        scope: 'personal',
+        notes: `Happy Birthday to ${facultyName}!`,
+        description: `Happy Birthday to ${facultyName}!`,
+        allDay: true,
+        isLeave: false,
+        schedulePrimary: true,
+        isBirthday: true
+    };
+}
+
+// Generates birthday calendar events for ALL faculty members
+function generateAllBirthdayEvents(targetYear) {
+    const result = [];
+    const seen = new Set();
+
+    // 1. Generate birthday events for all faculty in the directory
+    if (Array.isArray(cachedAllFaculty) && cachedAllFaculty.length > 0) {
+        cachedAllFaculty.forEach(fac => {
+            const status = String(fac.status || '').trim().toLowerCase();
+            if (status === 'resigned' || status === 'inactive') return;
+
+            const ev = getFacultyBirthdayEvent(fac, targetYear);
+            if (ev && !seen.has(ev.id)) {
+                seen.add(ev.id);
+                result.push(ev);
+            }
+        });
+    }
+
+    // 2. Also ensure current logged-in user is included
+    if (currentFacultyProfile) {
+        const myEv = getFacultyBirthdayEvent(currentFacultyProfile, targetYear);
+        if (myEv && !seen.has(myEv.id)) {
+            seen.add(myEv.id);
+            result.push(myEv);
+        }
+    }
+
+    return result;
+}
+
+// Re-evaluates birthdays when switching years or months
+function updateBirthdayEventForYear(year) {
+    events = events.filter(e => !e.isBirthday && !String(e.id || '').startsWith('birthday-'));
+    const allBdays = generateAllBirthdayEvents(year);
+    events = events.concat(allBdays);
+}
+
 function extractMiddleFromFullName(full, first, last){
     const name = String(full || '').trim();
     if (!name) return '';
@@ -2963,20 +3273,63 @@ async function fetchFacultyRow(user){
     }
     return null;
 }
-async function hydrateFacultyProfile(user, profile){
-    const merged = mergeNameSource({}, profile || {});
+async function hydrateFacultyProfile(user, profile) {
+    const merged = {};
+
+    // 1. Initial fallback from passed profile
+    if (profile) {
+        mergeNameSource(merged, profile);
+    }
+
+    // 2. Fallback from localStorage cache
     try {
         const cached = JSON.parse(localStorage.getItem('citeflow_user') || 'null');
-        mergeNameSource(merged, cached);
-        mergeNameSource(merged, cached && cached.user_metadata);
+        if (cached) {
+            mergeNameSource(merged, cached);
+            if (cached.user_metadata) mergeNameSource(merged, cached.user_metadata);
+            if (cached.faculty_id) merged.faculty_id = cached.faculty_id;
+            if (cached.birthdate) merged.birthdate = cached.birthdate;
+        }
     } catch (_) {}
-    mergeNameSource(merged, user && user.user_metadata);
+
+    // 3. Fallback from Auth user metadata
+    if (user?.user_metadata) {
+        mergeNameSource(merged, user.user_metadata);
+    }
+
+    // 4. Fetch official row from Supabase (HIGHEST PRIORITY SOURCE OF TRUTH)
     const row = await fetchFacultyRow(user);
-    if (row) mergeNameSource(merged, row);
+    if (row) {
+        // Overwrite merged with all valid database fields
+        Object.keys(row).forEach(k => {
+            if (row[k] != null && String(row[k]).trim() !== '') {
+                merged[k] = row[k];
+            }
+        });
+
+        // Ensure critical identity and date fields are explicitly mapped
+        merged.id = row.id;
+        merged.faculty_id = row.id;
+        merged.auth_user_id = row.auth_user_id || user?.id;
+        merged.department = row.department || merged.department;
+        merged.position = row.academic_rank || row.position || merged.position;
+        merged.role = row.role || merged.role;
+
+        // Explicitly set birthdate from any database column alias
+        const dbDob = row.birthdate || row.birth_date || row.date_of_birth || row.dob;
+        if (dbDob) {
+            merged.birthdate = dbDob;
+        }
+    } else {
+        merged.auth_user_id = user?.id || merged.id;
+    }
+
+    // 5. Resolve cleanly formatted First, Middle, and Last name parts
     const names = resolveLeaveNameParts(merged);
     if (names.first) merged.first_name = names.first;
     if (names.last) merged.last_name = names.last;
     if (names.middle) merged.middle_name = names.middle;
+
     return merged;
 }
 function fillLeaveNameFields(profile){
@@ -3296,31 +3649,41 @@ async function submitLeaveFiling(){
 }
 
 async function showEventDetails(id){
-    currentDetailEventId=id;
-    let e=events.find(x=>String(x.id)===String(id)
-        || String(x.realId)===String(id)
-        || String(x.id)===String(id).replace(/^event-|^leave-/,'')
-        || String(x.id)==='event-'+id
-        || String(x.id)==='leave-'+id
-        || String(x.id).replace(/^event-|^leave-/,'')===String(id).replace(/^event-|^leave-/,''));
-    if(!e)return;
+    currentDetailEventId = id;
+    let e = events.find(x => String(x.id) === String(id)
+        || String(x.realId) === String(id)
+        || String(x.id) === String(id).replace(/^event-|^leave-/,'')
+        || String(x.id) === 'event-' + id
+        || String(x.id) === 'leave-' + id
+        || String(x.id).replace(/^event-|^leave-/,'') === String(id).replace(/^event-|^leave-/,''));
+    if(!e) return;
+
+    // 1. Leave requests open CSC Form No. 6
     if(e.isLeave){
         await viewOwnLeaveForm(e);
         return;
     }
+
+    // 2. Birthday cards open the Celebratory Wish Wall & Confetti!
+    if(e.isBirthday || e.event_type === 'birthday' || e.type === 'birthday' || String(e.id || '').startsWith('birthday-')){
+        openBirthdayModal(e);
+        return;
+    }
+
+    // 3. Regular academic schedules (meetings, exams, seminars) continue below:
     await hydrateScheduleMedia(e);
-    document.getElementById('detail-title').textContent=e.title;
-    document.getElementById('detail-type').textContent=e.type.toUpperCase();
-    document.getElementById('detail-priority').textContent=e.priority;
-    document.getElementById('detail-time').textContent=e.detailTime || `${longDate(e.date)} • ${e.time}`;
-    document.getElementById('detail-location').textContent=e.location;
-    document.getElementById('detail-notes').textContent=cleanNotes(e.notes)||'No description provided.';
+    document.getElementById('detail-title').textContent = e.title;
+    document.getElementById('detail-type').textContent = (e.type || 'EVENT').toUpperCase();
+    document.getElementById('detail-priority').textContent = e.priority || 'Normal';
+    document.getElementById('detail-time').textContent = e.detailTime || `${longDate(e.date)} • ${e.time}`;
+    document.getElementById('detail-location').textContent = e.location || 'TBA';
+    document.getElementById('detail-notes').textContent = cleanNotes(e.notes) || 'No description provided.';
     renderDetailMedia(e);
 
-    document.getElementById('fb-summary').value='';
-    document.getElementById('fb-suggestions').value='';
-    document.getElementById('fb-content-quality').value='';
-    document.getElementById('fb-speaker-quality').value='';
+    document.getElementById('fb-summary').value = '';
+    document.getElementById('fb-suggestions').value = '';
+    document.getElementById('fb-content-quality').value = '';
+    document.getElementById('fb-speaker-quality').value = '';
 
     let wrapper = document.getElementById('feedback-container-wrapper');
     let activeContent = document.getElementById('feedback-active-content');
@@ -3500,12 +3863,13 @@ function pdfDrawPill(doc, x, y, w, e, customH){
     doc.setTextColor(style.text[0], style.text[1], style.text[2]);
     doc.text(pdfEllipsis(doc, e.title || '', maxW), x + 1.5, y + (h >= 6.2 ? 2.6 : 2.2));
 
-    doc.setFont('helvetica', 'normal');
+       doc.setFont('helvetica', 'normal');
     doc.setFontSize(h >= 6.2 ? 5.0 : 4.4);
     doc.setTextColor(style.text[0], style.text[1], style.text[2]);
     doc.text(pdfEllipsis(doc, pdfTimeLabel(e), maxW), x + 1.5, y + (h >= 6.2 ? 5.2 : 4.4));
     return h;
 }
+
 function loadPdfLibs(){
     if(window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
     const add=(src)=>new Promise((resolve,reject)=>{
@@ -3808,19 +4172,351 @@ function preloadPdf(){
     else setTimeout(run, 1200);
 }
 
-function applyCachedFacultyUser(){
+// =========================================================
+// FACULTY_BIRTHDAY_COMMENTS TABLE CONTROLLER
+// =========================================================
+let currentCelebrantEvent = null;
+
+async function fetchBirthdayComments(celebrantName, year) {
+    if (!canUseSupabase()) return [];
+    try {
+        const { data, error } = await supabaseClient
+            .from('faculty_birthday_comments')
+            .select('*')
+            .eq('celebrant_year', year)
+            .ilike('celebrant_name', celebrantName)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    } catch (err) {
+        console.warn('Could not load birthday comments:', err);
+        return [];
+    }
+}
+
+async function openBirthdayModal(event) {
+    currentCelebrantEvent = event;
+    const modal = document.getElementById('birthday-modal');
+    if (!modal) return;
+
+    let name = (event.title || '').replace(/^🎂\s*Birthday:\s*/i, '').trim();
+    if (!name) name = `${currentFacultyProfile?.first_name || ''} ${currentFacultyProfile?.last_name || ''}`.trim() || 'Colleague';
+
+    const year = parseInt(event.date ? event.date.slice(0, 4) : currentYear, 10);
+
+    document.getElementById('bday-celebrant-name').textContent = name;
+    document.getElementById('bday-date-badge').textContent = `${longDate(event.date)} • Campus Birthday Celebration`;
+    document.getElementById('bday-wish-input').value = '';
+
+    const listEl = document.getElementById('bday-wishes-list');
+    if (listEl) {
+        listEl.innerHTML = '<div class="text-xs text-slate-400 italic text-center py-4"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Loading birthday wishes...</div>';
+    }
+
+    modal.classList.remove('hidden');
+    setTimeout(() => launchBirthdayConfetti(), 100);
+
+    const comments = await fetchBirthdayComments(name, year);
+    renderBirthdayWishes(comments, name);
+}
+
+function closeBirthdayModal() {
+    const modal = document.getElementById('birthday-modal');
+    if (modal) modal.classList.add('hidden');
+    currentCelebrantEvent = null;
+}
+
+function formatCommentTime(isoStr) {
+    if (!isoStr) return 'Just now';
+    const d = new Date(isoStr);
+    if (Number.isNaN(d.getTime())) return 'Recently';
+    return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    }).format(d);
+}
+
+let currentLoadedBirthdayComments = [];
+
+function renderBirthdayWishes(comments, celebrantName) {
+    const listEl = document.getElementById('bday-wishes-list');
+    const countEl = document.getElementById('bday-wishes-count');
+    if (!listEl) return;
+
+    currentLoadedBirthdayComments = Array.isArray(comments) ? comments : [];
+    const list = currentLoadedBirthdayComments;
+
+    if (countEl) countEl.textContent = `${list.length} ${list.length === 1 ? 'message' : 'messages'}`;
+
+    const escSafe = (s) => (typeof esc === 'function' ? esc(s) : String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+
+    if (!list.length) {
+        listEl.innerHTML = `
+            <div class="bg-white rounded-xl p-4 border border-dashed border-rose-200 text-center space-y-1">
+                <div class="text-2xl">💌</div>
+                <div class="text-xs font-semibold text-slate-700">No wishes posted yet for ${escSafe(celebrantName || 'the celebrant')}.</div>
+                <div class="text-[11px] text-slate-400">Be the first to post a warm birthday greeting below!</div>
+            </div>
+        `;
+        return;
+    }
+
+    // Determine current user identity
+    const myAuthId = currentFacultyUser?.id;
+    const myEmail = String(currentFacultyUser?.email || '').trim().toLowerCase();
+
+    listEl.innerHTML = list.map(c => {
+        // Show Edit and Delete only for the author's own comments
+        const isMine = (myAuthId && String(c.author_id) === String(myAuthId)) ||
+                       (myEmail && String(c.author_email || '').trim().toLowerCase() === myEmail);
+
+        return `
+            <div class="bg-white rounded-xl p-3 border border-slate-100 shadow-sm flex items-start gap-2.5">
+                <div class="w-7 h-7 rounded-full bg-rose-100 text-rose-800 font-bold flex items-center justify-center text-[10px] shrink-0 uppercase">
+                    ${escSafe((c.author_name || 'F').charAt(0))}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1">
+                        <span class="text-xs font-bold text-slate-900 truncate">${escSafe(c.author_name || 'Faculty Member')}</span>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <span class="text-[9.5px] text-slate-400">${escSafe(formatCommentTime(c.created_at))}</span>
+                            ${isMine ? `
+                                <button type="button" onclick="startEditBirthdayComment(${c.id})" class="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition" title="Edit your greeting">
+                                    <i class="fa-solid fa-pen text-[10px]"></i>
+                                </button>
+                                <button type="button" onclick="deleteBirthdayComment(${c.id})" class="text-slate-400 hover:text-rose-600 p-0.5 rounded transition" title="Delete your greeting">
+                                    <i class="fa-solid fa-trash-can text-[10px]"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ${c.author_role ? `<div class="text-[9.5px] text-slate-400 font-medium">${escSafe(c.author_role)}</div>` : ''}
+                    
+                    <!-- Message container (switches to input box when editing) -->
+                    <div id="bday-comment-body-${c.id}" class="mt-1">
+                        <p class="text-xs text-slate-700 leading-relaxed bg-slate-50/70 rounded-lg p-2 border border-slate-50">${escSafe(c.message)}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 1. Opens inline editor
+function startEditBirthdayComment(commentId) {
+    const escSafe = (s) => (typeof esc === 'function' ? esc(s) : String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+    const comment = currentLoadedBirthdayComments.find(x => String(x.id) === String(commentId));
+    if (!comment) return;
+
+    const bodyEl = document.getElementById(`bday-comment-body-${commentId}`);
+    if (!bodyEl) return;
+
+    bodyEl.innerHTML = `
+        <div class="space-y-1.5">
+            <textarea id="bday-edit-input-${commentId}" rows="2" class="w-full text-xs bg-white border border-[#621708] rounded-xl p-2 outline-none focus:ring-1 focus:ring-[#621708] text-slate-800 leading-relaxed">${escSafe(comment.message)}</textarea>
+            <div class="flex items-center justify-end gap-1.5">
+                <button type="button" onclick="cancelEditBirthdayComment(${commentId})" class="text-[10.5px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold transition">Cancel</button>
+                <button type="button" onclick="saveEditBirthdayComment(${commentId})" class="text-[10.5px] px-3 py-1 rounded-lg bg-[#621708] hover:bg-[#831843] text-white font-semibold shadow-xs transition">Save</button>
+            </div>
+        </div>
+    `;
+
+    const textarea = document.getElementById(`bday-edit-input-${commentId}`);
+    if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+}
+
+// 2. Cancels inline editor
+function cancelEditBirthdayComment(commentId) {
+    const escSafe = (s) => (typeof esc === 'function' ? esc(s) : String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+    const comment = currentLoadedBirthdayComments.find(x => String(x.id) === String(commentId));
+    const bodyEl = document.getElementById(`bday-comment-body-${commentId}`);
+    if (!bodyEl || !comment) return;
+
+    bodyEl.innerHTML = `
+        <p class="text-xs text-slate-700 leading-relaxed bg-slate-50/70 rounded-lg p-2 border border-slate-50">${escSafe(comment.message)}</p>
+    `;
+}
+
+// 3. Saves the update to Supabase
+async function saveEditBirthdayComment(commentId) {
+    const textarea = document.getElementById(`bday-edit-input-${commentId}`);
+    const newMsg = (textarea?.value || '').trim();
+    if (!newMsg) return alert('Greeting message cannot be empty.');
+
+    try {
+        const { error } = await supabaseClient
+            .from('faculty_birthday_comments')
+            .update({ message: newMsg })
+            .eq('id', commentId);
+
+        if (error) throw error;
+
+        const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
+        const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
+        const freshComments = await fetchBirthdayComments(celebrantName, year);
+        renderBirthdayWishes(freshComments, celebrantName);
+
+    } catch (err) {
+        console.error('Error updating birthday comment:', err);
+        alert('Could not update comment: ' + (err.message || 'Please try again.'));
+    }
+}
+
+// 4. Deletes comment from Supabase
+async function deleteBirthdayComment(commentId) {
+    if (!confirm('Are you sure you want to delete this birthday greeting?')) return;
+
+    try {
+        const { error } = await supabaseClient
+            .from('faculty_birthday_comments')
+            .delete()
+            .eq('id', commentId);
+
+        if (error) throw error;
+
+        const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
+        const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
+        const freshComments = await fetchBirthdayComments(celebrantName, year);
+        renderBirthdayWishes(freshComments, celebrantName);
+
+    } catch (err) {
+        console.error('Error deleting birthday comment:', err);
+        alert('Could not delete comment: ' + (err.message || 'Please try again.'));
+    }
+}
+
+function setQuickWish(text) {
+    const input = document.getElementById('bday-wish-input');
+    if (input) {
+        input.value = text;
+        input.focus();
+    }
+}
+
+async function postBirthdayWish() {
+    const input = document.getElementById('bday-wish-input');
+    const msg = (input?.value || '').trim();
+    if (!msg) return;
+
+    const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
+    const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
+    const celebrantId = currentCelebrantEvent?.id ? String(currentCelebrantEvent.id) : null;
+
+    const authorName = [currentFacultyProfile?.first_name, currentFacultyProfile?.last_name].filter(Boolean).join(' ').trim() 
+        || currentFacultyUser?.email 
+        || 'Faculty Member';
+    const authorRole = currentFacultyProfile?.department || currentFacultyProfile?.position || 'Faculty Member';
+
+    const sendBtn = input.nextElementSibling;
+    if (sendBtn) sendBtn.disabled = true;
+
+    try {
+        const { error } = await supabaseClient
+            .from('faculty_birthday_comments')
+            .insert({
+                celebrant_name: celebrantName,
+                celebrant_id: celebrantId,
+                celebrant_year: year,
+                author_id: currentFacultyUser?.id || null,
+                author_name: authorName,
+                author_role: authorRole,
+                author_email: currentFacultyUser?.email || '',
+                message: msg
+            });
+
+        if (error) throw error;
+
+        input.value = '';
+        const freshComments = await fetchBirthdayComments(celebrantName, year);
+        renderBirthdayWishes(freshComments, celebrantName);
+        launchBirthdayConfetti();
+
+    } catch (err) {
+        console.error('Error posting birthday comment:', err);
+        alert('Could not save your wish: ' + (err.message || 'Please try again.'));
+    } finally {
+        if (sendBtn) sendBtn.disabled = false;
+    }
+}
+
+function launchBirthdayConfetti() {
+    const canvas = document.getElementById('bday-confetti-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.offsetWidth;
+    const h = canvas.height = canvas.offsetHeight;
+    if (!w || !h) return;
+
+    const particles = [];
+    const colors = ['#f43f5e', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ffffff', '#ffd700'];
+
+    for (let i = 0; i < 45; i++) {
+        particles.push({
+            x: w / 2,
+            y: h / 2,
+            r: Math.random() * 4 + 2,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.7) * 7,
+            tilt: Math.random() * 10,
+            opacity: 1
+        });
+    }
+
+    let frames = 0;
+    function render() {
+        ctx.clearRect(0, 0, w, h);
+        let active = false;
+        particles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.15;
+            p.opacity -= 0.015;
+            if (p.opacity > 0) {
+                active = true;
+                ctx.beginPath();
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = Math.max(0, p.opacity);
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+        ctx.globalAlpha = 1;
+        frames++;
+        if (active && frames < 75) {
+            requestAnimationFrame(render);
+        } else {
+            ctx.clearRect(0, 0, w, h);
+        }
+    }
+    render();
+}
+
+function applyCachedFacultyUser() {
     try {
         const cached = JSON.parse(localStorage.getItem('citeflow_user') || 'null');
         if (cached && (cached.id || cached.email)) {
-            currentFacultyUser = { id: cached.id, email: cached.email, user_metadata: cached };
+            currentFacultyUser = { 
+                id: cached.id, 
+                email: cached.email, 
+                user_metadata: cached 
+            };
             currentFacultyProfile = mergeNameSource({}, cached);
-            mergeNameSource(currentFacultyProfile, cached.user_metadata);
+            mergeNameSource(currentFacultyProfile, cached.user_metadata || {});
             if (looksChairperson(currentFacultyProfile)) {
                 chairpersonAccess = true;
                 applyChairCalendarChrome();
             }
         }
-    } catch (_) {}
+    } catch (err) {
+        console.warn('[Calendar] Error loading cached faculty user:', err);
+    }
 }
 
 async function loadAuthUser(){
