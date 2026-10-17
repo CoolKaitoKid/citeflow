@@ -304,12 +304,17 @@
     function chairpersonAuthorizedDepartments(faculty, delegatedAccess) {
         if (!hasChairpersonWorkflowAccess(faculty, delegatedAccess)) return [];
         const fromGrants = matchingChairpersonGrants(faculty, delegatedAccess)
-            .flatMap((grant) => parseDepartmentCodes(grant.department_codes))
+            .flatMap((grant) => parseDepartmentCodes(grant.department_codes || grant.department_code || grant.department || grant.departments))
             .filter(Boolean);
-        const unique = [...new Set(fromGrants)];
-        if (unique.length) return unique;
         const own = facultyDepartmentCode(faculty);
-        return own && own !== 'n/a' ? [own] : [];
+        const ownDept = (own && own !== 'n/a') ? own : null;
+        const result = [...fromGrants];
+        if (ownDept && isChairperson(faculty)) {
+            result.unshift(ownDept);
+        } else if (!result.length && ownDept) {
+            result.push(ownDept);
+        }
+        return [...new Set(result)];
     }
 
     function isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess) {
@@ -491,6 +496,636 @@
     function isFinallyApproved(submission, task, config) {
         if (!submission) return false;
         return getWorkflowStage(submission, task, config) === 'completed';
+    }
+
+    /**
+     * MFO submission analytics.
+     *
+     * Summary metrics (a person is in exactly one of submitted / not submitted):
+     *   expected        one wf_task_assignments row per faculty for the task
+     *   submitted       that assignment has a qualifying wf_submissions row
+     *   not submitted   assigned, with no qualifying submission
+     *
+     * Qualifying submission: a row whose status is not "notsubmitted" and that
+     * either has submitted_at or a received/review status. Department membership
+     * never creates an assignment.
+     *
+     * Exclusive breakdown of submitted rows. These five keys sum to submitted
+     * and do not overlap. "Approved" is final approval only.
+     *   pending_chair    awaiting Chairperson/OIC review
+     *   needs_revision   existing revision state
+     *   pending_final    received, past Chairperson review, not finally approved
+     *   approved         getWorkflowStage === completed
+     *   rejected         rejected status or declined stage
+     *
+     * Precedence follows getWorkflowStage: rejected, revision, final approval,
+     * Chairperson review, then any other received submission as pending final.
+     * not_submitted_overdue is a subset of not submitted, not a sixth bucket.
+     */
+    const MFO_ANALYTICS_DEPARTMENTS = ['BSIT', 'BIT', 'BSIE'];
+
+    const MFO_ANALYTICS_STATUS_KEYS = [
+        'pending_chair',
+        'needs_revision',
+        'pending_final',
+        'approved',
+        'rejected'
+    ];
+
+    function isMfoWorkflowRecord(task, config) {
+        if (resolveDocumentCategory(config) === 'MFO') return true;
+        if (resolveDocumentCategory(task) === 'MFO') return true;
+        const blob = [config?.report_name, config?.title, task?.title, task?.name].filter(Boolean).join(' ');
+        return /\bmfo\b|major final output/i.test(blob);
+    }
+
+    function mfoDisplayDepartment(facultyOrDepartment) {
+        const code = facultyOrDepartment && typeof facultyOrDepartment === 'object'
+            ? facultyDepartmentCode(facultyOrDepartment)
+            : normalizeText(facultyOrDepartment);
+        if (code === 'bsit') return 'BSIT';
+        if (code === 'bit') return 'BIT';
+        if (code === 'bsie') return 'BSIE';
+        if (facultyOrDepartment && typeof facultyOrDepartment === 'object') {
+            return String(facultyOrDepartment.department_code || facultyOrDepartment.department || '').trim();
+        }
+        return String(facultyOrDepartment || '').trim();
+    }
+
+    function departmentIsAuthorized(facultyOrDepartment, authorizedDepartments) {
+        const allowed = (Array.isArray(authorizedDepartments) ? authorizedDepartments : [])
+            .map((code) => normalizeText(code))
+            .filter((code) => code && code !== 'n/a');
+        if (!allowed.length) return false;
+        const code = facultyOrDepartment && typeof facultyOrDepartment === 'object'
+            ? facultyDepartmentCode(facultyOrDepartment)
+            : normalizeText(facultyOrDepartment);
+        if (!code || code === 'n/a') return false;
+        return allowed.includes(code);
+    }
+
+    function isGenuineSubmission(submission) {
+        if (!submission) return false;
+        if (submission.packet_state === 'draft' || submission.mfo_packet?.packet_state === 'draft' || submission.is_draft === true) return false;
+        const status = normalizeText(submission.status);
+        if (status === 'notsubmitted' || status === 'draft') return false;
+        if (submission.submitted_at) return true;
+        if (!status && !submission.id) return false;
+        return ['submitted', 'late', 'underreview', 'approved', 'rejected', 'revision'].includes(status);
+    }
+
+    function hasQualifyingMfoSubmission(submission) {
+        return isGenuineSubmission(submission);
+    }
+
+    function mfoDeadlinePassed(deadline, now) {
+        if (!deadline) return false;
+        const time = new Date(deadline).getTime();
+        if (Number.isNaN(time)) return false;
+        return time < Number(now || Date.now());
+    }
+
+    function classifyMfoSubmission(submission, task, config) {
+        if (!hasQualifyingMfoSubmission(submission)) return 'not_submitted';
+        const stage = getWorkflowStage(submission, task, config);
+        if (stage === 'rejected') return 'rejected';
+        if (stage === 'revision_required') return 'needs_revision';
+        if (stage === 'completed') return 'approved';
+        if (stage === 'chairperson_review') return 'pending_chair';
+        return 'pending_final';
+    }
+
+    function emptyMfoAnalyticsCounts() {
+        return {
+            expected: 0,
+            submitted: 0,
+            not_submitted: 0,
+            not_submitted_overdue: 0,
+            not_submitted_open: 0,
+            pending_chair: 0,
+            needs_revision: 0,
+            pending_final: 0,
+            approved: 0,
+            rejected: 0
+        };
+    }
+
+    function addMfoAnalyticsCount(counts, category, overdue) {
+        if (!counts) return;
+        counts.expected += 1;
+        if (category === 'not_submitted') {
+            counts.not_submitted += 1;
+            if (overdue) counts.not_submitted_overdue += 1;
+            else counts.not_submitted_open += 1;
+            return;
+        }
+        counts.submitted += 1;
+        if (Object.prototype.hasOwnProperty.call(counts, category)) counts[category] += 1;
+    }
+
+    function mfoAnalyticsBalances(counts) {
+        const exclusive = MFO_ANALYTICS_STATUS_KEYS.reduce((sum, key) => sum + Number(counts?.[key] || 0), 0);
+        return {
+            exclusiveMatchesSubmitted: exclusive === Number(counts?.submitted || 0),
+            coverageMatchesExpected: Number(counts?.submitted || 0) + Number(counts?.not_submitted || 0) === Number(counts?.expected || 0)
+        };
+    }
+
+    /**
+     * @param {Array} entries assignment rows already loaded for the viewer.
+     *   { task, config, facultyId, department|faculty, submission, deadline }
+     * @param {{ now?: number, authorizedDepartments?: string[]|null }} [options]
+     *   authorizedDepartments null/omitted keeps every entry (Dean overview).
+     *   An array keeps only those departments.
+     */
+    function buildMfoAnalytics(entries, options) {
+        const now = options?.now || Date.now();
+        const restrict = Array.isArray(options?.authorizedDepartments);
+        const allowed = restrict ? options.authorizedDepartments : null;
+        const groups = new Map();
+        const seen = new Set();
+
+        (Array.isArray(entries) ? entries : []).forEach((entry) => {
+            if (!entry) return;
+            const task = entry.task || null;
+            const taskId = String(entry.taskId || task?.id || '').trim();
+            const facultyId = String(entry.facultyId || entry.faculty?.id || '').trim();
+            if (!taskId || !facultyId) return;
+            const departmentSource = entry.faculty || entry.department || entry.department_code || '';
+            if (restrict && !departmentIsAuthorized(departmentSource, allowed)) return;
+            const dedupe = `${taskId}|${facultyId}`;
+            if (seen.has(dedupe)) return;
+            seen.add(dedupe);
+
+            if (!groups.has(taskId)) {
+                groups.set(taskId, {
+                    taskId,
+                    title: String(task?.title || entry.title || 'MFO task').trim() || 'MFO task',
+                    deadline: entry.deadline || task?.deadline_at || task?.due_at || null,
+                    counts: emptyMfoAnalyticsCounts(),
+                    departmentCounts: new Map()
+                });
+            }
+            const group = groups.get(taskId);
+            const deadline = entry.deadline || group.deadline || null;
+            if (!group.deadline && deadline) group.deadline = deadline;
+            const category = classifyMfoSubmission(entry.submission, task, entry.config || null);
+            const overdue = category === 'not_submitted' && mfoDeadlinePassed(deadline, now);
+            addMfoAnalyticsCount(group.counts, category, overdue);
+
+            const label = mfoDisplayDepartment(departmentSource) || 'Unspecified';
+            if (!group.departmentCounts.has(label)) group.departmentCounts.set(label, emptyMfoAnalyticsCounts());
+            addMfoAnalyticsCount(group.departmentCounts.get(label), category, overdue);
+        });
+
+        const tasks = Array.from(groups.values()).map((group) => {
+            const present = new Set(group.departmentCounts.keys());
+            const ordered = [];
+            const base = restrict
+                ? MFO_ANALYTICS_DEPARTMENTS.filter((code) => departmentIsAuthorized(code, allowed))
+                : MFO_ANALYTICS_DEPARTMENTS.slice();
+            base.forEach((code) => {
+                ordered.push({
+                    code,
+                    counts: group.departmentCounts.get(code) || emptyMfoAnalyticsCounts()
+                });
+                present.delete(code);
+            });
+            Array.from(present).sort().forEach((code) => {
+                ordered.push({ code, counts: group.departmentCounts.get(code) });
+            });
+            const balance = mfoAnalyticsBalances(group.counts);
+            return {
+                taskId: group.taskId,
+                title: group.title,
+                deadline: group.deadline,
+                counts: group.counts,
+                departments: ordered,
+                exclusiveMatchesSubmitted: balance.exclusiveMatchesSubmitted,
+                coverageMatchesExpected: balance.coverageMatchesExpected
+            };
+        });
+
+        return {
+            tasks,
+            counts: tasks.reduce((sum, task) => {
+                Object.keys(sum).forEach((key) => { sum[key] += Number(task.counts[key] || 0); });
+                return sum;
+            }, emptyMfoAnalyticsCounts())
+        };
+    }
+
+    /**
+     * Standardized Submission Analytics Engine (Phase 1)
+     *
+     * Invariants for assignment-based tasks:
+     *   Expected = Submitted + Not Submitted
+     *   Submitted = Pending Review + Needs Revision + Approved + Rejected
+     *   Not Submitted = Not Submitted (Open) + Not Submitted (Overdue)
+     *
+     * Submission completion is distinguished from final approval:
+     *   - Submissions returned for revision and rejected submissions count as submitted
+     *     provided a genuine submission exists.
+     *   - Assigned faculty without a submission are partitioned into not_submitted_open
+     *     (future deadline or no deadline) and not_submitted_overdue (passed deadline).
+     *   - Timing (on-time vs late) is orthogonal and kept separate from review status.
+     *   - Unassigned/orphaned submissions are tracked separately and do not inflate Expected.
+     */
+    const SUBMISSION_ANALYTICS_REVIEW_KEYS = [
+        'pending_review',
+        'needs_revision',
+        'approved',
+        'rejected'
+    ];
+
+    const SUBMISSION_ANALYTICS_NON_SUBMITTED_KEYS = [
+        'not_submitted_open',
+        'not_submitted_overdue'
+    ];
+
+    const SUBMISSION_ANALYTICS_ALL_KEYS = [
+        ...SUBMISSION_ANALYTICS_REVIEW_KEYS,
+        ...SUBMISSION_ANALYTICS_NON_SUBMITTED_KEYS
+    ];
+
+    function emptySubmissionAnalyticsCounts() {
+        return {
+            expected: 0,
+            submitted: 0,
+            not_submitted: 0,
+            not_submitted_open: 0,
+            not_submitted_overdue: 0,
+            pending_review: 0,
+            needs_revision: 0,
+            approved: 0,
+            rejected: 0,
+            timing_on_time: 0,
+            timing_late: 0,
+            orphaned_submissions: 0
+        };
+    }
+
+    function isSubmissionDeadlinePassed(deadline, now) {
+        if (!deadline) return false;
+        const time = new Date(deadline).getTime();
+        if (Number.isNaN(time)) return false;
+        return time < Number(now || Date.now());
+    }
+
+    function getSubmissionTiming(submission, task, now) {
+        if (!isGenuineSubmission(submission)) {
+            const deadline = task?.deadline_at || task?.due_at;
+            if (isSubmissionDeadlinePassed(deadline, now)) return 'overdue';
+            return 'open';
+        }
+        if (submission.submitted_status === 'late' || submission.is_late === true) {
+            return 'late';
+        }
+        const deadline = task?.deadline_at || task?.due_at;
+        if (deadline && submission.submitted_at) {
+            const diff = new Date(submission.submitted_at).getTime() - new Date(deadline).getTime();
+            if (diff > 0) return 'late';
+        }
+        if (normalizeText(submission.status) === 'late') {
+            return 'late';
+        }
+        return 'on_time';
+    }
+
+    function selectLatestSubmission(submissions, taskId, facultyId) {
+        const subs = (Array.isArray(submissions) ? submissions : []).filter((s) =>
+            s && String(s.task_id) === String(taskId) && String(s.faculty_id) === String(facultyId)
+        );
+        if (!subs.length) return null;
+
+        // If genuine submissions exist, sort genuine submissions first
+        const genuineSubs = subs.filter(isGenuineSubmission);
+        const candidateList = genuineSubs.length > 0 ? genuineSubs : subs;
+
+        return candidateList.slice().sort((a, b) => {
+            const timeA = new Date(a.updated_at || a.submitted_at || a.created_at || 0).getTime();
+            const timeB = new Date(b.updated_at || b.submitted_at || b.created_at || 0).getTime();
+            if (timeB !== timeA) return timeB - timeA;
+            return String(b.id || '').localeCompare(String(a.id || ''));
+        })[0];
+    }
+
+    function classifySubmissionRecord(submission, task, config, now) {
+        const genuine = isGenuineSubmission(submission);
+        const deadline = task?.deadline_at || task?.due_at;
+        const overdue = isSubmissionDeadlinePassed(deadline, now);
+        const timing = getSubmissionTiming(submission, task, now);
+
+        if (!genuine) {
+            const category = overdue ? 'not_submitted_overdue' : 'not_submitted_open';
+            return {
+                is_submitted: false,
+                category,
+                status_key: category,
+                status_label: overdue ? 'Not Submitted (Overdue)' : 'Not Submitted (Open)',
+                review_status: null,
+                timing,
+                is_late: false,
+                is_overdue: overdue
+            };
+        }
+
+        const stage = getWorkflowStage(submission, task, config);
+        const status = sanitizeDbStatus(submission?.status);
+        const approvalStage = normalizeStageValue(submission?.approval_stage);
+
+        let review_status;
+        if (status === 'rejected' || approvalStage === APPROVAL_STAGES.DECLINED || stage === 'rejected') {
+            review_status = 'rejected';
+        } else if (status === 'revision' || approvalStage === APPROVAL_STAGES.REVISION || stage === 'revision_required') {
+            review_status = 'needs_revision';
+        } else if (isFinallyApproved(submission, task, config) || stage === 'completed' || status === 'approved') {
+            review_status = 'approved';
+        } else {
+            review_status = 'pending_review';
+        }
+
+        return {
+            is_submitted: true,
+            category: review_status,
+            status_key: review_status,
+            status_label: formatApprovalStage(review_status) || review_status,
+            review_status,
+            timing,
+            is_late: timing === 'late',
+            is_overdue: false
+        };
+    }
+
+    function submissionAnalyticsBalances(counts) {
+        const submitted = Number(counts?.submitted || 0);
+        const notSubmitted = Number(counts?.not_submitted || 0);
+        const expected = Number(counts?.expected || 0);
+
+        const reviewSum = Number(counts?.pending_review || 0) +
+                          Number(counts?.needs_revision || 0) +
+                          Number(counts?.approved || 0) +
+                          Number(counts?.rejected || 0);
+
+        const notSubmittedSum = Number(counts?.not_submitted_open || 0) +
+                                Number(counts?.not_submitted_overdue || 0);
+
+        return {
+            exclusiveMatchesSubmitted: reviewSum === submitted,
+            notSubmittedMatchesCategories: notSubmittedSum === notSubmitted,
+            coverageMatchesExpected: (submitted + notSubmitted) === expected
+        };
+    }
+
+    function computeSubmissionAnalytics(assignments, submissions, tasksOrTask, options) {
+        const now = options?.now || Date.now();
+        const counts = emptySubmissionAnalyticsCounts();
+        const taskMap = new Map();
+
+        if (Array.isArray(tasksOrTask)) {
+            tasksOrTask.forEach((t) => { if (t?.id) taskMap.set(String(t.id), t); });
+        } else if (tasksOrTask?.id) {
+            taskMap.set(String(tasksOrTask.id), tasksOrTask);
+        }
+
+        const configMap = new Map();
+        if (Array.isArray(options?.reportConfigs)) {
+            options.reportConfigs.forEach((c) => { if (c?.id) configMap.set(String(c.id), c); });
+        }
+
+        const mfoPacketMap = new Map();
+        if (Array.isArray(options?.mfoPackets)) {
+            options.mfoPackets.forEach((p) => {
+                if (!p) return;
+                if (p.submission_id) mfoPacketMap.set(`sub_${p.submission_id}`, p);
+                if (p.task_id && p.faculty_id) mfoPacketMap.set(`tf_${p.task_id}_${p.faculty_id}`, p);
+            });
+        }
+
+        const normalizedSubmissions = (Array.isArray(submissions) ? submissions : []).map((sub) => {
+            if (!sub) return sub;
+            if (sub.mfo_packet) return sub;
+            const pkt = mfoPacketMap.get(`sub_${sub.id}`) || mfoPacketMap.get(`tf_${sub.task_id}_${sub.faculty_id}`);
+            return pkt ? { ...sub, mfo_packet: pkt } : sub;
+        });
+
+        const seenAssignments = new Set();
+        const assignedRecords = [];
+
+        // 1. Process deduplicated assignments
+        (Array.isArray(assignments) ? assignments : []).forEach((assign) => {
+            if (!assign) return;
+            const taskId = String(assign.task_id || '').trim();
+            const facultyId = String(assign.faculty_id || '').trim();
+            if (!taskId || !facultyId) return;
+
+            const dedupeKey = `${taskId}|${facultyId}`;
+            if (seenAssignments.has(dedupeKey)) return;
+            seenAssignments.add(dedupeKey);
+
+            const task = taskMap.get(taskId) || assign.task || null;
+            const config = task?.report_config_id ? configMap.get(String(task.report_config_id)) : (assign.config || null);
+            const latestSub = selectLatestSubmission(normalizedSubmissions, taskId, facultyId);
+
+            const classification = classifySubmissionRecord(latestSub, task, config, now);
+
+            counts.expected += 1;
+            if (classification.is_submitted) {
+                counts.submitted += 1;
+                counts[classification.review_status] += 1;
+                if (classification.timing === 'late') {
+                    counts.timing_late += 1;
+                } else {
+                    counts.timing_on_time += 1;
+                }
+            } else {
+                counts.not_submitted += 1;
+                if (classification.is_overdue) {
+                    counts.not_submitted_overdue += 1;
+                } else {
+                    counts.not_submitted_open += 1;
+                }
+            }
+
+            assignedRecords.push({
+                task_id: taskId,
+                faculty_id: facultyId,
+                submission: latestSub,
+                classification,
+                is_assigned: true,
+                is_orphaned: false
+            });
+        });
+
+        // 2. Identify orphaned submissions (submissions without an assignment)
+        const orphanedRecords = [];
+        const seenOrphaned = new Set();
+        normalizedSubmissions.forEach((sub) => {
+            if (!sub) return;
+            const taskId = String(sub.task_id || '').trim();
+            const facultyId = String(sub.faculty_id || '').trim();
+            if (!taskId || !facultyId) return;
+
+            const dedupeKey = `${taskId}|${facultyId}`;
+            if (seenAssignments.has(dedupeKey)) return; // assigned, already handled
+            if (seenOrphaned.has(dedupeKey)) return;
+            seenOrphaned.add(dedupeKey);
+
+            if (isGenuineSubmission(sub)) {
+                counts.orphaned_submissions += 1;
+                const task = taskMap.get(taskId) || null;
+                const config = task?.report_config_id ? configMap.get(String(task.report_config_id)) : null;
+                const classification = classifySubmissionRecord(sub, task, config, now);
+                orphanedRecords.push({
+                    task_id: taskId,
+                    faculty_id: facultyId,
+                    submission: sub,
+                    classification,
+                    is_assigned: false,
+                    is_orphaned: true
+                });
+            }
+        });
+
+        const balances = submissionAnalyticsBalances(counts);
+
+        return {
+            counts,
+            balances,
+            assignedRecords,
+            orphanedRecords
+        };
+    }
+
+    function isRecurringTask(task) {
+        if (!task) return false;
+        const flag = task.is_recurring;
+        if (flag === true || flag === 1 || String(flag).toLowerCase() === 'true') return true;
+        return task.report_config_id != null && String(task.report_config_id).trim() !== '';
+    }
+
+    function resolveReportingFrequency(task, config) {
+        if (isMfoWorkflowRecord(task, config)) return 'quarterly';
+        if (task?.frequency) return String(task.frequency).toLowerCase();
+        if (config?.frequency) return String(config.frequency).toLowerCase();
+        if (task?.reporting_period_frequency) return String(task.reporting_period_frequency).toLowerCase();
+        const hay = [task?.title, task?.reporting_period_label, task?.instructions, config?.report_name].filter(Boolean).join(' ').toLowerCase();
+        if (hay.includes('quarter') || /\bq[1-4]\b/i.test(hay)) return 'quarterly';
+        if (hay.includes('semi-annual') || hay.includes('semiannual') || hay.includes('mid-year') || hay.includes('1st sem') || hay.includes('2nd sem')) return 'semi_annual';
+        if (hay.includes('annual') || hay.includes('year-end') || hay.includes('fiscal year')) return 'annual';
+        if (hay.includes('month') || /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(hay)) return 'monthly';
+        return 'monthly';
+    }
+
+    function groupRecurringReportTasks(tasks, reportConfigs) {
+        const configs = Array.isArray(reportConfigs) ? reportConfigs : [];
+        const configMap = new Map();
+        configs.forEach((c) => { if (c?.id) configMap.set(String(c.id), c); });
+
+        const recurringTasks = (Array.isArray(tasks) ? tasks : []).filter(isRecurringTask);
+        const groupMap = new Map();
+
+        recurringTasks.forEach((task) => {
+            const configId = task.report_config_id ? String(task.report_config_id) : null;
+            const config = configId ? configMap.get(configId) : null;
+            const freq = resolveReportingFrequency(task, config);
+            const isMfo = isMfoWorkflowRecord(task, config);
+
+            // Base series title stripping cycle suffixes (e.g. " - October 2026")
+            const rawTitle = config?.report_name || task.title || 'Recurring Report';
+            const baseTitle = String(rawTitle)
+                .replace(/\s*[-–—]\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|q[1-4]|1st sem|2nd sem|\d{4}).*$/i, '')
+                .trim();
+            const groupKey = configId ? `cfg_${configId}` : `title_${baseTitle.toLowerCase()}`;
+
+            if (!groupMap.has(groupKey)) {
+                groupMap.set(groupKey, {
+                    group_key: groupKey,
+                    config_id: configId,
+                    report_name: config?.report_name || baseTitle,
+                    frequency: freq,
+                    is_mfo: isMfo,
+                    cycles: []
+                });
+            }
+            groupMap.get(groupKey).cycles.push(task);
+        });
+
+        const groups = Array.from(groupMap.values());
+
+        // Sort cycles in each group by deadline / due_at / created_at descending (newest first)
+        groups.forEach((g) => {
+            g.cycles.sort((a, b) => {
+                const timeA = new Date(a.deadline_at || a.due_at || a.created_at || 0).getTime();
+                const timeB = new Date(b.deadline_at || b.due_at || b.created_at || 0).getTime();
+                return timeB - timeA;
+            });
+        });
+
+        // Sort groups by frequency (Monthly -> Quarterly -> Semi-Annual -> Annual) then name
+        const freqOrder = { monthly: 1, quarterly: 2, semi_annual: 3, annual: 4 };
+        groups.sort((a, b) => {
+            const oA = freqOrder[a.frequency] || 99;
+            const oB = freqOrder[b.frequency] || 99;
+            if (oA !== oB) return oA - oB;
+            return a.report_name.localeCompare(b.report_name);
+        });
+
+        return groups;
+    }
+
+    function computeRecurringReportAnalytics(tasks, assignments, submissions, reportConfigs, options) {
+        const groups = groupRecurringReportTasks(tasks, reportConfigs);
+        const now = options?.now || Date.now();
+        const cycleAnalyticsMap = new Map();
+        const overallCounts = emptySubmissionAnalyticsCounts();
+
+        const allAssignments = Array.isArray(assignments) ? assignments : [];
+        const allSubmissions = Array.isArray(submissions) ? submissions : [];
+
+        groups.forEach((group) => {
+            group.cycles.forEach((task) => {
+                const taskId = String(task.id);
+                // Strictly isolate assignments and submissions to this specific task cycle
+                const taskAssignments = allAssignments.filter((a) => String(a.task_id) === taskId);
+                const taskSubmissions = allSubmissions.filter((s) => String(s.task_id) === taskId);
+
+                const analytics = computeSubmissionAnalytics(taskAssignments, taskSubmissions, task, {
+                    ...options,
+                    reportConfigs,
+                    now
+                });
+
+                cycleAnalyticsMap.set(taskId, {
+                    task,
+                    group,
+                    counts: analytics.counts,
+                    balances: analytics.balances,
+                    assignedRecords: analytics.assignedRecords,
+                    orphanedRecords: analytics.orphanedRecords
+                });
+
+                // Aggregate overall counts across all cycles
+                SUBMISSION_ANALYTICS_ALL_KEYS.forEach((key) => {
+                    overallCounts[key] += (analytics.counts[key] || 0);
+                });
+                overallCounts.expected += (analytics.counts.expected || 0);
+                overallCounts.submitted += (analytics.counts.submitted || 0);
+                overallCounts.not_submitted += (analytics.counts.not_submitted || 0);
+                overallCounts.timing_on_time += (analytics.counts.timing_on_time || 0);
+                overallCounts.timing_late += (analytics.counts.timing_late || 0);
+                overallCounts.orphaned_submissions += (analytics.counts.orphaned_submissions || 0);
+            });
+        });
+
+        const overallBalances = submissionAnalyticsBalances(overallCounts);
+
+        return {
+            groups,
+            cycleAnalyticsMap,
+            overallCounts,
+            overallBalances
+        };
     }
 
     function canFacultyManageSubmissionFiles(submission, task, config) {
@@ -755,6 +1390,7 @@
 
     function canReviewAsChairperson(submission, actorFaculty, targetFaculty, context) {
         if (!submission || !actorFaculty) return false;
+        if (isFacultySubmitter(actorFaculty, submission)) return false;
         const { delegatedAccess, config, task } = resolveReviewContext(context);
         if (!hasChairpersonWorkflowAccess(actorFaculty, delegatedAccess)) return false;
         if (targetFaculty && !isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess)) return false;
@@ -912,7 +1548,7 @@
                     admin_access: true
                 });
             }
-        } catch (_) {}
+        } catch (_) { }
 
         const meta = authUser.user_metadata || {};
         const metaRole = String(meta.role || '').toLowerCase();
@@ -1666,7 +2302,7 @@
         if (!actorFaculty && actorUser) {
             try {
                 actorFaculty = await getCurrentFaculty(actorUser);
-            } catch (_) {}
+            } catch (_) { }
         }
         if (!actorFaculty && actorUser) {
             const meta = actorUser.user_metadata || {};
@@ -2094,12 +2730,12 @@
     // =========================================================================
 
     const AR_STATUSES = {
-        draft:          { label: 'Draft',           css: 'bg-gray-100 text-gray-700 border-gray-200' },
-        submitted:      { label: 'Submitted',       css: 'bg-blue-50 text-blue-700 border-blue-100' },
+        draft: { label: 'Draft', css: 'bg-gray-100 text-gray-700 border-gray-200' },
+        submitted: { label: 'Submitted', css: 'bg-blue-50 text-blue-700 border-blue-100' },
         chair_approved: { label: 'Chair Certified', css: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
-        dean_approved:  { label: 'Approved',        css: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-        revision:       { label: 'Revision Requested', css: 'bg-purple-50 text-purple-700 border-purple-100' },
-        rejected:       { label: 'Declined',        css: 'bg-rose-50 text-rose-700 border-rose-100' }
+        dean_approved: { label: 'Approved', css: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+        revision: { label: 'Revision Requested', css: 'bg-purple-50 text-purple-700 border-purple-100' },
+        rejected: { label: 'Declined', css: 'bg-rose-50 text-rose-700 border-rose-100' }
     };
 
     function formatAccomplishmentReportStatus(status) {
@@ -2177,7 +2813,7 @@
                     periodStr = ` (${fmt(rep.period_start)} – ${fmt(rep.period_end)})`;
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
 
         if (isChairRole) {
             // Chairperson actions
@@ -2309,6 +2945,15 @@
         getApprovalStage,
         getWorkflowStage,
         isFinallyApproved,
+        MFO_ANALYTICS_DEPARTMENTS,
+        MFO_ANALYTICS_STATUS_KEYS,
+        isMfoWorkflowRecord,
+        mfoDisplayDepartment,
+        departmentIsAuthorized,
+        hasQualifyingMfoSubmission,
+        classifyMfoSubmission,
+        buildMfoAnalytics,
+        mfoAnalyticsBalances,
         canFacultyManageSubmissionFiles,
         canFacultyUnsubmit,
         facultyFilesWereUpdatedAfterReview,
@@ -2342,8 +2987,27 @@
         canReviewAccomplishmentAsDean,
         reviewAccomplishmentReport,
         escapeHtml,
-        sameDepartment
+        sameDepartment,
+        isGenuineSubmission,
+        isSubmissionDeadlinePassed,
+        getSubmissionTiming,
+        classifySubmissionRecord,
+        selectLatestSubmission,
+        SUBMISSION_ANALYTICS_REVIEW_KEYS,
+        SUBMISSION_ANALYTICS_NON_SUBMITTED_KEYS,
+        SUBMISSION_ANALYTICS_ALL_KEYS,
+        emptySubmissionAnalyticsCounts,
+        submissionAnalyticsBalances,
+        computeSubmissionAnalytics,
+        isRecurringTask,
+        resolveReportingFrequency,
+        groupRecurringReportTasks,
+        computeRecurringReportAnalytics
     };
 
     global.CiteFlowWorkflow = api;
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = api;
+    }
 })(typeof window !== 'undefined' ? window : globalThis);
+

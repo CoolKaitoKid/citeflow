@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js?v=auth-mfo-keep-1"></script>
     <script src="../shared/workflow.js?v=chair-review-8"></script>
+    <script src="../shared/mfo-consolidation.js"></script>
 <!--     <script src="../shared/auth-guard.js?v=chair-review-8"></script>  -->
     <script src="../shared/cite-settings.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1090,10 +1091,15 @@
             white-space: nowrap;
             max-width: 100%;
         }
-        .wf-pill[data-bucket="submitted"] { color: #0f766e; background: #f0fdfa; border-color: #ccfbf1; }
-        .wf-pill[data-bucket="pending_approval"] { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+        .wf-pill[data-bucket="approved"], .wf-pill[data-bucket="submitted"] { color: #0f766e; background: #f0fdfa; border-color: #ccfbf1; }
+        .wf-pill[data-bucket="pending_approval"], .wf-pill[data-bucket="pending_review"] { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+        .wf-pill[data-bucket="needs_revision"], .wf-pill[data-bucket="revision"] { color: #ea580c; background: #fff7ed; border-color: #fed7aa; }
+        .wf-pill[data-bucket="rejected"], .wf-pill[data-bucket="declined"] { color: #dc2626; background: #fef2f2; border-color: #fecaca; }
         .wf-pill[data-bucket="late"] { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+        .wf-pill[data-bucket="not_submitted_open"] { color: #475569; background: #f8fafc; border-color: #e2e8f0; }
+        .wf-pill[data-bucket="not_submitted_overdue"] { color: #991b1b; background: #fef2f2; border-color: #fecaca; }
         .wf-pill[data-bucket="not_submitted"] { color: #475569; background: #f8fafc; border-color: #e2e8f0; }
+        .wf-pill[data-bucket="orphaned"] { color: #7c3aed; background: #f5f3ff; border-color: #ddd6fe; }
         .wf-drawer-resize {
             position: absolute;
             left: 0;
@@ -1617,14 +1623,20 @@
                         <option value="BSIE">BSIE</option>
                         <option value="BIT">BIT</option>
                     </select>
-                    <select id="reportsStatusFilter" onchange="renderReportSubmissions()" class="field-input text-xs" style="width:150px;">
+                    <select id="reportsStatusFilter" onchange="renderReportSubmissions()" class="field-input text-xs" style="width:160px;">
                         <option value="">All Statuses</option>
                         <option value="review">Needs Review</option>
+                        <option value="revision">Needs Revision</option>
                         <option value="approved">Approved</option>
-                        <option value="revision">Returned</option>
-                        <option value="notsubmitted">No Submission</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="notsubmitted">Not Submitted (All)</option>
+                        <option value="not_submitted_open">Not Submitted (Open)</option>
+                        <option value="not_submitted_overdue">Not Submitted (Overdue)</option>
                     </select>
                 </div>
+
+                <!-- Recurring Reports Standardized Analytics Banner -->
+                <div id="reportsAnalyticsSummaryBar" class="mb-4"></div>
 
                 <!-- Recurring Report Submissions Table -->
                 <div class="main-surface overflow-x-auto mb-6">
@@ -1946,6 +1958,75 @@
             </div>
             <div class="modal-footer flex items-center justify-end gap-2" id="arReviewActions" style="padding:16px 24px;">
                 <!-- Dynamically populated based on user role -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Consolidated MFO Dean Review Modal -->
+    <div id="consolidatedMfoReviewModal" class="modal-backdrop" style="z-index:2100;">
+        <div class="modal-panel" style="max-width:840px;margin:0 16px;background:#fff;">
+            <div class="modal-header flex items-start justify-between gap-4">
+                <div class="flex-1">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200">
+                            <i class="fa-solid fa-layer-group mr-1"></i> Department Consolidated MFO
+                        </span>
+                        <span id="consolidatedMfoReviewVersionBadge" class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700"></span>
+                    </div>
+                    <h2 class="text-base font-semibold text-gray-900 mt-1 mb-0.5" id="consolidatedMfoReviewTitle">Review Department Consolidated MFO</h2>
+                    <p class="text-xs text-gray-500" id="consolidatedMfoReviewSubtitle">—</p>
+                </div>
+                <button type="button" onclick="closeConsolidatedMfoReviewModal()" class="text-gray-400 hover:text-gray-600 transition-colors p-1 flex-shrink-0 mt-0.5">
+                    <svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body space-y-4" style="padding:20px 24px;">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="field-label text-xs mb-0 font-bold text-slate-700">Compiled Official MFO Report Preview</label>
+                        <a id="consolidatedMfoReviewReportLink" href="#" target="_blank" rel="noopener" class="text-xs text-blue-600 hover:underline">Open in new tab ↗</a>
+                    </div>
+                    <div class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50 shadow-inner" style="height:440px;">
+                        <iframe id="consolidatedMfoReviewIframe" style="width:100%;height:100%;border:none;" title="Consolidated MFO Report Preview"></iframe>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs">
+                    <div>
+                        <span class="text-slate-400 block font-medium">Department:</span>
+                        <strong id="consolidatedMfoReviewDept" class="text-slate-800">—</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block font-medium">Submitting Chairperson:</span>
+                        <strong id="consolidatedMfoReviewChair" class="text-slate-800">—</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block font-medium">Reporting Cycle:</span>
+                        <strong id="consolidatedMfoReviewCycle" class="text-slate-800">—</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block font-medium">Period:</span>
+                        <strong id="consolidatedMfoReviewPeriod" class="text-slate-800">—</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block font-medium">Status:</span>
+                        <strong id="consolidatedMfoReviewStatus" class="text-slate-800">—</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block font-medium">Submitted At:</span>
+                        <strong id="consolidatedMfoReviewSubmittedAt" class="text-slate-800">—</strong>
+                    </div>
+                </div>
+                <div id="consolidatedMfoReviewChairRemarksBlock" class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                    <span class="text-slate-500 font-semibold uppercase tracking-wide text-[10px] block">Chairperson Submission Remarks</span>
+                    <p id="consolidatedMfoReviewChairRemarks" class="text-slate-700 italic font-mono text-[11px]">—</p>
+                </div>
+                <div>
+                    <label for="consolidatedMfoReviewRemarks" class="field-label text-xs font-semibold text-slate-700">Dean's Office Remarks / Feedback</label>
+                    <textarea id="consolidatedMfoReviewRemarks" rows="2" class="field-input text-xs" placeholder="Add Dean's review remarks, instructions, or required revisions..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer flex items-center justify-end gap-2" id="consolidatedMfoReviewActions" style="padding:16px 24px;">
+                <!-- Populated dynamically -->
             </div>
         </div>
     </div>
@@ -2754,7 +2835,24 @@ function getTaskById(id) {
 }
 
 function getSubmission(taskId, facultyId) {
-    return workflowState.submissions.find(s => String(s.task_id) === String(taskId) && String(s.faculty_id) === String(facultyId));
+    if (window.CiteFlowWorkflow?.selectLatestSubmission) {
+        return window.CiteFlowWorkflow.selectLatestSubmission(workflowState.submissions, taskId, facultyId);
+    }
+    const subs = (workflowState.submissions || []).filter(s =>
+        String(s.task_id) === String(taskId) && String(s.faculty_id) === String(facultyId)
+    );
+    if (!subs.length) return null;
+    const genuine = subs.filter(s => {
+        const status = String(s.status || '').toLowerCase().trim();
+        return status && status !== 'notsubmitted' && status !== 'draft' && s.packet_state !== 'draft';
+    });
+    const candidateList = genuine.length > 0 ? genuine : subs;
+    return candidateList.slice().sort((a, b) => {
+        const timeA = new Date(a.updated_at || a.submitted_at || a.created_at || 0).getTime();
+        const timeB = new Date(b.updated_at || b.submitted_at || b.created_at || 0).getTime();
+        if (timeB !== timeA) return timeB - timeA;
+        return String(b.id || '').localeCompare(String(a.id || ''));
+    })[0];
 }
 
 function getSubmissionFiles(submissionId) {
@@ -2767,37 +2865,117 @@ function getTaskAttachments(task) {
     return normalizeArray(task?.attachment_names).map(name => normalizeFileRecord({ file_name: name }));
 }
 
+function getSubmissionTiming(sub, task) {
+    if (!sub || !sub.submitted_at) return 'not_submitted';
+    if (sub.submitted_status === 'late' || sub.is_late === true) return 'late';
+    const deadline = task?.deadline_at || task?.due_at;
+    if (deadline && new Date(sub.submitted_at) > new Date(deadline)) return 'late';
+    return 'on_time';
+}
+
 function computeEffectiveStatus(task, sub) {
     if (!sub || sub.status === 'notsubmitted') {
-        return isPastDeadline(task?.due_at) ? 'late' : 'notsubmitted';
+        return isPastDeadline(task?.deadline_at || task?.due_at) ? 'late' : 'notsubmitted';
     }
-    if (sub.status === 'submitted' && sub.submitted_at && task?.due_at && new Date(sub.submitted_at) > new Date(task.due_at)) {
-        return 'late';
-    }
-    return sub.status;
+    if (sub.status === 'revision') return 'revision';
+    if (sub.status === 'rejected') return 'rejected';
+    if (sub.status === 'approved') return 'approved';
+    if (getSubmissionTiming(sub, task) === 'late') return 'late';
+    return sub.status || 'submitted';
 }
 
 function recomputeSubmissionMatrix() {
     allSubmissions = [];
-    workflowState.assignments.forEach(assign => {
+    const seen = new Set();
+    (workflowState.assignments || []).forEach(assign => {
+        const rowId = `${assign.task_id}|${assign.faculty_id}`;
+        if (seen.has(rowId)) return;
+        seen.add(rowId);
+
         const faculty = getFacultyById(assign.faculty_id);
         const task = getTaskById(assign.task_id);
-        if (!faculty || !task) return;
         const sub = getSubmission(assign.task_id, assign.faculty_id);
+        if (!task && !sub) return;
+
+        const config = getTaskReportConfig(task);
+        const classification = window.CiteFlowWorkflow?.classifySubmissionRecord
+            ? window.CiteFlowWorkflow.classifySubmissionRecord(sub, task, config, Date.now())
+            : null;
         const effectiveStatus = computeEffectiveStatus(task, sub);
+
         allSubmissions.push({
-            id: `${assign.task_id}|${assign.faculty_id}`,
+            id: rowId,
             task_id: assign.task_id,
             faculty_id: assign.faculty_id,
-            faculty_name: faculty.full_name,
-            department_code: faculty.department_code,
+            faculty_name: faculty?.full_name || 'Faculty',
+            department_code: faculty?.department_code || faculty?.department || '',
             submitted_at: sub?.submitted_at || null,
             status: effectiveStatus,
+            timing: classification ? classification.timing : getSubmissionTiming(sub, task),
+            classification: classification,
+            is_submitted: classification ? classification.is_submitted : !!(sub?.submitted_at || (sub?.status && sub?.status !== 'notsubmitted')),
+            category: classification ? classification.category : effectiveStatus,
+            review_status: classification ? classification.review_status : null,
+            is_overdue: classification ? classification.is_overdue : isPastDeadline(task?.deadline_at || task?.due_at),
+            is_late: classification ? classification.is_late : (getSubmissionTiming(sub, task) === 'late'),
+            approval_stage: sub?.approval_stage || null,
             review_remarks: sub?.review_remarks || '',
             reviewed_by_name: sub?.reviewed_by_name || null,
             reviewed_at: sub?.reviewed_at || null,
+            last_reviewed_by_role: sub?.last_reviewed_by_role || null,
+            final_approved_at: sub?.final_approved_at || null,
+            final_approved_by_name: sub?.final_approved_by_name || null,
+            final_approval_remarks: sub?.final_approval_remarks || null,
+            raw_status: sub?.status || null,
+            packet_state: sub?.packet_state || null,
             files: sub ? getSubmissionFiles(sub.id) : [],
-            submission_id: sub?.id || null
+            submission_id: sub?.id || null,
+            is_assigned: true,
+            is_orphaned: false
+        });
+    });
+    (workflowState.submissions || []).forEach((sub) => {
+        const rowId = `${sub.task_id}|${sub.faculty_id}`;
+        if (seen.has(rowId)) return;
+        seen.add(rowId);
+
+        const latestSub = getSubmission(sub.task_id, sub.faculty_id) || sub;
+        const faculty = getFacultyById(latestSub.faculty_id);
+        const task = getTaskById(latestSub.task_id);
+        const config = getTaskReportConfig(task);
+        const classification = window.CiteFlowWorkflow?.classifySubmissionRecord
+            ? window.CiteFlowWorkflow.classifySubmissionRecord(latestSub, task, config, Date.now())
+            : null;
+
+        allSubmissions.push({
+            id: rowId,
+            task_id: latestSub.task_id,
+            faculty_id: latestSub.faculty_id,
+            faculty_name: faculty?.full_name || 'Faculty',
+            department_code: faculty?.department_code || faculty?.department || '',
+            submitted_at: latestSub.submitted_at || null,
+            status: computeEffectiveStatus(task, latestSub),
+            timing: classification ? classification.timing : getSubmissionTiming(latestSub, task),
+            classification: classification,
+            is_submitted: classification ? classification.is_submitted : !!latestSub.submitted_at,
+            category: classification ? classification.category : null,
+            review_status: classification ? classification.review_status : null,
+            is_overdue: classification ? classification.is_overdue : false,
+            is_late: classification ? classification.is_late : (getSubmissionTiming(latestSub, task) === 'late'),
+            approval_stage: latestSub.approval_stage || null,
+            review_remarks: latestSub.review_remarks || '',
+            reviewed_by_name: latestSub.reviewed_by_name || null,
+            reviewed_at: latestSub.reviewed_at || null,
+            last_reviewed_by_role: latestSub.last_reviewed_by_role || null,
+            final_approved_at: latestSub.final_approved_at || null,
+            final_approved_by_name: latestSub.final_approved_by_name || null,
+            final_approval_remarks: latestSub.final_approval_remarks || null,
+            raw_status: latestSub.status || null,
+            packet_state: latestSub.packet_state || null,
+            files: getSubmissionFiles(latestSub.id),
+            submission_id: latestSub.id,
+            is_assigned: false,
+            is_orphaned: true
         });
     });
 }
@@ -2826,12 +3004,41 @@ function renderAll() {
 }
 
 function updateStats() {
-    const counts = { pending: 0, submitted: 0, underreview: 0, approved: 0, revision: 0, rejected: 0, late: 0 };
-    allSubmissions.forEach(s => counts[s.status] = (counts[s.status] || 0) + 1);
-    document.getElementById('stat-pending').textContent  = counts.pending + counts.submitted + counts.underreview + counts.late;
-    document.getElementById('stat-approved').textContent = counts.approved;
-    document.getElementById('stat-revision').textContent = counts.revision;
-    document.getElementById('stat-declined').textContent = counts.rejected;
+    const counts = { pending_review: 0, approved: 0, revision: 0, rejected: 0, not_submitted: 0 };
+    let submittedOnTime = 0;
+    let submittedLate = 0;
+
+    (allSubmissions || []).forEach(s => {
+        if (!s.submission_id) {
+            counts.not_submitted++;
+            return;
+        }
+        if (s.timing === 'late') submittedLate++;
+        else submittedOnTime++;
+
+        const status = String(s.raw_status || s.status || '').toLowerCase().trim();
+        const stage = String(s.approval_stage || '').toLowerCase().trim();
+        if (status === 'rejected' || stage === 'declined' || stage === 'rejected') {
+            counts.rejected++;
+        } else if (status === 'revision' || stage === 'revision') {
+            counts.revision++;
+        } else if (status === 'approved' || stage === 'approved') {
+            counts.approved++;
+        } else {
+            counts.pending_review++;
+        }
+    });
+
+    const pendingEl = document.getElementById('stat-pending');
+    const approvedEl = document.getElementById('stat-approved');
+    const revisionEl = document.getElementById('stat-revision');
+    const declinedEl = document.getElementById('stat-declined');
+    if (pendingEl) pendingEl.textContent = counts.pending_review;
+    if (approvedEl) approvedEl.textContent = counts.approved;
+    if (revisionEl) revisionEl.textContent = counts.revision;
+    if (declinedEl) declinedEl.textContent = counts.rejected;
+    const pendingLabel = document.querySelector('#stat-pending')?.parentElement?.parentElement?.querySelector('.text-gray-500');
+    if (pendingLabel) pendingLabel.textContent = `${submittedOnTime} on time · ${submittedLate} late`;
 }
 
 function updateProgress() {
@@ -2840,9 +3047,10 @@ function updateProgress() {
 
     const depts = { BSIT: { submitted: 0, total: 0 }, BSIE: { submitted: 0, total: 0 }, BIT: { submitted: 0, total: 0 } };
     allSubmissions.forEach(s => {
+        if (s.is_orphaned) return; // Do not let orphaned records inflate department expected totals
         if (depts[s.department_code]) {
             depts[s.department_code].total++;
-            if (s.submission_id) depts[s.department_code].submitted++;
+            if (workflowRowHasSubmission(s)) depts[s.department_code].submitted++;
         }
     });
     ['BSIT', 'BSIE', 'BIT'].forEach(code => {
@@ -3119,6 +3327,13 @@ function computeTaskProgress(task) {
         return {
             totalAssigned: 0,
             submittedCount: 0,
+            notSubmittedCount: 0,
+            notSubmittedOpenCount: 0,
+            notSubmittedOverdueCount: 0,
+            pendingReviewCount: 0,
+            needsRevisionCount: 0,
+            approvedCount: 0,
+            rejectedCount: 0,
             progressPct: 0,
             summary: { label: 'Not Started', className: 'badge-notsubmitted' }
         };
@@ -3152,24 +3367,54 @@ function computeTaskProgress(task) {
     const totalAssigned = targetFacultyIds.length;
 
     let submittedCount = 0;
+    let pendingReviewCount = 0;
+    let needsRevisionCount = 0;
+    let approvedCount = 0;
+    let rejectedCount = 0;
+    let notSubmittedOpenCount = 0;
+    let notSubmittedOverdueCount = 0;
+
+    const deadline = workflowTaskDeadline(task);
+    const isPastDue = !!(deadline && new Date(deadline).getTime() < Date.now());
+    const config = typeof getTaskReportConfig === 'function' ? getTaskReportConfig(task) : null;
+    const wf = window.CiteFlowWorkflow;
+
     targetFacultyIds.forEach(fid => {
-        const subs = (workflowState.submissions || []).filter(s =>
-            String(s.task_id) === taskId && String(s.faculty_id) === fid
-        );
-        if (!subs.length) return;
+        const latest = getSubmission(taskId, fid);
+        const hasSubmission = latest && (wf?.isGenuineSubmission
+            ? wf.isGenuineSubmission(latest)
+            : workflowRowHasSubmission(latest));
 
-        const latest = subs.slice().sort((a, b) => {
-            const timeA = new Date(a.updated_at || a.submitted_at || a.created_at || 0).getTime();
-            const timeB = new Date(b.updated_at || b.submitted_at || b.created_at || 0).getTime();
-            return timeB - timeA;
-        })[0];
+        if (!hasSubmission) {
+            if (isPastDue) notSubmittedOverdueCount++;
+            else notSubmittedOpenCount++;
+            return;
+        }
 
-        const status = String(latest.status || '').toLowerCase().trim();
-        if (['submitted', 'late', 'underreview', 'approved'].includes(status)) {
-            submittedCount++;
+        submittedCount++;
+
+        if (wf?.classifySubmissionRecord) {
+            const cls = wf.classifySubmissionRecord(latest, task, config);
+            if (cls.review_status === 'approved') approvedCount++;
+            else if (cls.review_status === 'needs_revision') needsRevisionCount++;
+            else if (cls.review_status === 'rejected') rejectedCount++;
+            else pendingReviewCount++;
+        } else {
+            const rawStatus = String(latest.status || '').toLowerCase().trim();
+            const stage = String(latest.approval_stage || '').toLowerCase().trim();
+            if (rawStatus === 'rejected' || stage === 'declined' || stage === 'rejected') {
+                rejectedCount++;
+            } else if (rawStatus === 'revision' || stage === 'revision') {
+                needsRevisionCount++;
+            } else if (workflowRowApproved(latest, task)) {
+                approvedCount++;
+            } else {
+                pendingReviewCount++;
+            }
         }
     });
 
+    const notSubmittedCount = totalAssigned - submittedCount;
     const progressPct = totalAssigned > 0
         ? Math.round((submittedCount / totalAssigned) * 100)
         : (submittedCount > 0 ? 100 : 0);
@@ -3178,6 +3423,13 @@ function computeTaskProgress(task) {
     return {
         totalAssigned,
         submittedCount,
+        notSubmittedCount,
+        notSubmittedOpenCount,
+        notSubmittedOverdueCount,
+        pendingReviewCount,
+        needsRevisionCount,
+        approvedCount,
+        rejectedCount,
         progressPct,
         summary
     };
@@ -3530,10 +3782,12 @@ function downloadFile(url, fileName) {
 }
 
 const WF_ANALYTICS_CATEGORIES = [
-    { key: 'submitted', label: 'Submitted', short: 'Submitted and fully approved', color: '#0f766e' },
-    { key: 'pending_approval', label: 'Pending Approval', short: 'Submitted — Pending Approval', color: '#b45309' },
-    { key: 'late', label: 'Late', short: 'Submitted after the deadline', color: '#b91c1c' },
-    { key: 'not_submitted', label: 'Not Submitted', short: 'Deadline passed, no submission', color: '#64748b' }
+    { key: 'approved', label: 'Approved', short: 'Fully approved', color: '#0f766e' },
+    { key: 'pending_approval', label: 'Pending Review', short: 'Submitted — awaiting review', color: '#b45309' },
+    { key: 'needs_revision', label: 'Needs Revision', short: 'Returned for revision', color: '#ea580c' },
+    { key: 'rejected', label: 'Rejected', short: 'Submission rejected / declined', color: '#dc2626' },
+    { key: 'not_submitted_open', label: 'Not Submitted (Open)', short: 'Deadline open, no submission', color: '#64748b' },
+    { key: 'not_submitted_overdue', label: 'Not Submitted (Overdue)', short: 'Deadline passed, no submission', color: '#991b1b' }
 ];
 
 function workflowTaskDeadline(task) {
@@ -3548,17 +3802,22 @@ function workflowSubmissionRaw(row) {
 
 function workflowRowHasSubmission(row) {
     if (!row) return false;
-    if (row.submitted_at) return true;
-    const rawStatus = String(row.raw_status || '').toLowerCase();
-    if (!row.submission_id) return false;
+    const raw = workflowSubmissionRaw(row) || row;
+    if (raw?.packet_state === 'draft' || row?.packet_state === 'draft' || raw?.is_draft === true || row?.is_draft === true) {
+        return false;
+    }
+    const rawStatus = String(row.raw_status || raw?.status || row.status || '').toLowerCase().trim();
+    if (rawStatus === 'notsubmitted' || rawStatus === 'draft') return false;
+    if (row.submitted_at || raw?.submitted_at) return true;
+    if (!row.submission_id && !raw?.id) return false;
     return ['submitted', 'late', 'underreview', 'approved', 'rejected', 'revision'].includes(rawStatus);
 }
 
 function workflowRowApproved(row, task) {
     if (!workflowRowHasSubmission(row)) return false;
     const raw = workflowSubmissionRaw(row) || row;
-    const status = String(row.raw_status || raw.status || '').toLowerCase();
-    const stage = String(raw.approval_stage || row.approval_stage || '').toLowerCase();
+    const status = String(row.raw_status || raw.status || '').toLowerCase().trim();
+    const stage = String(raw.approval_stage || row.approval_stage || '').toLowerCase().trim();
     const wf = window.CiteFlowWorkflow;
     if (wf && typeof wf.isFinallyApproved === 'function') {
         const config = typeof getTaskReportConfig === 'function' ? getTaskReportConfig(task) : null;
@@ -3585,17 +3844,48 @@ function workflowRowSubmittedLate(row, task) {
 function classifyWorkflowRow(row, task) {
     const deadline = workflowTaskDeadline(task);
     const past = !!(deadline && new Date(deadline).getTime() < Date.now());
-    if (!workflowRowHasSubmission(row)) return past ? 'not_submitted' : null;
-    const approved = workflowRowApproved(row, task);
-    if (workflowRowSubmittedLate(row, task) && !approved) return 'late';
-    if (approved) return 'submitted';
+    if (!workflowRowHasSubmission(row)) {
+        return past ? 'not_submitted_overdue' : 'not_submitted_open';
+    }
+
+    const raw = workflowSubmissionRaw(row) || row;
+    const wf = window.CiteFlowWorkflow;
+    if (wf?.classifySubmissionRecord) {
+        const config = typeof getTaskReportConfig === 'function' ? getTaskReportConfig(task) : null;
+        const probe = {
+            id: row.submission_id || raw.id,
+            status: row.raw_status || raw.status,
+            approval_stage: raw.approval_stage || row.approval_stage,
+            submitted_at: row.submitted_at || raw.submitted_at,
+            submitted_status: row.timing === 'late' ? 'late' : (raw.submitted_status || row.submitted_status),
+            is_late: row.timing === 'late' || raw.is_late || row.is_late,
+            packet_state: raw.packet_state || row.packet_state
+        };
+        const cls = wf.classifySubmissionRecord(probe, task, config);
+        if (cls.review_status === 'approved') return 'approved';
+        if (cls.review_status === 'needs_revision') return 'needs_revision';
+        if (cls.review_status === 'rejected') return 'rejected';
+        return 'pending_approval';
+    }
+
+    const status = String(row.raw_status || raw.status || '').toLowerCase().trim();
+    const stage = String(raw.approval_stage || row.approval_stage || '').toLowerCase().trim();
+    if (status === 'rejected' || stage === 'declined' || stage === 'rejected') return 'rejected';
+    if (status === 'revision' || stage === 'revision') return 'needs_revision';
+    if (workflowRowApproved(row, task)) return 'approved';
     return 'pending_approval';
 }
 
 function workflowBucketLabel(bucket) {
-    if (bucket === 'pending_approval') return 'Submitted — Pending Approval';
+    if (bucket === 'pending_approval' || bucket === 'pending_review') return 'Submitted — Pending Approval';
+    if (bucket === 'approved' || bucket === 'submitted') return 'Approved';
+    if (bucket === 'needs_revision' || bucket === 'revision') return 'Needs Revision';
+    if (bucket === 'rejected' || bucket === 'declined') return 'Rejected';
+    if (bucket === 'not_submitted_open') return 'Not Submitted (Open)';
+    if (bucket === 'not_submitted_overdue') return 'Not Submitted (Overdue)';
+    if (bucket === 'not_submitted') return 'Not Submitted';
     const cat = WF_ANALYTICS_CATEGORIES.find(item => item.key === bucket);
-    return cat ? cat.label : '';
+    return cat ? cat.label : (bucket || '');
 }
 
 function formatDateLong(iso) {
@@ -3983,14 +4273,23 @@ function renderAnalyticsFaculty(rows) {
 }
 
 function paintWorkflowAnalytics() {
-    const rows = getAnalyticsSourceRows()
+    const allSourceRows = getAnalyticsSourceRows();
+    const assignedRows = allSourceRows.filter(r => !r.is_orphaned);
+    const orphanedRows = allSourceRows.filter(r => r.is_orphaned);
+
+    const rows = assignedRows
         .map(row => ({ ...row, _bucket: classifyWorkflowRow(row, row._task) }))
         .filter(row => WF_ANALYTICS_CATEGORIES.some(cat => cat.key === row._bucket));
-    const counts = { submitted: 0, pending_approval: 0, late: 0, not_submitted: 0 };
-    rows.forEach(row => { counts[row._bucket] += 1; });
+
+    const counts = {};
+    WF_ANALYTICS_CATEGORIES.forEach(cat => { counts[cat.key] = 0; });
+    rows.forEach(row => { if (counts[row._bucket] != null) counts[row._bucket] += 1; });
     const total = rows.length;
+
+    const submittedTotal = (counts.approved || 0) + (counts.pending_approval || 0) + (counts.needs_revision || 0) + (counts.rejected || 0);
+
     if (!WF_ANALYTICS_CATEGORIES.some(cat => cat.key === analyticsCategory)) {
-        analyticsCategory = WF_ANALYTICS_CATEGORIES.find(cat => counts[cat.key] > 0)?.key || 'submitted';
+        analyticsCategory = WF_ANALYTICS_CATEGORIES.find(cat => counts[cat.key] > 0)?.key || 'pending_approval';
     }
     const countsEl = document.getElementById('wfAnalyticsCounts');
     if (countsEl) {
@@ -4012,7 +4311,9 @@ function paintWorkflowAnalytics() {
     const cat = WF_ANALYTICS_CATEGORIES.find(item => item.key === analyticsCategory);
     const hint = document.getElementById('wfAnalyticsHint');
     if (hint) {
-        hint.textContent = `${analyticsScope === 'overall' ? 'Overall progress' : 'Task progress'} · ${cat?.short || ''}`;
+        const pctSubmitted = total ? Math.round((submittedTotal / total) * 100) : 0;
+        const orphanDiag = orphanedRows.length > 0 ? ` · ${orphanedRows.length} unassigned` : '';
+        hint.textContent = `${analyticsScope === 'overall' ? 'Overall progress' : 'Task progress'}: ${submittedTotal}/${total} (${pctSubmitted}%) submitted${orphanDiag} · ${cat?.short || ''}`;
     }
     renderWorkflowChart(counts, total);
     renderAnalyticsFaculty(rows.filter(row => row._bucket === analyticsCategory));
@@ -6543,106 +6844,6 @@ async function generateNextReportingTasks() {
         await CiteFlowWorkflow.processDeadlineReminders(db);
     }
 }
-
-function getSubmissionTiming(sub, task) {
-    if (!sub || !sub.submitted_at) return 'not_submitted';
-    if (sub.submitted_status === 'late' || sub.is_late === true) return 'late';
-    const deadline = task?.deadline_at || task?.due_at;
-    if (deadline && new Date(sub.submitted_at) > new Date(deadline)) return 'late';
-    return 'on_time';
-}
-
-function computeEffectiveStatus(task, sub) {
-    if (!sub || sub.status === 'notsubmitted') {
-        return isPastDeadline(task?.deadline_at || task?.due_at) ? 'late' : 'notsubmitted';
-    }
-    if (sub.status === 'revision') return 'revision';
-    if (sub.status === 'rejected') return 'rejected';
-    if (sub.status === 'approved') return 'approved';
-    if (getSubmissionTiming(sub, task) === 'late') return 'late';
-    return sub.status || 'submitted';
-}
-
-function recomputeSubmissionMatrix() {
-    allSubmissions = [];
-    const seen = new Set();
-    (workflowState.assignments || []).forEach(assign => {
-        const faculty = getFacultyById(assign.faculty_id);
-        const task = getTaskById(assign.task_id);
-        const sub = getSubmission(assign.task_id, assign.faculty_id);
-        if (!task && !sub) return;
-        const effectiveStatus = computeEffectiveStatus(task, sub);
-        const rowId = `${assign.task_id}|${assign.faculty_id}`;
-        seen.add(rowId);
-        allSubmissions.push({
-            id: rowId,
-            task_id: assign.task_id,
-            faculty_id: assign.faculty_id,
-            faculty_name: faculty?.full_name || 'Faculty',
-            department_code: faculty?.department_code || faculty?.department || '',
-            submitted_at: sub?.submitted_at || null,
-            status: effectiveStatus,
-            timing: getSubmissionTiming(sub, task),
-            approval_stage: sub?.approval_stage || null,
-            review_remarks: sub?.review_remarks || '',
-            reviewed_by_name: sub?.reviewed_by_name || null,
-            reviewed_at: sub?.reviewed_at || null,
-            last_reviewed_by_role: sub?.last_reviewed_by_role || null,
-            final_approved_at: sub?.final_approved_at || null,
-            final_approved_by_name: sub?.final_approved_by_name || null,
-            final_approval_remarks: sub?.final_approval_remarks || null,
-            raw_status: sub?.status || null,
-            files: sub ? getSubmissionFiles(sub.id) : [],
-            submission_id: sub?.id || null
-        });
-    });
-    (workflowState.submissions || []).forEach((sub) => {
-        const rowId = `${sub.task_id}|${sub.faculty_id}`;
-        if (seen.has(rowId)) return;
-        const faculty = getFacultyById(sub.faculty_id);
-        const task = getTaskById(sub.task_id);
-        allSubmissions.push({
-            id: rowId,
-            task_id: sub.task_id,
-            faculty_id: sub.faculty_id,
-            faculty_name: faculty?.full_name || 'Faculty',
-            department_code: faculty?.department_code || faculty?.department || '',
-            submitted_at: sub.submitted_at || null,
-            status: computeEffectiveStatus(task, sub),
-            timing: getSubmissionTiming(sub, task),
-            approval_stage: sub.approval_stage || null,
-            review_remarks: sub.review_remarks || '',
-            reviewed_by_name: sub.reviewed_by_name || null,
-            reviewed_at: sub.reviewed_at || null,
-            last_reviewed_by_role: sub.last_reviewed_by_role || null,
-            final_approved_at: sub.final_approved_at || null,
-            final_approved_by_name: sub.final_approved_by_name || null,
-            final_approval_remarks: sub.final_approval_remarks || null,
-            raw_status: sub.status || null,
-            files: getSubmissionFiles(sub.id),
-            submission_id: sub.id
-        });
-    });
-}
-
-function updateStats() {
-    const counts = { pending:0, submitted:0, underreview:0, approved:0, revision:0, rejected:0, late:0 };
-    allSubmissions.forEach(s => counts[s.status] = (counts[s.status] || 0) + 1);
-    const pending = allSubmissions.filter(s => !s.submission_id).length;
-    const submitted = allSubmissions.filter(s => s.submission_id && s.timing === 'on_time').length;
-    const late = allSubmissions.filter(s => s.timing === 'late').length;
-    const pendingEl = document.getElementById('stat-pending');
-    const approvedEl = document.getElementById('stat-approved');
-    const revisionEl = document.getElementById('stat-revision');
-    const declinedEl = document.getElementById('stat-declined');
-    if (pendingEl) pendingEl.textContent = pending + late;
-    if (approvedEl) approvedEl.textContent = counts.approved || 0;
-    if (revisionEl) revisionEl.textContent = counts.revision || 0;
-    if (declinedEl) declinedEl.textContent = counts.rejected || 0;
-    const pendingLabel = document.querySelector('#stat-pending')?.parentElement?.parentElement?.querySelector('.text-gray-500');
-    if (pendingLabel) pendingLabel.textContent = `${submitted} on time &middot; ${late} late`;
-}
-
 function renderDelegates() {
     const el = document.getElementById('currentDelegates');
     if (!el) return;
@@ -7211,7 +7412,8 @@ async function fetchAllData(isRetry) {
         faculty, tasks, assignments, submissions, files,
         notifications, activity, comments, delegates,
         reportConfigs, reportTargets, approvalHistory,
-        mfoPackets
+        mfoPackets,
+        mfoProgramPackets
     ] = await Promise.all([
         db.from('faculty').select('*').order('full_name', { ascending: true }),
         db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
@@ -7225,7 +7427,8 @@ async function fetchAllData(isRetry) {
         db.from('wf_report_configs').select('*').order('created_at', { ascending: false }),
         db.from('wf_report_targets').select('*'),
         db.from('wf_approval_history').select('*').order('created_at', { ascending: false }).limit(200),
-        db.from('mfo_packets').select('*').then(r => r, () => ({ data: [] }))
+        db.from('mfo_packets').select('*').then(r => r, () => ({ data: [] })),
+        db.from('mfo_program_packets').select('*').then(r => r, () => ({ data: [] }))
     ]);
 
     const required = { faculty, tasks, assignments, submissions, files, delegates, reportConfigs };
@@ -7262,6 +7465,7 @@ async function fetchAllData(isRetry) {
     workflowState.reportTargets = reportTargets.data || [];
     workflowState.approvalHistory = approvalHistory.data || [];
     workflowState.mfoPackets = mfoPackets?.data || [];
+    workflowState.mfoProgramPackets = mfoProgramPackets?.data || [];
 
     await loadWorkflowActor();
     syncChairpersonWorkbenchChrome();
@@ -8042,7 +8246,19 @@ function renderStatusPill(statusText, rawStatus) {
     let dotColor = '#f59e0b';
     let label = statusText || 'Pending';
 
-    if (norm.includes('approved') || norm.includes('completed')) {
+    if (norm.includes('overdue')) {
+        pillClass = 'pill-rejected';
+        dotColor = '#ef4444';
+        label = 'Not Submitted (Overdue)';
+    } else if (norm.includes('open') && (norm.includes('not') || norm.includes('submit'))) {
+        pillClass = 'pill-neutral';
+        dotColor = '#94a3b8';
+        label = 'Not Submitted (Open)';
+    } else if (norm === 'not_submitted' || norm === 'notsubmitted' || norm === 'no submission') {
+        pillClass = 'pill-neutral';
+        dotColor = '#94a3b8';
+        label = 'Not Submitted';
+    } else if (norm.includes('approved') || norm.includes('completed')) {
         pillClass = 'pill-approved';
         dotColor = '#10b981';
         label = 'Approved';
@@ -8053,7 +8269,7 @@ function renderStatusPill(statusText, rawStatus) {
     } else if (norm.includes('revision') || norm.includes('return')) {
         pillClass = 'pill-revision';
         dotColor = '#a855f7';
-        label = 'Revision';
+        label = 'Needs Revision';
     } else if (norm.includes('reject') || norm.includes('declin')) {
         pillClass = 'pill-rejected';
         dotColor = '#ef4444';
@@ -8061,7 +8277,7 @@ function renderStatusPill(statusText, rawStatus) {
     } else if (norm.includes('not submitted') || norm.includes('notsubmitted')) {
         pillClass = 'pill-neutral';
         dotColor = '#94a3b8';
-        label = 'No Submission';
+        label = 'Not Submitted';
     } else {
         pillClass = 'pill-pending';
         dotColor = '#f59e0b';
@@ -8181,8 +8397,60 @@ function renderSubmissionQueue() {
         };
     });
 
-    // Combine both collections
-    let combined = [...taskQueueItems, ...arQueueItems];
+    // 3. Collect submitted Department Consolidated MFOs
+    const consolidatedMfoQueueItems = (workflowState.mfoProgramPackets || []).filter(p => {
+        const state = String(p.packet_state || '').toLowerCase();
+        return ['submitted', 'resubmitted', 'revision', 'approved', 'declined'].includes(state);
+    }).map(p => {
+        const task = getTaskById(p.task_id);
+        const chair = (workflowState.facultyDirectory || []).find(f => String(f.id) === String(p.chairperson_faculty_id));
+        const chairName = chair?.full_name || chair?.name || 'Chairperson';
+        const dept = String(p.department || '').trim().toUpperCase();
+
+        let bucket = 'other';
+        const state = String(p.packet_state || '').toLowerCase();
+        if (['submitted', 'resubmitted'].includes(state)) bucket = 'review';
+        else if (state === 'revision') bucket = 'returned';
+        else if (state === 'approved') bucket = 'approved';
+
+        const submittedTs = p.updated_at ? new Date(p.updated_at).getTime() : (p.created_at ? new Date(p.created_at).getTime() : 0);
+
+        let statusLabel = 'Submitted to Dean';
+        if (state === 'submitted') statusLabel = 'Submitted to Dean';
+        else if (state === 'resubmitted') statusLabel = 'Resubmitted to Dean';
+        else if (state === 'revision') statusLabel = 'Revision Requested';
+        else if (state === 'approved') statusLabel = 'Approved by Dean';
+        else if (state === 'declined') statusLabel = 'Declined';
+
+        const catInfo = {
+            type: 'mfo',
+            iconClass: 'fa-solid fa-layer-group text-rose-600',
+            iconBg: 'bg-rose-50 border-rose-200',
+            breadcrumb: 'Department Consolidated MFO',
+            isMfo: true
+        };
+
+        return {
+            source: 'consolidated_mfo',
+            id: `consolidated_mfo_${p.id}`,
+            programPacketId: p.id,
+            taskId: p.task_id,
+            chairpersonId: p.chairperson_faculty_id,
+            title: task ? `${task.title} — Consolidated Report` : `Department Consolidated MFO (${dept})`,
+            categoryInfo: catInfo,
+            bucket: bucket,
+            statusLabel: statusLabel,
+            rawStatus: state,
+            facultyName: chairName,
+            department: dept,
+            submittedAt: p.updated_at || p.created_at,
+            submittedTs: isNaN(submittedTs) ? 0 : submittedTs,
+            programPacket: p
+        };
+    });
+
+    // Combine all collections
+    let combined = [...taskQueueItems, ...arQueueItems, ...consolidatedMfoQueueItems];
 
     // Filter by Queue Bucket (Needs Review, Returned, Approved, All)
     if (queueBucket !== 'all') {
@@ -8259,11 +8527,16 @@ function renderSubmissionQueue() {
             if (item.pdfUrl) {
                 linkHtml = `<a href="${escapeHtml(item.pdfUrl)}" target="_blank" rel="noopener" class="cite-row-link" title="Open Accomplishment PDF"><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> Link</a>`;
             }
+        } else if (item.source === 'consolidated_mfo') {
+            const previewUrl = `../faculty/mfo-report.html?view=consolidated&task=${encodeURIComponent(item.taskId)}&dept=${encodeURIComponent(item.department)}`;
+            linkHtml = `<a href="${previewUrl}" target="_blank" rel="noopener" class="cite-row-link" title="Open Official Department Consolidated MFO Report"><i class="fa-solid fa-file-invoice text-[10px]"></i> MFO (v${item.programPacket?.current_version || 1})</a>`;
         }
 
         const actionHtml = item.source === 'task'
             ? `<button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openReviewModal('${item.taskId}', '${item.facultyId}')">Review</button>`
-            : `<button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openArReviewModal(${item.arId})">Review</button>`;
+            : (item.source === 'consolidated_mfo'
+                ? `<button type="button" class="btn btn-ghost btn-sm font-medium text-rose-700 hover:text-rose-900" onclick="openConsolidatedMfoReviewModal('${item.programPacketId}')">Review MFO</button>`
+                : `<button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openArReviewModal(${item.arId})">Review</button>`);
 
         return `
             <tr class="cite-sub-row">
@@ -8305,122 +8578,419 @@ function renderSubmissionQueue() {
 function renderReportSubmissions() {
     const body = document.getElementById('reportsSubmissionsTableBody');
     if (!body) return;
+    const summaryBar = document.getElementById('reportsAnalyticsSummaryBar');
 
     const query = String(document.getElementById('reportsSubmissionsSearch')?.value || '').trim().toLowerCase();
     const deptFilter = String(document.getElementById('reportsDeptFilter')?.value || '').trim().toUpperCase();
     const statusFilter = String(document.getElementById('reportsStatusFilter')?.value || '').trim().toLowerCase();
 
-    // Filter allSubmissions for recurring reports
-    let rows = (allSubmissions || []).filter(row => {
-        const task = getTaskById(row.task_id);
-        if (!task || !isGeneratedRecurringTask(task)) return false;
-        if (!row.submission_id && !row.submitted_at) return false;
+    const WF = window.CiteFlowWorkflow;
+    const now = Date.now();
 
-        const catInfo = getTaskCategoryInfo(row, task);
-        
-        // Filter by frequency
-        if (reportsFrequencyFilter) {
-            if (catInfo.frequency !== reportsFrequencyFilter) return false;
-        }
+    // 1. Compute standardized recurring analytics using shared workflow engine
+    const recurringAnalytics = WF?.computeRecurringReportAnalytics
+        ? WF.computeRecurringReportAnalytics(
+            workflowState.tasks || [],
+            workflowState.assignments || [],
+            workflowState.submissions || [],
+            workflowState.reportConfigs || [],
+            { now }
+        )
+        : null;
 
-        // Sub-filter when Quarterly is active
+    if (!recurringAnalytics || !recurringAnalytics.groups.length) {
+        if (summaryBar) summaryBar.innerHTML = '';
+        body.innerHTML = `<tr><td colspan="6"><div class="cite-empty"><div class="cite-empty-title">No recurring reports</div><p class="cite-empty-text">No recurring report configurations or tasks are currently active.</p></div></td></tr>`;
+        return;
+    }
+
+    // 2. Filter groups by frequency & quarterly sub-filter
+    const matchingGroups = recurringAnalytics.groups.filter(group => {
+        if (reportsFrequencyFilter && group.frequency !== reportsFrequencyFilter) return false;
         if (reportsFrequencyFilter === 'quarterly') {
-            if (reportsQuarterlySubFilter === 'mfo' && !catInfo.isMfo) return false;
-            if (reportsQuarterlySubFilter === 'other' && catInfo.isMfo) return false;
+            if (reportsQuarterlySubFilter === 'mfo' && !group.is_mfo) return false;
+            if (reportsQuarterlySubFilter === 'other' && group.is_mfo) return false;
         }
-
-        // Department filter
-        if (deptFilter && !String(row.department_code || '').trim().toUpperCase().includes(deptFilter)) {
-            return false;
-        }
-
-        // Status filter
-        if (statusFilter) {
-            const bucket = submissionQueueBucket(row);
-            if (statusFilter === 'review' && bucket !== 'review') return false;
-            if (statusFilter === 'approved' && bucket !== 'approved') return false;
-            if (statusFilter === 'revision' && bucket !== 'returned') return false;
-            if (statusFilter === 'notsubmitted' && row.submission_id) return false;
-        }
-
-        // Search query
-        if (query) {
-            const hay = [
-                task?.title,
-                row.faculty_name,
-                row.department_code,
-                catInfo.breadcrumb,
-                row.status
-            ].join(' ').toLowerCase();
-            if (!hay.includes(query)) return false;
-        }
-
         return true;
     });
 
-    // Sort newest submitted first
-    rows.sort((a, b) => {
-        const tA = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
-        const tB = b.submitted_at ? new Date(b.submitted_at).getTime() : 0;
-        return tB - tA;
+    // 3. Process each cycle in the matching groups
+    let renderedCycles = [];
+    let totExpected = 0;
+    let totSubmitted = 0;
+    let totNotSubmitted = 0;
+    let totNotSubmittedOpen = 0;
+    let totNotSubmittedOverdue = 0;
+    let totPending = 0;
+    let totRevision = 0;
+    let totApproved = 0;
+    let totRejected = 0;
+    let activeCycleCount = 0;
+
+    matchingGroups.forEach(group => {
+        (group.cycles || []).forEach(task => {
+            const cycleData = recurringAnalytics.cycleAnalyticsMap.get(String(task.id));
+            if (!cycleData) return;
+
+            const c = cycleData.counts;
+
+            // Filter assigned faculty records for this cycle
+            const filteredAssigned = (cycleData.assignedRecords || []).filter(rec => {
+                const fac = getFacultyById(rec.faculty_id);
+                const facName = fac?.full_name || 'Faculty';
+                const facDept = String(fac?.department_code || fac?.department || '').trim().toUpperCase();
+                const cls = rec.classification;
+
+                // Department filter
+                if (deptFilter && !facDept.includes(deptFilter)) return false;
+
+                // Status filter
+                if (statusFilter) {
+                    if (statusFilter === 'review' && (!cls.is_submitted || cls.review_status !== 'pending_review')) return false;
+                    if (statusFilter === 'revision' && (!cls.is_submitted || cls.review_status !== 'needs_revision')) return false;
+                    if (statusFilter === 'approved' && (!cls.is_submitted || cls.review_status !== 'approved')) return false;
+                    if (statusFilter === 'rejected' && (!cls.is_submitted || cls.review_status !== 'rejected')) return false;
+                    if (statusFilter === 'notsubmitted' && cls.is_submitted) return false;
+                    if (statusFilter === 'not_submitted_open' && (cls.is_submitted || cls.category !== 'not_submitted_open')) return false;
+                    if (statusFilter === 'not_submitted_overdue' && (cls.is_submitted || cls.category !== 'not_submitted_overdue')) return false;
+                }
+
+                // Query filter
+                if (query) {
+                    const hay = [
+                        task.title,
+                        group.report_name,
+                        task.reporting_period_label,
+                        facName,
+                        facDept,
+                        cls.category,
+                        cls.timing
+                    ].join(' ').toLowerCase();
+                    if (!hay.includes(query)) return false;
+                }
+
+                return true;
+            });
+
+            // Filter orphaned records for this cycle
+            const filteredOrphaned = (cycleData.orphanedRecords || []).filter(rec => {
+                const fac = getFacultyById(rec.faculty_id);
+                const facName = fac?.full_name || 'Faculty';
+                const facDept = String(fac?.department_code || fac?.department || '').trim().toUpperCase();
+                const cls = rec.classification;
+
+                if (deptFilter && !facDept.includes(deptFilter)) return false;
+
+                if (statusFilter) {
+                    if (statusFilter === 'review' && (!cls.is_submitted || cls.review_status !== 'pending_review')) return false;
+                    if (statusFilter === 'revision' && (!cls.is_submitted || cls.review_status !== 'needs_revision')) return false;
+                    if (statusFilter === 'approved' && (!cls.is_submitted || cls.review_status !== 'approved')) return false;
+                    if (statusFilter === 'rejected' && (!cls.is_submitted || cls.review_status !== 'rejected')) return false;
+                    if (statusFilter === 'notsubmitted' || statusFilter === 'not_submitted_open' || statusFilter === 'not_submitted_overdue') return false;
+                }
+
+                if (query) {
+                    const hay = [task.title, group.report_name, facName, facDept].join(' ').toLowerCase();
+                    if (!hay.includes(query)) return false;
+                }
+
+                return true;
+            });
+
+            // If active filter caused zero matches in this cycle, skip rendering it
+            if ((deptFilter || statusFilter || query) && !filteredAssigned.length && !filteredOrphaned.length) {
+                return;
+            }
+
+            activeCycleCount++;
+            totExpected += c.expected;
+            totSubmitted += c.submitted;
+            totNotSubmitted += c.not_submitted;
+            totNotSubmittedOpen += c.not_submitted_open;
+            totNotSubmittedOverdue += c.not_submitted_overdue;
+            totPending += c.pending_review;
+            totRevision += c.needs_revision;
+            totApproved += c.approved;
+            totRejected += c.rejected;
+
+            renderedCycles.push({
+                task,
+                group,
+                cycleData,
+                filteredAssigned,
+                filteredOrphaned
+            });
+        });
     });
 
-    if (!rows.length) {
+    // 4. Render Standardized Overview Summary Bar
+    if (summaryBar) {
+        if (!renderedCycles.length) {
+            summaryBar.innerHTML = '';
+        } else {
+            const pctSubmitted = totExpected > 0 ? Math.round((totSubmitted / totExpected) * 100) : 0;
+            const invariantsBalanced = (totSubmitted + totNotSubmitted === totExpected) &&
+                                       (totPending + totRevision + totApproved + totRejected === totSubmitted) &&
+                                       (totNotSubmittedOpen + totNotSubmittedOverdue === totNotSubmitted);
+
+            summaryBar.innerHTML = `
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800">
+                    <div class="flex flex-col">
+                        <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Expected Submissions</span>
+                        <span class="text-xl font-bold text-slate-900 mt-0.5">${totExpected}</span>
+                        <span class="text-[11px] text-slate-500 mt-0.5">${activeCycleCount} reporting cycle${activeCycleCount === 1 ? '' : 's'}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Submitted</span>
+                        <span class="text-xl font-bold text-blue-700 mt-0.5">${totSubmitted}</span>
+                        <span class="text-[11px] text-slate-500 mt-0.5">${totPending} review &middot; ${totRevision} revision</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Approved / Closed</span>
+                        <span class="text-xl font-bold text-emerald-700 mt-0.5">${totApproved + totRejected}</span>
+                        <span class="text-[11px] text-slate-500 mt-0.5">${totApproved} approved &middot; ${totRejected} rejected</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Not Submitted</span>
+                        <span class="text-xl font-bold ${totNotSubmittedOverdue > 0 ? 'text-rose-700' : 'text-amber-700'} mt-0.5">${totNotSubmitted}</span>
+                        <span class="text-[11px] text-slate-500 mt-0.5">${totNotSubmittedOpen} open &middot; ${totNotSubmittedOverdue} overdue</span>
+                    </div>
+                    <div class="flex flex-col col-span-2 sm:col-span-1">
+                        <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Submission Rate</span>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            <span class="text-xl font-bold text-slate-900">${pctSubmitted}%</span>
+                            ${invariantsBalanced ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold" title="Invariants verified: Expected = Submitted + Not Submitted"><i class="fa-solid fa-check mr-0.5"></i> Balanced</span>' : ''}
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                            <div class="bg-[#621708] h-1.5 rounded-full" style="width:${pctSubmitted}%"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    if (!renderedCycles.length) {
         body.innerHTML = `<tr><td colspan="6"><div class="cite-empty"><div class="cite-empty-title">No report submissions</div><p class="cite-empty-text">No recurring report submissions found for this frequency and filter.</p></div></td></tr>`;
         return;
     }
 
-    body.innerHTML = rows.map(row => {
-        const task = getTaskById(row.task_id);
-        const catInfo = getTaskCategoryInfo(row, task);
-        const dt = formatDateTimeSplit(row.submitted_at);
-        const raw = (workflowState.submissions || []).find(s => String(s.id) === String(row.submission_id)) || row;
-        const statusLabel = window.CiteFlowWorkflow?.formatWorkflowStatus?.(raw, task) || row.status || 'Needs Review';
+    // 5. Render Cycle Groups and Faculty Rows
+    let html = '';
 
-        let linkHtml = '—';
-        if (catInfo.isMfo && row.submission_id) {
-            linkHtml = `<a href="mfo-viewer.html?submission=${encodeURIComponent(row.submission_id)}" target="_blank" class="cite-row-link" title="Open MFO Viewer"><i class="fa-solid fa-file-invoice text-[10px]"></i> MFO</a>`;
-        } else if (row.files && row.files.length > 0) {
-            const f = row.files[0];
-            const fUrl = f.file_url || f.url || '#';
-            linkHtml = `<a href="${escapeHtml(fUrl)}" target="_blank" rel="noopener" class="cite-row-link" title="${escapeHtml(f.file_name || 'View file')}"><i class="fa-solid fa-paperclip text-[10px]"></i> Link</a>`;
-        }
+    renderedCycles.forEach(({ task, group, cycleData, filteredAssigned, filteredOrphaned }) => {
+        const c = cycleData.counts;
+        const deadline = task.deadline_at || task.due_at;
+        const countdown = deadlineCountdown(deadline);
+        const catInfo = getTaskCategoryInfo(null, task);
 
-        return `
-            <tr class="cite-sub-row">
-                <td>
-                    <div class="flex items-center gap-3">
-                        <div class="cite-row-icon ${catInfo.iconBg}">
-                            <i class="${catInfo.iconClass}"></i>
+        const freqLabels = {
+            monthly: 'Monthly',
+            quarterly: 'Quarterly',
+            semi_annual: 'Semi-Annual',
+            annual: 'Annual'
+        };
+        const freqLabel = freqLabels[group.frequency] || 'Recurring';
+        const periodLabel = task.reporting_period_label || task.generated_for_period || 'Current Cycle';
+
+        // Cycle Header Row spanning 6 columns
+        html += `
+            <tr class="report-cycle-header-row bg-slate-100/90 border-t-2 border-b border-slate-200">
+                <td colspan="6" class="p-3">
+                    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${catInfo.iconBg}">
+                                <i class="${catInfo.iconClass}"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="font-bold text-slate-900 text-sm leading-snug">${escapeHtml(task.title || group.report_name)}</span>
+                                    <span class="badge bg-indigo-50 text-indigo-700 font-semibold">${escapeHtml(periodLabel)}</span>
+                                    <span class="config-chip">${escapeHtml(freqLabel)}</span>
+                                    ${catInfo.isMfo ? '<span class="badge bg-rose-50 text-[#621708] font-semibold">MFO</span>' : ''}
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                                    <span><i class="fa-regular fa-clock mr-1"></i>Due ${formatDateTime(deadline)}</span>
+                                    <span>&middot;</span>
+                                    <span>${countdown}</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="min-w-0">
-                            <div class="font-semibold text-slate-900 text-sm leading-snug line-clamp-1" title="${escapeHtml(task?.title || 'Report')}">${escapeHtml(task?.title || 'Report')}</div>
-                            <div class="text-[11px] font-medium text-slate-500 mt-0.5">${escapeHtml(catInfo.breadcrumb)}</div>
+                        <div class="flex items-center gap-2 flex-wrap justify-between lg:justify-end">
+                            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+                                <span class="px-2 py-0.5 rounded bg-slate-200/80 text-slate-700 font-medium" title="Expected submissions">Expected: <strong>${c.expected}</strong></span>
+                                <span class="px-2 py-0.5 rounded bg-blue-100/70 text-blue-800 font-medium" title="Submitted: ${c.submitted} (Pending: ${c.pending_review}, Revision: ${c.needs_revision}, Approved: ${c.approved}, Rejected: ${c.rejected})">Submitted: <strong>${c.submitted}</strong></span>
+                                <span class="px-2 py-0.5 rounded ${c.not_submitted_overdue > 0 ? 'bg-rose-100/70 text-rose-800' : 'bg-amber-100/70 text-amber-800'} font-medium" title="Not submitted: Open (${c.not_submitted_open}) + Overdue (${c.not_submitted_overdue})">Not Submitted: <strong>${c.not_submitted}</strong> <span class="text-[10px] opacity-80">(${c.not_submitted_open} open &middot; ${c.not_submitted_overdue} overdue)</span></span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0 ml-1">
+                                <button type="button" class="btn btn-ghost btn-sm px-2.5 py-1 text-xs" onclick="event.stopPropagation(); openAnalyticsModal('${task.id}')" title="Open Cycle Analytics">
+                                    <i class="fa-solid fa-chart-pie mr-1 text-slate-500"></i> Analytics
+                                </button>
+                                <button type="button" class="btn btn-ghost btn-sm px-2.5 py-1 text-xs" onclick="event.stopPropagation(); openTaskDetailsPage('${task.id}')" title="Open Task Details Drawer">
+                                    <i class="fa-solid fa-list-check mr-1 text-slate-500"></i> Details
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </td>
-                <td>
-                    <div>
-                        <div class="text-xs font-semibold text-slate-800">${dt.date}</div>
-                        ${dt.time ? `<div class="text-[11px] text-slate-400 font-mono mt-0.5">${dt.time}</div>` : ''}
-                    </div>
-                </td>
-                <td>
-                    <div class="text-sm font-medium text-slate-900">${escapeHtml(row.faculty_name || 'Faculty')}</div>
-                    <div class="text-xs text-slate-500">${escapeHtml(row.department_code || '')}</div>
-                </td>
-                <td>
-                    ${linkHtml}
-                </td>
-                <td>
-                    ${renderStatusPill(statusLabel, row.status)}
-                </td>
-                <td class="text-right">
-                    <button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openReviewModal('${row.task_id}', '${row.faculty_id}')">Review</button>
                 </td>
             </tr>
         `;
-    }).join('');
+
+        if (!filteredAssigned.length && !filteredOrphaned.length) {
+            html += `
+                <tr class="cite-sub-row bg-white">
+                    <td colspan="6" class="text-center text-xs text-slate-400 py-4 italic">
+                        No faculty matches the current filter for this cycle.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        // Assigned faculty rows
+        filteredAssigned.forEach(rec => {
+            const fac = getFacultyById(rec.faculty_id);
+            const facultyName = fac?.full_name || 'Faculty';
+            const facultyDept = String(fac?.department_code || fac?.department || '').trim().toUpperCase();
+            const sub = rec.submission;
+            const cls = rec.classification;
+            const dt = formatDateTimeSplit(sub?.submitted_at);
+
+            let linkHtml = '—';
+            if (catInfo.isMfo && sub?.id) {
+                linkHtml = `<a href="mfo-viewer.html?submission=${encodeURIComponent(sub.id)}" target="_blank" class="cite-row-link" title="Open MFO Viewer"><i class="fa-solid fa-file-invoice text-[10px]"></i> MFO</a>`;
+            } else if (sub?.id) {
+                const files = getSubmissionFiles(sub.id);
+                if (files && files.length > 0) {
+                    const f = files[0];
+                    const fUrl = f.file_url || f.url || '#';
+                    linkHtml = `<a href="${escapeHtml(fUrl)}" target="_blank" rel="noopener" class="cite-row-link" title="${escapeHtml(f.file_name || 'View file')}"><i class="fa-solid fa-paperclip text-[10px]"></i> Link</a>`;
+                }
+            }
+
+            if (cls.is_submitted) {
+                const statusLabel = WF?.formatWorkflowStatus?.(sub, task) || cls.review_status || 'Needs Review';
+                const timingBadge = cls.timing === 'late'
+                    ? '<span class="text-[10px] px-1.5 py-0.2 rounded font-medium bg-amber-100 text-amber-800">Late</span>'
+                    : '<span class="text-[10px] px-1.5 py-0.2 rounded font-medium bg-emerald-100 text-emerald-800">On Time</span>';
+
+                html += `
+                    <tr class="cite-sub-row bg-white hover:bg-slate-50/80 transition-colors">
+                        <td class="pl-6">
+                            <div class="min-w-0">
+                                <div class="font-medium text-slate-900 text-xs leading-snug line-clamp-1">${escapeHtml(task.title)}</div>
+                                <div class="text-[11px] font-medium text-slate-500 mt-0.5">${escapeHtml(catInfo.breadcrumb)}</div>
+                            </div>
+                        </td>
+                        <td>
+                            <div>
+                                <div class="text-xs font-semibold text-slate-800">${dt.date}</div>
+                                <div class="flex items-center gap-1.5 mt-0.5">
+                                    ${dt.time ? `<span class="text-[11px] text-slate-400 font-mono">${dt.time}</span>` : ''}
+                                    ${timingBadge}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="text-sm font-medium text-slate-900">${escapeHtml(facultyName)}</div>
+                            <div class="text-xs text-slate-500">${escapeHtml(facultyDept || '—')}</div>
+                        </td>
+                        <td>
+                            ${linkHtml}
+                        </td>
+                        <td>
+                            ${renderStatusPill(statusLabel, cls.review_status)}
+                        </td>
+                        <td class="text-right">
+                            <button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openReviewModal('${task.id}', '${rec.faculty_id}')">Review</button>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                // Non-submitter row (cleanly distinguished Open vs Overdue)
+                const pillLabel = cls.is_overdue ? 'Not Submitted (Overdue)' : 'Not Submitted (Open)';
+                html += `
+                    <tr class="cite-sub-row bg-slate-50/40 hover:bg-slate-50 transition-colors">
+                        <td class="pl-6">
+                            <div class="min-w-0">
+                                <div class="font-medium text-slate-600 text-xs leading-snug line-clamp-1">${escapeHtml(task.title)}</div>
+                                <div class="text-[11px] font-medium text-slate-400 mt-0.5">${escapeHtml(catInfo.breadcrumb)}</div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="text-slate-400 italic text-xs">Not submitted yet</span>
+                        </td>
+                        <td>
+                            <div class="text-sm font-medium text-slate-800">${escapeHtml(facultyName)}</div>
+                            <div class="text-xs text-slate-500">${escapeHtml(facultyDept || '—')}</div>
+                        </td>
+                        <td>
+                            <span class="text-slate-300">—</span>
+                        </td>
+                        <td>
+                            ${renderStatusPill(pillLabel, cls.category)}
+                        </td>
+                        <td class="text-right">
+                            <button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openTaskDetailsPage('${task.id}', { focusFacultyId: '${rec.faculty_id}' })">Details</button>
+                        </td>
+                    </tr>
+                `;
+            }
+        });
+
+        // Diagnostic display for unassigned orphaned records if any
+        if (filteredOrphaned.length > 0) {
+            html += `
+                <tr class="bg-amber-50/60 border-t border-b border-amber-200/60 text-xs text-amber-900">
+                    <td colspan="6" class="px-6 py-2">
+                        <i class="fa-solid fa-triangle-exclamation mr-1.5 text-amber-600"></i>
+                        <strong>Unassigned submissions:</strong> ${filteredOrphaned.length} record(s) exist for faculty not currently assigned to this cycle. (Excluded from expected totals)
+                    </td>
+                </tr>
+            `;
+
+            filteredOrphaned.forEach(rec => {
+                const fac = getFacultyById(rec.faculty_id);
+                const facultyName = fac?.full_name || 'Faculty';
+                const facultyDept = String(fac?.department_code || fac?.department || '').trim().toUpperCase();
+                const sub = rec.submission;
+                const cls = rec.classification;
+                const dt = formatDateTimeSplit(sub?.submitted_at);
+
+                let linkHtml = '—';
+                if (sub?.id) {
+                    const files = getSubmissionFiles(sub.id);
+                    if (files && files.length > 0) {
+                        const f = files[0];
+                        const fUrl = f.file_url || f.url || '#';
+                        linkHtml = `<a href="${escapeHtml(fUrl)}" target="_blank" rel="noopener" class="cite-row-link" title="${escapeHtml(f.file_name || 'View file')}"><i class="fa-solid fa-paperclip text-[10px]"></i> Link</a>`;
+                    }
+                }
+
+                html += `
+                    <tr class="cite-sub-row bg-amber-50/20">
+                        <td class="pl-6">
+                            <div class="font-medium text-slate-700 text-xs">${escapeHtml(task.title)} <span class="badge bg-amber-100 text-amber-800 text-[10px] ml-1">Unassigned</span></div>
+                        </td>
+                        <td>
+                            <div class="text-xs text-slate-600">${dt.date} ${dt.time ? `<span class="font-mono text-[11px] text-slate-400">(${dt.time})</span>` : ''}</div>
+                        </td>
+                        <td>
+                            <div class="text-sm font-medium text-slate-900">${escapeHtml(facultyName)}</div>
+                            <div class="text-xs text-slate-500">${escapeHtml(facultyDept || '—')}</div>
+                        </td>
+                        <td>${linkHtml}</td>
+                        <td>${renderStatusPill(cls.review_status || 'Needs Review', cls.category)}</td>
+                        <td class="text-right">
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="openReviewModal('${task.id}', '${rec.faculty_id}')">Review</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+    });
+
+    body.innerHTML = html;
 }
 
 function renderAccomplishmentsView(customList) {
@@ -9348,6 +9918,167 @@ async function executeArReview(action) {
             message: 'Error: ' + err.message,
             type: 'error'
         });
+    }
+}
+
+// ─── DEPARTMENT CONSOLIDATED MFO DEAN REVIEW ───────────────────────────
+let _currentConsolidatedMfoPacket = null;
+
+function openConsolidatedMfoReviewModal(programPacketId) {
+    const packet = (workflowState.mfoProgramPackets || []).find(p => String(p.id) === String(programPacketId));
+    if (!packet) {
+        if (typeof showToast === 'function') showToast('Consolidated MFO record not found.', 'error');
+        return;
+    }
+
+    _currentConsolidatedMfoPacket = packet;
+    const task = getTaskById(packet.task_id);
+    const chair = (workflowState.facultyDirectory || []).find(f => String(f.id) === String(packet.chairperson_faculty_id));
+    const chairName = chair?.full_name || chair?.name || 'Chairperson';
+    const dept = String(packet.department || '').trim().toUpperCase();
+    const state = String(packet.packet_state || 'draft').toLowerCase();
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+    // Populate modal
+    const titleEl = document.getElementById('consolidatedMfoReviewTitle');
+    const subEl = document.getElementById('consolidatedMfoReviewSubtitle');
+    const badgeEl = document.getElementById('consolidatedMfoReviewVersionBadge');
+    if (titleEl) titleEl.textContent = `${task ? task.title : 'MFO Accomplishment Report'} — Consolidated Review`;
+    if (subEl) subEl.textContent = `${dept} Department · Submitting Officer: ${chairName}`;
+    if (badgeEl) badgeEl.textContent = `Version ${packet.current_version || 1} (${state.toUpperCase()})`;
+
+    const reportUrl = `../faculty/mfo-report.html?view=consolidated&task=${encodeURIComponent(packet.task_id)}&dept=${encodeURIComponent(dept)}`;
+    const iframe = document.getElementById('consolidatedMfoReviewIframe');
+    const reportLink = document.getElementById('consolidatedMfoReviewReportLink');
+    if (iframe) iframe.src = reportUrl;
+    if (reportLink) reportLink.href = reportUrl;
+
+    const deptEl = document.getElementById('consolidatedMfoReviewDept');
+    const chairEl = document.getElementById('consolidatedMfoReviewChair');
+    const cycleEl = document.getElementById('consolidatedMfoReviewCycle');
+    const periodEl = document.getElementById('consolidatedMfoReviewPeriod');
+    const statusEl = document.getElementById('consolidatedMfoReviewStatus');
+    const submittedAtEl = document.getElementById('consolidatedMfoReviewSubmittedAt');
+    if (deptEl) deptEl.textContent = dept;
+    if (chairEl) chairEl.textContent = chairName;
+    if (cycleEl) cycleEl.textContent = task ? task.title : '—';
+    if (periodEl) periodEl.textContent = task ? (task.reporting_period_label || task.academic_year || 'Current Period') : '—';
+    if (statusEl) statusEl.textContent = state.toUpperCase();
+    if (submittedAtEl) submittedAtEl.textContent = fmtDate(packet.updated_at || packet.created_at);
+
+    // Remarks from Chairperson
+    let chairRemarks = 'None provided.';
+    try {
+        if (typeof packet.notes === 'string') {
+            if (packet.notes.trim().startsWith('{')) {
+                const parsed = JSON.parse(packet.notes);
+                chairRemarks = parsed.user_remarks || parsed.citeflow_mfo_consolidation?.user_remarks || 'None provided.';
+            } else {
+                chairRemarks = packet.notes.split('\n---')[0].trim() || 'None provided.';
+            }
+        }
+    } catch (_) {}
+    const chairRemarksEl = document.getElementById('consolidatedMfoReviewChairRemarks');
+    if (chairRemarksEl) chairRemarksEl.textContent = chairRemarks;
+
+    // Reset remarks input
+    const remarksInput = document.getElementById('consolidatedMfoReviewRemarks');
+    if (remarksInput) remarksInput.value = '';
+
+    // Action buttons based on review state
+    const actionsDiv = document.getElementById('consolidatedMfoReviewActions');
+    if (actionsDiv) {
+        let btns = '<button type="button" onclick="closeConsolidatedMfoReviewModal()" class="btn btn-ghost">Close</button>';
+        if (state === 'submitted' || state === 'resubmitted') {
+            btns += `
+                <button type="button" onclick="executeConsolidatedMfoDeanReview('revision')" class="btn" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">
+                    <i class="fa-solid fa-rotate-left mr-1"></i> Request Revision
+                </button>
+                <button type="button" onclick="executeConsolidatedMfoDeanReview('declined')" class="btn" style="background:#ffe4e6;color:#9f1239;border:1px solid #fecdd3;">
+                    <i class="fa-solid fa-xmark mr-1"></i> Decline
+                </button>
+                <button type="button" onclick="executeConsolidatedMfoDeanReview('approved')" class="btn btn-primary" style="background:#059669;border-color:#059669;">
+                    <i class="fa-solid fa-check mr-1"></i> Final Approve
+                </button>
+            `;
+        } else if (state === 'approved') {
+            btns = `
+                <span class="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 mr-auto">
+                    <i class="fa-solid fa-circle-check mr-1.5 text-emerald-600"></i> Approved by Dean's Office
+                </span>
+                <button type="button" onclick="closeConsolidatedMfoReviewModal()" class="btn btn-ghost">Close</button>
+            `;
+        } else if (state === 'revision') {
+            btns = `
+                <span class="inline-flex items-center text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 mr-auto">
+                    <i class="fa-solid fa-rotate-left mr-1.5 text-amber-600"></i> Revision Pending from Chairperson
+                </span>
+                <button type="button" onclick="closeConsolidatedMfoReviewModal()" class="btn btn-ghost">Close</button>
+            `;
+        }
+        actionsDiv.innerHTML = btns;
+    }
+
+    const modal = document.getElementById('consolidatedMfoReviewModal');
+    if (modal) {
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+    }
+}
+
+function closeConsolidatedMfoReviewModal() {
+    const modal = document.getElementById('consolidatedMfoReviewModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+    const iframe = document.getElementById('consolidatedMfoReviewIframe');
+    if (iframe) iframe.src = '';
+    _currentConsolidatedMfoPacket = null;
+}
+
+async function executeConsolidatedMfoDeanReview(action) {
+    if (!_currentConsolidatedMfoPacket) return;
+
+    const remarks = String(document.getElementById('consolidatedMfoReviewRemarks')?.value || '').trim();
+    if ((action === 'revision' || action === 'declined') && !remarks) {
+        if (typeof showToast === 'function') showToast('Remarks are required when requesting revisions or declining.', 'warn');
+        document.getElementById('consolidatedMfoReviewRemarks')?.focus();
+        return;
+    }
+
+    const engine = window.CiteFlowMfoConsolidation;
+    if (!engine?.applyConsolidatedMfoDeanReview) {
+        if (typeof showToast === 'function') showToast('Consolidation engine review function not available.', 'error');
+        return;
+    }
+
+    try {
+        const result = await engine.applyConsolidatedMfoDeanReview({
+            db,
+            programPacket: _currentConsolidatedMfoPacket,
+            action,
+            remarks,
+            actorFaculty: currentActorFaculty || null,
+            actorName: currentActorFaculty?.full_name || 'Dean\'s Office'
+        });
+
+        if (!result.ok) {
+            if (typeof showToast === 'function') showToast(result.error || 'Failed to process review action.', 'error');
+            return;
+        }
+
+        const msg = action === 'approved'
+            ? 'Department Consolidated MFO approved successfully!'
+            : (action === 'revision'
+                ? 'Revision requested. Chairperson notified.'
+                : 'Department Consolidated MFO declined.');
+        if (typeof showToast === 'function') showToast(msg, 'success');
+        closeConsolidatedMfoReviewModal();
+        await fetchAllData();
+    } catch (err) {
+        console.error('[Consolidated MFO Dean Review]', err);
+        if (typeof showToast === 'function') showToast('Review action failed: ' + (err?.message || err), 'error');
     }
 }
 

@@ -344,7 +344,8 @@
         reviewOpen: false, previewOpen: false, viewPdfOpen: false, previewPdfUrl: '', pdfPreparing: false,
         reviewerMode: false, reviewerActor: null, printing: false,
         chairName: '', profileOverrides: {}, paperSize: 'a4', programPacket: null, programRows: { pi1: [], pi2: [] }, taskWarning: '', sourceWarning: '', autoSummary: null,
-        lastSaved: null, initFailure: null
+        lastSaved: null, initFailure: null,
+        isConsolidated: false, chairFaculty: null, programDraft: null, contributingFacultyList: []
     };
 
     function pinFacultyToken(session) {
@@ -542,6 +543,22 @@
     }
 
     function profileBase() {
+        if (state.isConsolidated) {
+            const chair = state.chairFaculty || state.faculty || {};
+            const period = state.period || {};
+            const chairName = facultyFullName(chair) || String(chair.full_name || '').trim();
+            const programName = String(chair.program || state.task?.department || chair.department || '').trim();
+            const deptName = String(state.task?.department || chair.department || chair.department_code || '').trim();
+            return {
+                fullName: chairName,
+                employeeId: facultyEmployeeLabel(chair),
+                department: deptName,
+                program: programName,
+                rank: facultyRankLabel(chair),
+                chairperson: chairName,
+                academicPeriod: [period.academic_year, period.semester].filter(Boolean).join(' · ')
+            };
+        }
         const faculty = state.faculty || {};
         const period = state.period || {};
         return {
@@ -849,6 +866,13 @@
     }
 
     function statusLabel() {
+        if (state.isConsolidated) {
+            const draft = state.programDraft || state.programPacket;
+            if (draft?.consolidation_status === 'certified' || draft?.certified_at || draft?.packet_state === 'submitted' || draft?.certified_by_name) {
+                return 'Consolidated — Certified by Program Chairperson';
+            }
+            return 'Consolidated — Program Draft';
+        }
         const wf = global.CiteFlowWorkflow, sub = state.submission;
         if (!sub || !sub.submitted_at) return 'Draft';
         const pending = requiresChairpersonReview() ? 'Submitted — Awaiting Chairperson Review' : 'Submitted — Pending Admin Final Approval';
@@ -1020,6 +1044,10 @@
             void sidebarPromise;
 
             const params = new URLSearchParams(window.location.search);
+            if (params.get('view') === 'consolidated' || params.get('consolidated') === 'true') {
+                await initConsolidatedMode(params.get('task') || params.get('task_id'), params.get('dept') || params.get('department'));
+                return;
+            }
             if (params.get('view') === 'review' && params.get('submission')) {
                 await initReviewerMode(params.get('submission'));
                 return;
@@ -1259,6 +1287,211 @@
         state.locked = true;
         state.previewOpen = !!state.reviewerIsAdmin;
         render();
+    }
+
+    async function initConsolidatedMode(taskId, deptParam) {
+        state.isConsolidated = true;
+        state.locked = true;
+        state.reviewerMode = false;
+        state.previewOpen = true;
+
+        const client = db();
+        if (!client) throw new Error('Database client is not available.');
+
+        // 1. Session verification
+        const session = await requireSession();
+        state.session = session;
+        if (session?.user) state.user = session.user;
+
+        // 2. Resolve Chairperson Profile from logged-in user
+        state.chairFaculty = await resolveFaculty(state.user || session.user);
+        if (!state.chairFaculty) {
+            throw new Error('No faculty profile found for the signed-in Chairperson account. Please check your account registration.');
+        }
+        state.faculty = state.chairFaculty;
+
+        // 3. Resolve Target Department
+        const chairDept = state.chairFaculty.department_code || state.chairFaculty.department || '';
+        const targetDept = String(deptParam || chairDept || '').trim();
+
+        // 4. Resolve Task
+        if (!taskId) {
+            throw new Error('No MFO Task ID was provided to consolidate.');
+        }
+
+        const [taskRes, configsRes, catalogRes] = await Promise.all([
+            withTimeout(client.from('wf_tasks').select('*').eq('id', taskId).maybeSingle(), 4000, { data: null }),
+            withTimeout(client.from('wf_report_configs').select('*'), 3000, { data: [] }),
+            withTimeout(client.from('mfo_section_catalog').select('*').order('sort_order', { ascending: true }), 3000, { data: [] })
+        ]);
+
+        if (!taskRes?.data) {
+            throw new Error(`The requested MFO task (ID: ${taskId}) could not be found or loaded.`);
+        }
+        state.task = taskRes.data;
+        state.configs = configsRes?.data || [];
+        state.catalog = catalogRes?.data || [];
+
+        // Apply clean catalog titles
+        SECTIONS.forEach((def) => {
+            const row = state.catalog.find((item) => item.section_code === def.code);
+            if (row?.title) {
+                const cleanedTitle = String(row.title || '').replace(/â€”/g, '—').replace(/â€“/g, '–').replace(/â€™/g, "'");
+                def.title = row.indicator_code ? `${row.indicator_code} — ${cleanedTitle}` : cleanedTitle;
+            }
+        });
+
+        // 5. Verify Chairperson / OIC Authorization
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        let grants = [];
+        try {
+            if (global.CiteFlowWorkflow?.loadActiveDelegatedAccess) {
+                grants = await global.CiteFlowWorkflow.loadActiveDelegatedAccess(client);
+            }
+        } catch (_) {}
+
+        if (engine?.verifyChairpersonDepartmentAccess) {
+            const auth = engine.verifyChairpersonDepartmentAccess(state.chairFaculty, targetDept, grants);
+            if (!auth.authorized) {
+                throw new Error(`You are not authorized to view the consolidated MFO report for the ${targetDept.toUpperCase()} department.`);
+            }
+        }
+
+        // 6. Load Program Draft & Program Packet
+        let programPacket = null;
+        try {
+            const draftRes = await withTimeout(
+                client.from('mfo_program_drafts')
+                    .select('*')
+                    .eq('task_id', state.task.id)
+                    .ilike('department', targetDept)
+                    .maybeSingle(),
+                3000,
+                { data: null }
+            );
+            if (draftRes?.data) {
+                state.programDraft = draftRes.data;
+                programPacket = draftRes.data;
+            }
+        } catch (e) {
+            warn('fetch mfo_program_drafts', e);
+        }
+
+        if (!programPacket) {
+            try {
+                const pktRes = await withTimeout(
+                    client.from('mfo_program_packets')
+                        .select('*')
+                        .eq('task_id', state.task.id)
+                        .ilike('department', targetDept)
+                        .maybeSingle(),
+                    3000,
+                    { data: null }
+                );
+                if (pktRes?.data) {
+                    programPacket = pktRes.data;
+                }
+            } catch (e) {
+                warn('fetch mfo_program_packets', e);
+            }
+        }
+        state.programPacket = programPacket;
+
+        // 7. Load Genuine Submissions, Faculty, and Packets
+        const [subRes, facultyRes, packetsRes] = await Promise.all([
+            withTimeout(client.from('wf_submissions').select('*').eq('task_id', state.task.id), 4000, { data: [] }),
+            withTimeout(client.from('faculty').select('*'), 4000, { data: [] }),
+            withTimeout(client.from('mfo_packets').select('*').eq('task_id', state.task.id), 4000, { data: [] })
+        ]);
+
+        const allSubmissions = subRes?.data || [];
+        const allFaculty = facultyRes?.data || [];
+        const taskPackets = packetsRes?.data || [];
+        const packetIds = taskPackets.map((p) => p.id).filter(Boolean);
+
+        // 8. Load Child Accomplishment Rows
+        const childRows = {};
+        const sectionsToLoad = engine?.MFO_SECTIONS || SECTIONS;
+        if (packetIds.length > 0) {
+            await Promise.all(sectionsToLoad.map(async (sec) => {
+                try {
+                    const res = await withTimeout(client.from(sec.table).select('*').in('packet_id', packetIds), 4000, { data: [] });
+                    if (res?.data) childRows[sec.table] = res.data;
+                } catch (e) {
+                    warn(`child rows ${sec.table}`, e);
+                }
+            }));
+        }
+
+        // 9. Load Submission Files (documentation & photos)
+        if (packetIds.length > 0) {
+            try {
+                const filesRes = await withTimeout(client.from('wf_submission_files').select('*').in('mfo_packet_id', packetIds), 4000, { data: [] });
+                state.files = filesRes?.data || [];
+                await hydrateFileDisplayUrls(state.files);
+            } catch (e) {
+                warn('submission files', e);
+            }
+        }
+
+        // 10. Load Program Rows (PI1 Licensure & PI2 Employment)
+        const programRows = { pi1: [], pi2: [] };
+        if (programPacket?.id) {
+            try {
+                const [pi1Res, pi2Res] = await Promise.all([
+                    withTimeout(client.from('mfo_pi1_licensure').select('*').eq('program_packet_id', programPacket.id).order('sort_order'), 3000, { data: [] }),
+                    withTimeout(client.from('mfo_pi2_employment').select('*').eq('program_packet_id', programPacket.id).order('sort_order'), 3000, { data: [] })
+                ]);
+                if (pi1Res?.data) programRows.pi1 = pi1Res.data;
+                if (pi2Res?.data) programRows.pi2 = pi2Res.data;
+            } catch (e) {
+                warn('program rows', e);
+            }
+        }
+        state.programRows = programRows;
+
+        // 11. Run Consolidation Engine
+        let consolidation = null;
+        if (engine?.buildDepartmentMfoConsolidation) {
+            consolidation = engine.buildDepartmentMfoConsolidation({
+                taskId: state.task.id,
+                department: targetDept,
+                draft: programPacket,
+                submissions: allSubmissions,
+                packets: taskPackets,
+                childRows,
+                programRows,
+                facultyList: allFaculty,
+                actorFaculty: state.chairFaculty,
+                delegatedAccess: grants
+            });
+        }
+
+        // 12. Populate Compiled State
+        if (consolidation?.frozenPayload?.sections) {
+            state.rows = consolidation.frozenPayload.sections;
+            state.contributingFacultyList = consolidation.contributingFaculty || [];
+            const snapPeriod = consolidation.frozenPayload.reporting_period || {};
+            state.period = {
+                reporting_year: snapPeriod.reporting_year || state.task.reporting_year || new Date().getFullYear(),
+                quarter: snapPeriod.quarter || state.task.quarter || 1,
+                period_label: snapPeriod.period_label || state.task.reporting_period_label || 'Consolidated Accomplishment Report',
+                period_start: snapPeriod.period_start || state.task.period_start || null,
+                period_end: snapPeriod.period_end || state.task.period_end || null,
+                academic_year: snapPeriod.academic_year || state.task.academic_year || null,
+                semester: snapPeriod.semester || state.task.semester || null
+            };
+        } else {
+            state.rows = childRows;
+            state.period = periodFromTask(state.task, state.config);
+        }
+
+        const totalCompiledItems = Object.values(state.rows || {}).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+        if (!consolidation?.contributingFaculty?.length && totalCompiledItems === 0) {
+            state.sourceWarning = 'No contributing faculty submissions were found for this department and reporting cycle. The compiled report is currently empty.';
+        }
+
+        renderPreview();
     }
 
     function reviewerCanAct() {
@@ -2905,7 +3138,14 @@
         if (Array.isArray(col)) {
             const [label, get] = col;
             let value = '';
-            try { value = get(row, ctx); } catch (_) { value = ''; }
+            if (state.isConsolidated && /name of faculty/i.test(label)) {
+                value = row.contributing_faculty_name || row._source?.facultyName || row.faculty_name || '';
+                if (!value) {
+                    try { value = get(row, ctx); } catch (_) { value = ''; }
+                }
+            } else {
+                try { value = get(row, ctx); } catch (_) { value = ''; }
+            }
             return [label, tv(value)];
         }
         // col is a field key: derive label + formatted value from `fields`.
@@ -3438,6 +3678,11 @@
     function reportFooter() { return `<div class="mfo-doc-foot"><img src="../assets/mfo-footer-rankings.png" alt="Cebu Technological University accreditations and rankings"></div>`; }
 
     function submittedByLine(faculty) {
+        if (state.isConsolidated) {
+            const chair = state.chairFaculty || state.faculty || {};
+            const name = state.programDraft?.certified_by_name || facultyFullName(chair);
+            return `<div class="line" style="display:flex;align-items:flex-end;padding-bottom:2px;font-weight:600;">${esc(tv(name))}</div>`;
+        }
         const signature = String(state.packet?.signature_data_url || '').trim();
         const name = state.packet?.signature_name || facultyFullName(faculty);
         if (/^data:image\//i.test(signature)) {
@@ -3497,7 +3742,7 @@
             <div class="mfo-doc-lines">${notes ? esc(notes) : NA}</div>
             </div>
             <div class="mfo-doc-sign mfo-pdf-unit">
-                <div class="box"><div><b>Date Submitted:</b></div><div class="line" style="display:flex;align-items:flex-end;padding-bottom:2px;">${esc(state.submission?.submitted_at ? reportDate(state.submission.submitted_at) : NA)}</div></div>
+                <div class="box"><div><b>Date Submitted:</b></div><div class="line" style="display:flex;align-items:flex-end;padding-bottom:2px;">${esc(state.submission?.submitted_at ? reportDate(state.submission.submitted_at) : (state.programDraft?.certified_at ? reportDate(state.programDraft.certified_at) : NA))}</div></div>
                 <div class="box"><div><b>Submitted by:</b></div>${submittedByLine(faculty)}</div>
             </div>
             <div class="mfo-pdf-unit">${reportFooter()}</div>
@@ -3506,10 +3751,13 @@
     }
 
     function renderDocumentationPages(rows, period) {
+        const reportingName = state.isConsolidated
+            ? (facultyFullName(state.chairFaculty) || facultyFullName(state.faculty))
+            : facultyFullName(state.faculty);
         return `<div class="mfo-pdf-page mfo-pdf-unit">
             <div class="mfo-doc-title">Supporting Documentation</div>
             <div class="mfo-doc-sub">Accomplishment Report – CY ${esc(period.reporting_year || '')} · ${quarterLine(period)}</div>
-            <div class="mfo-doc-sub">${esc(tv(facultyFullName(state.faculty)))}</div>
+            <div class="mfo-doc-sub">${esc(tv(reportingName))}</div>
             </div>
             ${reportDocumentation(rows)}`;
     }
@@ -3517,14 +3765,17 @@
     function renderPreview() {
         const root = document.getElementById('mfoApp');
         if (!root || !state.faculty) return;
+        const profile = profileBase();
         root.innerHTML = `<div class="mfo-doc-toolbar mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div><div class="cite-kicker">${state.reviewerMode ? 'Submitted report (read-only)' : 'Completed report'}</div>
+            <div><div class="cite-kicker">${state.isConsolidated ? 'Department Consolidated MFO Report' : (state.reviewerMode ? 'Submitted report (read-only)' : 'Completed report')}</div>
             <h1 class="cite-title">MFO Accomplishment Report</h1>
-            <p class="cite-subtitle">${esc(statusLabel())}${state.reviewerMode ? ` · ${esc(state.faculty.full_name || '')}` : (state.previewPdfUrl ? ' · generated PDF' : ' · reflects the last saved values.')}</p></div>
+            <p class="cite-subtitle">${esc(statusLabel())}${state.isConsolidated ? ` · ${esc(state.chairFaculty?.full_name || '')} (${esc(profile.department || '')})` : (state.reviewerMode ? ` · ${esc(state.faculty.full_name || '')}` : (state.previewPdfUrl ? ' · generated PDF' : ' · reflects the last saved values.'))}</p></div>
             <div class="flex flex-col sm:flex-row gap-2">
-                ${state.reviewerMode
-                    ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = '${state.reviewerIsAdmin ? '../admin/workflow-approval.html' : 'submissions.html#chair-review'}';">← Back</button>`
-                    : '<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closePreview()">← Back to editor</button>'
+                ${state.isConsolidated
+                    ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = 'submissions.html#chair-review';">← Back to Submissions</button>`
+                    : (state.reviewerMode
+                        ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = '${state.reviewerIsAdmin ? '../admin/workflow-approval.html' : 'submissions.html#chair-review'}';">← Back</button>`
+                        : '<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closePreview()">← Back to editor</button>')
                 }
                 ${state.reviewerMode && reviewerCanAct() ? `
                 <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.openReviewerModal('approved')">
@@ -3539,6 +3790,12 @@
                 <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.printReport()"><i class="fa-solid fa-print"></i> Print</button>
             </div>
         </div>
+        ${state.sourceWarning ? `
+            <div class="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                <i class="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i>
+                <span>${esc(state.sourceWarning)}</span>
+            </div>
+        ` : ''}
         ${state.previewPdfUrl
             ? `<iframe class="mfo-pdf-frame" title="Generated MFO PDF" src="${esc(state.previewPdfUrl)}"></iframe>`
             : renderReportDocument()}
@@ -3780,10 +4037,23 @@
         toggleAutoNaBlanks, autoMarkBlankSectionsAsNa, undoBlankSectionsNa,
         autoMarkAllBlankAsNa() { autoMarkBlankSectionsAsNa(); render(); toast('All empty sections set to N/A.'); },
         undoAllBlankNa() { undoBlankSectionsNa(); render(); toast('Reverted N/A on blank sections.'); },
-        reviewOpen(open) { state.reviewOpen = !!open; render(); }
+        initConsolidatedMode,
+        _state: state,
+        _profileBase: profileBase,
+        _reportProfileModel: reportProfileModel,
+        _resolvePrintColumn: resolvePrintColumn,
+        _renderReportDocument: renderReportDocument,
+        _statusLabel: statusLabel,
+        _submittedByLine: submittedByLine
     };
 
-    document.addEventListener('click', onMfoActionClick);
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
-    else init();
-})(window);
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = global.CiteFlowMfoFaculty;
+    }
+
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function' && typeof window !== 'undefined' && window.location?.href) {
+        document.addEventListener('click', onMfoActionClick);
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+        else init();
+    }
+})(typeof window !== 'undefined' ? window : global);

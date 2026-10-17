@@ -21,6 +21,7 @@
     <script src="../shared/auth-guard.js?v=auth-nav-session-1"></script>
     <script src="../shared/system-ui.js" defer></script>
     <script src="../shared/cite-settings.js" defer></script>
+    <script src="../shared/mfo-consolidation.js?v=mfo-52" defer></script>
     <script src="chairperson-review.js?v=sub-load-1" defer></script>
     <script src="faculty-nav.js?v=sub-load-1" defer></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
@@ -899,6 +900,7 @@
         }
 
         .chair-btn-approve,
+        .chair-btn-primary,
         .chair-btn-revision,
         .chair-btn-decline,
         .chair-btn-secondary {
@@ -907,6 +909,22 @@
             font-weight: 700;
             border-radius: 12px;
             cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .chair-btn-primary {
+            background: #621708;
+            color: #fff;
+            border: 0;
+        }
+
+        .chair-btn-primary:hover {
+            background: #4a1206;
+        }
+
+        .chair-btn-primary[disabled] {
+            opacity: .5;
+            cursor: not-allowed;
         }
 
         .chair-btn-approve {
@@ -1027,6 +1045,73 @@
         transform: translateY(0);
     }
 }
+
+        .pill-approved {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+        .pill-pending {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #fffbeb;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+        .pill-revision {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #faf5ff;
+            color: #6b21a8;
+            border: 1px solid #e9d5ff;
+        }
+        .pill-rejected {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .pill-neutral {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+        }
+        .pill-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 9999px;
+            display: inline-block;
+        }
     </style>
     <style id="submissions-cal-compact">
     /* Mobile-only Scrollable Dropdowns */
@@ -1185,7 +1270,6 @@
                 <h2 class="text-base font-semibold text-slate-900">File Preview</h2>
                 <p id="chairFilePreviewTitle" class="text-xs text-slate-500 mt-0.5 truncate"></p>
             </div>
-            <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeFilePreview()">Close</button>
         </div>
         <iframe id="chairFilePreviewFrame" class="chair-preview-frame" title="Submitted file preview"></iframe>
         <p class="text-xs text-slate-400 mt-3">Some Office files may download instead of rendering in the browser. Use Download if the preview is blank.</p>
@@ -1268,6 +1352,90 @@
     </div>
 </div>
 
+<div id="chairTaskDetailModal" class="chair-modal">
+    <div class="bg-white rounded-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto my-auto shadow-2xl flex flex-col">
+        <div class="flex items-start justify-between gap-4 pb-4 border-b border-slate-100 flex-shrink-0">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span id="chairTaskDetailCategory" class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        Task Details
+                    </span>
+                    <span id="chairTaskDetailFrequency" class="text-xs text-slate-400 font-medium"></span>
+                </div>
+                <h2 id="chairTaskDetailTitle" class="text-lg font-bold text-slate-950 mt-1">Task Details</h2>
+                <p id="chairTaskDetailSubtitle" class="text-xs text-slate-500 mt-0.5"></p>
+            </div>
+            <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeTaskDetails()">
+                <i class="fa-solid fa-xmark mr-1"></i> Close
+            </button>
+        </div>
+
+        <div id="chairTaskDetailBody" class="py-4 space-y-4 flex-1 overflow-y-auto">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+</div>
+
+<div id="chairConsolidatedMfoModal" class="chair-modal">
+    <div class="bg-white rounded-2xl w-full max-w-4xl p-6 max-h-[92vh] overflow-y-auto my-auto shadow-2xl flex flex-col">
+        <div class="flex items-start justify-between gap-4 pb-4 border-b border-slate-100 flex-shrink-0">
+            <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#fff0eb] text-[#621708] border border-[#fbdacf]">
+                        <i class="fa-solid fa-layer-group mr-1"></i> Consolidated MFO Report
+                    </span>
+                    <span id="chairMfoModalDeptPill" class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700"></span>
+                    <span id="chairMfoModalVersionPill" class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100"></span>
+                </div>
+                <h2 id="chairMfoModalTitle" class="text-lg font-extrabold text-slate-950 mt-1">Consolidated MFO Report</h2>
+                <p id="chairMfoModalSubtitle" class="text-xs text-slate-500 mt-0.5"></p>
+            </div>
+            <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeConsolidatedMfo()">
+                <i class="fa-solid fa-xmark mr-1"></i> Close
+            </button>
+        </div>
+
+        <div id="chairMfoModalBody" class="py-4 space-y-4 flex-1 overflow-y-auto">
+            <!-- Dynamically populated -->
+        </div>
+
+        <div class="flex items-center justify-between pt-4 border-t border-slate-100 flex-shrink-0">
+            <div id="chairMfoModalFooterStatus" class="text-xs text-slate-500">
+                <!-- Status text -->
+            </div>
+            <div id="chairMfoModalFooterActions" class="flex items-center gap-2">
+                <!-- Dynamically populated with View MFO button when draft exists -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="chairSubmitConsolidatedMfoModal" class="chair-modal">
+    <div class="bg-white rounded-2xl w-full max-w-lg p-6 my-auto shadow-2xl flex flex-col space-y-4">
+        <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div class="w-10 h-10 rounded-xl bg-[#fff0eb] text-[#621708] flex items-center justify-center font-bold text-lg flex-shrink-0">
+                <i class="fa-solid fa-paper-plane"></i>
+            </div>
+            <div>
+                <h3 class="text-base font-bold text-slate-900">Submit Consolidated MFO to Dean's Office</h3>
+                <p class="text-xs text-slate-500">Confirm submission of Department Consolidated Report</p>
+            </div>
+        </div>
+        <div id="chairSubmitConsolidatedMfoSummary" class="text-xs text-slate-600 space-y-2">
+            <!-- Dynamic summary populated by CiteFlowChairReview -->
+        </div>
+        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+            <i class="fa-solid fa-circle-exclamation text-amber-600 mt-0.5"></i>
+            <span>Submitting will finalize the compiled report, record an immutable version snapshot, and forward the document to the Dean's Office for final review and approval.</span>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeSubmitConsolidatedMfoModal()">Cancel</button>
+            <button type="button" class="chair-btn-primary" id="chairConfirmSubmitConsolidatedMfoBtn" onclick="CiteFlowChairReview.confirmSubmitConsolidatedMfo()">
+                <i class="fa-solid fa-paper-plane mr-1.5"></i> Confirm &amp; Submit
+            </button>
+        </div>
+    </div>
+</div>
 
 <script>
 console.warn("========== ACTUAL SUBMISSIONS SCRIPT ==========");
