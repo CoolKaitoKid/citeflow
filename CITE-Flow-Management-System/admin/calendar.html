@@ -561,6 +561,84 @@
 </head>
 <body class="bg-gray-50 min-h-screen" data-portal="admin">
 
+
+<!-- ========================================================= -->
+<!-- FESTIVE BIRTHDAY CELEBRATION & WISHES MODAL -->
+<!-- ========================================================= -->
+<div id="birthday-modal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[2600] p-3 sm:p-4 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[92vh] flex flex-col my-auto border border-pink-100 animate-in fade-in zoom-in-95 duration-200">
+        
+        <!-- Festive Celebration Header -->
+        <div class="relative px-6 pt-7 pb-6 text-white overflow-hidden text-center shrink-0" style="background-color: var(--cite-theme, #621708);">
+            <canvas id="bday-confetti-canvas" class="absolute inset-0 pointer-events-none w-full h-full z-0"></canvas>
+            
+            <button type="button" onclick="closeBirthdayModal()" class="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition z-10" aria-label="Close">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+
+            <div class="relative z-10 flex flex-col items-center">
+                <div class="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center text-3xl shadow-inner mb-3">
+                    🎂
+                </div>
+                <span class="px-3 py-0.5 rounded-full bg-pink-500/30 border border-pink-300/40 text-[10.5px] font-bold tracking-widest uppercase text-pink-200 mb-1.5">
+                    Faculty Milestone Celebration
+                </span>
+                <h2 id="bday-celebrant-name" class="text-xl sm:text-2xl font-black text-white tracking-tight drop-shadow-sm"></h2>
+                <p id="bday-date-badge" class="text-xs text-pink-100 font-medium mt-1 opacity-90"></p>
+            </div>
+        </div>
+
+        <!-- Scrollable Wishes & Card Body -->
+        <div class="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1 bg-slate-50/50">
+            
+            <!-- Warm Faculty Message -->
+            <div class="bg-white rounded-2xl p-4 border border-rose-100 shadow-sm relative overflow-hidden">
+                <div class="absolute -right-2 -bottom-2 text-rose-100 opacity-50 text-5xl pointer-events-none">
+                    <i class="fa-solid fa-cake-candles"></i>
+                </div>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-rose-900 mb-1 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sparkles text-amber-500"></i> Warmest Greetings
+                </h3>
+                <p class="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                    Wishing you abundant happiness, good health, and continued fulfillment in your teaching journey and service to the university!
+                </p>
+            </div>
+
+            <!-- Wishes & Comments Section -->
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-comments text-[#621708]"></i> Birthday Wishes & Messages
+                    </h3>
+                    <span id="bday-wishes-count" class="text-[10px] font-bold px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full">0 messages</span>
+                </div>
+
+                <!-- Wishes Feed -->
+                <div id="bday-wishes-list" class="space-y-2.5 max-h-48 overflow-y-auto pr-1"></div>
+
+                <!-- Add a Wish / Comment Box -->
+                <div class="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-sm space-y-2.5">
+                    <!-- Quick Preset Wish Chips -->
+                    <div class="flex flex-wrap gap-1.5">
+                        <button type="button" onclick="setQuickWish('🎉 Good health & blessings!')" class="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 px-2 py-1 rounded-lg transition">🎉 Good health & blessings</button>
+                        <button type="button" onclick="setQuickWish('💐 Happy Birthday Ma\'am/Sir! Enjoy your special day!')" class="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 px-2 py-1 rounded-lg transition">💐 Enjoy your day!</button>
+                        <button type="button" onclick="setQuickWish('🥳 Best wishes on your birthday from CITE family!')" class="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 px-2 py-1 rounded-lg transition">🥳 From CITE family</button>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <input id="bday-wish-input" type="text" placeholder="Write a warm birthday wish..." class="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-[#621708] focus:bg-white text-slate-800">
+                        <button type="button" onclick="postBirthdayWish()" class="px-3.5 py-2 bg-[#621708] hover:bg-[#831843] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition">
+                            <span>Send</span>
+                            <i class="fa-solid fa-paper-plane text-[10px]"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
 <div class="flex min-h-screen overflow-x-hidden">
     <div id="sidebar-container"></div>
     <main class="flex-1 min-h-screen ml-0 md:ml-[220px] md:w-[calc(100%-220px)] max-w-full min-w-0 app-surface w-full overflow-x-hidden transition-all duration-300">
@@ -1560,18 +1638,22 @@ function showCalendarConfirm(title, text, options = {}) {
         okBtn.textContent = options.confirmText || 'Confirm';
         cancelBtn.textContent = options.cancelText || 'Cancel';
 
-        if (options.danger) {
-            okBtn.className = 'px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors';
-            icon.className = 'w-11 h-11 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center shrink-0 text-base';
+        // 👉 Set button background to var(--cite-theme) with fallback to #621708
+        okBtn.className = 'px-5 py-2.5 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-opacity hover:opacity-90';
+        okBtn.style.setProperty('background', 'var(--cite-theme, #621708)', 'important');
+        
+        // Trash icon for delete actions, exclamation for warnings
+        if (options.danger || (options.confirmText && options.confirmText.toLowerCase().includes('delete'))) {
+            icon.className = 'w-11 h-11 rounded-2xl bg-rose-50 text-[#621708] flex items-center justify-center shrink-0 text-base';
             icon.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
         } else {
-            okBtn.className = 'px-5 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors';
             icon.className = 'w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 text-base';
             icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
         }
 
         const cleanup = () => {
             modal.classList.add('hidden');
+            okBtn.style.background = '';
             okBtn.onclick = null;
             cancelBtn.onclick = null;
         };
@@ -1582,11 +1664,6 @@ function showCalendarConfirm(title, text, options = {}) {
     });
 }
 window.showCalendarConfirm = showCalendarConfirm;
-
-// Override browser alert with custom modal design
-window.alert = function(msg) {
-    showCalendarMessage('Notice', String(msg), 'info');
-};
 
 
 function eachDateKey(start,end){
@@ -1923,17 +2000,86 @@ function openPendingCalendarNotification(){
 }
 window.openPendingCalendarNotification = openPendingCalendarNotification;
 
+// =========================================================
+// FACULTY BIRTHDAYS CONTROLLER
+// =========================================================
+let allFacultyBirthdays = [];
+
+function birthdayCalendarEntries(faculty, year) {
+    const rawDate = faculty.birthdate || faculty.birthday || faculty.date_of_birth;
+    if (!rawDate) return [];
+    
+    const cleanDate = String(rawDate).split('T')[0];
+    const parts = cleanDate.split('-');
+    if (parts.length < 3) return [];
+    
+    const month = parts[1].padStart(2, '0');
+    const day = parts[2].padStart(2, '0');
+    const bdayDateStr = `${year}-${month}-${day}`;
+    
+    const fullName = [faculty.first_name, faculty.last_name].filter(Boolean).join(' ').trim() || 'Faculty Member';
+    const title = `🎂 Birthday: ${fullName}`;
+    
+    return [{
+        id: `birthday-${faculty.id}-${year}`,
+        realId: faculty.id,
+        title: title,
+        gridTitle: title,
+        gridSub: 'All day',
+        tooltip: `${title}\n${longDate(bdayDateStr)} • Birthday`,
+        facultyName: fullName,
+        date: bdayDateStr,
+        startAt: `${bdayDateStr}T00:00:00`,
+        endAt: `${bdayDateStr}T23:59:59`,
+        time: 'All day',
+        detailTime: `${longDate(bdayDateStr)} • Birthday`,
+        type: 'event',
+        category: 'schedule',
+        location: 'Celebration',
+        priority: 'Normal',
+        notes: `Happy Birthday to ${fullName}!`,
+        repeat: 'Every Year',
+        visibility: 'All Faculty',
+        allDay: true,
+        attachments: [],
+        externalLink: '',
+        attachmentUrl: '',
+        schedulePrimary: true,
+        isLeave: false,
+        isBirthday: true
+    }];
+}
+
+function generateAllBirthdayEntries(year) {
+    if (!Array.isArray(allFacultyBirthdays) || !allFacultyBirthdays.length) return [];
+    const entries = [];
+    allFacultyBirthdays.forEach(f => {
+        entries.push(...birthdayCalendarEntries(f, year));
+    });
+    return entries;
+}
+
 async function loadAllAdminData(){
-    let [calRes, leaveRes] = await Promise.all([
+    let [calRes, leaveRes, facultyRes] = await Promise.all([
         supabaseClient.from('calendar_events').select('*').order('start_at',{ascending:true}),
-        supabaseClient.from('faculty_leaves').select('*')
+        supabaseClient.from('faculty_leaves').select('*'),
+        supabaseClient.from('faculty').select('id, first_name, last_name, birthdate')
     ]);
+
+    allFacultyBirthdays = (facultyRes.data || []).filter(f => f.birthdate || f.birthday || f.date_of_birth);
 
     let combined = [];
     if(calRes.data) combined = combined.concat(calRes.data.flatMap(scheduleCalendarEntries));
     if(leaveRes.data) {
         leaveRes.data.forEach(l => { combined = combined.concat(leaveCalendarEntries(l)); });
     }
+
+    // Include birthdays for current year, previous, and next year
+    const baseYear = currentYear || new Date().getFullYear();
+    [baseYear - 1, baseYear, baseYear + 1].forEach(y => {
+        combined = combined.concat(generateAllBirthdayEntries(y));
+    });
+
     events = combined.sort((a,b) => new Date(a.startAt) - new Date(b.startAt));
     rebuildEventIndex();
     status('');
@@ -1955,9 +2101,9 @@ function subscribe(){
     supabaseClient.channel('admin-calendar-realtime')
         .on('postgres_changes',{event:'*',schema:'public',table:'calendar_events'},loadAllAdminData)
         .on('postgres_changes',{event:'*',schema:'public',table:'faculty_leaves'},loadAllAdminData)
+        .on('postgres_changes',{event:'*',schema:'public',table:'faculty'},loadAllAdminData)
         .subscribe();
 }
-
 function populateControls(){
     let ms=document.getElementById('month-select');ms.innerHTML=months.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
     let ys=document.getElementById('year-select');ys.innerHTML='';for(let y=currentYear-5;y<=currentYear+6;y++)ys.innerHTML+=`<option value="${y}">${y}</option>`;
@@ -2939,6 +3085,12 @@ function showEventDetails(id){
     let e=findEvent(id);
     if(!e) return;
 
+    // 👉 IF IT'S A BIRTHDAY, OPEN THE CELEBRATION & COMMENTS MODAL
+    if (e.isBirthday || String(e.id || '').startsWith('birthday-')) {
+        openBirthdayModal(e);
+        return;
+    }
+
     const isLeave=!!e.isLeave;
     const scheduleFields=document.getElementById('detail-schedule-fields');
     const leaveFields=document.getElementById('detail-leave-fields');
@@ -2952,7 +3104,9 @@ function showEventDetails(id){
     if(leaveFields) leaveFields.classList.toggle('hidden', !isLeave);
     if(actions) actions.classList.toggle('hidden', isLeave);
 
-    document.getElementById('detail-category-label').textContent = isLeave ? 'CSC Form No. 6 — Leave Filing' : 'Schedule Details';
+    document.getElementById('detail-category-label').textContent = isLeave 
+        ? 'CSC Form No. 6 — Leave Filing' 
+        : 'Schedule Details';
     document.getElementById('detail-title').textContent = isLeave
         ? (e.leaveRecord?.faculty_name || e.title.replace(/^Leave:\s*/, ''))
         : e.title;
@@ -3541,6 +3695,342 @@ function drawCalendarPdf(doc, portalLabel, banners){
         doc.setPage(i);
         pdfDrawSlimHeader(doc, L, portalLabel, i, pages);
     }
+}
+
+// =========================================================
+// ADMIN BIRTHDAY MODAL & WISHES CONTROLLER
+// =========================================================
+let currentCelebrantEvent = null;
+let currentLoadedBirthdayComments = [];
+
+const escSafe = (s) => (typeof esc === 'function' ? esc(s) : String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+
+async function fetchBirthdayComments(celebrantName, year) {
+    if (!supabaseClient) return [];
+    try {
+        const { data, error } = await supabaseClient
+            .from('faculty_birthday_comments')
+            .select('*')
+            .eq('celebrant_year', year)
+            .ilike('celebrant_name', celebrantName)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    } catch (err) {
+        console.warn('Could not load birthday comments:', err);
+        return [];
+    }
+}
+
+async function openBirthdayModal(event) {
+    currentCelebrantEvent = event;
+    const modal = document.getElementById('birthday-modal');
+    if (!modal) return;
+
+    let name = (event.title || '').replace(/^🎂\s*Birthday:\s*/i, '').trim();
+    if (!name) name = event.facultyName || 'Colleague';
+
+    const year = parseInt(event.date ? event.date.slice(0, 4) : currentYear, 10);
+
+    const nameEl = document.getElementById('bday-celebrant-name');
+    const dateBadgeEl = document.getElementById('bday-date-badge');
+    const inputEl = document.getElementById('bday-wish-input');
+
+    if (nameEl) nameEl.textContent = name;
+    if (dateBadgeEl) dateBadgeEl.textContent = `${(typeof longDate === 'function' ? longDate(event.date) : event.date)} • Campus Birthday Celebration`;
+    if (inputEl) inputEl.value = '';
+
+    const listEl = document.getElementById('bday-wishes-list');
+    if (listEl) {
+        listEl.innerHTML = '<div class="text-xs text-slate-400 italic text-center py-4"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Loading birthday wishes...</div>';
+    }
+
+    modal.classList.remove('hidden');
+    setTimeout(() => launchBirthdayConfetti(), 100);
+
+    const comments = await fetchBirthdayComments(name, year);
+    renderBirthdayWishes(comments, name);
+}
+
+function closeBirthdayModal() {
+    const modal = document.getElementById('birthday-modal');
+    if (modal) modal.classList.add('hidden');
+    currentCelebrantEvent = null;
+}
+
+function formatCommentTime(isoStr) {
+    if (!isoStr) return 'Just now';
+    const d = new Date(isoStr);
+    if (Number.isNaN(d.getTime())) return 'Recently';
+    return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    }).format(d);
+}
+
+function renderBirthdayWishes(comments, celebrantName) {
+    const listEl = document.getElementById('bday-wishes-list');
+    const countEl = document.getElementById('bday-wishes-count');
+    if (!listEl) return;
+
+    currentLoadedBirthdayComments = Array.isArray(comments) ? comments : [];
+    const list = currentLoadedBirthdayComments;
+
+    if (countEl) countEl.textContent = `${list.length} ${list.length === 1 ? 'message' : 'messages'}`;
+
+    if (!list.length) {
+        listEl.innerHTML = `
+            <div class="bg-white rounded-xl p-4 border border-dashed border-rose-200 text-center space-y-1">
+                <div class="text-2xl">💌</div>
+                <div class="text-xs font-semibold text-slate-700">No wishes posted yet for ${escSafe(celebrantName || 'the celebrant')}.</div>
+                <div class="text-[11px] text-slate-400">Be the first to post a warm birthday greeting below!</div>
+            </div>
+        `;
+        return;
+    }
+
+    const myAuthId = currentUser?.id;
+    const myEmail = String(currentUser?.email || '').trim().toLowerCase();
+
+    listEl.innerHTML = list.map(c => {
+        const isMine = (myAuthId && String(c.author_id) === String(myAuthId)) ||
+                       (myEmail && String(c.author_email || '').trim().toLowerCase() === myEmail);
+
+        return `
+            <div class="bg-white rounded-xl p-3 border border-slate-100 shadow-sm flex items-start gap-2.5">
+                <div class="w-7 h-7 rounded-full bg-rose-100 text-rose-800 font-bold flex items-center justify-center text-[10px] shrink-0 uppercase">
+                    ${escSafe((c.author_name || 'F').charAt(0))}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1">
+                        <span class="text-xs font-bold text-slate-900 truncate">${escSafe(c.author_name || 'Faculty Member')}</span>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <span class="text-[9.5px] text-slate-400">${escSafe(formatCommentTime(c.created_at))}</span>
+                            ${isMine ? `
+                                <button type="button" onclick="startEditBirthdayComment(${c.id})" class="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition" title="Edit your greeting">
+                                    <i class="fa-solid fa-pen text-[10px]"></i>
+                                </button>
+                                <button type="button" onclick="deleteBirthdayComment(${c.id})" class="text-slate-400 hover:text-rose-600 p-0.5 rounded transition" title="Delete your greeting">
+                                    <i class="fa-solid fa-trash-can text-[10px]"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ${c.author_role ? `<div class="text-[9.5px] text-slate-400 font-medium">${escSafe(c.author_role)}</div>` : ''}
+                    
+                    <div id="bday-comment-body-${c.id}" class="mt-1">
+                        <p class="text-xs text-slate-700 leading-relaxed bg-slate-50/70 rounded-lg p-2 border border-slate-50">${escSafe(c.message)}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function startEditBirthdayComment(commentId) {
+    const comment = currentLoadedBirthdayComments.find(x => String(x.id) === String(commentId));
+    if (!comment) return;
+    const bodyEl = document.getElementById(`bday-comment-body-${commentId}`);
+    if (!bodyEl) return;
+
+    bodyEl.innerHTML = `
+        <div class="space-y-1.5">
+            <textarea id="bday-edit-input-${commentId}" rows="2" class="w-full text-xs bg-white border border-[#621708] rounded-xl p-2 outline-none focus:ring-1 focus:ring-[#621708] text-slate-800 leading-relaxed">${escSafe(comment.message)}</textarea>
+            <div class="flex items-center justify-end gap-1.5">
+                <button type="button" onclick="cancelEditBirthdayComment(${commentId})" class="text-[10.5px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold transition">Cancel</button>
+                <button type="button" onclick="saveEditBirthdayComment(${commentId})" class="text-[10.5px] px-3 py-1 rounded-lg bg-[#621708] hover:bg-[#831843] text-white font-semibold transition">Save</button>
+            </div>
+        </div>
+    `;
+    const textarea = document.getElementById(`bday-edit-input-${commentId}`);
+    if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+}
+
+function cancelEditBirthdayComment(commentId) {
+    const comment = currentLoadedBirthdayComments.find(x => String(x.id) === String(commentId));
+    const bodyEl = document.getElementById(`bday-comment-body-${commentId}`);
+    if (!bodyEl || !comment) return;
+    bodyEl.innerHTML = `<p class="text-xs text-slate-700 leading-relaxed bg-slate-50/70 rounded-lg p-2 border border-slate-50">${escSafe(comment.message)}</p>`;
+}
+
+async function saveEditBirthdayComment(commentId) {
+    const textarea = document.getElementById(`bday-edit-input-${commentId}`);
+    const newMsg = (textarea?.value || '').trim();
+    if (!newMsg) return;
+
+    try {
+        const { error } = await supabaseClient
+            .from('faculty_birthday_comments')
+            .update({ message: newMsg })
+            .eq('id', commentId);
+
+        if (error) throw error;
+        const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
+        const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
+        const fresh = await fetchBirthdayComments(celebrantName, year);
+        renderBirthdayWishes(fresh, celebrantName);
+    } catch (err) {
+        console.error('Error updating birthday comment:', err);
+    }
+}
+
+// 4. Deletes Comment using Custom CITE-Flow Modal (No browser alert)
+async function deleteBirthdayComment(commentId) {
+    const confirmed = await showCalendarConfirm(
+        'Delete Birthday Greeting',
+        'Are you sure you want to remove this birthday greeting? This action cannot be undone.',
+        { confirmText: 'Delete Greeting', cancelText: 'Cancel' }
+    );
+    if (!confirmed) return;
+
+    try {
+        const { error } = await supabaseClient
+            .from('faculty_birthday_comments')
+            .delete()
+            .eq('id', commentId);
+
+        if (error) throw error;
+
+        const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
+        const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
+        const freshComments = await fetchBirthdayComments(celebrantName, year);
+        renderBirthdayWishes(freshComments, celebrantName);
+
+        showCalendarMessage('Greeting Deleted', 'Your birthday greeting was removed successfully.', 'info');
+    } catch (err) {
+        console.error('Error deleting birthday comment:', err);
+        showCalendarMessage('Unable to delete', 'Could not delete greeting: ' + (err.message || 'Please try again.'), 'error');
+    }
+}
+
+function setQuickWish(text) {
+    const input = document.getElementById('bday-wish-input');
+    if (input) {
+        input.value = text;
+        input.focus();
+    }
+}
+
+async function postBirthdayWish() {
+    const input = document.getElementById('bday-wish-input');
+    const msg = (input?.value || '').trim();
+    if (!msg) return;
+
+    const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
+    const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
+    const celebrantId = currentCelebrantEvent?.id ? String(currentCelebrantEvent.id) : (currentCelebrantEvent?.realId ? String(currentCelebrantEvent.realId) : null);
+
+    const adminName = [currentProfile?.first_name, currentProfile?.last_name].filter(Boolean).join(' ').trim() 
+        || currentProfile?.full_name 
+        || currentUser?.email 
+        || 'Administrator';
+    const adminRole = currentProfile?.role || 'Administrator';
+
+    const sendBtn = input.nextElementSibling;
+    if (sendBtn) sendBtn.disabled = true;
+
+    try {
+        // 1. Save greeting to database
+        const { error } = await supabaseClient
+            .from('faculty_birthday_comments')
+            .insert({
+                celebrant_name: celebrantName,
+                celebrant_id: celebrantId,
+                celebrant_year: year,
+                author_id: currentUser?.id || null,
+                author_name: adminName,
+                author_role: adminRole,
+                author_email: currentUser?.email || '',
+                message: msg
+            });
+
+        if (error) throw error;
+
+        // 2. Dispatch notification to the celebrant
+        if (window.CalendarNotifications && typeof CalendarNotifications.notifyBirthdayComment === 'function') {
+            CalendarNotifications.notifyBirthdayComment({
+                celebrant_name: celebrantName,
+                celebrant_id: celebrantId,
+                author_name: adminName,
+                message: msg,
+                celebrant_year: year
+            }).catch(err => console.warn('Could not dispatch birthday notification:', err));
+        }
+
+        // 3. Reset input, refresh comment feed & launch confetti
+        input.value = '';
+        const freshComments = await fetchBirthdayComments(celebrantName, year);
+        renderBirthdayWishes(freshComments, celebrantName);
+        launchBirthdayConfetti();
+
+    } catch (err) {
+        console.error('Error posting birthday comment:', err);
+        if (typeof showCalendarMessage === 'function') {
+            showCalendarMessage('Unable to Post', 'Could not post your greeting: ' + (err.message || 'Please try again.'), 'error');
+        } else {
+            alert('Could not post your greeting: ' + (err.message || 'Please try again.'));
+        }
+    } finally {
+        if (sendBtn) sendBtn.disabled = false;
+    }
+}
+
+function launchBirthdayConfetti() {
+    const canvas = document.getElementById('bday-confetti-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.offsetWidth;
+    const h = canvas.height = canvas.offsetHeight;
+    if (!w || !h) return;
+
+    const particles = [];
+    const colors = ['#f43f5e', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ffffff', '#ffd700'];
+
+    for (let i = 0; i < 45; i++) {
+        particles.push({
+            x: w / 2,
+            y: h / 2,
+            r: Math.random() * 4 + 2,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.7) * 7,
+            opacity: 1
+        });
+    }
+
+    let frames = 0;
+    function render() {
+        ctx.clearRect(0, 0, w, h);
+        let active = false;
+        particles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.15;
+            p.opacity -= 0.015;
+            if (p.opacity > 0) {
+                active = true;
+                ctx.beginPath();
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = Math.max(0, p.opacity);
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+        ctx.globalAlpha = 1;
+        frames++;
+        if (active && frames < 75) {
+            requestAnimationFrame(render);
+        } else {
+            ctx.clearRect(0, 0, w, h);
+        }
+    }
+    render();
 }
 
 function exportCalendarPDF() {

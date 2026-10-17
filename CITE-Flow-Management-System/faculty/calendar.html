@@ -1029,12 +1029,41 @@ select.modal-field {
 </head>
 <body class="bg-gray-50 overflow-x-hidden min-h-screen" data-portal="faculty">
 
+
+<!-- ========================================================= -->
+<!-- CUSTOM CITE-FLOW CONFIRMATION & MESSAGE MODALS -->
+<!-- ========================================================= -->
+<div id="calendar-confirm-modal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[4100] p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-150">
+        <div id="calendar-confirm-icon" class="w-12 h-12 rounded-2xl bg-rose-50 text-[#621708] flex items-center justify-center mb-4 text-lg">
+            <i class="fa-solid fa-trash-can"></i>
+        </div>
+        <h3 id="calendar-confirm-title" class="text-base font-bold text-slate-900 mb-1.5">Confirm Action</h3>
+        <p id="calendar-confirm-text" class="text-xs text-slate-500 leading-relaxed mb-6">Are you sure you want to proceed?</p>
+        <div class="flex items-center gap-3 w-full">
+            <button type="button" id="calendar-confirm-cancel-btn" class="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition">Cancel</button>
+            <button type="button" id="calendar-confirm-ok-btn" style="background: var(--cite-theme, #621708);" class="flex-1 py-2.5 px-4 text-white font-semibold rounded-xl text-xs sm:text-sm shadow-sm transition hover:opacity-90">Delete</button>
+        </div>
+    </div>
+</div>
+
+<div id="calendar-message-modal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[4100] p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-150">
+        <div id="calendar-message-icon" class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-4 text-lg">
+            <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <h3 id="calendar-message-title" class="text-base font-bold text-slate-900 mb-1.5">Notice</h3>
+        <p id="calendar-message-text" class="text-xs text-slate-500 leading-relaxed mb-6">Operation completed.</p>
+        <button type="button" id="calendar-message-ok-btn" style="background: var(--cite-theme, #621708);" class="w-full py-2.5 px-4 text-white font-semibold rounded-xl text-xs sm:text-sm shadow-sm transition hover:opacity-90">OK</button>
+    </div>
+</div>
+
 <!-- BIRTHDAY CELEBRATION MODAL -->
 <div id="birthday-modal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[2600] p-3 sm:p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[92vh] flex flex-col my-auto border border-pink-100 animate-in fade-in zoom-in-95 duration-200">
         
         <!-- Festive Celebration Header -->
-        <div class="relative px-6 pt-7 pb-6 bg-gradient-to-br from-[#621708] via-[#831843] to-[#9d174d] text-white overflow-hidden text-center shrink-0">
+        <div class="relative px-6 pt-7 pb-6 text-white overflow-hidden text-center shrink-0" style="background-color: var(--cite-theme, #621708);">
             <canvas id="bday-confetti-canvas" class="absolute inset-0 pointer-events-none w-full h-full z-0"></canvas>
             
             <button onclick="closeBirthdayModal()" class="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition z-10" aria-label="Close">
@@ -2385,7 +2414,7 @@ async function loadCalendarEvents() {
     openPendingCalendarNotification();
 }
 
-function openPendingCalendarNotification(){
+function openPendingCalendarNotification() {
     const hash = String(location.hash || '').replace(/^#/, '');
     let id = '';
     if (hash.startsWith('open=')) id = decodeURIComponent(hash.slice(5));
@@ -2393,16 +2422,52 @@ function openPendingCalendarNotification(){
         try { id = sessionStorage.getItem('citeOpenNotif') || ''; } catch (_) { id = ''; }
     }
     if (!id) return false;
-    const found = events.find(x =>
+
+    // 1. Match schedule, leave, or birthday across formats
+    let found = events.find(x =>
         String(x.id) === String(id) ||
         String(x.realId) === String(id) ||
-        String(x.id) === String(id).replace(/^event-|^leave-/, '') ||
-        'event-' + x.id === String(id) ||
+        String(x.id) === 'event-' + id ||
         String(x.id) === 'leave-' + id ||
-        String(x.id).replace(/^event-|^leave-/, '') === String(id).replace(/^event-|^leave-/, '')
+        String(x.id) === 'birthday-' + id ||
+        String(x.id).replace(/^event-|^leave-|^birthday-/, '') === String(id).replace(/^event-|^leave-|^birthday-/, '') ||
+        String(x.realId) === String(id).replace(/^event-|^leave-|^birthday-/, '').replace(/-\d{4}$/, '')
     );
+
+    // 2. Birthday Matcher with guaranteed fallback
+    if (!found && String(id).startsWith('birthday-')) {
+        const cleanTarget = decodeURIComponent(String(id).replace(/^birthday-/, '').replace(/-\d{4}$/, '')).trim().toLowerCase();
+        
+        found = events.find(x => {
+            if (!x.isBirthday && !String(x.id || '').startsWith('birthday-')) return false;
+            const xTitle = (x.title || '').replace(/^🎂\s*Birthday:\s*/i, '').trim().toLowerCase();
+            const xReal = String(x.realId || '').replace(/^birthday-/, '').toLowerCase();
+            return (cleanTarget && (xReal === cleanTarget || xTitle.includes(cleanTarget) || cleanTarget.includes(xTitle)));
+        });
+
+        if (!found) {
+            const celebrantName = decodeURIComponent(String(id).replace(/^birthday-/, '').replace(/-\d{4}$/, '')).trim() || 'Colleague';
+            found = {
+                id: id,
+                realId: id,
+                title: `🎂 Birthday: ${celebrantName}`,
+                date: (typeof key === 'function') ? key(new Date()) : new Date().toISOString().slice(0, 10),
+                isBirthday: true,
+                type: 'event',
+                event_type: 'birthday'
+            };
+        }
+    }
+
     if (!found) return false;
+
+    // Consume notification state
     try { sessionStorage.removeItem('citeOpenNotif'); } catch (_) {}
+    if (location.hash && location.hash.includes('open=')) {
+        history.replaceState(null, '', location.pathname + location.search);
+    }
+
+    // 3. Switch calendar month & date to the event
     if (found.date) {
         const d = new Date(found.date + 'T00:00:00');
         if (!Number.isNaN(d.getTime())) {
@@ -2412,12 +2477,23 @@ function openPendingCalendarNotification(){
             renderCalendar();
         }
     }
-    showEventDetails(found.id);
-    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+
+    // 4. Open modal with slight delay to ensure stable DOM state
+    setTimeout(() => {
+        showEventDetails(found);
+    }, 120);
+
     return true;
 }
+
 window.openPendingCalendarNotification = openPendingCalendarNotification;
 
+// Live listener when clicking notifications while already on the Calendar page
+window.addEventListener('hashchange', () => {
+    if (location.hash && location.hash.includes('open=')) {
+        openPendingCalendarNotification();
+    }
+});
 function canUseSupabase(){
     return !!(supabaseClient && typeof supabaseClient.from==='function' && typeof supabaseClient.channel==='function');
 }
@@ -3648,130 +3724,220 @@ async function submitLeaveFiling(){
     alert('Leave successfully filed. Admin has been notified.');
 }
 
-async function showEventDetails(id){
-    currentDetailEventId = id;
-    let e = events.find(x => String(x.id) === String(id)
+async function showEventDetails(id) {
+    currentDetailEventId = (typeof id === 'object' && id !== null) ? (id.id || id.realId) : id;
+    
+    // 1. Resolve event from memory or object parameter
+    let e = (typeof id === 'object' && id !== null) ? id : events.find(x => 
+        String(x.id) === String(id)
         || String(x.realId) === String(id)
-        || String(x.id) === String(id).replace(/^event-|^leave-/,'')
+        || String(x.id) === String(id).replace(/^event-|^leave-|^birthday-/, '')
         || String(x.id) === 'event-' + id
         || String(x.id) === 'leave-' + id
-        || String(x.id).replace(/^event-|^leave-/,'') === String(id).replace(/^event-|^leave-/,''));
-    if(!e) return;
+        || String(x.id) === 'birthday-' + id
+        || String(x.id).replace(/^event-|^leave-|^birthday-/, '') === String(id).replace(/^event-|^leave-|^birthday-/, '')
+    );
 
-    // 1. Leave requests open CSC Form No. 6
-    if(e.isLeave){
+    // 2. Birthday Matcher & Fallback: Guaranteed modal opening
+    if (!e && String(id).startsWith('birthday-')) {
+        const cleanTarget = decodeURIComponent(String(id).replace(/^birthday-/, '').replace(/-\d{4}$/, '')).trim().toLowerCase();
+        
+        e = events.find(x => {
+            if (!x.isBirthday && !String(x.id || '').startsWith('birthday-')) return false;
+            const xTitle = (x.title || '').replace(/^🎂\s*Birthday:\s*/i, '').trim().toLowerCase();
+            const xReal = String(x.realId || '').replace(/^birthday-/, '').toLowerCase();
+            return (cleanTarget && (xReal === cleanTarget || xTitle.includes(cleanTarget) || cleanTarget.includes(xTitle)));
+        });
+
+        if (!e) {
+            const celebrantName = decodeURIComponent(String(id).replace(/^birthday-/, '').replace(/-\d{4}$/, '')).trim() || 'Colleague';
+            e = {
+                id: id,
+                realId: id,
+                title: `🎂 Birthday: ${celebrantName}`,
+                date: (typeof key === 'function') ? key(new Date()) : new Date().toISOString().slice(0, 10),
+                isBirthday: true,
+                type: 'event',
+                event_type: 'birthday'
+            };
+        }
+    }
+
+    if (!e) return;
+
+    // 3. Leave Requests -> Open CSC Form No. 6
+    if (e.isLeave) {
         await viewOwnLeaveForm(e);
         return;
     }
 
-    // 2. Birthday cards open the Celebratory Wish Wall & Confetti!
-    if(e.isBirthday || e.event_type === 'birthday' || e.type === 'birthday' || String(e.id || '').startsWith('birthday-')){
-        openBirthdayModal(e);
+    // 4. Birthday Cards -> Open Celebration Wall & Confetti
+    if (e.isBirthday || e.event_type === 'birthday' || e.type === 'birthday' || String(e.id || '').startsWith('birthday-')) {
+        if (typeof openBirthdayModal === 'function') {
+            openBirthdayModal(e);
+        }
         return;
     }
 
-    // 3. Regular academic schedules (meetings, exams, seminars) continue below:
+    // 5. Academic Schedules (Meetings, Seminars, Exams)
     await hydrateScheduleMedia(e);
-    document.getElementById('detail-title').textContent = e.title;
-    document.getElementById('detail-type').textContent = (e.type || 'EVENT').toUpperCase();
-    document.getElementById('detail-priority').textContent = e.priority || 'Normal';
-    document.getElementById('detail-time').textContent = e.detailTime || `${longDate(e.date)} • ${e.time}`;
-    document.getElementById('detail-location').textContent = e.location || 'TBA';
-    document.getElementById('detail-notes').textContent = cleanNotes(e.notes) || 'No description provided.';
+    const titleEl = document.getElementById('detail-title');
+    const typeEl = document.getElementById('detail-type');
+    const prioEl = document.getElementById('detail-priority');
+    const timeEl = document.getElementById('detail-time');
+    const locEl = document.getElementById('detail-location');
+    const notesEl = document.getElementById('detail-notes');
+
+    if (titleEl) titleEl.textContent = e.title;
+    if (typeEl) typeEl.textContent = (e.type || 'EVENT').toUpperCase();
+    if (prioEl) prioEl.textContent = e.priority || 'Normal';
+    if (timeEl) timeEl.textContent = e.detailTime || `${longDate(e.date)} • ${e.time}`;
+    if (locEl) locEl.textContent = e.location || 'TBA';
+    if (notesEl) notesEl.textContent = cleanNotes(e.notes) || 'No description provided.';
     renderDetailMedia(e);
 
-    document.getElementById('fb-summary').value = '';
-    document.getElementById('fb-suggestions').value = '';
-    document.getElementById('fb-content-quality').value = '';
-    document.getElementById('fb-speaker-quality').value = '';
+    // Reset feedback fields
+    const fbSummary = document.getElementById('fb-summary');
+    const fbSuggestions = document.getElementById('fb-suggestions');
+    const fbContent = document.getElementById('fb-content-quality');
+    const fbSpeaker = document.getElementById('fb-speaker-quality');
+    if (fbSummary) fbSummary.value = '';
+    if (fbSuggestions) fbSuggestions.value = '';
+    if (fbContent) fbContent.value = '';
+    if (fbSpeaker) fbSpeaker.value = '';
 
-    let wrapper = document.getElementById('feedback-container-wrapper');
-    let activeContent = document.getElementById('feedback-active-content');
-    let lockedNotice = document.getElementById('feedback-locked-notice');
-    let lockTitle = document.getElementById('feedback-lock-title');
-    let lockMsg = document.getElementById('feedback-lock-msg');
-    let instructionBox = document.getElementById('fb-instructions');
-    if(instructionBox){
+    const instructionBox = document.getElementById('fb-instructions');
+    if (instructionBox) {
         instructionBox.textContent = e.feedbackInstructions || '';
         instructionBox.classList.toggle('hidden', !e.feedbackInstructions);
     }
 
-    if(e.requiresFeedback === false){
-        wrapper.classList.add('hidden');
-    } else {
+    const wrapper = document.getElementById('feedback-container-wrapper');
+    const activeContent = document.getElementById('feedback-active-content');
+    const lockedNotice = document.getElementById('feedback-locked-notice');
+
+    if (e.requiresFeedback === false) {
+        if (wrapper) wrapper.classList.add('hidden');
+    } else if (wrapper) {
         wrapper.classList.remove('hidden');
-        let nowTime = new Date().getTime();
-        let eventEndTime = new Date(e.endAt || e.startAt).getTime();
-        let deadlineTime = eventEndTime + (10 * 60 * 60 * 1000);
+        const nowTime = new Date().getTime();
+        const eventEndTime = new Date(e.endAt || e.startAt).getTime();
+        const deadlineTime = eventEndTime + (10 * 60 * 60 * 1000);
 
         if (nowTime < eventEndTime) {
-            activeContent.classList.add('hidden');
-            lockedNotice.classList.remove('hidden');
-            lockTitle.textContent = "Feedback not yet available.";
-            lockMsg.textContent = "You can submit feedback only after the event has concluded (up to 10 hours after).";
+            if (activeContent) activeContent.classList.add('hidden');
+            if (lockedNotice) lockedNotice.classList.remove('hidden');
+            const msg = document.getElementById('feedback-lock-msg');
+            if (msg) msg.textContent = 'You can submit feedback only after the event has concluded (up to 10 hours after).';
         } else if (nowTime > deadlineTime) {
-            activeContent.classList.add('hidden');
-            lockedNotice.classList.remove('hidden');
-            lockTitle.textContent = "Feedback period has closed.";
-            lockMsg.textContent = "The 10-hour window to submit feedback for this event has already passed.";
+            if (activeContent) activeContent.classList.add('hidden');
+            if (lockedNotice) lockedNotice.classList.remove('hidden');
+            const msg = document.getElementById('feedback-lock-msg');
+            if (msg) msg.textContent = 'Feedback submission for this event has expired (10 hours post-event).';
         } else {
-            activeContent.classList.remove('hidden');
-            lockedNotice.classList.add('hidden');
+            if (activeContent) activeContent.classList.remove('hidden');
+            if (lockedNotice) lockedNotice.classList.add('hidden');
         }
     }
 
-    document.getElementById('event-detail-modal').classList.remove('hidden');
+    //  FIX: Checks both 'event-detail-modal' and 'detail-modal'
+    const modal = document.getElementById('event-detail-modal') || document.getElementById('detail-modal');
+    if (modal) modal.classList.remove('hidden');
 }
-function closeDetailModal(){document.getElementById('event-detail-modal').classList.add('hidden')}
+function closeDetailModal() {
+    const modal = document.getElementById('event-detail-modal') || document.getElementById('detail-modal');
+    if (modal) modal.classList.add('hidden');
+    currentDetailEventId = null;
+}
 
-async function submitFacultyFeedback(){
-    let summary = document.getElementById('fb-summary').value.trim();
-    let suggestions = document.getElementById('fb-suggestions').value.trim();
-    let contentQuality = document.getElementById('fb-content-quality').value.trim();
-    let speakerQuality = document.getElementById('fb-speaker-quality').value.trim();
-    let rating = parseInt(document.getElementById('fb-overall-rating').value);
-    let attendance = document.getElementById('fb-attendance').value;
+async function submitFacultyFeedback() {
+    const summary = (document.getElementById('fb-summary')?.value || '').trim();
+    const suggestions = (document.getElementById('fb-suggestions')?.value || '').trim();
+    const contentQuality = (document.getElementById('fb-content-quality')?.value || '').trim();
+    const speakerQuality = (document.getElementById('fb-speaker-quality')?.value || '').trim();
+    const rating = parseInt(document.getElementById('fb-overall-rating')?.value || '5', 10);
+    const attendance = document.getElementById('fb-attendance')?.value || 'Present';
 
-    if(!summary) return alert('Please enter a feedback summary.');
-
-    let cleanEventId = currentDetailEventId ? String(currentDetailEventId).replace('event-', '') : null;
-
-    let facultyName = [currentFacultyProfile?.first_name, currentFacultyProfile?.last_name].filter(Boolean).join(' ').trim() || currentFacultyUser?.email || 'Faculty Member';
-    let currentEvent = events.find(x => String(x.id) === String(currentDetailEventId) || String(x.id) === String(cleanEventId));
-
-    let { error } = await supabaseClient.from('calendar_event_feedback').insert({
-        event_id: cleanEventId,
-        faculty_id: currentFacultyUser?.id || null,
-        faculty_name: facultyName,
-        faculty_email: currentFacultyUser?.email || '',
-        attendance_status: attendance,
-        overall_rating: rating,
-        content_quality: contentQuality,
-        speaker_quality: speakerQuality,
-        feedback_summary: summary,
-        suggestions: suggestions,
-        submitted_at: new Date().toISOString()
-    });
-
-    if(error){
-        console.error('Feedback Error:', error);
-        return alert('Unable to submit feedback: ' + error.message);
+    if (!summary) {
+        return alert('Please enter a feedback summary.');
     }
 
-    if(window.CalendarNotifications){
-        await CalendarNotifications.notifyEventFeedback({
+    // 1. Resolve current event and true ID (handles multi-day dates & prefixes)
+    let currentEvent = events.find(x => 
+        String(x.id) === String(currentDetailEventId) || 
+        String(x.realId) === String(currentDetailEventId) ||
+        String(x.id) === String(currentDetailEventId).replace(/^event-/, '')
+    );
+
+    let cleanEventId = currentEvent?.realId || (currentDetailEventId ? String(currentDetailEventId).replace(/^event-/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '') : null);
+
+    if (!cleanEventId) {
+        return alert('Unable to resolve event reference. Please close and re-select the event.');
+    }
+
+    // 2. Resolve faculty name with full fallbacks
+    const facultyName = [currentFacultyProfile?.first_name, currentFacultyProfile?.last_name].filter(Boolean).join(' ').trim() 
+        || currentFacultyProfile?.full_name 
+        || currentFacultyProfile?.name 
+        || currentFacultyUser?.email 
+        || 'Faculty Member';
+
+    // 3. Disable submit button to prevent duplicate entries
+    const submitBtn = document.querySelector('#feedback-active-content button');
+    const origBtnText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting feedback...';
+    }
+
+    try {
+        // 4. Save feedback in Supabase
+        const { error } = await supabaseClient.from('calendar_event_feedback').insert({
+            event_id: cleanEventId,
+            faculty_id: currentFacultyUser?.id || currentFacultyProfile?.id || null,
             faculty_name: facultyName,
+            faculty_email: currentFacultyUser?.email || '',
+            attendance_status: attendance,
             overall_rating: rating,
-            event_id: cleanEventId
-        }, currentEvent);
-    }
+            content_quality: contentQuality,
+            speaker_quality: speakerQuality,
+            feedback_summary: summary,
+            suggestions: suggestions,
+            submitted_at: new Date().toISOString()
+        });
 
-    alert('Feedback successfully submitted. Admin has been notified.');
-    document.getElementById('fb-summary').value='';
-    document.getElementById('fb-suggestions').value='';
-    document.getElementById('fb-content-quality').value='';
-    document.getElementById('fb-speaker-quality').value='';
-    closeDetailModal();
+        if (error) {
+            console.error('Feedback Error:', error);
+            return alert('Unable to submit feedback: ' + (error.message || 'Please try again.'));
+        }
+
+        // 5. Notify Admins in real-time
+        if (window.CalendarNotifications && typeof CalendarNotifications.notifyEventFeedback === 'function') {
+            await CalendarNotifications.notifyEventFeedback({
+                faculty_name: facultyName,
+                overall_rating: rating,
+                event_id: cleanEventId
+            }, currentEvent);
+        }
+
+        alert('Feedback successfully submitted. Admin has been notified.');
+
+        // 6. Clear form inputs and close modal
+        ['fb-summary', 'fb-suggestions', 'fb-content-quality', 'fb-speaker-quality'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+        closeDetailModal();
+    } catch (err) {
+        console.error('Unexpected Feedback Error:', err);
+        alert('An unexpected error occurred while submitting feedback.');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = origBtnText || 'Submit Feedback';
+        }
+    }
 }
 
 function pdfEventsOnDate(dk){
@@ -4173,9 +4339,88 @@ function preloadPdf(){
 }
 
 // =========================================================
-// FACULTY_BIRTHDAY_COMMENTS TABLE CONTROLLER
+// FACULTY_BIRTHDAY_COMMENTS TABLE CONTROLLER (MODAL CONFIRMATION)
 // =========================================================
 let currentCelebrantEvent = null;
+let currentLoadedBirthdayComments = [];
+
+// Custom CITE-Flow confirmation modal with var(--cite-theme)
+function showCalendarConfirm(title, text, options = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('calendar-confirm-modal');
+        const titleEl = document.getElementById('calendar-confirm-title');
+        const textEl = document.getElementById('calendar-confirm-text');
+        const icon = document.getElementById('calendar-confirm-icon');
+        const okBtn = document.getElementById('calendar-confirm-ok-btn');
+        const cancelBtn = document.getElementById('calendar-confirm-cancel-btn');
+
+        if (!modal) {
+            resolve(window.confirm(text || title));
+            return;
+        }
+
+        titleEl.textContent = title || 'Confirm Action';
+        textEl.textContent = text || 'Are you sure you want to proceed?';
+        okBtn.textContent = options.confirmText || 'Confirm';
+        cancelBtn.textContent = options.cancelText || 'Cancel';
+
+        // 👉 Action button background color is var(--cite-theme)
+        okBtn.className = 'flex-1 py-2.5 px-4 text-white font-semibold rounded-xl text-xs sm:text-sm shadow-sm transition hover:opacity-90';
+        okBtn.style.setProperty('background', 'var(--cite-theme, #621708)', 'important');
+
+        if (options.danger || (options.confirmText && options.confirmText.toLowerCase().includes('delete'))) {
+            icon.className = 'w-12 h-12 rounded-2xl bg-rose-50 text-[#621708] flex items-center justify-center mb-4 text-lg';
+            icon.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+        } else {
+            icon.className = 'w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mb-4 text-lg';
+            icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+        }
+
+        const cleanup = () => {
+            modal.classList.add('hidden');
+            okBtn.onclick = null;
+            cancelBtn.onclick = null;
+        };
+
+        okBtn.onclick = () => { cleanup(); resolve(true); };
+        cancelBtn.onclick = () => { cleanup(); resolve(false); };
+        modal.classList.remove('hidden');
+    });
+}
+window.showCalendarConfirm = showCalendarConfirm;
+
+// Custom CITE-Flow notice / feedback modal
+function showCalendarMessage(title, text, type = 'info') {
+    const modal = document.getElementById('calendar-message-modal');
+    if (!modal) {
+        window.alert(text || title);
+        return;
+    }
+    const titleEl = document.getElementById('calendar-message-title');
+    const textEl = document.getElementById('calendar-message-text');
+    const icon = document.getElementById('calendar-message-icon');
+    const okBtn = document.getElementById('calendar-message-ok-btn');
+
+    titleEl.textContent = title || 'Notice';
+    textEl.textContent = text || '';
+    okBtn.style.setProperty('background', 'var(--cite-theme, #621708)', 'important');
+
+    if (type === 'error') {
+        icon.className = 'w-12 h-12 rounded-2xl bg-rose-50 text-[#621708] flex items-center justify-center mb-4 text-lg';
+        icon.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i>';
+    } else {
+        icon.className = 'w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-4 text-lg';
+        icon.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+    }
+
+    const closeMsg = () => {
+        modal.classList.add('hidden');
+        okBtn.onclick = null;
+    };
+    okBtn.onclick = closeMsg;
+    modal.classList.remove('hidden');
+}
+window.showCalendarMessage = showCalendarMessage;
 
 async function fetchBirthdayComments(celebrantName, year) {
     if (!canUseSupabase()) return [];
@@ -4206,7 +4451,7 @@ async function openBirthdayModal(event) {
     const year = parseInt(event.date ? event.date.slice(0, 4) : currentYear, 10);
 
     document.getElementById('bday-celebrant-name').textContent = name;
-    document.getElementById('bday-date-badge').textContent = `${longDate(event.date)} • Campus Birthday Celebration`;
+    document.getElementById('bday-date-badge').textContent = `${(typeof longDate === 'function' ? longDate(event.date) : event.date)} • Campus Birthday Celebration`;
     document.getElementById('bday-wish-input').value = '';
 
     const listEl = document.getElementById('bday-wishes-list');
@@ -4239,8 +4484,6 @@ function formatCommentTime(isoStr) {
     }).format(d);
 }
 
-let currentLoadedBirthdayComments = [];
-
 function renderBirthdayWishes(comments, celebrantName) {
     const listEl = document.getElementById('bday-wishes-list');
     const countEl = document.getElementById('bday-wishes-count');
@@ -4264,12 +4507,10 @@ function renderBirthdayWishes(comments, celebrantName) {
         return;
     }
 
-    // Determine current user identity
     const myAuthId = currentFacultyUser?.id;
     const myEmail = String(currentFacultyUser?.email || '').trim().toLowerCase();
 
     listEl.innerHTML = list.map(c => {
-        // Show Edit and Delete only for the author's own comments
         const isMine = (myAuthId && String(c.author_id) === String(myAuthId)) ||
                        (myEmail && String(c.author_email || '').trim().toLowerCase() === myEmail);
 
@@ -4295,7 +4536,6 @@ function renderBirthdayWishes(comments, celebrantName) {
                     </div>
                     ${c.author_role ? `<div class="text-[9.5px] text-slate-400 font-medium">${escSafe(c.author_role)}</div>` : ''}
                     
-                    <!-- Message container (switches to input box when editing) -->
                     <div id="bday-comment-body-${c.id}" class="mt-1">
                         <p class="text-xs text-slate-700 leading-relaxed bg-slate-50/70 rounded-lg p-2 border border-slate-50">${escSafe(c.message)}</p>
                     </div>
@@ -4305,7 +4545,7 @@ function renderBirthdayWishes(comments, celebrantName) {
     }).join('');
 }
 
-// 1. Opens inline editor
+// 1. Inline edit
 function startEditBirthdayComment(commentId) {
     const escSafe = (s) => (typeof esc === 'function' ? esc(s) : String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
     const comment = currentLoadedBirthdayComments.find(x => String(x.id) === String(commentId));
@@ -4319,7 +4559,7 @@ function startEditBirthdayComment(commentId) {
             <textarea id="bday-edit-input-${commentId}" rows="2" class="w-full text-xs bg-white border border-[#621708] rounded-xl p-2 outline-none focus:ring-1 focus:ring-[#621708] text-slate-800 leading-relaxed">${escSafe(comment.message)}</textarea>
             <div class="flex items-center justify-end gap-1.5">
                 <button type="button" onclick="cancelEditBirthdayComment(${commentId})" class="text-[10.5px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold transition">Cancel</button>
-                <button type="button" onclick="saveEditBirthdayComment(${commentId})" class="text-[10.5px] px-3 py-1 rounded-lg bg-[#621708] hover:bg-[#831843] text-white font-semibold shadow-xs transition">Save</button>
+                <button type="button" onclick="saveEditBirthdayComment(${commentId})" style="background: var(--cite-theme, #621708);" class="text-[10.5px] px-3 py-1 rounded-lg text-white font-semibold shadow-xs transition hover:opacity-90">Save</button>
             </div>
         </div>
     `;
@@ -4331,7 +4571,7 @@ function startEditBirthdayComment(commentId) {
     }
 }
 
-// 2. Cancels inline editor
+// 2. Cancel edit
 function cancelEditBirthdayComment(commentId) {
     const escSafe = (s) => (typeof esc === 'function' ? esc(s) : String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
     const comment = currentLoadedBirthdayComments.find(x => String(x.id) === String(commentId));
@@ -4343,11 +4583,13 @@ function cancelEditBirthdayComment(commentId) {
     `;
 }
 
-// 3. Saves the update to Supabase
+// 3. Save edit with custom message modal
 async function saveEditBirthdayComment(commentId) {
     const textarea = document.getElementById(`bday-edit-input-${commentId}`);
     const newMsg = (textarea?.value || '').trim();
-    if (!newMsg) return alert('Greeting message cannot be empty.');
+    if (!newMsg) {
+        return showCalendarMessage('Notice', 'Greeting message cannot be empty.', 'error');
+    }
 
     try {
         const { error } = await supabaseClient
@@ -4364,13 +4606,18 @@ async function saveEditBirthdayComment(commentId) {
 
     } catch (err) {
         console.error('Error updating birthday comment:', err);
-        alert('Could not update comment: ' + (err.message || 'Please try again.'));
+        showCalendarMessage('Unable to Update', 'Could not update comment: ' + (err.message || 'Please try again.'), 'error');
     }
 }
 
-// 4. Deletes comment from Supabase
+// 4. Delete comment with Custom Modal (No Windows Alert)
 async function deleteBirthdayComment(commentId) {
-    if (!confirm('Are you sure you want to delete this birthday greeting?')) return;
+    const confirmed = await showCalendarConfirm(
+        'Delete Birthday Greeting',
+        'Are you sure you want to remove this birthday greeting? This action cannot be undone.',
+        { confirmText: 'Delete Greeting', cancelText: 'Cancel', danger: true }
+    );
+    if (!confirmed) return;
 
     try {
         const { error } = await supabaseClient
@@ -4385,9 +4632,10 @@ async function deleteBirthdayComment(commentId) {
         const freshComments = await fetchBirthdayComments(celebrantName, year);
         renderBirthdayWishes(freshComments, celebrantName);
 
+        showCalendarMessage('Greeting Deleted', 'Your birthday greeting was removed successfully.', 'success');
     } catch (err) {
         console.error('Error deleting birthday comment:', err);
-        alert('Could not delete comment: ' + (err.message || 'Please try again.'));
+        showCalendarMessage('Unable to Delete', 'Could not delete comment: ' + (err.message || 'Please try again.'), 'error');
     }
 }
 
@@ -4432,6 +4680,17 @@ async function postBirthdayWish() {
 
         if (error) throw error;
 
+        // 👉 TRIGGER NOTIFICATION TO CELEBRANT HERE:
+        if (window.CalendarNotifications && typeof CalendarNotifications.notifyBirthdayComment === 'function') {
+            CalendarNotifications.notifyBirthdayComment({
+                celebrant_name: celebrantName,
+                celebrant_id: celebrantId,
+                author_name: authorName,
+                message: msg,
+                celebrant_year: year
+            }).catch(() => {});
+        }
+
         input.value = '';
         const freshComments = await fetchBirthdayComments(celebrantName, year);
         renderBirthdayWishes(freshComments, celebrantName);
@@ -4439,11 +4698,12 @@ async function postBirthdayWish() {
 
     } catch (err) {
         console.error('Error posting birthday comment:', err);
-        alert('Could not save your wish: ' + (err.message || 'Please try again.'));
+        showCalendarMessage('Unable to Post', 'Could not save your wish: ' + (err.message || 'Please try again.'), 'error');
     } finally {
         if (sendBtn) sendBtn.disabled = false;
     }
 }
+
 
 function launchBirthdayConfetti() {
     const canvas = document.getElementById('bday-confetti-canvas');

@@ -164,7 +164,7 @@
     };
   }
 
-  async function loadFacultyProfile(user) {
+   async function loadFacultyProfile(user) {
     const meta = user?.user_metadata || {};
     let profile = {
       id: user?.id,
@@ -176,17 +176,37 @@
       last_name: meta.last_name || ''
     };
 
+    // 1. Read cached profile from localStorage (Has faculty_id, first_name, last_name)
+    try {
+      const cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
+      if (cached && (cached.id || cached.email || cached.faculty_id)) {
+        profile = { ...profile, ...cached };
+        if (cached.faculty_id) profile.id = cached.faculty_id;
+      }
+    } catch (_) {}
+
     if (!user?.id || !client()) return profile;
 
-    for (const table of FACULTY_TABLES) {
-      const { data, error } = await client().from(table).select('*').eq('id', user.id).maybeSingle();
+    // 2. Query faculty safely using auth_user_id or email (Not integer ID!)
+    try {
+      const { data, error } = await client()
+        .from('faculty')
+        .select('*')
+        .or(`auth_user_id.eq.${user.id},email.ilike.${user.email || 'none'}`)
+        .maybeSingle();
       if (!error && data) {
         profile = { ...profile, ...data };
-        break;
       }
+    } catch (_) {
+      try {
+        const { data } = await client().from('faculty').select('*').ilike('email', user.email).maybeSingle();
+        if (data) profile = { ...profile, ...data };
+      } catch (_) {}
     }
+
     return profile;
   }
+
 
   async function fetchFacultyRecipients(scope) {
     if (!client()) return [];
@@ -907,16 +927,18 @@
     return true;
   }
 
-  function canShowNotification(item) {
+     function canShowNotification(item) {
     if (!item) return false;
+    // Always allow birthday and direct personal notifications
+    if (item.type === 'birthday' || item.category === 'birthday' || String(item.id || '').includes('bday')) return true;
+    if (item.user_id && currentUser?.id && String(item.user_id) === String(currentUser.id)) return true;
     if (item.source === 'wf' && currentPortal === 'admin') return true;
     if (currentPortal === 'admin') {
       if (item.audience === 'admin' || item.type === 'leave' || item.type === 'feedback') return true;
-      if (item.user_id && currentUser?.id && item.user_id === currentUser.id) return true;
       return false;
     }
     if (item.audience === 'admin' || item.type === 'leave' || item.type === 'feedback') return false;
-    if (item.user_id && currentUser?.id && item.user_id !== currentUser.id) return false;
+    if (item.user_id && currentUser?.id && String(item.user_id) !== String(currentUser.id)) return false;
     return facultyCanReceive(item.audience || 'all_faculty', currentProfile);
   }
 
@@ -952,15 +974,16 @@
     return stored || 'calendar.html';
   }
 
-  function detailIdFromItem(item) {
+   function detailIdFromItem(item) {
     const type = String(item?.type || '').toLowerCase();
     const stored = String(item?.link || '');
     const hashMatch = stored.match(/#open=([^&]+)/i);
     if (hashMatch) return decodeURIComponent(hashMatch[1]);
     const eventId = item?.event_id ? String(item.event_id) : '';
     if (!eventId) return '';
-    if (eventId.startsWith('leave-') || eventId.startsWith('event-')) return eventId;
+    if (eventId.startsWith('leave-') || eventId.startsWith('event-') || eventId.startsWith('birthday-')) return eventId;
     if (type === 'leave') return 'leave-' + eventId;
+    if (type === 'birthday') return 'birthday-' + eventId;
     if (currentPortal === 'faculty') return eventId.replace(/^event-/, '');
     return 'event-' + eventId;
   }
@@ -1135,7 +1158,7 @@
     }
   }
 
-  async function loadExisting() {
+   async function loadExisting() {
     const db = client();
     if (!db || !currentUser?.id) return;
     const { data, error } = await db
@@ -1150,6 +1173,11 @@
       (data || []).forEach((row) => ingest(row, { toast: false }));
     }
     if (currentPortal === 'admin') await loadAdminWorkflowNotifications();
+
+    // 👉👉 PUT IT RIGHT HERE:
+    await loadBirthdayCommentNotifications();
+    await checkTodayBirthdays(); // 👈 Notifies on the date of birthday
+
     updateBadge();
   }
 
@@ -1357,6 +1385,237 @@
       || !!document.querySelector('[data-page="user-management.html"], [data-page="workflow-approval.html"]');
   }
 
+
+   // =========================================================
+  // GUARANTEED BIRTHDAY & COMMENT NOTIFICATION ENGINE
+  // =========================================================
+
+  // Helper to extract clean ID and name
+  function cleanCelebrantInfo(rawId, rawName) {
+    let cleanId = String(rawId || '').replace(/^birthday-/, '').replace(/-\d{4}$/, '').trim();
+    let cleanName = String(rawName || '')
+      .replace(/^(🎂\s*Birthday:\s*|Sir\s+|Ma'am\s+|Engr\.\s+|Dr\.\s+)/i, '')
+      .trim();
+    return { cleanId, cleanName };
+  }
+
+  // Helper to check if the logged in user is the celebrant
+  function isCurrentUserCelebrant(celebrantId, celebrantName) {
+    if (!currentUser) return false;
+
+    const { cleanId, cleanName } = cleanCelebrantInfo(celebrantId, celebrantName);
+
+    const cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
+    const myIds = [
+      String(currentUser.id || ''),
+      String(currentProfile?.id || ''),
+      String(currentProfile?.faculty_id || ''),
+      String(cached.id || ''),
+      String(cached.faculty_id || '')
+    ].filter(Boolean);
+
+    if (cleanId && myIds.includes(cleanId)) return true;
+
+    const myNames = [
+      [currentProfile?.first_name, currentProfile?.last_name].filter(Boolean).join(' ').trim().toLowerCase(),
+      (currentProfile?.full_name || currentProfile?.name || '').trim().toLowerCase(),
+      [cached.first_name, cached.last_name].filter(Boolean).join(' ').trim().toLowerCase(),
+      (cached.name || cached.full_name || '').trim().toLowerCase(),
+      (currentUser?.email || cached.email || '').split('@')[0].trim().toLowerCase()
+    ].filter(Boolean);
+
+    const target = cleanName.toLowerCase();
+    if (!target) return false;
+
+    return myNames.some((n) => n && (n === target || target.includes(n) || n.includes(target)));
+  }
+
+  // 1. Sends notification rows when a comment is posted
+  async function notifyBirthdayComment(comment) {
+    const db = client();
+    if (!comment || !db) return { ok: false };
+
+    const { cleanId, cleanName } = cleanCelebrantInfo(comment.celebrant_id, comment.celebrant_name);
+    const authorName = comment.author_name || 'A colleague';
+    const snippet = comment.message ? (comment.message.length > 55 ? comment.message.slice(0, 52) + '...' : comment.message) : 'Sent you a birthday wish!';
+    const year = comment.celebrant_year || new Date().getFullYear();
+    const eventId = comment.celebrant_id || `birthday-${cleanId || cleanName}-${year}`;
+
+    let target = null;
+    try {
+      if (cleanId && /^\d+$/.test(cleanId)) {
+        const { data } = await db.from('faculty').select('id, auth_user_id').eq('id', parseInt(cleanId, 10)).maybeSingle();
+        if (data) target = data;
+      }
+      if (!target && cleanId && cleanId.includes('-')) {
+        const { data } = await db.from('faculty').select('id, auth_user_id').eq('auth_user_id', cleanId).maybeSingle();
+        if (data) target = data;
+      }
+      if (!target && cleanName) {
+        const parts = cleanName.split(' ');
+        const last = parts[parts.length - 1];
+        const { data } = await db.from('faculty').select('id, auth_user_id').ilike('last_name', `%${last}%`).maybeSingle();
+        if (data) target = data;
+      }
+    } catch (_) {}
+
+    const payload = {
+      title: 'New Birthday Greeting Posted',
+      message: `${authorName} posted a birthday wish: "${snippet}"`,
+      type: 'birthday',
+      category: 'birthday',
+      audience: 'all_faculty',
+      event_id: eventId,
+      link: `calendar.html#open=${eventId}`,
+      is_read: false
+    };
+
+    try {
+      if (target?.auth_user_id) {
+        await insertNotificationRows(payload, [{ id: target.auth_user_id }]);
+      }
+      if (target?.id) {
+        await insertTableRows('wf_notifications', [{ ...payload, faculty_id: target.id }]);
+      }
+    } catch (_) {}
+
+    return { ok: true };
+  }
+
+  // 2. Loads birthday greetings into the notification bell upon login
+  async function loadBirthdayCommentNotifications() {
+    const db = client();
+    if (!db || !currentUser?.id) return;
+
+    try {
+      const { data, error } = await db
+        .from('faculty_birthday_comments')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      if (error || !Array.isArray(data)) return;
+
+      data.forEach((comment) => {
+        // Skip wishes written by myself
+        const isMine = (currentUser?.id && String(comment.author_id) === String(currentUser.id))
+                    || (currentUser?.email && String(comment.author_email || '').toLowerCase() === String(currentUser.email).toLowerCase());
+        if (isMine) return;
+
+        // Check if I am the celebrant
+        if (isCurrentUserCelebrant(comment.celebrant_id, comment.celebrant_name)) {
+          const author = comment.author_name || 'A colleague';
+          const text = comment.message ? (comment.message.length > 55 ? comment.message.slice(0, 52) + '...' : comment.message) : 'Happy Birthday!';
+          const { cleanId, cleanName } = cleanCelebrantInfo(comment.celebrant_id, comment.celebrant_name);
+          const eventId = comment.celebrant_id || `birthday-${cleanId || cleanName}-${comment.celebrant_year || new Date().getFullYear()}`;
+
+          ingest({
+            id: `bday-comment-${comment.id}`,
+            title: 'New Birthday Greeting Posted',
+            message: `${author} posted a birthday wish: "${text}"`,
+            type: 'birthday',
+            category: 'birthday',
+            event_id: eventId,
+            link: `calendar.html#open=${eventId}`,
+            is_read: false,
+            created_at: comment.created_at || new Date().toISOString()
+          }, { toast: false });
+        }
+      });
+    } catch (err) {
+      console.warn('loadBirthdayCommentNotifications error:', err);
+    }
+  }
+
+  // 3. Real-time listener: triggers toast and bell badge immediately when someone comments
+  function subscribeBirthdayComments() {
+    const db = client();
+    if (!db || global.__citeBdayNotifSubscribed) return;
+    global.__citeBdayNotifSubscribed = true;
+
+    db.channel('cite-birthday-comments-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'faculty_birthday_comments' }, (payload) => {
+        const row = payload.new;
+        if (!row) return;
+
+        // Skip comments written by myself
+        const isMine = (currentUser?.id && String(row.author_id) === String(currentUser.id))
+                    || (currentUser?.email && String(row.author_email || '').toLowerCase() === String(currentUser.email).toLowerCase());
+        if (isMine) return;
+
+        // Trigger toast if I am the celebrant
+        if (isCurrentUserCelebrant(row.celebrant_id, row.celebrant_name)) {
+          const author = row.author_name || 'A colleague';
+          const text = row.message ? (row.message.length > 55 ? row.message.slice(0, 52) + '...' : row.message) : 'Happy Birthday!';
+          const { cleanId, cleanName } = cleanCelebrantInfo(row.celebrant_id, row.celebrant_name);
+          const eventId = row.celebrant_id || `birthday-${cleanId || cleanName}-${row.celebrant_year || new Date().getFullYear()}`;
+
+          ingest({
+            id: `live-bday-${row.id}`,
+            title: 'New Birthday Greeting Posted',
+            message: `${author} posted a birthday wish: "${text}"`,
+            type: 'birthday',
+            category: 'birthday',
+            event_id: eventId,
+            link: `calendar.html#open=${eventId}`,
+            is_read: false,
+            created_at: new Date().toISOString()
+          }, { toast: true });
+        }
+      })
+      .subscribe();
+  }
+
+  // 4. Automatically announces today's birthdays to faculty and admins
+  async function checkTodayBirthdays() {
+    const db = client();
+    if (!db || !currentUser?.id) return;
+
+    try {
+      const today = new Date();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const todayMD = `${mm}-${dd}`;
+      const todayYear = today.getFullYear();
+
+      const { data: facultyList, error } = await db
+        .from('faculty')
+        .select('*')
+        .limit(500);
+
+      if (error || !Array.isArray(facultyList)) return;
+
+      facultyList.forEach((fac) => {
+        const rawDob = fac.birthdate || fac.date_of_birth || fac.birth_date || fac.dob || fac.birthday;
+        if (!rawDob || !String(rawDob).includes(todayMD)) return;
+
+        const facName = fac.full_name || `${fac.first_name || ''} ${fac.last_name || ''}`.trim() || 'Colleague';
+        const eventId = `birthday-${fac.id || facName}-${todayYear}`;
+        const notifyKey = `bday-toast-${fac.id || facName}-${todayYear}-${todayMD}`;
+
+        if (sessionStorage.getItem(notifyKey)) return;
+        sessionStorage.setItem(notifyKey, '1');
+
+        const isMe = isCurrentUserCelebrant(fac.id, facName);
+
+        ingest({
+          id: `today-bday-${fac.id || facName}-${todayYear}`,
+          title: isMe ? '🎉 Happy Birthday to You! 🎂' : `🎂 Today is ${facName}'s Birthday!`,
+          message: isMe ? 'Wishing you a joyful celebration! View your birthday card on the calendar.' : 'Join the celebration and send your warmest greetings on the calendar!',
+          type: 'birthday',
+          category: 'birthday',
+          event_id: eventId,
+          link: `calendar.html#open=${eventId}`,
+          is_read: false,
+          created_at: new Date().toISOString()
+        }, { toast: !isMe });
+      });
+    } catch (err) {
+      console.warn('checkTodayBirthdays error:', err);
+    }
+  }
+
+
   async function startListener(options) {
     const db = client();
     if (!db) {
@@ -1397,6 +1656,9 @@
     subscribeCalendarFallback();
     subscribeAdminFallbacks();
     subscribeFacultyOutbound();
+
+     subscribeBirthdayComments();
+
     scheduleCalendarSaveHooks();
     return currentProfile;
   }
@@ -1462,6 +1724,8 @@
     notifyAdmins,
     notifyLeaveFiling,
     notifyEventFeedback,
+    notifyBirthdayComment,    // 👈 Added
+    checkTodayBirthdays,
     startFacultyListener,
     startAdminListener,
     openFromNotification,
