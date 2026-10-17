@@ -1389,15 +1389,28 @@ select.modal-field {
                 </div>
 
                 <div class="csc-row-split grid grid-cols-1 lg:grid-cols-2">
-                    <div class="csc-cell">
+                                        <div class="csc-cell">
                         <div class="csc-head mb-2">6.C NUMBER OF WORKING DAYS APPLIED FOR</div>
                         <input id="leave-working-days" class="csc-line" type="text" inputmode="numeric" placeholder="e.g. 3" oninput="updateDatesFromWorkingDays()" onchange="updateDatesFromWorkingDays()">
-                        <div class="csc-head mt-3 mb-1">INCLUSIVE DATES</div>
-                        <div class="csc-row-dates grid grid-cols-2 gap-3">
+                        
+                        <!-- INCLUSIVE DATES WITH TOP-RIGHT '+' BUTTON -->
+                        <div class="flex items-center justify-between mt-3 mb-1">
+                            <div class="csc-head">INCLUSIVE DATES</div>
+                            <button type="button" 
+                                    id="btn-add-leave-date" 
+                                    onclick="addLeaveDateRangeRow()" 
+                                    class="leave-no-print w-5 h-5 flex items-center justify-center rounded bg-[#621708] hover:bg-[#831843] text-white transition shadow-sm cursor-pointer" 
+                                    title="Add another date range">
+                                <i class="fa-solid fa-plus text-[10px]"></i>
+                            </button>
+                        </div>
+
+                        <!-- Primary Date Row (100% Unchanged) -->
+                        <div class="csc-row-dates grid grid-cols-2 gap-3 leave-date-range-row">
                             <div>
                                 <div class="text-[10px]">From</div>
                                 <div class="cite-leave-date-wrap">
-                                    <input id="leave-start-date" class="csc-line cite-leave-date-input" type="text" readonly placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" inputmode="none" onchange="onLeaveStartDateChange()">
+                                    <input id="leave-start-date" class="csc-line cite-leave-date-input leave-start-input" type="text" readonly placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" inputmode="none" onchange="onLeaveStartDateChange()">
                                     <span class="cite-leave-cal-icon" aria-hidden="true">
                                         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
@@ -1411,7 +1424,7 @@ select.modal-field {
                             <div>
                                 <div class="text-[10px]">To</div>
                                 <div class="cite-leave-date-wrap">
-                                    <input id="leave-end-date" class="csc-line cite-leave-date-input" type="text" readonly placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" inputmode="none" onchange="onLeaveEndDateChange()">
+                                    <input id="leave-end-date" class="csc-line cite-leave-date-input leave-end-input" type="text" readonly placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" inputmode="none" onchange="onLeaveEndDateChange()">
                                     <span class="cite-leave-cal-icon" aria-hidden="true">
                                         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
@@ -1423,7 +1436,11 @@ select.modal-field {
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Container for dynamic additional date ranges -->
+                        <div id="leave-additional-dates" class="space-y-2 mt-2"></div>
                     </div>
+               
                     <div class="csc-cell">
                         <div class="csc-head mb-2">6.D COMMUTATION</div>
                         <label class="csc-opt"><input class="csc-check" type="radio" name="leave-commutation" value="Not Requested"><span>Not Requested</span></label>
@@ -1723,12 +1740,159 @@ function longDate(k){let [y,m,d]=k.split('-').map(Number);return new Intl.DateTi
 function esc(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function cls(t){return 'event-'+(['meeting','seminar','exam','workshop','announcement','deadline','event','leave','other'].includes(t)?t:'other')}
 
+
+
+
 function facultyCanSee(row){
     if(!window.CalendarNotifications) return true;
     return CalendarNotifications.facultySeesEvent(row, currentFacultyProfile);
 }
 
 
+// ==========================================================================
+// NEW HELPER FUNCTIONS (Place directly above addLeaveDateRangeRow)
+// ==========================================================================
+
+// Calculates the consecutive next day (e.g., '2026-11-01' becomes '2026-11-02')
+function getNextCalendarDay(dateStr) {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + 1);
+    return key(d);
+}
+
+// Finds the latest end date from Row 1 or Row 2 so new rows follow consecutively
+function getLastLeaveEndDate() {
+    const extraRows = document.querySelectorAll('#leave-additional-dates .leave-date-range-row');
+    if (extraRows.length > 0) {
+        const lastRow = extraRows[extraRows.length - 1];
+        const lastEnd = lastRow.querySelector('.leave-end-input')?.value?.trim();
+        const lastStart = lastRow.querySelector('.leave-start-input')?.value?.trim();
+        if (lastEnd && /^\d{4}-\d{2}-\d{2}$/.test(lastEnd)) return lastEnd;
+        if (lastStart && /^\d{4}-\d{2}-\d{2}$/.test(lastStart)) return lastStart;
+    }
+    const r1End = leaveVal('leave-end-date');
+    const r1Start = leaveVal('leave-start-date');
+    if (r1End && /^\d{4}-\d{2}-\d{2}$/.test(r1End)) return r1End;
+    if (r1Start && /^\d{4}-\d{2}-\d{2}$/.test(r1Start)) return r1Start;
+    return '';
+}
+
+function addLeaveDateRangeRow(initialStart = '', initialEnd = '') {
+    const container = document.getElementById('leave-additional-dates');
+    if (!container) return;
+
+    // Row 2 defaults back to the current date of the day (today) as a new row
+    const todayRealtime = key(new Date());
+    const defaultStart = initialStart || todayRealtime;
+    const defaultEnd = initialEnd || defaultStart;
+
+    extraDateRowSeq++;
+    const rowId = extraDateRowSeq;
+    const row = document.createElement('div');
+    row.id = `leave-date-row-${rowId}`;
+    row.className = 'csc-row-dates grid grid-cols-2 gap-3 leave-date-range-row pt-1.5 border-t border-slate-200/80';
+    row.innerHTML = `
+        <div>
+            <div class="text-[10px]">From</div>
+            <div class="cite-leave-date-wrap">
+                <input id="leave-start-date-${rowId}" 
+                       data-row-id="${rowId}" 
+                       data-role="start" 
+                       class="csc-line cite-leave-date-input leave-start-input" 
+                       type="text" 
+                       readonly 
+                       placeholder="YYYY-MM-DD" 
+                       autocomplete="off" 
+                       spellcheck="false" 
+                       inputmode="none" 
+                       value="${defaultStart}"
+                       onchange="onDynamicDateChange('${rowId}', 'start')">
+                <span class="cite-leave-cal-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                </span>
+            </div>
+        </div>
+        <div>
+            <div class="flex items-center justify-between">
+                <div class="text-[10px]">To</div>
+                <button type="button" 
+                        onclick="removeLeaveDateRangeRow(${rowId})" 
+                        class="leave-no-print text-slate-400 hover:text-rose-600 transition text-[11px] leading-none cursor-pointer" 
+                        title="Remove this date range">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="cite-leave-date-wrap">
+                <input id="leave-end-date-${rowId}" 
+                       data-row-id="${rowId}" 
+                       data-role="end" 
+                       class="csc-line cite-leave-date-input leave-end-input" 
+                       type="text" 
+                       readonly 
+                       placeholder="YYYY-MM-DD" 
+                       autocomplete="off" 
+                       spellcheck="false" 
+                       inputmode="none" 
+                       value="${defaultEnd}"
+                       onchange="onDynamicDateChange('${rowId}', 'end')">
+                <span class="cite-leave-cal-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                </span>
+            </div>
+        </div>
+    `;
+    container.appendChild(row);
+    initCustomLeaveDatePickers();
+    updateLeaveWorkingDays();
+}
+// 2. Removes an added date range row and recalculates working days
+function removeLeaveDateRangeRow(rowId) {
+    const row = document.getElementById(`leave-date-row-${rowId}`);
+    if (row) {
+        row.remove();
+        closeCustomLeaveDatePicker();
+        updateLeaveWorkingDays();
+    }
+}
+// 3. Collects all date ranges across primary and added rows
+function getAllLeaveDateRanges() {
+    const ranges = [];
+    
+    // 1. Primary Row 1
+    const pStart = leaveVal('leave-start-date');
+    const pEnd = leaveVal('leave-end-date');
+    if (pStart && /^\d{4}-\d{2}-\d{2}$/.test(pStart)) {
+        ranges.push({ 
+            start: pStart, 
+            end: (pEnd && /^\d{4}-\d{2}-\d{2}$/.test(pEnd)) ? pEnd : pStart 
+        });
+    }
+    // 2. Dynamic '+' Rows
+    const extraRows = document.querySelectorAll('#leave-additional-dates .leave-date-range-row');
+    extraRows.forEach(row => {
+        const s = row.querySelector('.leave-start-input')?.value?.trim();
+        const e = row.querySelector('.leave-end-input')?.value?.trim();
+        if (s && /^\d{4}-\d{2}-\d{2}$/.test(s)) {
+            ranges.push({ 
+                start: s, 
+                end: (e && /^\d{4}-\d{2}-\d{2}$/.test(e)) ? e : s 
+            });
+        }
+    });
+    return ranges;
+}
 
 function formatPrintDate(value) {
     if (!value) return '';
@@ -2118,9 +2282,13 @@ async function refreshChairpersonAccess() {
     applyChairCalendarChrome();
     return chairpersonAccess;
 }
-function leaveDbId(value){
+function leaveDbId(value) {
     let id = String(value || '');
+    // Strip date suffix if present (-YYYY-MM-DD)
     id = id.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    // Strip row suffix if present (-r0, -r1, etc.)
+    id = id.replace(/-r\d+$/, '');
+    // Strip leave- prefix
     if (id.startsWith('leave-')) id = id.slice(6);
     return id;
 }
@@ -2137,9 +2305,28 @@ function hydrateLeaveRow(row){
     const last = String(raw.last_name || name.last || '').trim();
     const first = String(raw.first_name || name.first || '').trim();
     const middle = String(raw.middle_name || name.middle || '').trim();
+
+    // Kuhaon ang tanang date range rows gikan sa form_data
+    let rawRanges = form.date_ranges || dates.ranges || raw.date_ranges || [];
+    let ranges = [];
+    if (Array.isArray(rawRanges) && rawRanges.length > 0) {
+        ranges = rawRanges.map(r => ({
+            start: parseDateKey(r.start),
+            end: parseDateKey(r.end) || parseDateKey(r.start)
+        })).filter(r => !!r.start);
+    }
+
+    const fallbackStart = parseDateKey(raw.start_date) || parseDateKey(dates.start);
+    const fallbackEnd = parseDateKey(raw.end_date) || parseDateKey(dates.end) || fallbackStart;
+
+    if (ranges.length === 0 && fallbackStart) {
+        ranges = [{ start: fallbackStart, end: fallbackEnd }];
+    }
+
     return {
         ...raw,
         form_data: form,
+        date_ranges: ranges,
         last_name: last,
         first_name: first,
         middle_name: middle,
@@ -2149,8 +2336,8 @@ function hydrateLeaveRow(row){
         salary: raw.salary || form.salary || '',
         leave_type: raw.leave_type || form.leave_type || raw.others_specify || form.others_specify || '',
         others_specify: raw.others_specify || form.others_specify || '',
-        start_date: parseDateKey(raw.start_date) || parseDateKey(dates.start),
-        end_date: parseDateKey(raw.end_date) || parseDateKey(dates.end) || parseDateKey(raw.start_date) || parseDateKey(dates.start),
+        start_date: ranges[0]?.start || fallbackStart,
+        end_date: ranges[ranges.length - 1]?.end || fallbackEnd,
         working_days: raw.working_days || form.working_days || '',
         commutation: raw.commutation || form.commutation || '',
         date_of_filing: parseDateKey(raw.date_of_filing) || parseDateKey(form.date_of_filing),
@@ -2222,9 +2409,28 @@ function fillOwnLeaveForm(row){
     const term = document.getElementById('leave-terminal');
     if (mon) mon.checked = !!r.monetization || /monetization/i.test(purpose);
     if (term) term.checked = !!r.terminal_leave || /terminal/i.test(purpose);
+
+    // Limpyohan daan ang dugang rows
+    const extraContainer = document.getElementById('leave-additional-dates');
+    if (extraContainer) extraContainer.innerHTML = '';
+    extraDateRowSeq = 0;
+
+    // I-populate ang tanang rows (Row 1 ug Row 2 pataas)
+    const ranges = (r.date_ranges && r.date_ranges.length > 0)
+        ? r.date_ranges
+        : [{ start: r.start_date, end: r.end_date }];
+
+    if (ranges[0]) {
+        setLeaveField('leave-start-date', ranges[0].start || '');
+        setLeaveField('leave-end-date', ranges[0].end || ranges[0].start || '');
+    }
+
+    // Dynamic rows para sa dugang mga date ranges
+    for (let i = 1; i < ranges.length; i++) {
+        addLeaveDateRangeRow(ranges[i].start, ranges[i].end);
+    }
+
     setLeaveField('leave-working-days', r.working_days || countWorkingDays(r.start_date, r.end_date));
-    setLeaveField('leave-start-date', r.start_date);
-    setLeaveField('leave-end-date', r.end_date);
     setLeaveRadio('leave-commutation', r.commutation);
     const signature = r.applicant_signature || buildApplicantSignature(r.first_name, r.middle_name, r.last_name);
     setLeaveField('leave-signature', signature);
@@ -2256,7 +2462,7 @@ function renderLeaveViewFiles(row){
     }
     if (none) none.classList.toggle('hidden', !(leaveViewMode && !files.length));
 }
-function applyLeaveViewMode(){
+function applyLeaveViewMode() {
     const modal = document.getElementById('leave-modal');
     if (!modal) return;
     const viewing = !!leaveViewMode;
@@ -2278,11 +2484,18 @@ function applyLeaveViewMode(){
             el.disabled = false;
         }
     });
+    // Hide the + button and ✕ buttons in view mode
+    const addBtn = document.getElementById('btn-add-leave-date');
+    if (addBtn) addBtn.style.display = viewing ? 'none' : 'inline-flex';
+    document.querySelectorAll('#leave-additional-dates button').forEach(b => {
+        b.style.display = viewing ? 'none' : 'inline-block';
+    });
     const cancel = document.getElementById('leave-cancel-btn');
     if (cancel) cancel.textContent = viewing ? 'Close' : 'Cancel';
     if (!viewing) renderLeaveViewFiles(null);
     closeCustomLeaveDatePicker();
 }
+
 async function viewOwnLeaveForm(event){
     mountLeaveModal();
     leaveViewMode = true;
@@ -2307,42 +2520,175 @@ async function viewOwnLeaveForm(event){
         if (row) fillOwnLeaveForm(row);
     }
 }
-function leaveCalendarEntries(leave){
-    const row=hydrateLeaveRow(leave);
-    const start=parseDateKey(row.start_date);
-    const end=parseDateKey(row.end_date)||start;
-    const duration=formatLeaveDuration(start,end);
-    const rangeLabel=formatLeaveRangeLabel(start,end);
-    const workLabel=formatLeaveWorkingDaysLabel(start,end);
-    return eachDateKey(start,end).map((date,index)=>({
-        id: index===0 ? `leave-${row.id}` : `leave-${row.id}-${date}`,
-        realId: row.id,
-        title: isChairViewer()
-            ? `Leave: ${row.faculty_name || [row.last_name, row.first_name].filter(Boolean).join(', ') || 'Faculty'} (${row.leave_type||'Leave'})`
-            : `${row.leave_type||'Leave'} (${row.status||'Pending'})`,
-        date,
-        startAt: `${start}T08:00:00`,
-        endAt: `${end||start}T17:00:00`,
-        time: duration,
-        detailTime: `${rangeLabel} • ${workLabel}`,
-        type: 'leave',
-        category: 'leave',
-        location: row.office_department||'Faculty Leave Filing',
-        priority: row.status||'Pending',
-        status: row.status||'Pending',
-        notes: row.notes||'No remarks provided.',
-        allDay: false,
-        isLeave: true,
-        leavePrimary: index===0,
-        leaveRecord: row,
-        requiresFeedback: false,
-        feedbackInstructions: '',
-        attachments: parseAttachments(row),
-        attachmentUrl: row.attachment_url || '',
-        externalLink: ''
-    }));
-}
+function leaveCalendarEntries(leave) {
+    const row = typeof hydrateLeaveRow === 'function' ? hydrateLeaveRow(leave) : (leave || {});
+    
+    // 1. Get all date ranges (checks row.date_ranges, form_data.date_ranges, and form_data.inclusive_dates.ranges)
+    let form = row.form_data;
+    if (typeof form === 'string') {
+        try { form = JSON.parse(form); } catch (_) { form = {}; }
+    }
+    form = form || {};
 
+    let ranges = [];
+    if (Array.isArray(row.date_ranges) && row.date_ranges.length > 0) {
+        ranges = row.date_ranges;
+    } else if (Array.isArray(form.date_ranges) && form.date_ranges.length > 0) {
+        ranges = form.date_ranges;
+    } else if (Array.isArray(form.inclusive_dates?.ranges) && form.inclusive_dates.ranges.length > 0) {
+        ranges = form.inclusive_dates.ranges;
+    } else if (row.start_date) {
+        ranges = [{ start: row.start_date, end: row.end_date || row.start_date }];
+    } else {
+        return [];
+    }
+
+    // Helper to calculate working days for a single row range
+    const calcRowWorkDays = (startStr, endStr) => {
+        if (typeof countWorkingDays === 'function') {
+            return countWorkingDays(startStr, endStr);
+        }
+        if (!startStr) return 0;
+        const s = new Date(startStr + 'T00:00:00');
+        const e = new Date((endStr || startStr) + 'T00:00:00');
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
+        let count = 0;
+        const cur = new Date(s);
+        while (cur <= e) {
+            const day = cur.getDay();
+            if (day !== 0 && day !== 6) count++;
+            cur.setDate(cur.getDate() + 1);
+        }
+        return count;
+    };
+
+    // Helper to generate all dates between start and end
+    const getDatesBetween = (startStr, endStr) => {
+        if (typeof eachDateKey === 'function') {
+            return eachDateKey(startStr, endStr);
+        }
+        const list = [];
+        const s = new Date(startStr + 'T00:00:00');
+        const e = new Date((endStr || startStr) + 'T00:00:00');
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) return list;
+        const cur = new Date(s);
+        while (cur <= e) {
+            const y = cur.getFullYear();
+            const m = String(cur.getMonth() + 1).padStart(2, '0');
+            const d = String(cur.getDate()).padStart(2, '0');
+            list.push(`${y}-${m}-${d}`);
+            cur.setDate(cur.getDate() + 1);
+        }
+        return list;
+    };
+
+    // Format helpers
+    const formatShort = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00');
+        if (isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
+    const formatLong = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00');
+        if (isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    const totalDays = Number(row.working_days) || ranges.reduce((acc, r) => acc + calcRowWorkDays(r.start, r.end || r.start), 0);
+    const hasMultiple = ranges.length > 1;
+
+    // 2. CHECK OWNERSHIP & RESOLVE ACCOUNT NAME
+    const isOwn = typeof isOwnLeave === 'function' ? isOwnLeave(row) : false;
+
+    // Kuhaon ang kumpletong ngalan sa account nga nag-file
+    let accountName = '';
+    const formName = row.form_data?.name || {};
+    const fName = row.first_name || formName.first || '';
+    const lName = row.last_name || formName.last || '';
+
+    if (fName && lName) {
+        accountName = `${fName} ${lName}`;
+    } else if (row.faculty_name) {
+        accountName = row.faculty_name;
+    } else if (fName || lName) {
+        accountName = fName || lName;
+    } else if (typeof cachedAllFaculty !== 'undefined' && Array.isArray(cachedAllFaculty) && cachedAllFaculty.length > 0) {
+        const match = cachedAllFaculty.find(f => 
+            (row.faculty_id && String(f.id) === String(row.faculty_id)) ||
+            (row.auth_user_id && (String(f.auth_user_id) === String(row.auth_user_id) || String(f.user_id) === String(row.auth_user_id)))
+        );
+        if (match) {
+            accountName = match.full_name || `${match.first_name || ''} ${match.last_name || ''}`.trim() || match.name || '';
+        }
+    }
+    if (!accountName) accountName = 'Faculty Member';
+
+    // 3. CALENDAR PILL TITLE (Wala nay "(Pending)")
+    // Kung imo: "Vacation Leave (Your Leave)"
+    // Kung dili imo: "Vacation Leave (Juan Dela Cruz)"
+    const pillTitle = isOwn 
+        ? `${row.leave_type || 'Leave'} (Your Leave)`
+        : `${row.leave_type || 'Leave'} (${accountName})`;
+
+    // 4. MAP EACH DATE ROW SEPARATELY (Row 1 and Row 2)
+    return ranges.flatMap((r, rIdx) => {
+        const s = typeof parseDateKey === 'function' ? parseDateKey(r.start) : (r.start ? String(r.start).slice(0, 10) : '');
+        const e = (typeof parseDateKey === 'function' ? parseDateKey(r.end) : (r.end ? String(r.end).slice(0, 10) : '')) || s;
+        if (!s) return [];
+
+        const rDays = calcRowWorkDays(s, e);
+        const rWorkLabel = `${rDays} ${rDays === 1 ? 'working day' : 'working days'}`;
+
+        const startShort = formatShort(s);
+        const endShort = formatShort(e);
+        const rangeSpanText = s === e ? startShort : `${startShort} – ${endShort}`;
+        const pillDuration = `${rangeSpanText} • ${rWorkLabel}`;
+
+        const startLong = formatLong(s);
+        const endLong = formatLong(e);
+        const fullSpanText = s === e ? startLong : `${startLong} – ${endLong}`;
+        const rowSuffix = hasMultiple
+            ? ` (Row ${rIdx + 1} of ${ranges.length} • Total: ${totalDays} working days)`
+            : '';
+        const detailTimeText = `${fullSpanText} • ${rWorkLabel}${rowSuffix}`;
+
+        const dates = getDatesBetween(s, e);
+
+        return dates.map((date, index) => ({
+            id: index === 0 ? `leave-${row.id}-r${rIdx}` : `leave-${row.id}-r${rIdx}-${date}`,
+            realId: row.id,
+            title: pillTitle, // <--- (Your Leave) o Ngalan sa Account!
+            date,
+            startAt: `${s}T08:00:00`,
+            endAt: `${e || s}T17:00:00`,
+            time: pillDuration,
+            detailTime: detailTimeText,
+            type: 'leave',
+            category: 'leave',
+            location: row.office_department || 'Faculty Leave Filing',
+            priority: row.status || 'Pending',
+            status: row.status || 'Pending',
+            notes: row.notes || 'No remarks provided.',
+            allDay: false,
+            isLeave: true,
+            leavePrimary: index === 0 && rIdx === 0,
+            leaveRecord: row,
+            rangeIndex: rIdx + 1,
+            totalRanges: ranges.length,
+            rangeStart: s,
+            rangeEnd: e,
+            rangeWorkingDays: rDays,
+            requiresFeedback: false,
+            feedbackInstructions: '',
+            attachments: typeof parseAttachments === 'function' ? parseAttachments(row) : (row.attachments || []),
+            attachmentUrl: row.attachment_url || '',
+            externalLink: ''
+        }));
+    });
+}
 async function loadOwnLeaves(){
     if(!canUseSupabase()) return [];
     try {
@@ -2626,93 +2972,148 @@ function goToday() {
 function leaveVal(id){return (document.getElementById(id)?.value||'').trim()}
 function leaveChecked(name){let el=document.querySelector(`input[name="${name}"]:checked`);return el?el.value:''}
 
-function countWorkingDays(start, end) {
-    if (!start || !end) return '';
-    let a = new Date(start + 'T00:00:00'), b = new Date(end + 'T00:00:00');
-    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b < a) return '';
-    
-    // Inclusive days difference (e.g. Oct 02 to Oct 05 = 4 days)
-    const diff = Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    return String(diff);
-}
 
+let extraDateRowSeq = 0;
+function countWorkingDays(start, end) {
+    if (!start) return 0;
+    const actualEnd = end || start;
+    let a = new Date(start + 'T00:00:00'), b = new Date(actualEnd + 'T00:00:00');
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b < a) return 0;
+    
+    // Inclusive days difference (e.g. Nov 01 to Nov 01 = 1 day)
+    const diff = Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return diff > 0 ? diff : 0;
+}
 function addWorkingDays(startDateStr, daysCount) {
     const n = Math.ceil(parseFloat(daysCount));
     if (isNaN(n) || n <= 0 || !startDateStr) return startDateStr || '';
     let d = new Date(startDateStr + 'T00:00:00');
     if (Number.isNaN(d.getTime())) return startDateStr || '';
-
-    // Inclusive calculation (e.g. Oct 02 + 4 days = Oct 05)
     d.setDate(d.getDate() + (n - 1));
-    return key(d); // Uses your file's native key() helper
+    return key(d);
 }
-function updateDatesFromWorkingDays(){
+function updateDatesFromWorkingDays() {
     let val = leaveVal('leave-working-days');
-    let days = parseFloat(val);
-    if(isNaN(days) || days <= 0) return;
-
-    let start = leaveVal('leave-start-date');
-    if(!start){
-        start = selectedDate || key(new Date());
-        let startEl = document.getElementById('leave-start-date');
-        if(startEl) startEl.value = start;
-    }
-
-    let dStart = new Date(start + 'T00:00:00');
-    if(!Number.isNaN(dStart.getTime()) && (dStart.getDay() === 0 || dStart.getDay() === 6)){
-        while(dStart.getDay() === 0 || dStart.getDay() === 6){
-            dStart.setDate(dStart.getDate() + 1);
+    let totalDays = parseFloat(val);
+    if (isNaN(totalDays) || totalDays <= 0) return;
+    const extraRows = document.querySelectorAll('#leave-additional-dates .leave-date-range-row');
+    
+    // If only Row 1 exists: calculate Row 1's To date
+    if (extraRows.length === 0) {
+        let start = leaveVal('leave-start-date');
+        if (!start) {
+            start = (typeof selectedDate !== 'undefined' && selectedDate) || key(new Date());
+            let startEl = document.getElementById('leave-start-date');
+            if (startEl) startEl.value = start;
         }
-        start = key(dStart);
-        let startEl = document.getElementById('leave-start-date');
-        if(startEl) startEl.value = start;
+        let end = addWorkingDays(start, totalDays);
+        let endEl = document.getElementById('leave-end-date');
+        if (endEl) endEl.value = end;
+    } else {
+        // Row 1 is already saved! We only calculate the active Row 2
+        let precedingDays = 0;
+        const pStart = leaveVal('leave-start-date');
+        const pEnd = leaveVal('leave-end-date');
+        if (pStart) {
+            precedingDays += countWorkingDays(pStart, pEnd || pStart);
+        }
+        for (let i = 0; i < extraRows.length - 1; i++) {
+            const s = extraRows[i].querySelector('.leave-start-input')?.value?.trim();
+            const e = extraRows[i].querySelector('.leave-end-input')?.value?.trim();
+            if (s) precedingDays += countWorkingDays(s, e || s);
+        }
+        
+        const lastRow = extraRows[extraRows.length - 1];
+        const lastStartInput = lastRow.querySelector('.leave-start-input');
+        const lastEndInput = lastRow.querySelector('.leave-end-input');
+        
+        let remainingDays = totalDays - precedingDays;
+        if (remainingDays <= 0) remainingDays = 1;
+        
+        let start = lastStartInput?.value?.trim();
+        if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+            start = key(new Date());
+            if (lastStartInput) lastStartInput.value = start;
+        }
+        
+        // Calculate Row 2's To date based on remaining days
+        let end = addWorkingDays(start, remainingDays);
+        if (lastEndInput) {
+            lastEndInput.value = end;
+        }
     }
-
-    let end = addWorkingDays(start, days);
-    let endEl = document.getElementById('leave-end-date');
-    if(endEl) endEl.value = end;
 }
-
-function onLeaveStartDateChange(){
+function onLeaveStartDateChange() {
     let start = leaveVal('leave-start-date');
     let end = leaveVal('leave-end-date');
-
-    if(start && end && end < start){
+    if (start && (!end || end < start)) {
         let endEl = document.getElementById('leave-end-date');
-        if(endEl) endEl.value = start;
+        if (endEl) endEl.value = start;
     }
-
     updateLeaveWorkingDays();
 }
 
-function onLeaveEndDateChange(){
+function onLeaveEndDateChange() {
     let start = leaveVal('leave-start-date');
     let end = leaveVal('leave-end-date');
-    if(start && end && end < start){
+    if (start && end && end < start) {
         alert('End date (To) cannot be earlier than start date (From).');
         document.getElementById('leave-end-date').value = start;
-        end = start;
     }
     updateLeaveWorkingDays();
 }
 
-function updateLeaveWorkingDays(){
-    let start=leaveVal('leave-start-date'), end=leaveVal('leave-end-date');
-    let currentDays = leaveVal('leave-working-days');
-    if(currentDays === '0.5' && start && end && start === end) return;
-    let days=countWorkingDays(start,end);
-    let daysEl = document.getElementById('leave-working-days');
-    if(daysEl){
-        daysEl.value = (days !== '' && days != null) ? days : '';
+function updateLeaveWorkingDays() {
+    const ranges = getAllLeaveDateRanges();
+    const daysEl = document.getElementById('leave-working-days');
+    if (!daysEl) return;
+    if (!ranges.length) {
+        daysEl.value = '';
+        return;
     }
+    let totalDays = 0;
+    ranges.forEach(r => {
+        if (!r.start) return;
+        const d = countWorkingDays(r.start, r.end || r.start);
+        if (d && !isNaN(Number(d))) {
+            totalDays += Number(d);
+        }
+    });
+    daysEl.value = totalDays > 0 ? String(totalDays) : '';
 }
 
-function resetLeaveForm(){
-    ['leave-office','leave-last-name','leave-first-name','leave-middle-name','leave-position','leave-salary','leave-others-specify','leave-vac-abroad','leave-sick-hospital','leave-sick-outpatient','leave-women-illness','leave-study-other','leave-working-days','leave-signature','leave-file-input'].forEach(id=>{
-        let el=document.getElementById(id); if(el) el.value='';
+function onDynamicDateChange(rowId, role) {
+    const sEl = document.getElementById(`leave-start-date-${rowId}`);
+    const eEl = document.getElementById(`leave-end-date-${rowId}`);
+    if (sEl && eEl) {
+        if (role === 'start' && (!eEl.value || eEl.value < sEl.value)) {
+            eEl.value = sEl.value;
+        } else if (role === 'end' && sEl.value && eEl.value && eEl.value < sEl.value) {
+            alert('End date (To) cannot be earlier than start date (From).');
+            eEl.value = sEl.value;
+        }
+    }
+    updateLeaveWorkingDays();
+}
+
+
+function resetLeaveForm() {
+    [
+        'leave-office', 'leave-last-name', 'leave-first-name', 'leave-middle-name',
+        'leave-position', 'leave-salary', 'leave-others-specify', 'leave-vac-abroad',
+        'leave-sick-hospital', 'leave-sick-outpatient', 'leave-women-illness',
+        'leave-study-other', 'leave-working-days', 'leave-signature', 'leave-file-input',
+        'leave-start-date', 'leave-end-date'
+    ].forEach(id => {
+        let el = document.getElementById(id);
+        if (el) el.value = '';
     });
-    document.querySelectorAll('#leave-modal input[type="radio"]').forEach(el=>el.checked=false);
-    document.querySelectorAll('#leave-modal input[type="checkbox"]:not([disabled])').forEach(el=>el.checked=false);
+    document.querySelectorAll('#leave-modal input[type="radio"]').forEach(el => el.checked = false);
+    document.querySelectorAll('#leave-modal input[type="checkbox"]:not([disabled])').forEach(el => el.checked = false);
+    // Clear dynamic extra rows back to 1 clean row
+    const extraContainer = document.getElementById('leave-additional-dates');
+    if (extraContainer) extraContainer.innerHTML = '';
+    extraDateRowSeq = 0;
     showLeavePage(1);
     closeCustomLeaveDatePicker();
 }
@@ -2811,11 +3212,10 @@ function toggleCustomLeaveDatePicker(inputEl){
     openCustomLeaveDatePicker(inputEl);
 }
 function initCustomLeaveDatePickers() {
-    // Added 'leave-end-date' so the end date picker also opens properly
-    const dateInputIds = ['leave-date-filing', 'leave-start-date', 'leave-end-date'];
+    // Automatically selects the existing date fields PLUS any newly added date rows
+    const inputs = document.querySelectorAll('#leave-modal .cite-leave-date-input');
     
-    dateInputIds.forEach(id => {
-        const input = document.getElementById(id);
+    inputs.forEach(input => {
         if (!input || input.dataset.customPickerBound === '1') return;
         input.dataset.customPickerBound = '1';
 
@@ -2891,7 +3291,6 @@ function initCustomLeaveDatePickers() {
         });
     }
 }
-
 function closeCustomLeaveDatePicker(){
     if (activeLeaveDatePicker && activeLeaveDatePicker.popover) {
         activeLeaveDatePicker.popover.remove();
@@ -2899,15 +3298,26 @@ function closeCustomLeaveDatePicker(){
     activeLeaveDatePicker = null;
 }
 
-function openCustomLeaveDatePicker(inputEl){
+function openCustomLeaveDatePicker(inputEl) {
     closeCustomLeaveDatePicker();
     if (leaveViewMode) return;
 
     let initVal = (inputEl.value || '').trim();
     let currentD = new Date();
+    
     if (/^\d{4}-\d{2}-\d{2}$/.test(initVal)) {
         let parts = initVal.split('-').map(Number);
         currentD = new Date(parts[0], parts[1] - 1, parts[2]);
+    } else {
+        // Open to the relevant leave month, NOT today's current month
+        const r1End = leaveVal('leave-end-date') || leaveVal('leave-start-date');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(r1End)) {
+            let parts = r1End.split('-').map(Number);
+            currentD = new Date(parts[0], parts[1] - 1, parts[2]);
+        } else if (typeof selectedDate !== 'undefined' && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+            let parts = selectedDate.split('-').map(Number);
+            currentD = new Date(parts[0], parts[1] - 1, parts[2]);
+        }
     }
 
     let viewYear = currentD.getFullYear();
@@ -2931,7 +3341,7 @@ function openCustomLeaveDatePicker(inputEl){
     if (parentWrap) {
         parentWrap.style.position = 'relative';
         const rect = inputEl.getBoundingClientRect();
-        if (inputEl.id === 'leave-end-date' || (rect.left + 265 > window.innerWidth - 16)) {
+        if (inputEl.id === 'leave-end-date' || (inputEl.dataset && inputEl.dataset.role === 'end') || (rect.left + 265 > window.innerWidth - 16)) {
             popover.style.left = 'auto';
             popover.style.right = '0';
         } else {
@@ -3080,31 +3490,40 @@ function renderCustomLeaveDatePicker(){
     });
 }
 
-function applyLeaveDateSelection(dateStr){
+function applyLeaveDateSelection(dateStr) {
     if (!activeLeaveDatePicker || !activeLeaveDatePicker.input) return;
     const input = activeLeaveDatePicker.input;
-
-    // Format filing date as 2026-10-02 (October 02, 2026)
     if (input.id === 'leave-date-filing') {
         input.value = dateStr ? formatPrintDate(dateStr) : '';
     } else {
         input.value = dateStr;
     }
-
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
-
-    if (input.id === 'leave-start-date' && typeof onLeaveStartDateChange === 'function') {
+    // Auto-adjusts "To" when "From" changes
+    if (input.dataset && input.dataset.rowId) {
+        const rowId = input.dataset.rowId;
+        const sEl = document.getElementById(`leave-start-date-${rowId}`);
+        const eEl = document.getElementById(`leave-end-date-${rowId}`);
+        if (input.dataset.role === 'start') {
+            if (eEl && (!eEl.value || eEl.value < sEl.value)) {
+                eEl.value = sEl.value;
+            }
+        } else if (input.dataset.role === 'end') {
+            if (sEl && sEl.value && eEl.value && eEl.value < sEl.value) {
+                alert('End date (To) cannot be earlier than start date (From).');
+                eEl.value = sEl.value;
+            }
+        }
+    } else if (input.id === 'leave-start-date') {
         onLeaveStartDateChange();
-    } else if (input.id === 'leave-end-date' && typeof onLeaveEndDateChange === 'function') {
+    } else if (input.id === 'leave-end-date') {
         onLeaveEndDateChange();
-    } else {
-        updateLeaveWorkingDays();
     }
-
+    // Calculates and updates the total working days to match all dates!
+    updateLeaveWorkingDays();
     closeCustomLeaveDatePicker();
 }
-
 
 function collectLeaveDetails(){
     let parts=[];
@@ -3603,126 +4022,189 @@ async function insertFacultyLeave(row){
 }
 
 async function submitLeaveFiling(){
-    if(leaveViewMode) return;
-    let last=leaveVal('leave-last-name');
-    let first=leaveVal('leave-first-name');
-    let middle=leaveVal('leave-middle-name');
-    let name = last && first
-        ? `${last}, ${first}${middle ? ' ' + middle : ''}`
-        : [first, middle, last].filter(Boolean).join(' ');
-    let type=leaveChecked('leave-type');
-    if(type==='Others') type=leaveVal('leave-others-specify') || 'Others';
-    let startD=leaveVal('leave-start-date');
-    let endD=leaveVal('leave-end-date');
-    let fileInput=document.getElementById('leave-file-input');
-    let details=collectLeaveDetails();
-    let workingDays=leaveVal('leave-working-days') || countWorkingDays(startD,endD);
-    let commutation=leaveChecked('leave-commutation');
-    let signature=leaveVal('leave-signature') || buildApplicantSignature(first, middle, last);
-    let sickWhere=leaveChecked('leave-sick-where');
-    let sickIllness=sickWhere==='In Hospital' ? leaveVal('leave-sick-hospital') : leaveVal('leave-sick-outpatient');
-    let monetization=!!document.getElementById('leave-monetization')?.checked;
-    let terminalLeave=!!document.getElementById('leave-terminal')?.checked;
-    let otherPurpose=[monetization?'Monetization of Leave Credits':'', terminalLeave?'Terminal Leave':''].filter(Boolean).join('; ');
-
-    if(!last||!first||!type||!startD||!endD) return alert('Please complete Name, Type of Leave, and Inclusive Dates.');
-    if(endD<startD) return alert('End date cannot be earlier than the start date.');
-
-    let notes=[
-        'CSC Form No. 6 (Revised 2020)',
-        'Office/Department: '+(leaveVal('leave-office')||'N/A'),
-        'Name: '+name,
-        'Date of Filing: '+(leaveVal('leave-date-filing')||''),
-        'Position: '+(leaveVal('leave-position')||'N/A'),
-        'Salary: '+(leaveVal('leave-salary')||'N/A'),
-        'Type of Leave: '+type,
-        details ? ('Details of Leave: '+details) : '',
-        'Working days applied for: '+(workingDays||'N/A'),
-        'Inclusive Dates: '+startD+' to '+endD,
-        'Commutation: '+commutation,
-        'Signature of Applicant: '+signature
-    ].filter(Boolean).join('\n');
-
-    let submitBtn = document.getElementById('leave-submit-btn');
-    submitBtn.disabled = true; submitBtn.textContent = 'Uploading file...';
-    let attachmentUrl = '';
-
-    if(fileInput.files.length > 0) {
-        let file = fileInput.files[0];
-        let filePath = `leave-proofs/${Date.now()}.${file.name.split('.').pop()}`;
-        let { error: upErr } = await supabaseClient.storage.from('leave-attachments').upload(filePath, file);
-        if(!upErr){let { data: pub } = supabaseClient.storage.from('leave-attachments').getPublicUrl(filePath);attachmentUrl=pub?.publicUrl||'';}
-        else { console.warn('Leave attachment upload failed', upErr); }
+    if(!canUseSupabase()){
+        alert('Supabase is not configured. Cannot submit leave application.');
+        return;
+    }
+    const submitBtn = document.getElementById('leave-submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
     }
 
-    submitBtn.textContent = 'Saving leave...';
-    let row = {
-        faculty_name: name,
-        last_name: last,
-        first_name: first,
-        middle_name: middle,
-        office_department: leaveVal('leave-office'),
-        date_of_filing: leaveVal('leave-date-filing') || key(new Date()),
-        position: leaveVal('leave-position'),
-        salary: leaveVal('leave-salary'),
-        leave_type: type,
-        others_specify: leaveVal('leave-others-specify'),
-        vacation_detail: leaveChecked('leave-vac-where'),
-        vacation_specify: leaveVal('leave-vac-abroad'),
-        sick_detail: sickWhere,
-        sick_illness: sickIllness,
-        women_illness: leaveVal('leave-women-illness'),
-        study_detail: leaveChecked('leave-study-kind'),
-        study_specify: leaveVal('leave-study-other'),
-        other_purpose: otherPurpose,
-        monetization: monetization,
-        terminal_leave: terminalLeave,
-        working_days: workingDays,
-        start_date: startD,
-        end_date: endD,
-        commutation: commutation,
-        applicant_signature: signature,
-        notes: notes,
-        attachment_url: attachmentUrl,
-        status: 'Pending',
-        auth_user_id: currentFacultyUser?.id || null,
-        faculty_id: Number.isInteger(Number(currentFacultyProfile?.id)) ? Number(currentFacultyProfile.id) : null,
-        form_data: {
-            form: 'CSC Form No. 6 Revised 2020',
-            office_department: leaveVal('leave-office'),
-            name: { last, first, middle },
-            date_of_filing: leaveVal('leave-date-filing') || key(new Date()),
-            position: leaveVal('leave-position'),
-            salary: leaveVal('leave-salary'),
-            leave_type: type,
-            others_specify: leaveVal('leave-others-specify'),
-            details_of_leave: details,
-            vacation_detail: leaveChecked('leave-vac-where'),
-            vacation_specify: leaveVal('leave-vac-abroad'),
+    try {
+        const rawRanges = getAllLeaveDateRanges();
+        if (!rawRanges.length || !rawRanges[0].start) {
+            alert('Please select at least one valid leave date range (From and To).');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave'; }
+            showLeavePage(1);
+            return;
+        }
+
+        // 1. I-attach ang calculated working days sa kada row
+        const ranges = rawRanges.map(r => {
+            const s = r.start;
+            const e = r.end || r.start;
+            const days = (typeof countWorkingDays === 'function') ? countWorkingDays(s, e) : 1;
+            return { start: s, end: e, days: days > 0 ? days : 1 };
+        });
+
+        const leaveType = leaveChecked('leave-type');
+        if (!leaveType) {
+            alert('Please select a Type of Leave in Box 6.A.');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave'; }
+            showLeavePage(1);
+            return;
+        }
+
+        // 2. Safe start ug end dates (bisan baligtad ang pagkapili sa buwan sa Row 1 ug Row 2)
+        const allStarts = ranges.map(r => r.start).filter(Boolean).sort();
+        const allEnds = ranges.map(r => r.end || r.start).filter(Boolean).sort();
+        const primaryStart = allStarts[0] || ranges[0].start;
+        const primaryEnd = allEnds[allEnds.length - 1] || ranges[ranges.length - 1].end;
+        
+        // Sum total working days across all ranges
+        const totalCalcDays = ranges.reduce((acc, r) => acc + (parseFloat(r.days) || 0), 0);
+        const typedDays = leaveVal('leave-working-days');
+        const workingDays = typedDays || (totalCalcDays > 0 ? String(totalCalcDays) : '1');
+
+        const office = leaveVal('leave-office');
+        const lastName = leaveVal('leave-last-name');
+        const firstName = leaveVal('leave-first-name');
+        const middleName = leaveVal('leave-middle-name');
+        const filingDate = leaveVal('leave-date-filing') || key(new Date());
+        const position = leaveVal('leave-position');
+        const salary = leaveVal('leave-salary');
+        const othersSpecify = leaveVal('leave-others-specify');
+        const vacWhere = leaveChecked('leave-vac-where');
+        const vacAbroad = leaveVal('leave-vac-abroad');
+        const sickWhere = leaveChecked('leave-sick-where');
+        const sickHospital = leaveVal('leave-sick-hospital');
+        const sickOutpatient = leaveVal('leave-sick-outpatient');
+        const sickIllness = sickWhere === 'In Hospital' ? sickHospital : (sickWhere === 'Out Patient' ? sickOutpatient : '');
+        const womenIllness = leaveVal('leave-women-illness');
+        const studyKind = leaveChecked('leave-study-kind');
+        const studyOther = leaveVal('leave-study-other');
+        const commutation = leaveChecked('leave-commutation');
+        const signature = leaveVal('leave-signature');
+        const monetization = !!document.getElementById('leave-monetization')?.checked;
+        const terminalLeave = !!document.getElementById('leave-terminal')?.checked;
+
+        // Attachment handling
+        let uploadedFiles = [];
+        const fileInput = document.getElementById('leave-file-input');
+        if (fileInput && fileInput.files && fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            const fileName = `${Date.now()}_${safeFileName(file.name)}`;
+            const filePath = `leave-docs/${fileName}`;
+            const { error: upErr } = await supabaseClient.storage.from('leave-attachments').upload(filePath, file);
+            if (!upErr) {
+                const { data: pubData } = supabaseClient.storage.from('leave-attachments').getPublicUrl(filePath);
+                uploadedFiles.push({
+                    name: file.name,
+                    url: pubData?.publicUrl || '',
+                    bucket: 'leave-attachments',
+                    path: filePath,
+                    type: file.type || ''
+                });
+            }
+        }
+
+        const formData = {
+            name: { last: lastName, first: firstName, middle: middleName },
+            office_department: office,
+            position,
+            salary,
+            date_of_filing: filingDate,
+            leave_type: leaveType,
+            others_specify: othersSpecify,
+            vacation_detail: vacWhere,
+            vacation_specify: vacAbroad,
             sick_detail: sickWhere,
             sick_illness: sickIllness,
-            women_illness: leaveVal('leave-women-illness'),
-            study_detail: leaveChecked('leave-study-kind'),
-            study_specify: leaveVal('leave-study-other'),
-            other_purpose: otherPurpose,
+            women_illness: womenIllness,
+            study_detail: studyKind,
+            study_specify: studyOther,
+            monetization,
+            terminal_leave: terminalLeave,
             working_days: workingDays,
-            inclusive_dates: { start: startD, end: endD },
-            commutation: commutation,
+            inclusive_dates: {
+                start: primaryStart,
+                end: primaryEnd,
+                ranges: ranges
+            },
+            date_ranges: ranges,
+            commutation,
             applicant_signature: signature
+        };
+
+        const payload = {
+            auth_user_id: currentFacultyUser?.id || null,
+            faculty_id: currentFacultyProfile?.id || null,
+            faculty_name: currentFacultyProfile?.full_name || [lastName, firstName, middleName].filter(Boolean).join(', '),
+            last_name: lastName,
+            first_name: firstName,
+            middle_name: middleName,
+            office_department: office,
+            position,
+            salary,
+            leave_type: leaveType,
+            others_specify: othersSpecify,
+            start_date: primaryStart,
+            end_date: primaryEnd,
+            working_days: workingDays,
+            commutation,
+            date_of_filing: filingDate,
+            status: 'Pending',
+            form_data: formData,
+            date_ranges: ranges,
+            attachments: uploadedFiles,
+            attachment_url: uploadedFiles[0]?.url || ''
+        };
+
+        const { data: inserted, error: insErr } = await insertFacultyLeave(payload);
+        if (insErr) {
+            console.error('Leave filing error:', insErr);
+            alert('Failed to submit leave application: ' + (insErr.message || 'Unknown error'));
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave'; }
+            return;
         }
-    };
 
-    let { data: savedLeave, error } = await insertFacultyLeave(row);
+        // Close filing modal and refresh calendar events
+        closeLeaveModal();
+        if (typeof resetLeaveForm === 'function') resetLeaveForm();
+        await loadCalendarEvents();
 
-    submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave';
-    if(error)return alert('Error saving leave: ' + (error.message || 'Please try again.'));
-    if(window.CalendarNotifications){
-        await CalendarNotifications.notifyLeaveFiling(savedLeave || { faculty_name:name, leave_type:type, start_date:startD, end_date:endD });
+        // Show Success Notice Modal & wire up the OK button
+        const msgModal = document.getElementById('calendar-message-modal');
+        const msgText = document.getElementById('calendar-message-text');
+        const msgOkBtn = document.getElementById('calendar-message-ok-btn');
+
+        if (msgModal && msgText) {
+            msgText.textContent = `Leave application submitted successfully for ${ranges.length > 1 ? ranges.length + ' date ranges (' + workingDays + ' working days)' : workingDays + ' working day(s)'}.`;
+            
+            if (msgOkBtn) {
+                msgOkBtn.onclick = function() {
+                    msgModal.classList.add('hidden');
+                };
+            }
+
+            msgModal.classList.remove('hidden');
+        } else {
+            alert('Leave application submitted successfully!');
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert('An unexpected error occurred: ' + (err.message || err));
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit Leave';
+        }
     }
-    closeLeaveModal();
-    await loadCalendarEvents();
-    alert('Leave successfully filed. Admin has been notified.');
 }
+
 
 async function showEventDetails(id) {
     currentDetailEventId = (typeof id === 'object' && id !== null) ? (id.id || id.realId) : id;
@@ -4890,3 +5372,5 @@ bootFacultyCalendar();
 </script>
 </body>
 </html>
+
+

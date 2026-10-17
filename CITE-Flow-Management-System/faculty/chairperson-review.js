@@ -184,22 +184,48 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         return [...taskRows, ...arRows].sort((a, b) => new Date(b.submitted_at || b.created_at || 0) - new Date(a.submitted_at || a.created_at || 0));
     }
 
-    function isPending(row) {
-        if (row.is_ar) return false;
+     function isPending(row) {
+        if (!row) return false;
+
+        // 1. Handling para sa Accomplishment Reports (AR)
+        if (row.is_ar) {
+            if (!review.access) return false;
+            
+            const st = String(row.status || '').toLowerCase().trim();
+            const isPendingStatus = (st === 'submitted' || st === 'pending' || st === 'underreview' || st === 'under_review');
+            if (!isPendingStatus) return false;
+
+            // I-verify ang department authority kung nailhan ang target faculty
+            const target = targetFaculty(row);
+            if (target) {
+                const helper = wf();
+                const authorized = helper?.chairpersonAuthorizedDepartments?.(global.currentFaculty, effectiveGrants()) || [];
+                const dept = helper?.facultyDepartmentCode?.(target) || '';
+                const inDept = authorized.length ? authorized.includes(dept) : sameDept(target);
+                if (!inDept) return false;
+            }
+            return true;
+        }
+
+        // 2. Handling para sa Regular Task Submissions & RPC Queue
         const helper = wf();
         if (!helper || !review.access) return false;
+        
         if (helper.canReviewAsChairperson(row, global.currentFaculty, targetFaculty(row), reviewContext(row.task))) {
             return true;
         }
+        
         // The row came from the authoritative Chairperson queue RPC, which
         // already enforced grant, department, and workflow-stage scope.
-        if (!row.is_ar && helper.isPendingChairpersonReview(row, row.config, row.task)) {
+        if (helper.isPendingChairpersonReview(row, row.config, row.task)) {
             return true;
         }
+        
         const target = targetFaculty(row);
         const authorized = helper.chairpersonAuthorizedDepartments?.(global.currentFaculty, effectiveGrants()) || [];
         const dept = helper.facultyDepartmentCode?.(target) || '';
         const inDept = authorized.length ? authorized.includes(dept) : sameDept(target);
+        
         return inDept && helper.isPendingChairpersonReview(row, row.config, row.task);
     }
 
@@ -1099,7 +1125,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         document.getElementById('chairViewModal')?.classList.remove('open');
     }
 
-    function openArReview(reportId) {
+     function openArReview(reportId) {
         const row = (review.arSubmissions || []).find((item) => String(item.id) === String(reportId));
         const modal = document.getElementById('chairArReviewModal');
         if (!row || !modal) return;
@@ -1109,10 +1135,10 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const people = facultyMap();
         const person = people.get(String(row.faculty_id));
         const facName = person?.full_name || person?.name || row.faculty_name || 'Faculty';
-        const dept = (person?.department || person?.department_code || chairDepartment() || 'ΓÇö').toUpperCase();
-        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'ΓÇö';
+        const dept = (person?.department || person?.department_code || chairDepartment() || '—').toUpperCase();
+        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
         const typeLabel = row.report_type === 'online' ? 'Online / WFH Accomplishment Report' : 'Face-to-Face Accomplishment Report';
-        const period = `${fmtDate(row.period_start)} ΓÇô ${fmtDate(row.period_end)}`;
+        const period = `${fmtDate(row.period_start)} – ${fmtDate(row.period_end)}`;
         const WF = wf();
         const statusLabel = WF ? WF.formatAccomplishmentReportStatus(row.status) : row.status;
 
@@ -1121,7 +1147,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const titleEl = document.getElementById('chairArReviewTitle');
         if (titleEl) titleEl.textContent = `Review ${typeLabel}`;
         const subEl = document.getElementById('chairArReviewSubtitle');
-        if (subEl) subEl.textContent = `${facName} ┬╖ ${dept}`;
+        if (subEl) subEl.textContent = `${facName} · ${dept}`;
         const facEl = document.getElementById('chairArReviewFaculty');
         if (facEl) facEl.textContent = facName;
         const deptEl = document.getElementById('chairArReviewDept');
@@ -1150,10 +1176,10 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const histContent = document.getElementById('chairArReviewHistory');
         let histHtml = '';
         if (row.chair_reviewed_by) {
-            histHtml += `<div><strong>Chairperson:</strong> ${esc(row.chair_reviewed_by)} (${fmtDate(row.chair_reviewed_at)})${row.chair_remarks ? ` ΓÇö <em>"${esc(row.chair_remarks)}"</em>` : ''}</div>`;
+            histHtml += `<div><strong>Chairperson:</strong> ${esc(row.chair_reviewed_by)} (${fmtDate(row.chair_reviewed_at)})${row.chair_remarks ? ` — <em>"${esc(row.chair_remarks)}"</em>` : ''}</div>`;
         }
         if (row.dean_reviewed_by) {
-            histHtml += `<div><strong>Dean/Admin:</strong> ${esc(row.dean_reviewed_by)} (${fmtDate(row.dean_reviewed_at)})${row.dean_remarks ? ` ΓÇö <em>"${esc(row.dean_remarks)}"</em>` : ''}</div>`;
+            histHtml += `<div><strong>Dean/Admin:</strong> ${esc(row.dean_reviewed_by)} (${fmtDate(row.dean_reviewed_at)})${row.dean_remarks ? ` — <em>"${esc(row.dean_remarks)}"</em>` : ''}</div>`;
         }
         if (histBlock && histContent) {
             if (histHtml) {
@@ -1164,28 +1190,82 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             }
         }
 
+        // Check if report is currently pending review
+        const pending = isPending({ ...row, is_ar: true });
+
+        // Remarks field handling (unhide so Chairperson can enter remarks/feedback)
         const remarksField = document.getElementById('chairArReviewRemarks');
+        const remarksWrap = remarksField?.closest('div');
         if (remarksField) {
             remarksField.value = '';
-            remarksField.closest('div')?.classList.add('hidden');
+            remarksField.placeholder = 'Add remarks (optional for certification, required for revision or decline)...';
+        }
+        if (remarksWrap) {
+            if (pending) {
+                remarksWrap.classList.remove('hidden');
+            } else {
+                remarksWrap.classList.add('hidden');
+            }
         }
 
+        // Action buttons: render Certify & Approve, Request Revision, and Decline when pending
         const actionsDiv = document.getElementById('chairArReviewActions');
         if (actionsDiv) {
-            actionsDiv.innerHTML = `
-                <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeArReview()">Close</button>
-            `;
+            if (pending) {
+                actionsDiv.innerHTML = `
+                    <div class="flex flex-wrap items-center justify-end gap-2 w-full">
+                        <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeArReview()">Cancel</button>
+                        <button type="button" class="chair-btn-decline" onclick="CiteFlowChairReview.submitArReview('reject')">Decline</button>
+                        <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.submitArReview('revision')">Request Revision</button>
+                        <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.submitArReview('approve')">Certify &amp; Approve</button>
+                    </div>
+                `;
+            } else {
+                actionsDiv.innerHTML = `
+                    <div class="flex items-center justify-end w-full">
+                        <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.closeArReview()">Close</button>
+                    </div>
+                `;
+            }
         }
 
         modal.classList.add('open');
     }
-
     function closeArReview() {
         review.activeArReportId = null;
         const modal = document.getElementById('chairArReviewModal');
         const frame = document.getElementById('chairArReviewPdfFrame');
         if (frame) frame.src = '';
         modal?.classList.remove('open');
+    }
+
+
+        async function updateArStatus(reportId, newStatus) {
+        if (!confirm(`Are you sure you want to mark this accomplishment report as "${newStatus.replace('_', ' ').toUpperCase()}"?`)) {
+            return;
+        }
+
+        try {
+            const client = db();
+            if (!client) throw new Error('Database client unavailable');
+
+            const { error } = await client
+                .from('accomplishment_report_submissions')
+                .update({ 
+                    status: newStatus,
+                    reviewed_at: new Date().toISOString()
+                })
+                .eq('id', reportId);
+
+            if (error) throw error;
+
+            alert(`Report status successfully updated to ${newStatus.replace('_', ' ')}.`);
+            closeArReview();
+            await loadAll(); // I-refresh ang listahan
+        } catch (err) {
+            console.error('Error updating AR status:', err);
+            alert('Failed to update report status: ' + (err.message || err));
+        }
     }
 
     async function approveAr(reportId) {
