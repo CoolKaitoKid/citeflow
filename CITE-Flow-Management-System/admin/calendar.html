@@ -1194,31 +1194,37 @@
                     </div>
 
                     <div class="grid grid-cols-1 lg:grid-cols-2">
-                        <div class="csc-cell">
-                            <div class="csc-head mb-2">6.C NUMBER OF WORKING DAYS APPLIED FOR</div>
-                            <input readonly id="view-leave-working-days" class="csc-line" type="text" placeholder="e.g. 3">
-                            <div class="csc-head mt-3 mb-1">INCLUSIVE DATES</div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <div class="text-[10px]">From</div>
-                                    <input readonly id="view-leave-start-date" class="csc-line" type="date" >
-                                </div>
-                                <div>
-                                    <div class="text-[10px]">To</div>
-                                    <input readonly id="view-leave-end-date" class="csc-line" type="date" >
-                                </div>
-                            </div>
-                        </div>
-                        <div class="csc-cell">
-                            <div class="csc-head mb-2">6.D COMMUTATION</div>
-                            <label class="csc-opt"><input class="csc-check" type="radio" disabled name="view-leave-commutation" value="Not Requested"><span>Not Requested</span></label>
-                            <label class="csc-opt"><input class="csc-check" type="radio" disabled name="view-leave-commutation" value="Requested"><span>Requested</span></label>
-                            <div class="mt-8 text-center">
-                                <input readonly id="view-leave-signature" class="csc-line text-center font-bold" type="text" placeholder="First M. Last">
-                                <div class="text-[11px] mt-1">(Signature of Applicant)</div>
-                            </div>
-                        </div>
-                    </div>
+    <div class="csc-cell">
+        <div class="csc-head mb-2">6.C NUMBER OF WORKING DAYS APPLIED FOR</div>
+        <input readonly id="view-leave-working-days" class="csc-line" type="text" placeholder="e.g. 3">
+        
+        <div class="csc-head mt-3 mb-1">INCLUSIVE DATES</div>
+        
+        <!-- Primary Date Row (Row 1) -->
+        <div class="grid grid-cols-2 gap-3 leave-date-range-row">
+            <div>
+                <div class="text-[10px]">From</div>
+                <input readonly id="view-leave-start-date" class="csc-line bg-transparent" type="text" placeholder="YYYY-MM-DD">
+            </div>
+            <div>
+                <div class="text-[10px]">To</div>
+                <input readonly id="view-leave-end-date" class="csc-line bg-transparent" type="text" placeholder="YYYY-MM-DD">
+            </div>
+        </div>
+
+        <!-- Dynamic Container where Row 2, Row 3, etc. will appear -->
+        <div id="view-leave-additional-dates" class="space-y-2 mt-2"></div>
+    </div>
+    <div class="csc-cell">
+        <div class="csc-head mb-2">6.D COMMUTATION</div>
+        <label class="csc-opt"><input class="csc-check" type="radio" disabled name="view-leave-commutation" value="Not Requested"><span>Not Requested</span></label>
+        <label class="csc-opt"><input class="csc-check" type="radio" disabled name="view-leave-commutation" value="Requested"><span>Requested</span></label>
+        <div class="mt-8 text-center">
+            <input readonly id="view-leave-signature" class="csc-line text-center font-bold" type="text" placeholder="First M. Last">
+            <div class="text-[11px] mt-1">(Signature of Applicant)</div>
+        </div>
+    </div>
+</div>
 
                     <div class="csc-title-bar">7. DETAILS OF ACTION ON APPLICATION</div>
                     <div class="grid grid-cols-1 lg:grid-cols-2">
@@ -1856,49 +1862,73 @@ function getMiddleInitial(middleName){
     return letter?`${letter.toUpperCase()}.`:'';
 }
 
-function leaveCalendarEntries(leave){
+// 3. Render all ranges onto the calendar grid (Row 1, Row 2, etc.)
+function leaveCalendarEntries(leave) {
     const row = hydrateLeaveRow(leave);
-    const start = parseDateKey(row.start_date);
-    const end = parseDateKey(row.end_date) || start;
-    const duration = formatLeaveDuration(start, end);
-    const rangeLabel = formatLeaveRangeLabel(start, end);
-    const workLabel = formatLeaveWorkingDaysLabel(start, end);
-    const attachments = parseAttachments(row);
+    const ranges = (row.date_ranges && row.date_ranges.length > 0)
+        ? row.date_ranges
+        : (row.start_date ? [{ start: row.start_date, end: row.end_date || row.start_date }] : []);
+    if (!ranges.length) return [];
     const facultyName = row.faculty_name || [row.last_name, row.first_name].filter(Boolean).join(', ') || 'Faculty';
     const leaveType = row.leave_type || row.others_specify || 'Leave';
     const statusRaw = String(row.status || 'Pending').trim();
     const status = statusRaw ? (statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1).toLowerCase()) : 'Pending';
-    
-    // Line 1: Vacation Leave (Pending)
-    const leaveGridTitle = `${leaveType} (${status})`;
-    const tooltip = `${facultyName} — ${leaveType} (${status})\n${duration}\n${row.office_department || ''}`;
-
-    return eachDateKey(start, end).map((date, index) => ({
-        id: index === 0 ? `leave-${row.id}` : `leave-${row.id}-${date}`,
-        realId: row.id,
-        title: `Leave: ${facultyName} (${leaveType})`,
-        gridTitle: leaveGridTitle,   // <-- Line 1
-        gridSub: duration,           // <-- Line 2: Sep 4 – Sep 6 • 3 working days
-        tooltip,
-        facultyName,
-        leaveType,
-        leaveStatus: status,
-        date,
-        startAt: `${start}T08:00:00`,
-        endAt: `${end || start}T17:00:00`,
-        time: duration,
-        detailTime: `${rangeLabel} • ${workLabel}`,
-        type: 'leave',
-        category: 'leave',
-        location: row.office_department || 'Faculty Leave Filing',
-        priority: row.status && !/^pending$/i.test(row.status) ? row.status : '',
-        notes: cleanNotes(row.notes) || 'No remarks provided.',
-        attachmentUrl: attachments[0]?.url || row.attachment_url || '',
-        attachments,
-        isLeave: true,
-        leavePrimary: index === 0,
-        leaveRecord: row
-    }));
+    const attachments = parseAttachments(row);
+    const hasMultiple = ranges.length > 1;
+    const calcRangeDays = (sStr, eStr) => {
+        if (!sStr) return 0;
+        const s = new Date(sStr + 'T00:00:00');
+        const e = new Date((eStr || sStr) + 'T00:00:00');
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
+        let count = 0;
+        const cur = new Date(s);
+        while (cur <= e) {
+            const day = cur.getDay();
+            if (day !== 0 && day !== 6) count++;
+            cur.setDate(cur.getDate() + 1);
+        }
+        return count || 1;
+    };
+    return ranges.flatMap((r, rIdx) => {
+        const s = parseDateKey(r.start);
+        const e = parseDateKey(r.end) || s;
+        if (!s) return [];
+        const rangeDays = calcRangeDays(s, e);
+        const duration = formatLeaveDuration(s, e);
+        const rangeLabel = formatLeaveRangeLabel(s, e);
+        const workLabel = `${rangeDays} ${rangeDays === 1 ? 'working day' : 'working days'}`;
+        const rowTag = hasMultiple ? ` (Row ${rIdx + 1})` : '';
+        const leaveGridTitle = `${leaveType} (${status})${rowTag}`;
+        const tooltip = `${facultyName} — ${leaveType} (${status})${rowTag}\n${duration}\n${row.office_department || ''}`;
+        return eachDateKey(s, e).map((date, index) => ({
+            id: index === 0 ? `leave-${row.id}-r${rIdx}` : `leave-${row.id}-r${rIdx}-${date}`,
+            realId: row.id,
+            title: `Leave: ${facultyName} (${leaveType})${rowTag}`,
+            gridTitle: leaveGridTitle,
+            gridSub: duration,
+            tooltip,
+            facultyName,
+            leaveType,
+            leaveStatus: status,
+            date,
+            startAt: `${s}T08:00:00`,
+            endAt: `${e || s}T17:00:00`,
+            time: duration,
+            detailTime: `${rangeLabel} • ${workLabel}${hasMultiple ? ` (Row ${rIdx + 1} of ${ranges.length})` : ''}`,
+            type: 'leave',
+            category: 'leave',
+            location: row.office_department || 'Faculty Leave Filing',
+            priority: row.status && !/^pending$/i.test(row.status) ? row.status : '',
+            notes: cleanNotes(row.notes) || 'No remarks provided.',
+            attachmentUrl: attachments[0]?.url || row.attachment_url || '',
+            attachments,
+            isLeave: true,
+            leavePrimary: index === 0 && rIdx === 0,
+            leaveRecord: row,
+            rangeIndex: rIdx + 1,
+            totalRanges: ranges.length
+        }));
+    });
 }
 
 function scheduleCalendarEntries(r){
@@ -2125,51 +2155,72 @@ function renderCalendar(){
 }
 
 function renderGrid(){
-    let grid=document.getElementById('calendar-grid'),first=new Date(currentYear,currentMonth,1).getDay(),days=new Date(currentYear,currentMonth+1,0).getDate(),today=key(new Date());
-    let weekdays=[
-        { short:'Sun', mini:'S' },
-        { short:'Mon', mini:'M' },
-        { short:'Tue', mini:'T' },
-        { short:'Wed', mini:'W' },
-        { short:'Thu', mini:'T' },
-        { short:'Fri', mini:'F' },
-        { short:'Sat', mini:'S' }
+    let grid = document.getElementById('calendar-grid'),
+        first = new Date(currentYear, currentMonth, 1).getDay(),
+        days = new Date(currentYear, currentMonth + 1, 0).getDate(),
+        today = key(new Date());
+
+    let weekdays = [
+        { short: 'Sun', mini: 'S' },
+        { short: 'Mon', mini: 'M' },
+        { short: 'Tue', mini: 'T' },
+        { short: 'Wed', mini: 'W' },
+        { short: 'Thu', mini: 'T' },
+        { short: 'Fri', mini: 'F' },
+        { short: 'Sat', mini: 'S' }
     ];
-    let h='<div class="grid grid-cols-7 border-b border-slate-100 bg-slate-50">'+weekdays.map(d=>`<div class="py-2 text-center text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider"><span class="sm:hidden">${d.mini}</span><span class="hidden sm:inline">${d.short}</span></div>`).join('')+'</div><div class="grid grid-cols-7 w-full">';
-    for(let i=0;i<first;i++)h+='<div class="day-cell bg-slate-50/50"></div>';
-    for(let d=1;d<=days;d++){
-        let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        let des=daysOn(dk).slice().sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
+
+    let h = '<div class="grid grid-cols-7 border-b border-slate-100 bg-slate-50">' +
+        weekdays.map(d => `<div class="py-2 text-center text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider"><span class="sm:hidden">${d.mini}</span><span class="hidden sm:inline">${d.short}</span></div>`).join('') +
+        '</div><div class="grid grid-cols-7 w-full">';
+
+    for (let i = 0; i < first; i++) h += '<div class="day-cell bg-slate-50/50"></div>';
+
+    for (let d = 1; d <= days; d++) {
+        let dk = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        let des = daysOn(dk).slice().sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
         
-        // Changed onclick from openAddEventModal to selectDate:
-        h+=`<div class="day-cell bg-white p-1 sm:p-1.5 ${dk===selectedDate?'selected':''}" onclick="selectDate('${dk}')">`+
-           `<div class="flex items-center justify-between mb-0.5 min-w-0">`+
-           `<span class="day-num ${dk===today?'today':''}">${d}</span>`+
-           `${des.length?`<span class="text-[8.5px] sm:text-[9.5px] font-bold text-slate-400 bg-slate-100 px-1 py-0.2 rounded-full">${des.length}</span>`:''}`+
-           `</div>`+
-           `<div class="space-y-1 flex-1 min-w-0 flex flex-col justify-start overflow-y-auto max-h-[75px] sm:max-h-[92px] pr-0.5">`;
+        h += `<div class="day-cell bg-white p-1 sm:p-1.5 ${dk === selectedDate ? 'selected' : ''}" onclick="selectDate('${dk}')">` +
+             `<div class="flex items-center justify-between mb-0.5 min-w-0">` +
+             `<span class="day-num ${dk === today ? 'today' : ''}">${d}</span>` +
+             `${des.length ? `<span class="text-[8.5px] sm:text-[9.5px] font-bold text-slate-400 bg-slate-100 px-1 py-0.2 rounded-full">${des.length}</span>` : ''}` +
+             `</div>` +
+             `<div class="space-y-1 flex-1 min-w-0 flex flex-col justify-start overflow-y-auto max-h-[75px] sm:max-h-[92px] pr-0.5">`;
         
         const maxVisible = (window.innerWidth && window.innerWidth < 640) ? 1 : 2;
         const visibleEvents = des.slice(0, maxVisible);
         const moreCount = des.length - maxVisible;
 
-        visibleEvents.forEach(e=>{
-            const gTitle = esc(e.gridTitle || e.title);
-            const gSub = esc(e.gridSub || e.time || '');
-            const tip = esc(e.tooltip || `${e.title} (${e.time})`);
-            h+=`<button type="button" onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}" title="${tip}">`+
-               `<span class="pill-title">${gTitle}</span>`+
-               (gSub ? `<span class="pill-sub">${gSub}</span>` : '')+
-               `</button>`;
+        visibleEvents.forEach(e => {
+            // Strip "(Pending)" and "- Pending" from title and subtitle
+            const rawTitle = (e.gridTitle || e.title || '')
+                .replace(/\s*\(\s*pending\s*\)/gi, '')
+                .replace(/\s*-\s*pending/gi, '')
+                .trim();
+            const gTitle = esc(rawTitle);
+            const gSub = esc((e.gridSub || e.time || '').replace(/\s*\(\s*pending\s*\)/gi, '').trim());
+
+            // Build hover tooltip info without "(Pending)"
+            const locationLabel = e.isLeave ? 'Office: ' : 'Venue: ';
+            const rawTip = e.tooltip || `${rawTitle}\n${e.detailTime || e.time || ''}${e.location ? '\n' + locationLabel + e.location : ''}`;
+            const tip = esc(rawTip.replace(/\s*\(\s*pending\s*\)/gi, '').trim());
+
+            h += `<button type="button" onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}" title="${tip}">` +
+                 `<span class="pill-title">${gTitle}</span>` +
+                 (gSub ? `<span class="pill-sub">${gSub}</span>` : '') +
+                 `</button>`;
         });
 
         if (moreCount > 0) {
-            h+=`<button type="button" onclick="event.stopPropagation();showAllForDate('${dk}')" class="more-link mt-1 text-[9.5px] sm:text-[10.5px] font-bold text-blue-600 hover:text-blue-800 hover:underline px-1 py-0.5 leading-none transition-colors block text-left cursor-pointer" title="View all ${des.length} events for ${longDate(dk)}">+${moreCount} more</button>`;
+            const moreTip = esc(`View all ${des.length} events for ${longDate(dk)}`);
+            h += `<button type="button" onclick="event.stopPropagation();showAllForDate('${dk}')" class="more-link mt-1 text-[9.5px] sm:text-[10.5px] font-bold text-blue-600 hover:text-blue-800 hover:underline px-1 py-0.5 leading-none transition-colors block text-left cursor-pointer" title="${moreTip}">+${moreCount} more</button>`;
         }
-        h+='</div></div>';
+        h += '</div></div>';
     }
-    let rem=(first+days)%7;if(rem)for(let i=rem;i<7;i++)h+='<div class="day-cell bg-slate-50/50"></div>';
-    grid.innerHTML=h+'</div>';
+
+    let rem = (first + days) % 7;
+    if (rem) for (let i = rem; i < 7; i++) h += '<div class="day-cell bg-slate-50/50"></div>';
+    grid.innerHTML = h + '</div>';
 }
 
 function renderMini(){
@@ -2957,6 +3008,7 @@ window.saveEventFromModal = saveEventFromModal;
 function leaveDbId(value){
     let id = String(value || '');
     id = id.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    id = id.replace(/-r\d+$/, '');
     if (id.startsWith('leave-')) id = id.slice(6);
     return id;
 }
@@ -2974,9 +3026,24 @@ function hydrateLeaveRow(row){
     const last = String(raw.last_name || name.last || '').trim();
     const first = String(raw.first_name || name.first || '').trim();
     const middle = String(raw.middle_name || name.middle || '').trim();
+    // Parse all date range rows (Row 1, Row 2, etc.)
+    let rawRanges = form.date_ranges || dates.ranges || raw.date_ranges || [];
+    let ranges = [];
+    if (Array.isArray(rawRanges) && rawRanges.length > 0) {
+        ranges = rawRanges.map(r => ({
+            start: parseDateKey(r.start),
+            end: parseDateKey(r.end) || parseDateKey(r.start)
+        })).filter(r => !!r.start);
+    }
+    const fallbackStart = parseDateKey(raw.start_date) || parseDateKey(dates.start);
+    const fallbackEnd = parseDateKey(raw.end_date) || parseDateKey(dates.end) || fallbackStart;
+    if (ranges.length === 0 && fallbackStart) {
+        ranges = [{ start: fallbackStart, end: fallbackEnd }];
+    }
     return {
         ...raw,
         form_data: form,
+        date_ranges: ranges,
         last_name: last,
         first_name: first,
         middle_name: middle,
@@ -2986,8 +3053,8 @@ function hydrateLeaveRow(row){
         salary: raw.salary || form.salary || '',
         leave_type: raw.leave_type || form.leave_type || raw.others_specify || form.others_specify || '',
         others_specify: raw.others_specify || form.others_specify || '',
-        start_date: parseDateKey(raw.start_date) || parseDateKey(dates.start),
-        end_date: parseDateKey(raw.end_date) || parseDateKey(dates.end) || parseDateKey(raw.start_date) || parseDateKey(dates.start),
+        start_date: ranges[0]?.start || fallbackStart,
+        end_date: ranges[ranges.length - 1]?.end || fallbackEnd,
         working_days: raw.working_days || form.working_days || '',
         commutation: raw.commutation || form.commutation || '',
         date_of_filing: parseDateKey(raw.date_of_filing) || parseDateKey(form.date_of_filing),
@@ -3028,7 +3095,7 @@ function setViewRadio(name, value){
     return false;
 }
 function fillViewLeaveForm(row){
-    const r=hydrateLeaveRow(row||{});
+    const r = hydrateLeaveRow(row || {});
     setViewVal('view-leave-office', r.office_department);
     setViewVal('view-leave-last-name', r.last_name);
     setViewVal('view-leave-first-name', r.first_name);
@@ -3036,7 +3103,7 @@ function fillViewLeaveForm(row){
     setViewVal('view-leave-date-filing', r.date_of_filing);
     setViewVal('view-leave-position', r.position);
     setViewVal('view-leave-salary', r.salary);
-    const matched=setViewRadio('view-leave-type', r.leave_type);
+    const matched = setViewRadio('view-leave-type', r.leave_type);
     if(!matched && r.leave_type){
         setViewRadio('view-leave-type', 'Others');
         setViewVal('view-leave-others-specify', r.others_specify || r.leave_type);
@@ -3051,24 +3118,51 @@ function fillViewLeaveForm(row){
     setViewVal('view-leave-women-illness', r.women_illness);
     setViewRadio('view-leave-study-kind', r.study_detail);
     setViewVal('view-leave-study-other', r.study_specify);
-    const purpose=String(r.other_purpose||'');
-    const mon=document.getElementById('view-leave-monetization');
-    const term=document.getElementById('view-leave-terminal');
-    if(mon) mon.checked=/monetization/i.test(purpose);
-    if(term) term.checked=/terminal/i.test(purpose);
-    setViewVal('view-leave-working-days', r.working_days || countWorkingDays(r.start_date, r.end_date));
-    setViewVal('view-leave-start-date', r.start_date);
-    setViewVal('view-leave-end-date', r.end_date);
-    setViewRadio('view-leave-commutation', r.commutation);
-    const signature=r.applicant_signature || [r.first_name, getMiddleInitial(r.middle_name), r.last_name].filter(Boolean).join(' ');
-    setViewVal('view-leave-signature', signature);
-    const files=r.attachments && r.attachments.length ? r.attachments : (r.attachment_url ? [{ name:'Supporting document', url:r.attachment_url }] : []);
-    const filesBox=document.getElementById('view-leave-files');
-    const none=document.getElementById('view-leave-no-file');
-    if(filesBox){
-        filesBox.innerHTML=files.length?files.map(fileCardHtml).join(''):'';
+    const purpose = String(r.other_purpose || '');
+    const mon = document.getElementById('view-leave-monetization');
+    const term = document.getElementById('view-leave-terminal');
+    if(mon) mon.checked = /monetization/i.test(purpose);
+    if(term) term.checked = /terminal/i.test(purpose);
+    // Populate multiple date ranges into the modal
+    const extraContainer = document.getElementById('view-leave-additional-dates');
+    if (extraContainer) extraContainer.innerHTML = '';
+    const ranges = (r.date_ranges && r.date_ranges.length > 0)
+        ? r.date_ranges
+        : [{ start: r.start_date, end: r.end_date }];
+    // Row 1 (Primary)
+    if (ranges[0]) {
+        setViewVal('view-leave-start-date', ranges[0].start || '');
+        setViewVal('view-leave-end-date', ranges[0].end || ranges[0].start || '');
     }
-    if(none) none.classList.toggle('hidden', files.length>0);
+    // Dynamic Row 2, Row 3, etc.
+    if (extraContainer) {
+        for (let i = 1; i < ranges.length; i++) {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'grid grid-cols-2 gap-3 pt-1.5 border-t border-slate-200/80';
+            rowDiv.innerHTML = `
+                <div>
+                    <div class="text-[10px]">From (Row ${i + 1})</div>
+                    <input readonly class="csc-line bg-transparent" type="text" value="${esc(ranges[i].start || '')}">
+                </div>
+                <div>
+                    <div class="text-[10px]">To</div>
+                    <input readonly class="csc-line bg-transparent" type="text" value="${esc(ranges[i].end || ranges[i].start || '')}">
+                </div>
+            `;
+            extraContainer.appendChild(rowDiv);
+        }
+    }
+    setViewVal('view-leave-working-days', r.working_days || countWorkingDays(r.start_date, r.end_date));
+    setViewRadio('view-leave-commutation', r.commutation);
+    const signature = r.applicant_signature || [r.first_name, getMiddleInitial(r.middle_name), r.last_name].filter(Boolean).join(' ');
+    setViewVal('view-leave-signature', signature);
+    const files = r.attachments && r.attachments.length ? r.attachments : (r.attachment_url ? [{ name:'Supporting document', url:r.attachment_url }] : []);
+    const filesBox = document.getElementById('view-leave-files');
+    const none = document.getElementById('view-leave-no-file');
+    if(filesBox){
+        filesBox.innerHTML = files.length ? files.map(fileCardHtml).join('') : '';
+    }
+    if(none) none.classList.toggle('hidden', files.length > 0);
 }
 
 function findEvent(id){

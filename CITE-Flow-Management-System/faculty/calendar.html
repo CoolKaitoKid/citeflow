@@ -2883,19 +2883,60 @@ function changeMonthYear() {
 function renderCalendar(){document.getElementById('month-select').value=currentMonth;document.getElementById('year-select').value=currentYear;renderGrid();renderMini();renderSelected();renderSeparatedUpcoming()}
 
 function renderGrid(){
-    let grid=document.getElementById('calendar-grid'),first=new Date(currentYear,currentMonth,1).getDay(),days=new Date(currentYear,currentMonth+1,0).getDate(),today=key(new Date());
-    let h='<div class="grid grid-cols-7 border-b border-slate-100 bg-slate-50">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">${d}</div>`).join('')+'</div><div class="grid grid-cols-7">';
-    for(let i=0;i<first;i++)h+='<div class="day-cell bg-slate-50/70"></div>';
-    for(let d=1;d<=days;d++){
-        let dk=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        let des=events.filter(e=>e.date===dk).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
-        h+=`<div class="day-cell bg-white p-2 sm:p-2.5 ${dk===selectedDate?'selected':''}" onclick="selectDate('${dk}')"><div class="flex items-center justify-between mb-1"><span class="day-num ${dk===today?'today':''}">${d}</span>${des.length?`<span class="text-[10px] font-bold text-slate-400">${des.length}</span>`:''}</div>`;
-        des.slice(0,2).forEach(e=>h+=`<button onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}"><span class="block font-bold truncate">${esc(e.title)}</span><span class="block opacity-80 truncate text-[9.5px]">${esc(e.time)}</span></button>`);
-        if(des.length>2)h+=`<button type="button" onclick="event.stopPropagation();showAllForDate('${dk}')" class="mt-1 text-[10px] font-bold text-[#621708] hover:underline">+${des.length-2} more</button>`;
-        h+='</div>';
+    let grid = document.getElementById('calendar-grid'),
+        first = new Date(currentYear, currentMonth, 1).getDay(),
+        days = new Date(currentYear, currentMonth + 1, 0).getDate(),
+        today = key(new Date());
+
+    let h = '<div class="grid grid-cols-7 border-b border-slate-100 bg-slate-50">' +
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => 
+            `<div class="py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">${d}</div>`
+        ).join('') + '</div><div class="grid grid-cols-7">';
+
+    for (let i = 0; i < first; i++) h += '<div class="day-cell bg-slate-50/70"></div>';
+
+    for (let d = 1; d <= days; d++) {
+        let dk = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        let des = (events || []).filter(e => e.date === dk).sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+
+        h += `<div class="day-cell bg-white p-2 sm:p-2.5 ${dk === selectedDate ? 'selected' : ''}" onclick="selectDate('${dk}')">` +
+             `<div class="flex items-center justify-between mb-1">` +
+             `<span class="day-num ${dk === today ? 'today' : ''}">${d}</span>` +
+             `${des.length ? `<span class="text-[10px] font-bold text-slate-400">${des.length}</span>` : ''}` +
+             `</div>`;
+
+        // Render visible event pills with hover info tooltip (Pending removed)
+        des.slice(0, 2).forEach(e => {
+            // Strip any "(Pending)" or "- Pending" from the title
+            const rawTitle = (e.gridTitle || e.title || '')
+                .replace(/\s*\(\s*pending\s*\)/gi, '')
+                .replace(/\s*-\s*pending/gi, '')
+                .trim();
+            const gTitle = esc(rawTitle);
+            const gSub = esc(e.gridSub || e.time || '');
+            
+            // Build the hover info text without "(Pending)"
+            const rawTip = e.tooltip || `${rawTitle}\n${e.detailTime || e.time || ''}${e.location ? '\nVenue: ' + e.location : ''}`;
+            const tip = esc(rawTip.replace(/\s*\(\s*pending\s*\)/gi, '').trim());
+
+            h += `<button type="button" onclick="event.stopPropagation();showEventDetails('${e.id}')" class="pill ${cls(e.type)}" title="${tip}">` +
+                 `<span class="block font-bold truncate">${gTitle}</span>` +
+                 (gSub ? `<span class="block opacity-80 truncate text-[9.5px]">${gSub}</span>` : '') +
+                 `</button>`;
+        });
+
+        // "+X more" button with hover info
+        if (des.length > 2) {
+            const moreTip = esc(`View all ${des.length} schedules for ${longDate(dk)}`);
+            h += `<button type="button" onclick="event.stopPropagation();showAllForDate('${dk}')" title="${moreTip}" class="mt-1 text-[10px] font-bold text-[#621708] hover:underline">+${des.length - 2} more</button>`;
+        }
+
+        h += '</div>';
     }
-    let rem=(first+days)%7;if(rem)for(let i=rem;i<7;i++)h+='<div class="day-cell bg-slate-50/70"></div>';
-    grid.innerHTML=h+'</div>';
+
+    let rem = (first + days) % 7;
+    if (rem) for (let i = rem; i < 7; i++) h += '<div class="day-cell bg-slate-50/70"></div>';
+    grid.innerHTML = h + '</div>';
 }
 
 function renderMini(){
