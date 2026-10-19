@@ -36,7 +36,17 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         activeArReportId: null,
         activeConsolidatedMfoTaskId: null,
         mfoDraftBusy: false,
-        consolidatedMfoActiveTab: 'summary'
+        consolidatedMfoActiveTab: 'summary',
+        activeConsolidatedCustomizations: null,
+        activeConsolidatedHasUnsavedChanges: false,
+        activeConsolidatedFilter: 'all',
+        activeConsolidatedSearch: '',
+        activeConsolidatedModel: null,
+        activeConsolidatedStaleness: null,
+        activeConsolidatedDraft: null,
+        activeConsolidatedChildRows: null,
+        activeConsolidatedProgramRows: null,
+        pendingRemoveTarget: null
     };
 
     function wf() {
@@ -2103,6 +2113,10 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
 
         review.activeConsolidatedMfoTaskId = task.id;
         review.consolidatedMfoActiveTab = 'summary';
+        review.activeConsolidatedCustomizations = null;
+        review.activeConsolidatedHasUnsavedChanges = false;
+        review.activeConsolidatedFilter = 'all';
+        review.activeConsolidatedSearch = '';
 
         const titleEl = document.getElementById('chairMfoModalTitle');
         const subEl = document.getElementById('chairMfoModalSubtitle');
@@ -2131,12 +2145,22 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         }
 
         modal.classList.add('open');
+        try { populateOfficialSectionDropdowns(); } catch (_) {}
         loadAndRenderConsolidatedMfo(task.id);
     }
 
-    function closeConsolidatedMfo() {
+    function closeConsolidatedMfo(force) {
         if (typeof document === 'undefined') return;
+        if (!force && review.activeConsolidatedHasUnsavedChanges) {
+            if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+                const leave = window.confirm('You have unsaved edits in this consolidated report draft. Close without saving?');
+                if (!leave) return;
+            }
+        }
         review.activeConsolidatedMfoTaskId = null;
+        review.activeConsolidatedHasUnsavedChanges = false;
+        review.activeConsolidatedCustomizations = null;
+        review.pendingRemoveTarget = null;
         document.getElementById('chairConsolidatedMfoModal')?.classList.remove('open');
     }
 
@@ -2202,12 +2226,23 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             }
         }
 
+        // Initialize customizations from draft notes if not yet loaded in active session
+        if (!review.activeConsolidatedCustomizations) {
+            review.activeConsolidatedCustomizations = engine.extractManualCustomizations(programPacket?.notes || programPacket);
+            review.activeConsolidatedHasUnsavedChanges = false;
+        }
+
+        review.activeConsolidatedChildRows = childRows;
+        review.activeConsolidatedProgramRows = programRows;
+
         const staleness = engine.detectConsolidatedDraftStaleness({
             taskId: task.id,
             department: dept,
             draft: programPacket,
             submissions: taskSubmissions,
             packets: taskPackets,
+            childRows,
+            sourceSnapshots: review.activeConsolidatedCustomizations?.source_snapshots,
             facultyList: review.faculty || [],
             actorFaculty: global.currentFaculty,
             delegatedAccess: effectiveGrants()
@@ -2221,11 +2256,16 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             packets: taskPackets,
             childRows,
             programRows,
+            customizations: review.activeConsolidatedCustomizations,
             facultyList: review.faculty || [],
             assignments: (scopedAssignments()).filter((a) => String(a.task_id) === String(task.id)),
             actorFaculty: global.currentFaculty,
             delegatedAccess: effectiveGrants()
         });
+
+        review.activeConsolidatedModel = consolidation;
+        review.activeConsolidatedStaleness = staleness;
+        review.activeConsolidatedDraft = programPacket;
 
         renderConsolidatedMfoModalView({
             task,
@@ -2261,6 +2301,16 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         if (verPill) {
             if (draft) {
                 const state = String(draft.packet_state || 'draft').toLowerCase();
+                let isCorrected = false;
+                let correctedFromVer = null;
+                try {
+                    if (typeof draft.notes === 'string' && draft.notes.trim().startsWith('{')) {
+                        const parsed = JSON.parse(draft.notes);
+                        correctedFromVer = parsed.corrected_from_version || parsed.citeflow_mfo_consolidation?.corrected_from_version || null;
+                        isCorrected = Boolean(correctedFromVer);
+                    }
+                } catch (_) {}
+
                 let pillClass = 'bg-indigo-50 text-indigo-700 border-indigo-100';
                 let stateLabel = 'Draft';
                 if (state === 'submitted' || state === 'resubmitted') {
@@ -2275,6 +2325,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 } else if (state === 'declined') {
                     pillClass = 'bg-rose-50 text-rose-800 border-rose-200';
                     stateLabel = 'Declined';
+                } else if (isCorrected) {
+                    pillClass = 'bg-purple-50 text-purple-800 border-purple-200';
+                    stateLabel = `Corrected Draft (from v${correctedFromVer || 1})`;
                 }
                 verPill.className = `text-xs font-semibold px-2 py-0.5 rounded border ${pillClass}`;
                 verPill.textContent = `Version ${draft.current_version || 1} (${stateLabel})`;
@@ -2381,10 +2434,27 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const activeTab = review.consolidatedMfoActiveTab || 'summary';
         const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
 
-        // 1. Freshness Banner
+        // 1. Freshness & Source Updates Banner
         let freshnessBannerHtml = '';
+        if (staleness.sourceUpdates && staleness.sourceUpdates.hasUpdates) {
+            freshnessBannerHtml += `
+                <div class="p-3.5 rounded-xl bg-blue-50 border border-blue-300 text-blue-950 text-xs mb-3">
+                    <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+                        <div class="flex items-center gap-2 font-bold text-blue-900">
+                            <i class="fa-solid fa-circle-exclamation text-blue-600 text-sm"></i>
+                            <span>Underlying Faculty Submissions Have Been Updated (${staleness.sourceUpdates.totalUpdatedRows} items)</span>
+                        </div>
+                        <button type="button" class="chair-btn-primary text-xs" onclick="CiteFlowChairReview.openSourceUpdatesModal()">
+                            <i class="fa-solid fa-code-compare mr-1"></i> Review Source Changes
+                        </button>
+                    </div>
+                    <p class="text-blue-800 text-[11px]">Faculty members have modified their accomplishments since this consolidated draft or your baseline snapshot was recorded. You can review field-by-field differences and choose which updates to accept or keep.</p>
+                </div>
+            `;
+        }
+
         if (staleness.status === 'stale') {
-            freshnessBannerHtml = `
+            freshnessBannerHtml += `
                 <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs mb-3">
                     <div class="flex items-center gap-2 font-bold mb-1 text-amber-900">
                         <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
@@ -2402,7 +2472,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 </div>
             `;
         } else if (staleness.status === 'fresh' && staleness.acknowledged) {
-            freshnessBannerHtml = `
+            freshnessBannerHtml += `
                 <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between mb-3">
                     <div class="flex items-center gap-2">
                         <i class="fa-solid fa-circle-check text-emerald-600"></i>
@@ -2412,7 +2482,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 </div>
             `;
         } else if (staleness.status === 'fresh') {
-            freshnessBannerHtml = `
+            freshnessBannerHtml += `
                 <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs flex items-center justify-between mb-3">
                     <div class="flex items-center gap-2">
                         <i class="fa-solid fa-circle-check text-emerald-600"></i>
@@ -2426,6 +2496,10 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         }
 
         // 2. Summary Metric Cards
+        const editedCount = summary.manuallyEditedCount || 0;
+        const addedCount = summary.manualAdditionsCount || 0;
+        const removedCount = summary.manuallyRemovedCount || 0;
+
         const summaryMetricsHtml = `
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center text-xs mb-3">
                 <div class="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100">
@@ -2435,7 +2509,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
                     <span class="text-[9px] uppercase font-bold text-emerald-600 block">Active Accomplishments</span>
                     <span class="text-base font-extrabold text-emerald-900">${activeItems}</span>
-                    <span class="text-[9px] text-slate-400 block">${excludedItems} excluded</span>
+                    <span class="text-[9px] text-slate-400 block">${excludedItems} excluded · ${removedCount} removed</span>
                 </div>
                 <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-200">
                     <span class="text-[9px] uppercase font-bold text-slate-500 block">Draft Version</span>
@@ -2443,11 +2517,11 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                     <span class="text-[9px] text-slate-400 block">${draft.packet_state || 'draft'}</span>
                 </div>
                 <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
-                    <span class="text-[9px] uppercase font-bold text-amber-700 block">Review Breakdown</span>
+                    <span class="text-[9px] uppercase font-bold text-amber-700 block">Manual Customizations</span>
                     <span class="text-xs font-bold text-slate-800 block mt-0.5">
-                        ${statusCounts.approved || 0} app · ${statusCounts.pending || 0} pend
+                        ${editedCount} edited · ${addedCount} added
                     </span>
-                    <span class="text-[9px] text-slate-400 block">${statusCounts.revision || 0} rev · ${statusCounts.rejected || 0} dec</span>
+                    <span class="text-[9px] text-slate-400 block">${review.activeConsolidatedHasUnsavedChanges ? '<span class="text-amber-600 font-bold">● Unsaved edits</span>' : 'All saved'}</span>
                 </div>
             </div>
         `;
@@ -2465,7 +2539,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                     <i class="fa-solid fa-users mr-1"></i> Contributing Faculty (${consolidation.contributingFaculty.length})
                 </button>
                 <button type="button" class="pb-2.5 whitespace-nowrap ${activeTab === 'accomplishments' ? 'border-b-2 border-[#621708] text-[#621708] font-bold' : 'text-slate-500 hover:text-slate-800'}" onclick="CiteFlowChairReview.setConsolidatedMfoTab('accomplishments')">
-                    <i class="fa-solid fa-list-check mr-1"></i> Accomplishments (${totalItems})
+                    <i class="fa-solid fa-list-check mr-1"></i> Accomplishments (${totalItems})${review.activeConsolidatedHasUnsavedChanges ? ' <span class="w-2 h-2 rounded-full bg-amber-500 inline-block align-middle ml-1" title="Unsaved changes"></span>' : ''}
                 </button>
                 <button type="button" class="pb-2.5 whitespace-nowrap ${activeTab === 'program' ? 'border-b-2 border-[#621708] text-[#621708] font-bold' : 'text-slate-500 hover:text-slate-800'}" onclick="CiteFlowChairReview.setConsolidatedMfoTab('program')">
                     <i class="fa-solid fa-graduation-cap mr-1"></i> Program Metrics (PI1/PI2)
@@ -2490,6 +2564,18 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             } catch (_) {}
 
             const deanReview = engine?.extractDeanReview ? engine.extractDeanReview(draft.notes) : null;
+            let isCorrected = false;
+            let correctedFromVer = null;
+            let previousDeanReview = null;
+            try {
+                if (typeof draft.notes === 'string' && draft.notes.trim().startsWith('{')) {
+                    const parsed = JSON.parse(draft.notes);
+                    correctedFromVer = parsed.corrected_from_version || parsed.citeflow_mfo_consolidation?.corrected_from_version || null;
+                    isCorrected = Boolean(correctedFromVer);
+                    previousDeanReview = parsed.previous_dean_review || parsed.citeflow_mfo_consolidation?.previous_dean_review || null;
+                }
+            } catch (_) {}
+
             const state = String(draft.packet_state || 'draft').toLowerCase();
             let statusBannerHtml = '';
             if (state === 'submitted' || state === 'resubmitted') {
@@ -2519,7 +2605,15 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                                 <span class="text-[11px] font-semibold text-amber-800">${esc(formatWhen(deanReview?.reviewed_at || draft.updated_at))}</span>
                             </div>
                             <p class="text-amber-900 mb-1 font-medium"><strong>Dean Remarks:</strong> "${esc(deanReview?.remarks || 'Please review and revise department accomplishments.')}"</p>
-                            <p class="text-[11px] text-amber-800">You may update exclusion decisions or remarks and click <strong>Resubmit to Dean's Office</strong> below.</p>
+                            <p class="text-[11px] text-amber-800 mb-2">The original submitted snapshot is preserved in version history. You may edit accomplishments, section assignments, and evidence, then click <strong>Resubmit to Dean's Office</strong> below.</p>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="chair-btn-secondary text-xs inline-flex items-center" onclick="CiteFlowChairReview.setConsolidatedMfoTab('accomplishments')">
+                                    <i class="fa-regular fa-pen-to-square mr-1.5"></i> Edit Consolidated Report
+                                </button>
+                                <button type="button" class="chair-btn-primary text-xs inline-flex items-center" id="chairBannerResubmitBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')">
+                                    <i class="fa-solid fa-paper-plane mr-1.5"></i> Resubmit to Dean's Office
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -2535,6 +2629,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                                 <span class="text-[11px] font-semibold text-emerald-700">Version ${draft.current_version || 1} · ${esc(formatWhen(deanReview?.reviewed_at || draft.updated_at))}</span>
                             </div>
                             <p class="text-emerald-800">The Dean's Office has granted final approval to the Department Consolidated MFO for ${esc(dept.toUpperCase())}.${deanReview?.remarks ? ` Remarks: "${esc(deanReview.remarks)}"` : ''}</p>
+                            <p class="text-[11px] text-emerald-700 mt-1">This approved snapshot is an immutable historical record.</p>
                         </div>
                     </div>
                 `;
@@ -2549,7 +2644,37 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                                 <span class="font-bold text-rose-900 block">Declined by Dean's Office</span>
                                 <span class="text-[11px] font-semibold text-rose-700">${esc(formatWhen(deanReview?.reviewed_at || draft.updated_at))}</span>
                             </div>
-                            <p class="text-rose-800">The Dean's Office declined this consolidated report.${deanReview?.remarks ? ` Remarks: "${esc(deanReview.remarks)}"` : ''}</p>
+                            <p class="text-rose-800 mb-1">The Dean's Office declined this consolidated report.${deanReview?.remarks ? ` Decline Reason: "<strong>${esc(deanReview.remarks)}</strong>"` : ''}</p>
+                            <p class="text-[11px] text-rose-700 mb-2">The declined submission and its review remarks are preserved in version history. To correct this report and resubmit, create a corrected version.</p>
+                            <div>
+                                <button type="button" class="chair-btn-primary text-xs inline-flex items-center" id="chairBannerCreateCorrectedVersionBtn" onclick="CiteFlowChairReview.createCorrectedVersion('${task.id}')">
+                                    <i class="fa-solid fa-file-pen mr-1.5"></i> Create Corrected Version
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (isCorrected) {
+                statusBannerHtml = `
+                    <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between mb-0.5">
+                                <span class="font-bold text-amber-900 block">Corrected Draft (Version ${draft.current_version || 2})</span>
+                                <span class="text-[11px] font-semibold text-amber-800">Corrected from v${correctedFromVer || 1}</span>
+                            </div>
+                            ${previousDeanReview?.remarks ? `<p class="text-amber-900 mb-1 font-medium"><strong>Previous Dean Decline Reason:</strong> "${esc(previousDeanReview.remarks)}"</p>` : ''}
+                            <p class="text-[11px] text-amber-800 mb-2">This working draft preserves all previous accomplishments, manual additions, and edits. You can make further changes or re-assign sections, then click <strong>Resubmit to Dean's Office</strong>.</p>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="chair-btn-secondary text-xs inline-flex items-center" onclick="CiteFlowChairReview.setConsolidatedMfoTab('accomplishments')">
+                                    <i class="fa-regular fa-pen-to-square mr-1.5"></i> Edit Consolidated Report
+                                </button>
+                                <button type="button" class="chair-btn-primary text-xs inline-flex items-center" id="chairBannerResubmitCorrectedBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')">
+                                    <i class="fa-solid fa-paper-plane mr-1.5"></i> Resubmit to Dean's Office
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -2557,15 +2682,29 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
 
             let summaryCardSubmitAction = '';
             if (state === 'draft') {
-                summaryCardSubmitAction = `
-                    <button type="button" class="chair-btn-primary text-xs inline-flex items-center whitespace-nowrap" id="chairSummarySubmitMfoBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')" title="Submit Consolidated MFO to Dean's Office">
-                        <i class="fa-solid fa-paper-plane mr-1.5"></i> Submit to Dean
-                    </button>
-                `;
+                if (isCorrected) {
+                    summaryCardSubmitAction = `
+                        <button type="button" class="chair-btn-primary text-xs inline-flex items-center whitespace-nowrap" id="chairSummaryResubmitMfoBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')" title="Resubmit Corrected Consolidated MFO to Dean's Office">
+                            <i class="fa-solid fa-paper-plane mr-1.5"></i> Resubmit to Dean
+                        </button>
+                    `;
+                } else {
+                    summaryCardSubmitAction = `
+                        <button type="button" class="chair-btn-primary text-xs inline-flex items-center whitespace-nowrap" id="chairSummarySubmitMfoBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')" title="Submit Consolidated MFO to Dean's Office">
+                            <i class="fa-solid fa-paper-plane mr-1.5"></i> Submit to Dean
+                        </button>
+                    `;
+                }
             } else if (state === 'revision') {
                 summaryCardSubmitAction = `
                     <button type="button" class="chair-btn-primary text-xs inline-flex items-center whitespace-nowrap" id="chairSummaryResubmitMfoBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')" title="Resubmit Consolidated MFO to Dean's Office">
                         <i class="fa-solid fa-paper-plane mr-1.5"></i> Resubmit to Dean
+                    </button>
+                `;
+            } else if (state === 'declined') {
+                summaryCardSubmitAction = `
+                    <button type="button" class="chair-btn-primary text-xs inline-flex items-center whitespace-nowrap" id="chairSummaryCreateCorrectedBtn" onclick="CiteFlowChairReview.createCorrectedVersion('${task.id}')" title="Create a corrected version to edit and resubmit">
+                        <i class="fa-solid fa-file-pen mr-1.5"></i> Create Corrected Version
                     </button>
                 `;
             }
@@ -2699,104 +2838,225 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 </div>
             `;
         } else if (activeTab === 'accomplishments') {
+            const pState = String(draft.packet_state || 'draft').toLowerCase();
+            const isLocked = ['submitted', 'resubmitted', 'approved', 'declined'].includes(pState);
             const sections = engine?.MFO_SECTIONS || [];
+            const currentFilter = review.activeConsolidatedFilter || 'all';
+            const searchQ = (review.activeConsolidatedSearch || '').trim().toLowerCase();
+
             let sectionsHtml = '';
-            let hasAnyItems = false;
+            let hasAnyMatchingItems = false;
+
+            // Top action toolbar: Add Entry button, Filter pills, Search box, Save Draft button
+            const toolbarHtml = `
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 mb-3 text-xs">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        ${!isLocked ? `
+                            <button type="button" class="chair-btn-primary text-xs flex items-center gap-1.5" onclick="CiteFlowChairReview.openAddAccomplishmentModal()">
+                                <i class="fa-solid fa-plus"></i> Add Entry
+                            </button>
+                        ` : `
+                            <div class="inline-flex items-center gap-1.5 text-xs">
+                                ${pState === 'declined' ? `
+                                    <span class="text-rose-700 font-semibold px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200">
+                                        <i class="fa-solid fa-lock mr-1 text-rose-500"></i> Report Declined &middot; Click "Create Corrected Version" to enable edits
+                                    </span>
+                                ` : (pState === 'approved' ? `
+                                    <span class="text-emerald-700 font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200">
+                                        <i class="fa-solid fa-lock mr-1 text-emerald-500"></i> Approved Snapshot (Immutable)
+                                    </span>
+                                ` : `
+                                    <span class="text-blue-700 font-semibold px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200">
+                                        <i class="fa-solid fa-lock mr-1 text-blue-500"></i> Submitted to Dean (Pending Review)
+                                    </span>
+                                `)}
+                            </div>
+                        `}
+                        <div class="flex items-center gap-1 border border-slate-200 rounded-lg bg-white p-0.5">
+                            <button type="button" class="px-2 py-1 rounded text-[11px] font-semibold ${currentFilter === 'all' ? 'bg-[#621708] text-white' : 'text-slate-600 hover:text-slate-900'}" onclick="CiteFlowChairReview.setConsolidatedFilter('all')">All (${totalItems})</button>
+                            <button type="button" class="px-2 py-1 rounded text-[11px] font-semibold ${currentFilter === 'edited' ? 'bg-[#621708] text-white' : 'text-slate-600 hover:text-slate-900'}" onclick="CiteFlowChairReview.setConsolidatedFilter('edited')">Edited (${editedCount})</button>
+                            <button type="button" class="px-2 py-1 rounded text-[11px] font-semibold ${currentFilter === 'added' ? 'bg-[#621708] text-white' : 'text-slate-600 hover:text-slate-900'}" onclick="CiteFlowChairReview.setConsolidatedFilter('added')">Added (${addedCount})</button>
+                            <button type="button" class="px-2 py-1 rounded text-[11px] font-semibold ${currentFilter === 'removed' ? 'bg-[#621708] text-white' : 'text-slate-600 hover:text-slate-900'}" onclick="CiteFlowChairReview.setConsolidatedFilter('removed')">Removed (${removedCount})</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="relative w-full sm:w-48">
+                            <input type="text" class="w-full border border-slate-200 rounded-lg pl-7 pr-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#621708]" placeholder="Search entries..." value="${esc(review.activeConsolidatedSearch || '')}" oninput="CiteFlowChairReview.setConsolidatedSearch(this.value)">
+                            <i class="fa-solid fa-magnifying-glass absolute left-2 top-2 text-[11px] text-slate-400"></i>
+                        </div>
+                        ${!isLocked && review.activeConsolidatedHasUnsavedChanges ? `
+                            <button type="button" class="chair-btn-primary text-xs whitespace-nowrap animate-pulse" onclick="CiteFlowChairReview.saveConsolidatedMfoEdits()" title="Save changes to draft">
+                                <i class="fa-regular fa-floppy-disk mr-1"></i> Save Draft
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
 
             sections.forEach((secDef) => {
-                const secItems = consolidation.sections?.[secDef.table] || [];
-                if (!secItems.length) return;
-                hasAnyItems = true;
+                const allSecItems = consolidation.sections?.[secDef.table] || [];
+                const filteredItems = allSecItems.filter((item) => {
+                    const isRemoved = item.is_manually_removed === true;
+                    const isEdited = item._isEdited === true;
+                    const isAdded = item._isAdded === true;
+
+                    if (currentFilter === 'edited' && !isEdited) return false;
+                    if (currentFilter === 'added' && !isAdded) return false;
+                    if (currentFilter === 'removed' && !isRemoved) return false;
+                    if (currentFilter === 'all' && isRemoved) return false;
+
+                    if (searchQ) {
+                        const title = String(item.title || item.activity_title || item.program_title || item.subject_code || item.course_title || item.award_name || item.name || '').toLowerCase();
+                        const desc = String(item.description || item.details || item.venue || item.remarks || '').toLowerCase();
+                        const fac = String(item.contributing_faculty_name || '').toLowerCase();
+                        if (!title.includes(searchQ) && !desc.includes(searchQ) && !fac.includes(searchQ)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+
+                if (!allSecItems.length && currentFilter !== 'all') return;
+                if (!filteredItems.length && searchQ) return;
+
+                hasAnyMatchingItems = hasAnyMatchingItems || filteredItems.length > 0;
 
                 sectionsHtml += `
                     <div class="border border-slate-200 rounded-xl overflow-hidden mb-3 bg-white">
                         <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                            <span class="font-bold text-xs text-slate-800">${esc(secDef.group)} &middot; ${esc(secDef.title)}</span>
-                            <span class="text-[11px] font-semibold text-slate-500">${secItems.length} item${secItems.length === 1 ? '' : 's'}</span>
+                            <div>
+                                <span class="font-bold text-xs text-slate-800">${esc(secDef.group)} &middot; ${esc(secDef.title)}</span>
+                                <span class="text-[10px] text-slate-400 block">Protected official template section &middot; Cannot be deleted</span>
+                            </div>
+                            <span class="text-[11px] font-semibold text-slate-500">${filteredItems.length} active item${filteredItems.length === 1 ? '' : 's'}</span>
                         </div>
-                        <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-                            ${secItems.map((item) => {
-                                const rowId = item.id != null ? String(item.id) : (item._source?.sourceRowId || '');
-                                const isExcluded = item.is_excluded === true;
-                                const isRejected = item.is_rejected === true;
-                                const title = item.title || item.activity_title || item.program_title || item.subject_code || item.course_title || item.award_name || item.name || 'Accomplishment';
-                                const desc = item.description || item.details || item.venue || item.remarks || '';
+                        ${filteredItems.length > 0 ? `
+                            <div class="divide-y divide-slate-100 max-h-72 overflow-y-auto">
+                                ${filteredItems.map((item) => {
+                                    const rowId = item.id != null ? String(item.id) : (item._source?.sourceRowId || '');
+                                    const isRemoved = item.is_manually_removed === true;
+                                    const isEdited = item._isEdited === true;
+                                    const isAdded = item._isAdded === true;
+                                    const isExcluded = item.is_excluded === true;
+                                    const isRejected = item.is_rejected === true;
+                                    const title = item.title || item.activity_title || item.program_title || item.subject_code || item.course_title || item.award_name || item.name || 'Accomplishment';
+                                    const desc = item.description || item.details || item.venue || item.remarks || '';
+                                    const dateVal = item.start_date || item.date || item.publication_date || item.exam_date || '';
 
-                                return `
-                                    <div class="p-3 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 ${isExcluded ? 'bg-rose-50/40 opacity-75' : ''}">
-                                        <div class="flex-1">
-                                            <div class="flex items-center gap-2 mb-1">
-                                                <span class="font-bold text-slate-900">${esc(title)}</span>
-                                                ${isRejected ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800">Declined Submission</span>` : ''}
-                                                ${isExcluded ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-200 text-slate-700">Excluded</span>` : ''}
+                                    return `
+                                        <div class="p-3 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 ${isRemoved ? 'bg-slate-50/80 opacity-60' : (isExcluded ? 'bg-rose-50/40 opacity-75' : '')}">
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                                    <span class="font-bold text-slate-900 ${isRemoved ? 'line-through text-slate-500' : ''}">${esc(title)}</span>
+                                                    ${isRemoved ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-200 text-slate-700"><i class="fa-solid fa-trash-can mr-1"></i> Removed from Report</span>` : ''}
+                                                    ${isAdded ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-800"><i class="fa-solid fa-plus-circle mr-1"></i> Added by Chair</span>` : ''}
+                                                    ${isEdited ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800"><i class="fa-solid fa-pen mr-1"></i> Edited by Chair</span>` : ''}
+                                                    ${!isAdded && !isEdited && !isRemoved ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-100 text-slate-600">Auto-fetched</span>` : ''}
+                                                    ${isRejected ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800">Declined Submission</span>` : ''}
+                                                    ${isExcluded ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-200 text-slate-700">Excluded</span>` : ''}
+                                                </div>
+                                                ${desc ? `<p class="text-slate-600 text-[11px] mb-1 line-clamp-2">${esc(desc)}</p>` : ''}
+                                                <div class="text-[10px] text-slate-400 flex items-center gap-2 flex-wrap">
+                                                    <span>Contributor: <strong>${esc(item.contributing_faculty_name || 'Chairperson')}</strong></span>
+                                                    ${dateVal ? `<span>&middot; Date: <strong>${esc(dateVal)}</strong></span>` : ''}
+                                                    <span>&middot; Status: ${esc(item.contributing_status_label || '—')}</span>
+                                                </div>
                                             </div>
-                                            ${desc ? `<p class="text-slate-600 text-[11px] mb-1 line-clamp-2">${esc(desc)}</p>` : ''}
-                                            <div class="text-[10px] text-slate-400">
-                                                Contributor: <strong>${esc(item.contributing_faculty_name || 'Faculty')}</strong> &middot; Status: ${esc(item.contributing_status_label || '—')}
+                                            <div class="flex items-center gap-1.5 flex-shrink-0">
+                                                ${isLocked ? `
+                                                    <span class="text-[11px] text-slate-400 font-medium italic px-2 py-1">Locked</span>
+                                                ` : (isRemoved ? `
+                                                    <button type="button" class="text-xs px-2.5 py-1 rounded-lg font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100" onclick="CiteFlowChairReview.restoreConsolidatedAccomplishment('${secDef.table}', '${rowId}')" title="Restore this item to the consolidated report">
+                                                        <i class="fa-solid fa-rotate-left mr-1"></i> Restore
+                                                    </button>
+                                                ` : `
+                                                    <button type="button" class="text-xs px-2.5 py-1 rounded-lg font-semibold bg-white text-slate-700 border border-slate-300 hover:bg-slate-50" onclick="CiteFlowChairReview.openEditAccomplishmentModal('${secDef.table}', '${rowId}')" title="Edit content details">
+                                                        <i class="fa-regular fa-pen-to-square mr-1 text-[#621708]"></i> Edit
+                                                    </button>
+                                                    <button type="button" class="text-xs px-2.5 py-1 rounded-lg font-semibold bg-white text-rose-700 border border-rose-200 hover:bg-rose-50" onclick="CiteFlowChairReview.removeConsolidatedAccomplishment('${secDef.table}', '${rowId}')" title="Remove from consolidated report">
+                                                        <i class="fa-regular fa-trash-can mr-1"></i> Remove
+                                                    </button>
+                                                `)}
+                                                ${!isLocked && isRejected ? `
+                                                    <button type="button" class="text-xs px-2.5 py-1 rounded-lg font-semibold border ${isExcluded ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-300'}" onclick="CiteFlowChairReview.toggleExclusionModal('${task.id}', '${rowId}', ${isExcluded ? 'false' : 'true'})">
+                                                        <i class="fa-solid ${isExcluded ? 'fa-eye' : 'fa-eye-slash'} mr-1"></i> ${isExcluded ? 'Include' : 'Exclude'}
+                                                    </button>
+                                                ` : ''}
                                             </div>
                                         </div>
-                                        <div class="flex items-center gap-2 flex-shrink-0">
-                                            ${isRejected ? `
-                                                <button type="button" class="text-xs px-2.5 py-1 rounded-lg font-semibold border ${isExcluded ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-300'}" onclick="CiteFlowChairReview.toggleExclusionModal('${task.id}', '${rowId}', ${isExcluded ? 'false' : 'true'})">
-                                                    <i class="fa-solid ${isExcluded ? 'fa-eye' : 'fa-eye-slash'} mr-1"></i> ${isExcluded ? 'Include' : 'Exclude'}
-                                                </button>
-                                            ` : `
-                                                <span class="text-[11px] text-slate-400"><i class="fa-solid fa-check text-emerald-500 mr-1"></i> Active</span>
-                                            `}
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        ` : `
+                            <div class="p-3 text-center text-slate-400 text-xs italic bg-slate-50/50">
+                                No active accomplishments in this section (will render with official table headers and "N/A" in official report).
+                            </div>
+                        `}
                     </div>
                 `;
             });
 
-            if (!hasAnyItems) {
+            if (!hasAnyMatchingItems && searchQ) {
                 sectionsHtml = `
                     <div class="py-8 text-center text-slate-400 text-xs">
-                        <i class="fa-solid fa-folder-open text-2xl mb-2 text-slate-300 block"></i>
-                        No accomplishment records have been submitted across MFO child tables for this cycle.
+                        <i class="fa-solid fa-magnifying-glass text-2xl mb-2 text-slate-300 block"></i>
+                        No accomplishments found matching "${esc(searchQ)}".
                     </div>
                 `;
             }
 
-            tabContentHtml = sectionsHtml;
+            tabContentHtml = toolbarHtml + sectionsHtml;
         } else if (activeTab === 'program') {
+            const pState = String(draft.packet_state || 'draft').toLowerCase();
+            const isLocked = ['submitted', 'resubmitted', 'approved', 'declined'].includes(pState);
             const pi1Rows = consolidation.programPortion?.pi1 || [];
             const pi2Rows = consolidation.programPortion?.pi2 || [];
 
             tabContentHtml = `
                 <div class="space-y-4 text-xs">
                     <div class="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                        <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wide">PI1 — Licensure Examination Results</h4>
+                        <div class="flex items-center justify-between">
+                            <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wide">PI1 — Licensure Examination Results</h4>
+                            ${!isLocked ? `
+                                <button type="button" class="chair-btn-secondary text-xs py-1 px-2.5" onclick="CiteFlowChairReview.openEditProgramPortionModal('pi1', 0)" title="Edit Licensure Results">
+                                    <i class="fa-regular fa-pen-to-square mr-1"></i> Edit Metric
+                                </button>
+                            ` : '<span class="text-[11px] text-slate-400 italic">Locked</span>'}
+                        </div>
                         ${pi1Rows.length > 0 ? `
                             <div class="space-y-1.5">
                                 ${pi1Rows.map((r) => `
                                     <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex justify-between">
-                                        <span>${esc(r.exam_name || 'Exam')}</span>
+                                        <span>${esc(r.exam_name || 'Licensure Examination')}</span>
                                         <span class="font-bold">${esc(r.passing_rate || '—')}%</span>
                                     </div>
                                 `).join('')}
                             </div>
                         ` : `
-                            <p class="text-slate-400 p-2">No program-level PI1 licensure records configured for this draft.</p>
+                            <p class="text-slate-400 p-2">No program-level PI1 licensure records configured for this draft. Click "Edit Metric" to set values.</p>
                         `}
                     </div>
 
                     <div class="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                        <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wide">PI2 — Graduate Employment Tracking</h4>
+                        <div class="flex items-center justify-between">
+                            <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wide">PI2 — Graduate Employment Tracking</h4>
+                            ${!isLocked ? `
+                                <button type="button" class="chair-btn-secondary text-xs py-1 px-2.5" onclick="CiteFlowChairReview.openEditProgramPortionModal('pi2', 0)" title="Edit Graduate Employment">
+                                    <i class="fa-regular fa-pen-to-square mr-1"></i> Edit Metric
+                                </button>
+                            ` : '<span class="text-[11px] text-slate-400 italic">Locked</span>'}
+                        </div>
                         ${pi2Rows.length > 0 ? `
                             <div class="space-y-1.5">
                                 ${pi2Rows.map((r) => `
                                     <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex justify-between">
-                                        <span>${esc(r.cohort_label || 'Cohort')}</span>
+                                        <span>${esc(r.cohort_label || 'Graduate Cohort')}</span>
                                         <span class="font-bold">${esc(r.employed_percentage || '—')}%</span>
                                     </div>
                                 `).join('')}
                             </div>
                         ` : `
-                            <p class="text-slate-400 p-2">No program-level PI2 graduate employment records configured for this draft.</p>
+                            <p class="text-slate-400 p-2">No program-level PI2 graduate employment records configured for this draft. Click "Edit Metric" to set values.</p>
                         `}
                     </div>
                 </div>
@@ -2810,18 +3070,47 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             ${tabContentHtml}
         `;
 
+        if (footerStatus) {
+            if (review.activeConsolidatedHasUnsavedChanges) {
+                footerStatus.innerHTML = `<span class="text-amber-700 font-bold inline-flex items-center gap-1.5"><i class="fa-solid fa-circle-dot text-amber-500 animate-pulse"></i> You have unsaved changes. Click <strong>Save Draft</strong> to persist.</span>`;
+            } else if (draft) {
+                footerStatus.innerHTML = `<span>Last Updated: <strong>${esc(formatWhen(draft.updated_at || draft.created_at))}</strong> · Snapshot Version: <strong>v${draft.current_version || 1}</strong></span>`;
+            } else {
+                footerStatus.innerHTML = `<span>Draft not yet compiled · Eligible submissions: <strong>${contributingCount} of ${expectedCount}</strong></span>`;
+            }
+        }
+
         const footerActionsEl = document.getElementById('chairMfoModalFooterActions');
         if (footerActionsEl) {
             const pState = String(draft.packet_state || 'draft').toLowerCase();
+            let isCorrected = false;
+            try {
+                if (typeof draft.notes === 'string' && draft.notes.trim().startsWith('{')) {
+                    const parsed = JSON.parse(draft.notes);
+                    isCorrected = Boolean(parsed.corrected_from_version || parsed.citeflow_mfo_consolidation?.corrected_from_version);
+                }
+            } catch (_) {}
+
             let submitBtnHtml = '';
             if (pState === 'draft') {
-                submitBtnHtml = `
-                    <button type="button" class="chair-btn-primary text-xs inline-flex items-center" id="chairModalSubmitMfoBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')" title="Submit Consolidated MFO to Dean's Office">
-                        <i class="fa-solid fa-paper-plane mr-1.5"></i> Submit Consolidated MFO
-                    </button>
-                `;
+                if (isCorrected) {
+                    submitBtnHtml = `
+                        <button type="button" class="chair-btn-primary text-xs inline-flex items-center" id="chairModalResubmitMfoBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')" title="Resubmit Corrected Consolidated MFO to Dean's Office">
+                            <i class="fa-solid fa-paper-plane mr-1.5"></i> Resubmit to Dean's Office
+                        </button>
+                    `;
+                } else {
+                    submitBtnHtml = `
+                        <button type="button" class="chair-btn-primary text-xs inline-flex items-center" id="chairModalSubmitMfoBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')" title="Submit Consolidated MFO to Dean's Office">
+                            <i class="fa-solid fa-paper-plane mr-1.5"></i> Submit Consolidated MFO
+                        </button>
+                    `;
+                }
             } else if (pState === 'revision') {
                 submitBtnHtml = `
+                    <button type="button" class="chair-btn-secondary text-xs inline-flex items-center" onclick="CiteFlowChairReview.setConsolidatedMfoTab('accomplishments')">
+                        <i class="fa-regular fa-pen-to-square mr-1.5"></i> Edit Consolidated Report
+                    </button>
                     <button type="button" class="chair-btn-primary text-xs inline-flex items-center" id="chairModalResubmitMfoBtn" onclick="CiteFlowChairReview.openSubmitConsolidatedMfoModal('${task.id}')" title="Resubmit Consolidated MFO to Dean's Office">
                         <i class="fa-solid fa-paper-plane mr-1.5"></i> Resubmit to Dean's Office
                     </button>
@@ -2840,9 +3129,18 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 `;
             } else if (pState === 'declined') {
                 submitBtnHtml = `
-                    <span class="inline-flex items-center text-xs font-semibold text-rose-700 bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200">
-                        <i class="fa-solid fa-xmark mr-1.5"></i> Declined by Dean's Office
-                    </span>
+                    <button type="button" class="chair-btn-primary text-xs inline-flex items-center" id="chairCreateCorrectedVersionBtn" onclick="CiteFlowChairReview.createCorrectedVersion('${task.id}')" title="Create a corrected draft based on this declined report">
+                        <i class="fa-solid fa-file-pen mr-1.5"></i> Create Corrected Version
+                    </button>
+                `;
+            }
+
+            let saveEditsBtnHtml = '';
+            if (review.activeConsolidatedHasUnsavedChanges && (pState === 'draft' || pState === 'revision')) {
+                saveEditsBtnHtml = `
+                    <button type="button" class="chair-btn-primary text-xs inline-flex items-center animate-pulse" id="chairModalSaveEditsBtn" onclick="CiteFlowChairReview.saveConsolidatedMfoEdits()" title="Save manual edits to draft">
+                        <i class="fa-regular fa-floppy-disk mr-1.5"></i> Save Draft
+                    </button>
                 `;
             }
 
@@ -2850,8 +3148,83 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 <a href="mfo-report.html?view=consolidated&task=${encodeURIComponent(task.id)}&dept=${encodeURIComponent(dept)}" target="_blank" rel="noopener" class="chair-btn-secondary text-xs inline-flex items-center" id="chairModalViewMfoBtn" title="View Full Compiled Official MFO Report">
                     <i class="fa-solid fa-file-invoice mr-1.5"></i> View MFO
                 </a>
+                ${saveEditsBtnHtml}
                 ${submitBtnHtml}
             `;
+        }
+    }
+
+    async function createCorrectedVersion(taskId) {
+        if (review.mfoDraftBusy) return;
+        review.mfoDraftBusy = true;
+
+        const btn = typeof document !== 'undefined' ? (document.getElementById('chairCreateCorrectedVersionBtn') || document.getElementById('chairBannerCreateCorrectedVersionBtn') || document.getElementById('chairSummaryCreateCorrectedBtn')) : null;
+        const origHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Creating Corrected Version...';
+        }
+
+        try {
+            const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+            if (!engine) throw new Error('Consolidation engine not loaded.');
+
+            const dept = chairDepartment();
+            const auth = engine.verifyChairpersonDepartmentAccess(global.currentFaculty, dept, effectiveGrants());
+            if (!auth.authorized) {
+                toast(auth.reason || 'Unauthorized for this department.', 'error');
+                return;
+            }
+
+            const task = taskMap().get(String(taskId));
+            if (!task) throw new Error('Task not found.');
+
+            const client = db();
+            let programPacket = review.activeConsolidatedDraft;
+            if (client && (!programPacket || !programPacket.id)) {
+                const res = await client.from('mfo_program_packets')
+                    .select('*')
+                    .eq('task_id', task.id)
+                    .ilike('department', dept)
+                    .maybeSingle();
+                if (res?.data) programPacket = res.data;
+            }
+
+            if (!programPacket) {
+                toast('No consolidated report found to create a corrected version.', 'error');
+                return;
+            }
+
+            const customizations = review.activeConsolidatedCustomizations || engine.extractManualCustomizations(programPacket?.notes || programPacket);
+
+            const result = await engine.createCorrectedVersion({
+                db: client,
+                draft: programPacket,
+                taskId: task.id,
+                department: dept,
+                actorFaculty: global.currentFaculty,
+                delegatedAccess: effectiveGrants(),
+                customizations
+            });
+
+            if (!result.ok) {
+                toast(result.error || 'Failed to create corrected version.', 'error');
+                return;
+            }
+
+            review.activeConsolidatedHasUnsavedChanges = false;
+            toast(`Created corrected draft v${result.version}. You can now edit accomplishments, section assignments, and evidence before resubmitting.`, 'success');
+            await loadAndRenderConsolidatedMfo(task.id);
+            if (typeof render === 'function') render();
+        } catch (err) {
+            console.error('[Create Corrected Version]', err);
+            toast('Failed to create corrected version: ' + (err?.message || err), 'error');
+        } finally {
+            review.mfoDraftBusy = false;
+            if (btn && origHtml) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
         }
     }
 
@@ -3175,10 +3548,23 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             toast('This Department Consolidated MFO has already been approved by the Dean\'s Office.', 'info');
             return;
         }
+        if (currentState === 'declined') {
+            toast('This report was declined by the Dean\'s Office. Please click "Create Corrected Version" to prepare an editable draft before resubmitting.', 'warn');
+            return;
+        }
+
+        let isCorrected = false;
+        try {
+            if (typeof programPacket.notes === 'string' && programPacket.notes.trim().startsWith('{')) {
+                const parsed = JSON.parse(programPacket.notes);
+                isCorrected = Boolean(parsed.corrected_from_version || parsed.citeflow_mfo_consolidation?.corrected_from_version);
+            }
+        } catch (_) {}
 
         const currentVer = Number(programPacket.current_version || 1);
-        const nextVer = currentState === 'revision' ? currentVer + 1 : Math.max(currentVer, 1);
-        const nextAction = currentState === 'revision' ? 'Resubmitted to Dean\'s Office' : 'Submitted to Dean\'s Office';
+        const isResubmit = currentState === 'revision' || (currentState === 'draft' && (isCorrected || currentVer > 1));
+        const nextVer = currentState === 'revision' ? currentVer + 1 : currentVer;
+        const nextAction = isResubmit ? 'Resubmitted to Dean\'s Office' : 'Submitted to Dean\'s Office';
 
         if (summaryEl) {
             summaryEl.innerHTML = `
@@ -3224,6 +3610,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const taskId = review.submittingConsolidatedMfoTaskId || review.activeConsolidatedMfoTaskId;
         if (!taskId) return;
 
+        if (review.mfoSubmitBusy) return;
+        review.mfoSubmitBusy = true;
+
         const btn = typeof document !== 'undefined' ? document.getElementById('chairConfirmSubmitConsolidatedMfoBtn') : null;
         const origHtml = btn ? btn.innerHTML : '';
         if (btn) {
@@ -3261,6 +3650,20 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 return;
             }
 
+            const currentState = String(programPacket.packet_state || 'draft').toLowerCase();
+            if (currentState === 'declined') {
+                toast('This report was declined by the Dean\'s Office. Please click "Create Corrected Version" to prepare an editable draft before resubmitting.', 'warn');
+                return;
+            }
+            if (currentState === 'submitted' || currentState === 'resubmitted') {
+                toast('This report is already submitted and pending review.', 'info');
+                return;
+            }
+            if (currentState === 'approved') {
+                toast('This report has already been approved.', 'info');
+                return;
+            }
+
             const taskSubmissions = (scopedSubmissions()).filter((s) => String(s.task_id) === String(task.id));
             const taskPackets = (review.mfoPackets || []).filter((p) => String(p.task_id) === String(task.id));
             const packetIds = taskPackets.map((p) => p.id).filter(Boolean);
@@ -3287,6 +3690,8 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 } catch (_) {}
             }
 
+            const customizations = review.activeConsolidatedCustomizations || engine.extractManualCustomizations(programPacket?.notes || programPacket);
+
             const consolidation = engine.buildDepartmentMfoConsolidation({
                 taskId: task.id,
                 department: dept,
@@ -3295,6 +3700,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 packets: taskPackets,
                 childRows,
                 programRows,
+                customizations,
                 facultyList: review.faculty || [],
                 assignments: (scopedAssignments()).filter((a) => String(a.task_id) === String(task.id)),
                 actorFaculty: global.currentFaculty,
@@ -3306,6 +3712,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 department: dept,
                 draft: programPacket,
                 consolidation,
+                customizations,
                 actorFaculty: global.currentFaculty,
                 delegatedAccess: effectiveGrants(),
                 userRemarks: typeof document !== 'undefined' ? (document.getElementById('chairMfoDraftRemarksInput')?.value || '') : ''
@@ -3324,6 +3731,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 actorFaculty: global.currentFaculty,
                 delegatedAccess: effectiveGrants(),
                 consolidation,
+                customizations,
                 userRemarks: prep.frozenPayload.user_remarks
             });
 
@@ -3332,7 +3740,9 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
                 return;
             }
 
-            toast('Department Consolidated MFO submitted to Dean\'s Office successfully!', 'success');
+            const isResubmit = currentState === 'revision' || (currentState === 'draft' && Boolean(prep.frozenPayload?.notes_metadata?.corrected_from_version || Number(programPacket.current_version) > 1));
+            review.activeConsolidatedHasUnsavedChanges = false;
+            toast(isResubmit ? 'Department Consolidated MFO resubmitted to Dean\'s Office successfully!' : 'Department Consolidated MFO submitted to Dean\'s Office successfully!', 'success');
             closeSubmitConsolidatedMfoModal();
             await loadAndRenderConsolidatedMfo(task.id);
             if (typeof render === 'function') render();
@@ -3340,10 +3750,773 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
             console.error('[Submit Consolidated MFO]', err);
             toast('Submission error: ' + (err?.message || err), 'error');
         } finally {
+            review.mfoSubmitBusy = false;
             if (btn && origHtml) {
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
             }
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Manual Content Editing, Additions, Removals & Review Methods       */
+    /* ------------------------------------------------------------------ */
+
+    function rerenderConsolidatedMfoInPlace() {
+        const taskId = review.activeConsolidatedMfoTaskId;
+        if (!taskId) return;
+        const task = taskMap().get(String(taskId));
+        if (!task) return;
+        const dept = chairDepartment();
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        if (!engine) return;
+
+        const taskSubmissions = (scopedSubmissions()).filter((s) => String(s.task_id) === String(task.id));
+        const taskPackets = (review.mfoPackets || []).filter((p) => String(p.task_id) === String(task.id));
+
+        const consolidation = engine.buildDepartmentMfoConsolidation({
+            taskId: task.id,
+            department: dept,
+            draft: review.activeConsolidatedDraft,
+            submissions: taskSubmissions,
+            packets: taskPackets,
+            childRows: review.activeConsolidatedChildRows || {},
+            programRows: review.activeConsolidatedProgramRows || { pi1: [], pi2: [] },
+            customizations: review.activeConsolidatedCustomizations,
+            facultyList: review.faculty || [],
+            assignments: (scopedAssignments()).filter((a) => String(a.task_id) === String(task.id)),
+            actorFaculty: global.currentFaculty,
+            delegatedAccess: effectiveGrants()
+        });
+
+        review.activeConsolidatedModel = consolidation;
+
+        renderConsolidatedMfoModalView({
+            task,
+            draft: review.activeConsolidatedDraft,
+            consolidation,
+            staleness: review.activeConsolidatedStaleness || { status: 'fresh' },
+            dept
+        });
+        try { populateOfficialSectionDropdowns(); } catch (_) {}
+    }
+
+    const OFFICIAL_CONSOLIDATED_SECTIONS = [
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1A', title: 'Licensure Passing Percentage', table: 'mfo_pi1_licensure' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1B', title: 'Graduate Employment (2 years prior)', table: 'mfo_pi2_employment' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1C', title: 'Syllabus Submission', table: 'mfo_pi4_syllabus' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1D', title: 'Certifications (TESDA, ISO, AACCUP, etc.)', table: 'mfo_pi5_certifications' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1E', title: 'Postgraduate Education', table: 'mfo_pi6_postgraduate' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1F', title: 'Accreditation & QA', table: 'mfo_accreditation_qa' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1G', title: 'Trainings / Workshops / Seminars Attended', table: 'mfo_pi7_trainings' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1H', title: 'Instructional Materials Production', table: 'mfo_pi8_instructional_materials' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1I', title: 'Awards & Recognitions / Competitions', table: 'mfo_awards' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1J', title: 'Other Academic Initiatives & Activities', table: 'mfo_other_initiatives' },
+        { group: 'MFO 1: Advanced and Higher Education Services', code: 'MFO 1K', title: 'Student Enrollment & Advisory (Thesis / Capstone)', table: 'mfo_pi3_enrollment' },
+        { group: 'MFO 2: Research and Development Services', code: 'MFO 2A', title: 'Research Output Utilized by Industry / Beneficiaries', table: 'mfo_research_utilized' },
+        { group: 'MFO 2: Research and Development Services', code: 'MFO 2B', title: 'Research Output Completed / Published in Journals', table: 'mfo_research_published' },
+        { group: 'MFO 2: Research and Development Services', code: 'MFO 2C', title: 'Research Output Presented in Conferences', table: 'mfo_research_presented' },
+        { group: 'MFO 3: Extension Services', code: 'MFO 3A', title: 'Active Extension Partnerships (LGUs, Industry, NGOs)', table: 'mfo_extension_partnerships' },
+        { group: 'MFO 3: Extension Services', code: 'MFO 3B', title: 'Extension Trainees & Manhours', table: 'mfo_extension_trainings' },
+        { group: 'Production', code: 'Production', title: 'Income-Generating & Production Activities', table: 'mfo_production' },
+        { group: 'MFO 4: General Administration and Support Services', code: 'MFO 4A', title: 'General Administration & Operational Initiatives', table: 'mfo_admin_initiatives' },
+        { group: 'MFO 4: General Administration and Support Services', code: 'MFO 4B', title: 'Support Services Accomplishments', table: 'mfo_support_services' },
+        { group: 'MFO 5: Management of Resources', code: 'MFO 5', title: 'Management of Resources, Equipment & Facilities', table: 'mfo_resource_management' },
+        { group: 'Supporting Evidence & Gallery', code: 'GALLERY', title: 'Verifiable Evidence / Supporting Documents', table: 'mfo_documentation_items' }
+    ];
+
+    function getOfficialMfoSections() {
+        return OFFICIAL_CONSOLIDATED_SECTIONS.slice();
+    }
+
+    function populateOfficialSectionDropdowns(selectedTable = null) {
+        if (typeof document === 'undefined') return;
+        const addSelect = document.getElementById('chairAddSectionSelect') || document.getElementById('chairAddTable');
+        const editSelect = document.getElementById('chairEditSectionSelect') || document.getElementById('chairEditTableSelect');
+
+        let sections = [];
+        try {
+            sections = getOfficialMfoSections();
+        } catch (e) {
+            console.error('[Consolidated MFO] Failed to retrieve official sections:', e);
+            sections = [];
+        }
+
+        if (!Array.isArray(sections) || !sections.length) {
+            const emptyOption = '<option value="" disabled selected>No official MFO sections available</option>';
+            if (addSelect && addSelect.tagName === 'SELECT') addSelect.innerHTML = emptyOption;
+            if (editSelect && editSelect.tagName === 'SELECT') editSelect.innerHTML = emptyOption;
+            toast('Failed to load official MFO sections. Please refresh the page.', 'error');
+            return;
+        }
+
+        const groups = {};
+        sections.forEach((sec) => {
+            const grp = sec.group || 'Official MFO Sections';
+            if (!groups[grp]) groups[grp] = [];
+            groups[grp].push(sec);
+        });
+
+        let optgroupsHtml = '';
+        Object.keys(groups).forEach((grp) => {
+            optgroupsHtml += `<optgroup label="${esc(grp)}">`;
+            groups[grp].forEach((sec) => {
+                const label = sec.code ? `${sec.code} — ${sec.title}` : sec.title;
+                optgroupsHtml += `<option value="${esc(sec.table)}">${esc(label)}</option>`;
+            });
+            optgroupsHtml += '</optgroup>';
+        });
+
+        if (addSelect && addSelect.tagName === 'SELECT') {
+            addSelect.innerHTML = '<option value="" disabled selected>Select Target Official MFO Section...</option>' + optgroupsHtml;
+            if (selectedTable) addSelect.value = selectedTable;
+        }
+        if (editSelect && editSelect.tagName === 'SELECT') {
+            editSelect.innerHTML = optgroupsHtml;
+            if (selectedTable) editSelect.value = selectedTable;
+        }
+    }
+
+    function isConsolidatedReportLocked() {
+        const pState = String(review.activeConsolidatedDraft?.packet_state || 'draft').toLowerCase();
+        return ['submitted', 'resubmitted', 'approved', 'declined'].includes(pState);
+    }
+
+    function checkConsolidatedReportLockedToast(actionDesc = 'modify accomplishments') {
+        if (!isConsolidatedReportLocked()) return false;
+        const pState = String(review.activeConsolidatedDraft?.packet_state || 'draft').toLowerCase();
+        if (pState === 'declined') {
+            toast(`Cannot ${actionDesc} while report is declined. Please click "Create Corrected Version" first.`, 'warn');
+        } else if (pState === 'approved') {
+            toast(`Cannot ${actionDesc} on an approved report (immutable record).`, 'warn');
+        } else {
+            toast(`Cannot ${actionDesc} while report is submitted to the Dean's Office (pending review).`, 'warn');
+        }
+        return true;
+    }
+
+    function openEditAccomplishmentModal(table, rowId) {
+        if (typeof document === 'undefined') return;
+        if (checkConsolidatedReportLockedToast('edit accomplishments')) return;
+        const consolidation = review.activeConsolidatedModel;
+        if (!consolidation) return;
+        const items = consolidation.sections?.[table] || [];
+        const item = items.find((i) => (i.id != null && String(i.id) === String(rowId)) || (i._source?.sourceRowId && String(i._source.sourceRowId) === String(rowId)));
+        if (!item) {
+            toast('Accomplishment not found.', 'error');
+            return;
+        }
+
+        const modal = document.getElementById('chairEditAccomplishmentModal');
+        if (!modal) return;
+
+        populateOfficialSectionDropdowns(table);
+
+        const tableInp = document.getElementById('chairEditTable');
+        const secSelect = document.getElementById('chairEditSectionSelect');
+        const rowIdInp = document.getElementById('chairEditRowId');
+        const titleInp = document.getElementById('chairEditTitle');
+        const descInp = document.getElementById('chairEditDescription') || document.getElementById('chairEditDesc');
+        const startInp = document.getElementById('chairEditStartDate');
+        const endInp = document.getElementById('chairEditEndDate');
+        const venueInp = document.getElementById('chairEditVenue');
+        const remarksInp = document.getElementById('chairEditRemarks');
+        const subEl = document.getElementById('chairEditModalSubtitle');
+
+        if (tableInp) tableInp.value = table;
+        if (secSelect) secSelect.value = table;
+        if (rowIdInp) rowIdInp.value = rowId;
+
+        const title = item.title || item.activity_title || item.program_title || item.subject_code || item.course_title || item.award_name || item.name || '';
+        const desc = item.description || item.details || '';
+        const startDate = item.start_date || item.date || item.publication_date || item.exam_date || '';
+        const endDate = item.end_date || '';
+        const venue = item.venue || item.location || item.institution || item.journal_name || '';
+        const remarks = item.remarks || item.actions_taken || item.ched_strategies || '';
+
+        if (titleInp) titleInp.value = title;
+        if (descInp) descInp.value = desc;
+        if (startInp) startInp.value = startDate;
+        if (endInp) endInp.value = endDate;
+        if (venueInp) venueInp.value = venue;
+        if (remarksInp) remarksInp.value = remarks;
+
+        if (subEl) {
+            subEl.textContent = `Editing: ${title || 'Accomplishment'} · Contributing Faculty: ${item.contributing_faculty_name || 'Chairperson Addition'}`;
+        }
+
+        modal.classList.add('open');
+    }
+
+    function closeEditAccomplishmentModal() {
+        if (typeof document === 'undefined') return;
+        document.getElementById('chairEditAccomplishmentModal')?.classList.remove('open');
+    }
+
+    function saveEditAccomplishment() {
+        if (typeof document === 'undefined') return;
+        if (checkConsolidatedReportLockedToast('edit accomplishments')) return;
+        const originalTable = document.getElementById('chairEditTable')?.value;
+        const targetTable = document.getElementById('chairEditSectionSelect')?.value || originalTable;
+        const rowId = document.getElementById('chairEditRowId')?.value;
+        const title = document.getElementById('chairEditTitle')?.value?.trim();
+        const desc = (document.getElementById('chairEditDescription') || document.getElementById('chairEditDesc'))?.value?.trim();
+        const startDate = document.getElementById('chairEditStartDate')?.value?.trim();
+        const endDate = document.getElementById('chairEditEndDate')?.value?.trim();
+        const venue = document.getElementById('chairEditVenue')?.value?.trim();
+        const remarks = document.getElementById('chairEditRemarks')?.value?.trim();
+
+        if (!rowId || !originalTable) return;
+
+        if (!review.activeConsolidatedCustomizations) {
+            review.activeConsolidatedCustomizations = {
+                manual_overrides: {},
+                manual_additions: {},
+                manual_removals: {},
+                source_snapshots: {},
+                program_portion_overrides: {}
+            };
+        }
+
+        const isAddition = String(rowId).startsWith('added_');
+        if (isAddition) {
+            const list = review.activeConsolidatedCustomizations.manual_additions[originalTable] || [];
+            const idx = list.findIndex((a) => String(a.id) === String(rowId));
+            if (idx >= 0) {
+                const item = list[idx];
+                item.title = title;
+                item.description = desc;
+                item.start_date = startDate;
+                item.end_date = endDate;
+                item.venue = venue;
+                item.remarks = remarks;
+                item.updated_at = new Date().toISOString();
+
+                // If target section changed, move to new section
+                if (targetTable && targetTable !== originalTable) {
+                    list.splice(idx, 1);
+                    item.table = targetTable;
+                    if (!Array.isArray(review.activeConsolidatedCustomizations.manual_additions[targetTable])) {
+                        review.activeConsolidatedCustomizations.manual_additions[targetTable] = [];
+                    }
+                    review.activeConsolidatedCustomizations.manual_additions[targetTable].push(item);
+                }
+            }
+        } else {
+            review.activeConsolidatedCustomizations.manual_overrides[rowId] = {
+                title,
+                description: desc,
+                start_date: startDate,
+                end_date: endDate,
+                venue,
+                remarks,
+                _targetTable: targetTable && targetTable !== originalTable ? targetTable : undefined,
+                edited_at: new Date().toISOString()
+            };
+        }
+
+        review.activeConsolidatedHasUnsavedChanges = true;
+        closeEditAccomplishmentModal();
+        rerenderConsolidatedMfoInPlace();
+        toast('Accomplishment updated (draft edit). Click "Save Draft" to persist.', 'info');
+    }
+
+    function openAddAccomplishmentModal() {
+        if (typeof document === 'undefined') return;
+        if (checkConsolidatedReportLockedToast('add accomplishments')) return;
+        const modal = document.getElementById('chairAddAccomplishmentModal');
+        if (!modal) return;
+
+        populateOfficialSectionDropdowns();
+
+        const titleInp = document.getElementById('chairAddTitle');
+        const descInp = document.getElementById('chairAddDescription') || document.getElementById('chairAddDesc');
+        const startInp = document.getElementById('chairAddStartDate');
+        const endInp = document.getElementById('chairAddEndDate');
+        const venueInp = document.getElementById('chairAddVenue');
+        const remarksInp = document.getElementById('chairAddRemarks');
+
+        if (titleInp) titleInp.value = '';
+        if (descInp) descInp.value = '';
+        if (startInp) startInp.value = '';
+        if (endInp) endInp.value = '';
+        if (venueInp) venueInp.value = '';
+        if (remarksInp) remarksInp.value = '';
+
+        modal.classList.add('open');
+    }
+
+    function closeAddAccomplishmentModal() {
+        if (typeof document === 'undefined') return;
+        document.getElementById('chairAddAccomplishmentModal')?.classList.remove('open');
+    }
+
+    function saveAddAccomplishment() {
+        if (typeof document === 'undefined') return;
+        if (checkConsolidatedReportLockedToast('add accomplishments')) return;
+        const table = document.getElementById('chairAddSectionSelect')?.value || document.getElementById('chairAddTable')?.value;
+        const title = document.getElementById('chairAddTitle')?.value?.trim();
+        const desc = (document.getElementById('chairAddDescription') || document.getElementById('chairAddDesc'))?.value?.trim();
+        const startDate = document.getElementById('chairAddStartDate')?.value?.trim();
+        const endDate = document.getElementById('chairAddEndDate')?.value?.trim();
+        const venue = document.getElementById('chairAddVenue')?.value?.trim();
+        const remarks = document.getElementById('chairAddRemarks')?.value?.trim();
+
+        if (!table) {
+            toast('Please select an official MFO section.', 'error');
+            return;
+        }
+        if (!title) {
+            toast('Please enter a title for the accomplishment.', 'error');
+            return;
+        }
+
+        if (!review.activeConsolidatedCustomizations) {
+            review.activeConsolidatedCustomizations = {
+                manual_overrides: {},
+                manual_additions: {},
+                manual_removals: {},
+                source_snapshots: {},
+                program_portion_overrides: {}
+            };
+        }
+        if (!review.activeConsolidatedCustomizations.manual_additions) {
+            review.activeConsolidatedCustomizations.manual_additions = {};
+        }
+        if (!Array.isArray(review.activeConsolidatedCustomizations.manual_additions[table])) {
+            review.activeConsolidatedCustomizations.manual_additions[table] = [];
+        }
+
+        const newId = `added_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        review.activeConsolidatedCustomizations.manual_additions[table].push({
+            id: newId,
+            table,
+            title,
+            description: desc,
+            start_date: startDate,
+            end_date: endDate,
+            venue,
+            remarks,
+            contributing_faculty_name: global.currentFaculty?.full_name || 'Chairperson Addition',
+            contributing_status_label: 'Added by Chairperson',
+            created_at: new Date().toISOString()
+        });
+
+        review.activeConsolidatedHasUnsavedChanges = true;
+        closeAddAccomplishmentModal();
+        rerenderConsolidatedMfoInPlace();
+        toast('New entry added to section. Click "Save Draft" to persist.', 'info');
+    }
+
+    function removeConsolidatedAccomplishment(table, rowId) {
+        if (typeof document === 'undefined') return;
+        if (checkConsolidatedReportLockedToast('remove accomplishments')) return;
+        review.pendingRemoveTarget = { table, rowId };
+
+        const consolidation = review.activeConsolidatedModel;
+        const items = consolidation?.sections?.[table] || [];
+        const item = items.find((i) => (i.id != null && String(i.id) === String(rowId)) || (i._source?.sourceRowId && String(i._source.sourceRowId) === String(rowId)));
+        const title = item?.title || item?.activity_title || item?.name || 'this accomplishment';
+
+        const modal = document.getElementById('chairRemoveAccomplishmentModal');
+        const titleEl = document.getElementById('chairRemoveItemTitle');
+        if (titleEl) titleEl.textContent = title;
+        modal?.classList.add('open');
+    }
+
+    function closeRemoveAccomplishmentModal() {
+        if (typeof document === 'undefined') return;
+        review.pendingRemoveTarget = null;
+        document.getElementById('chairRemoveAccomplishmentModal')?.classList.remove('open');
+    }
+
+    function confirmRemoveAccomplishment() {
+        if (checkConsolidatedReportLockedToast('remove accomplishments')) return;
+        const target = review.pendingRemoveTarget;
+        if (!target) return;
+        const { table, rowId } = target;
+
+        if (!review.activeConsolidatedCustomizations) {
+            review.activeConsolidatedCustomizations = {
+                manual_overrides: {},
+                manual_additions: {},
+                manual_removals: {},
+                source_snapshots: {},
+                program_portion_overrides: {}
+            };
+        }
+        if (!review.activeConsolidatedCustomizations.manual_removals) {
+            review.activeConsolidatedCustomizations.manual_removals = {};
+        }
+
+        const isAddition = String(rowId).startsWith('added_');
+        if (isAddition) {
+            const list = review.activeConsolidatedCustomizations.manual_additions[table] || [];
+            review.activeConsolidatedCustomizations.manual_additions[table] = list.filter((a) => String(a.id) !== String(rowId));
+        } else {
+            review.activeConsolidatedCustomizations.manual_removals[rowId] = {
+                removed_at: new Date().toISOString(),
+                reason: 'Removed by Chairperson'
+            };
+        }
+
+        review.activeConsolidatedHasUnsavedChanges = true;
+        closeRemoveAccomplishmentModal();
+        rerenderConsolidatedMfoInPlace();
+        toast('Accomplishment removed from consolidated report. (Section structure remains intact).', 'info');
+    }
+
+    function restoreConsolidatedAccomplishment(table, rowId) {
+        if (checkConsolidatedReportLockedToast('restore accomplishments')) return;
+        if (!review.activeConsolidatedCustomizations?.manual_removals) return;
+        delete review.activeConsolidatedCustomizations.manual_removals[rowId];
+        review.activeConsolidatedHasUnsavedChanges = true;
+        rerenderConsolidatedMfoInPlace();
+        toast('Accomplishment restored to consolidated report.', 'info');
+    }
+
+    function setConsolidatedFilter(filter) {
+        review.activeConsolidatedFilter = filter;
+        rerenderConsolidatedMfoInPlace();
+    }
+
+    function setConsolidatedSearch(search) {
+        review.activeConsolidatedSearch = search;
+        rerenderConsolidatedMfoInPlace();
+    }
+
+    function openSourceUpdatesModal() {
+        if (typeof document === 'undefined') return;
+        const modal = document.getElementById('chairSourceUpdatesModal');
+        const listEl = document.getElementById('chairSourceUpdatesList');
+        if (!modal || !listEl) return;
+
+        const staleness = review.activeConsolidatedStaleness;
+        const updates = staleness?.sourceUpdates;
+        if (!updates || !updates.hasUpdates || !updates.updatedRows.length) {
+            toast('No pending source updates to review.', 'info');
+            return;
+        }
+
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        const secMap = new Map((engine?.MFO_SECTIONS || []).map((s) => [s.table, s]));
+
+        listEl.innerHTML = updates.updatedRows.map((row) => {
+            const secDef = secMap.get(row.table);
+            const secLabel = secDef ? `${secDef.group} — ${secDef.title}` : row.table;
+            const diffs = row.diffs || {};
+            const chairOverride = (review.activeConsolidatedCustomizations?.manual_overrides || {})[row.rowId];
+
+            return `
+                <div class="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2.5">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">${esc(secLabel)}</span>
+                            <span class="font-bold text-slate-900 text-xs">${esc(row.title || 'Accomplishment')}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button type="button" class="chair-btn-secondary text-xs py-1 px-2.5" onclick="CiteFlowChairReview.declineSourceUpdate('${row.table}', '${row.rowId}')" title="Keep Chairperson's version">
+                                <i class="fa-solid fa-xmark mr-1"></i> Decline Update
+                            </button>
+                            <button type="button" class="chair-btn-primary text-xs py-1 px-2.5" onclick="CiteFlowChairReview.acceptSourceUpdate('${row.table}', '${row.rowId}')" title="Accept new faculty values">
+                                <i class="fa-solid fa-check mr-1"></i> Accept Update
+                            </button>
+                        </div>
+                    </div>
+
+                    ${chairOverride ? `
+                        <div class="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                            <span>You have already manually edited this item. Accepting will update the baseline; declining preserves your manual edits.</span>
+                        </div>
+                    ` : ''}
+
+                    <div class="divide-y divide-slate-100 text-xs">
+                        ${Object.keys(diffs).map((fieldKey) => {
+                            const diff = diffs[fieldKey];
+                            return `
+                                <div class="py-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <div>
+                                        <span class="text-[10px] uppercase font-bold text-slate-400 block">${esc(diff.label || fieldKey)}</span>
+                                    </div>
+                                    <div class="p-2 rounded bg-slate-50 border border-slate-200">
+                                        <span class="text-[10px] uppercase font-bold text-slate-400 block">Baseline Value</span>
+                                        <span class="text-slate-600 text-[11px]">${esc(diff.previousValue || '(empty)')}</span>
+                                    </div>
+                                    <div class="p-2 rounded bg-blue-50 border border-blue-200">
+                                        <span class="text-[10px] uppercase font-bold text-blue-600 block">Updated by Faculty</span>
+                                        <span class="text-blue-900 text-[11px] font-semibold">${esc(diff.currentFacultyValue || '(empty)')}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        modal.classList.add('open');
+    }
+
+    function closeSourceUpdatesModal() {
+        if (typeof document === 'undefined') return;
+        document.getElementById('chairSourceUpdatesModal')?.classList.remove('open');
+    }
+
+    function acceptSourceUpdate(table, rowId) {
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        if (!engine) return;
+
+        const diffItem = review.activeConsolidatedStaleness?.sourceUpdates?.updatedRows?.find((r) => String(r.rowId) === String(rowId));
+        if (!diffItem) return;
+
+        engine.applySourceUpdateDecision({
+            customizations: review.activeConsolidatedCustomizations,
+            diffItem,
+            decision: 'accept'
+        });
+
+        review.activeConsolidatedHasUnsavedChanges = true;
+        toast(`Accepted faculty update for "${diffItem.title || 'Accomplishment'}".`, 'info');
+
+        refreshStalenessAfterDecision();
+    }
+
+    function declineSourceUpdate(table, rowId) {
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        if (!engine) return;
+
+        const diffItem = review.activeConsolidatedStaleness?.sourceUpdates?.updatedRows?.find((r) => String(r.rowId) === String(rowId));
+        if (!diffItem) return;
+
+        engine.applySourceUpdateDecision({
+            customizations: review.activeConsolidatedCustomizations,
+            diffItem,
+            decision: 'decline'
+        });
+
+        review.activeConsolidatedHasUnsavedChanges = true;
+        toast(`Declined update for "${diffItem.title || 'Accomplishment'}". Current report copy preserved.`, 'info');
+
+        refreshStalenessAfterDecision();
+    }
+
+    function acceptAllSourceUpdates() {
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        if (!engine) return;
+
+        const rows = review.activeConsolidatedStaleness?.sourceUpdates?.updatedRows || [];
+        rows.forEach((diffItem) => {
+            engine.applySourceUpdateDecision({
+                customizations: review.activeConsolidatedCustomizations,
+                diffItem,
+                decision: 'accept'
+            });
+        });
+
+        review.activeConsolidatedHasUnsavedChanges = true;
+        toast(`Accepted all ${rows.length} faculty updates.`, 'info');
+        closeSourceUpdatesModal();
+        refreshStalenessAfterDecision();
+    }
+
+    function refreshStalenessAfterDecision() {
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        const task = taskMap().get(String(review.activeConsolidatedMfoTaskId));
+        if (!task || !engine) return;
+        const dept = chairDepartment();
+        const taskSubmissions = (scopedSubmissions()).filter((s) => String(s.task_id) === String(task.id));
+        const taskPackets = (review.mfoPackets || []).filter((p) => String(p.task_id) === String(task.id));
+
+        const staleness = engine.detectConsolidatedDraftStaleness({
+            taskId: task.id,
+            department: dept,
+            draft: review.activeConsolidatedDraft,
+            submissions: taskSubmissions,
+            packets: taskPackets,
+            childRows: review.activeConsolidatedChildRows || {},
+            sourceSnapshots: review.activeConsolidatedCustomizations?.source_snapshots,
+            facultyList: review.faculty || [],
+            actorFaculty: global.currentFaculty,
+            delegatedAccess: effectiveGrants()
+        });
+
+        review.activeConsolidatedStaleness = staleness;
+        if (!staleness.sourceUpdates?.hasUpdates) {
+            closeSourceUpdatesModal();
+        } else {
+            openSourceUpdatesModal();
+        }
+        rerenderConsolidatedMfoInPlace();
+    }
+
+    function openEditProgramPortionModal(type, index) {
+        if (typeof document === 'undefined') return;
+        if (checkConsolidatedReportLockedToast('edit program metrics')) return;
+        const modal = document.getElementById('chairEditProgramPortionModal');
+        if (!modal) return;
+
+        const idx = Number(index) || 0;
+        const typeInp = document.getElementById('chairProgramPortionType');
+        const indexInp = document.getElementById('chairProgramPortionIndex');
+        if (typeInp) typeInp.value = type;
+        if (indexInp) indexInp.value = String(idx);
+
+        const isPi1 = type === 'pi1';
+        const titleEl = document.getElementById('chairEditProgramModalTitle');
+        if (titleEl) {
+            titleEl.textContent = isPi1
+                ? 'Edit PI1 — Licensure Examination Results'
+                : 'Edit PI2 — Graduate Employment Tracking';
+        }
+
+        const pi1Fields = document.getElementById('chairPi1Fields');
+        const pi2Fields = document.getElementById('chairPi2Fields');
+        if (pi1Fields) pi1Fields.style.display = isPi1 ? 'block' : 'none';
+        if (pi2Fields) pi2Fields.style.display = isPi1 ? 'none' : 'block';
+
+        const row = review.activeConsolidatedModel?.programPortion?.[type]?.[idx] || {};
+
+        if (isPi1) {
+            const exName = document.getElementById('chairPi1ExamName');
+            const exDate = document.getElementById('chairPi1ExamDate');
+            const exTakers = document.getElementById('chairPi1Takers');
+            const exPassers = document.getElementById('chairPi1Passers');
+            const exRate = document.getElementById('chairPi1PassingRate');
+
+            if (exName) exName.value = row.exam_name || '';
+            if (exDate) exDate.value = row.exam_date || '';
+            if (exTakers) exTakers.value = row.total_takers != null ? row.total_takers : '';
+            if (exPassers) exPassers.value = row.total_passers != null ? row.total_passers : '';
+            if (exRate) exRate.value = row.passing_rate != null ? row.passing_rate : '';
+        } else {
+            const cohort = document.getElementById('chairPi2Cohort');
+            const grads = document.getElementById('chairPi2Graduates');
+            const emp = document.getElementById('chairPi2Employed');
+            const empPct = document.getElementById('chairPi2EmployedPct');
+
+            if (cohort) cohort.value = row.cohort_label || '';
+            if (grads) grads.value = row.total_graduates != null ? row.total_graduates : '';
+            if (emp) emp.value = row.employed_graduates != null ? row.employed_graduates : '';
+            if (empPct) empPct.value = row.employed_percentage != null ? row.employed_percentage : '';
+        }
+
+        modal.classList.add('open');
+    }
+
+    function closeEditProgramPortionModal() {
+        if (typeof document === 'undefined') return;
+        document.getElementById('chairEditProgramPortionModal')?.classList.remove('open');
+    }
+
+    function saveEditProgramPortion() {
+        if (typeof document === 'undefined') return;
+        if (checkConsolidatedReportLockedToast('save program metrics')) return;
+        const type = document.getElementById('chairProgramPortionType')?.value || 'pi1';
+        const idx = Number(document.getElementById('chairProgramPortionIndex')?.value) || 0;
+
+        if (!review.activeConsolidatedCustomizations) {
+            review.activeConsolidatedCustomizations = {
+                manual_overrides: {},
+                manual_additions: {},
+                manual_removals: {},
+                source_snapshots: {},
+                program_portion_overrides: {}
+            };
+        }
+        if (!review.activeConsolidatedCustomizations.program_portion_overrides) {
+            review.activeConsolidatedCustomizations.program_portion_overrides = {};
+        }
+        if (!Array.isArray(review.activeConsolidatedCustomizations.program_portion_overrides[type])) {
+            review.activeConsolidatedCustomizations.program_portion_overrides[type] = [];
+        }
+
+        const isPi1 = type === 'pi1';
+        const override = isPi1 ? {
+            exam_name: document.getElementById('chairPi1ExamName')?.value?.trim(),
+            exam_date: document.getElementById('chairPi1ExamDate')?.value?.trim(),
+            total_takers: Number(document.getElementById('chairPi1Takers')?.value) || 0,
+            total_passers: Number(document.getElementById('chairPi1Passers')?.value) || 0,
+            passing_rate: Number(document.getElementById('chairPi1PassingRate')?.value) || 0
+        } : {
+            cohort_label: document.getElementById('chairPi2Cohort')?.value?.trim(),
+            total_graduates: Number(document.getElementById('chairPi2Graduates')?.value) || 0,
+            employed_graduates: Number(document.getElementById('chairPi2Employed')?.value) || 0,
+            employed_percentage: Number(document.getElementById('chairPi2EmployedPct')?.value) || 0
+        };
+
+        review.activeConsolidatedCustomizations.program_portion_overrides[type][idx] = override;
+        review.activeConsolidatedHasUnsavedChanges = true;
+        closeEditProgramPortionModal();
+        rerenderConsolidatedMfoInPlace();
+        toast('Program portion metrics updated. Click "Save Draft" to persist.', 'info');
+    }
+
+    async function saveConsolidatedMfoEdits() {
+        if (checkConsolidatedReportLockedToast('save draft edits')) return;
+        const taskId = review.activeConsolidatedMfoTaskId;
+        if (!taskId) return;
+        const task = taskMap().get(String(taskId));
+        if (!task) return;
+
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        if (!engine) return;
+
+        const dept = chairDepartment();
+        const client = db();
+
+        try {
+            let programPacket = review.activeConsolidatedDraft;
+            if (client && (!programPacket || !programPacket.id)) {
+                const res = await client.from('mfo_program_packets')
+                    .select('*')
+                    .eq('task_id', task.id)
+                    .ilike('department', dept)
+                    .maybeSingle();
+                if (res?.data) programPacket = res.data;
+            }
+
+            if (!programPacket) {
+                toast('No consolidated draft exists to save edits. Please create a draft first.', 'warn');
+                return;
+            }
+
+            const formattedCustomizations = engine.formatManualCustomizations(review.activeConsolidatedCustomizations);
+            const mergedNotes = engine.mergeNotesMetadata(programPacket.notes, formattedCustomizations);
+
+            if (client && programPacket.id) {
+                const { error: updateErr } = await client.from('mfo_program_packets').update({
+                    notes: JSON.stringify(mergedNotes),
+                    updated_at: new Date().toISOString()
+                }).eq('id', programPacket.id);
+                if (updateErr) throw updateErr;
+
+                // Also record a draft snapshot for auditability
+                const consolidation = review.activeConsolidatedModel;
+                if (consolidation?.frozenPayload) {
+                    try {
+                        await client.from('mfo_snapshots').insert({
+                            program_packet_id: programPacket.id,
+                            version_no: programPacket.current_version || 1,
+                            lifecycle_state: 'draft',
+                            snapshot_reason: 'Draft manual edits saved by Chairperson',
+                            payload: consolidation.frozenPayload,
+                            created_by_faculty_id: global.currentFaculty?.id || null
+                        });
+                    } catch (snapErr) {
+                        console.warn('[Save Edits Snapshot]', snapErr);
+                    }
+                }
+            } else {
+                programPacket.notes = JSON.stringify(mergedNotes);
+            }
+
+            review.activeConsolidatedHasUnsavedChanges = false;
+            toast('Consolidated report draft and manual edits saved successfully!', 'success');
+            await loadAndRenderConsolidatedMfo(task.id);
+        } catch (err) {
+            console.error('[Save Consolidated Edits]', err);
+            toast('Failed to save consolidated edits: ' + (err?.message || err), 'error');
         }
     }
 
@@ -3802,6 +4975,8 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         openConsolidatedMfo,
         closeConsolidatedMfo,
         createConsolidatedDraft,
+        createCorrectedVersion,
+        isConsolidatedReportLocked,
         regenerateMfoDraftModal,
         acknowledgeMfoDraftModal,
         toggleExclusionModal,
@@ -3812,6 +4987,31 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         checkAndRenderMfoDraftBanner,
         regenerateMfoDraft,
         acknowledgeMfoDraft,
+        rerenderConsolidatedMfoInPlace,
+        openEditAccomplishmentModal,
+        closeEditAccomplishmentModal,
+        saveEditAccomplishment,
+        openAddAccomplishmentModal,
+        closeAddAccomplishmentModal,
+        saveAddAccomplishment,
+        OFFICIAL_CONSOLIDATED_SECTIONS,
+        getOfficialMfoSections,
+        populateOfficialSectionDropdowns,
+        removeConsolidatedAccomplishment,
+        closeRemoveAccomplishmentModal,
+        confirmRemoveAccomplishment,
+        restoreConsolidatedAccomplishment,
+        setConsolidatedFilter,
+        setConsolidatedSearch,
+        openSourceUpdatesModal,
+        closeSourceUpdatesModal,
+        acceptSourceUpdate,
+        declineSourceUpdate,
+        acceptAllSourceUpdates,
+        openEditProgramPortionModal,
+        closeEditProgramPortionModal,
+        saveEditProgramPortion,
+        saveConsolidatedMfoEdits,
         openArReview,
         closeArReview,
         updateArStatus,
@@ -3827,7 +5027,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         closeSubmitConsolidatedMfoModal,
         confirmSubmitConsolidatedMfo,
         renderCard,
-        renderConsolidatedMfoModalView
+        _reviewState: review
     };
 
     global.CiteFlowChairReview = CiteFlowChairReview;

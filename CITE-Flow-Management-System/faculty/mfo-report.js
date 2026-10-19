@@ -868,7 +868,12 @@
     function statusLabel() {
         if (state.isConsolidated) {
             const draft = state.programDraft || state.programPacket;
-            if (draft?.consolidation_status === 'certified' || draft?.certified_at || draft?.packet_state === 'submitted' || draft?.certified_by_name) {
+            const pState = String(draft?.packet_state || '').toLowerCase();
+            if (pState === 'approved') return 'Consolidated — Approved by Dean\'s Office';
+            if (pState === 'revision') return 'Consolidated — Revision Requested by Dean\'s Office';
+            if (pState === 'declined') return 'Consolidated — Declined by Dean\'s Office';
+            if (pState === 'resubmitted') return 'Consolidated — Resubmitted to Dean\'s Office';
+            if (draft?.consolidation_status === 'certified' || draft?.certified_at || pState === 'submitted' || draft?.certified_by_name) {
                 return 'Consolidated — Certified by Program Chairperson';
             }
             return 'Consolidated — Program Draft';
@@ -1038,14 +1043,24 @@
             const session = await requireSession();
             state.session = session;
             if (session?.user) state.user = session.user;
-            const sidebarPromise = typeof global.loadSidebar === 'function'
+            const params = new URLSearchParams(window.location.search);
+            const isEmbeddedPage = params.get('embed') === '1' || window.self !== window.top;
+            if (isEmbeddedPage) {
+                document.documentElement.classList.add('mfo-embedded');
+                document.body?.classList.add('mfo-embedded');
+            }
+            const sidebarPromise = (!isEmbeddedPage && typeof global.loadSidebar === 'function')
                 ? Promise.resolve().then(() => global.loadSidebar()).catch((e) => warn('sidebar', e)) : Promise.resolve();
             try { await db().rpc('wf_link_faculty_auth_user_if_safe'); } catch (_) { /* optional */ }
             void sidebarPromise;
 
-            const params = new URLSearchParams(window.location.search);
             if (params.get('view') === 'consolidated' || params.get('consolidated') === 'true') {
-                await initConsolidatedMode(params.get('task') || params.get('task_id'), params.get('dept') || params.get('department'));
+                await initConsolidatedMode(
+                    params.get('task') || params.get('task_id'),
+                    params.get('dept') || params.get('department'),
+                    params.get('packet') || params.get('packet_id') || params.get('program_packet_id'),
+                    params.get('version') || params.get('v')
+                );
                 return;
             }
             if (params.get('view') === 'review' && params.get('submission')) {
@@ -1289,7 +1304,7 @@
         render();
     }
 
-    async function initConsolidatedMode(taskId, deptParam) {
+    async function initConsolidatedMode(taskId, deptParam, packetIdParam, versionParam) {
         state.isConsolidated = true;
         state.locked = true;
         state.reviewerMode = false;
@@ -1303,18 +1318,63 @@
         state.session = session;
         if (session?.user) state.user = session.user;
 
-        // 2. Resolve Chairperson Profile from logged-in user
-        state.chairFaculty = await resolveFaculty(state.user || session.user);
-        if (!state.chairFaculty) {
-            throw new Error('No faculty profile found for the signed-in Chairperson account. Please check your account registration.');
+        // 2. Resolve current user faculty profile & check Final Approver / Dean / Admin role
+        let currentFaculty = null;
+        try {
+            currentFaculty = await resolveFaculty(state.user || session.user);
+        } catch (_) {}
+
+        let isFinalApprover = false;
+        try {
+            const finalRes = await withTimeout(client.rpc('wf_is_final_approver'), 2000, { data: false });
+            isFinalApprover = !!finalRes?.data;
+        } catch (_) {}
+
+        if (!isFinalApprover) {
+            const role = String(currentFaculty?.role || currentFaculty?.position || state.user?.user_metadata?.role || '').toLowerCase();
+            const adminRoles = ['admin', 'dean', 'college_secretary', 'administrator', 'superadmin'];
+            isFinalApprover = adminRoles.includes(role) || currentFaculty?.admin_access === true || currentFaculty?.is_admin === true;
         }
-        state.faculty = state.chairFaculty;
+        state.isFinalApprover = isFinalApprover;
 
-        // 3. Resolve Target Department
-        const chairDept = state.chairFaculty.department_code || state.chairFaculty.department || '';
-        const targetDept = String(deptParam || chairDept || '').trim();
+        // 3. Resolve Program Packet record (mfo_program_packets)
+        let programPacket = null;
+        if (packetIdParam) {
+            try {
+                const pktRes = await withTimeout(
+                    client.from('mfo_program_packets')
+                        .select('*')
+                        .eq('id', packetIdParam)
+                        .maybeSingle(),
+                    3000,
+                    { data: null }
+                );
+                if (pktRes?.data) programPacket = pktRes.data;
+            } catch (e) {
+                warn('fetch mfo_program_packets by id', e);
+            }
+        }
 
-        // 4. Resolve Task
+        if (!programPacket && taskId) {
+            try {
+                let query = client.from('mfo_program_packets').select('*').eq('task_id', taskId);
+                if (deptParam) query = query.ilike('department', deptParam);
+                const pktRes = await withTimeout(query.maybeSingle(), 3000, { data: null });
+                if (pktRes?.data) programPacket = pktRes.data;
+            } catch (e) {
+                warn('fetch mfo_program_packets by task', e);
+            }
+        }
+        state.programPacket = programPacket;
+
+        // 4. Resolve Target Department
+        const chairDept = currentFaculty?.department_code || currentFaculty?.department || '';
+        const targetDept = String(deptParam || programPacket?.department || chairDept || '').trim();
+
+        // 5. Resolve Task ID and fetch task
+        if (!taskId && programPacket?.task_id) {
+            taskId = programPacket.task_id;
+        }
         if (!taskId) {
             throw new Error('No MFO Task ID was provided to consolidate.');
         }
@@ -1341,63 +1401,206 @@
             }
         });
 
-        // 5. Verify Chairperson / OIC Authorization
         const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        const workflowHelper = global.CiteFlowWorkflow || (typeof require !== 'undefined' ? require('../shared/workflow.js') : null);
+
+        // Load active delegated access grants for authorization and consolidation
         let grants = [];
         try {
-            if (global.CiteFlowWorkflow?.loadActiveDelegatedAccess) {
-                grants = await global.CiteFlowWorkflow.loadActiveDelegatedAccess(client);
+            if (workflowHelper?.loadActiveDelegatedAccess) {
+                grants = await workflowHelper.loadActiveDelegatedAccess(client);
+            } else if (client?.from) {
+                const { data } = await client.from('wf_delegated_access').select('*');
+                grants = (data || []).filter(g => g && g.is_active !== false);
             }
         } catch (_) {}
+        state.grants = grants;
 
-        if (engine?.verifyChairpersonDepartmentAccess) {
-            const auth = engine.verifyChairpersonDepartmentAccess(state.chairFaculty, targetDept, grants);
-            if (!auth.authorized) {
-                throw new Error(`You are not authorized to view the consolidated MFO report for the ${targetDept.toUpperCase()} department.`);
+        // 6. Enforce Chairperson Department Authorization (if NOT Dean / Final Approver)
+        if (!isFinalApprover) {
+            state.chairFaculty = currentFaculty;
+            if (!state.chairFaculty) {
+                throw new Error('No faculty profile found for the signed-in Chairperson account. Please check your account registration.');
+            }
+            state.faculty = state.chairFaculty;
+
+            if (engine?.verifyChairpersonDepartmentAccess) {
+                const auth = engine.verifyChairpersonDepartmentAccess(state.chairFaculty, targetDept, grants);
+                if (!auth.authorized) {
+                    throw new Error(`You are not authorized to view the consolidated MFO report for the ${targetDept.toUpperCase()} department.`);
+                }
+            }
+        } else {
+            if (!state.chairFaculty && currentFaculty) {
+                state.chairFaculty = currentFaculty;
+            }
+            if (!state.faculty && state.chairFaculty) {
+                state.faculty = state.chairFaculty;
             }
         }
 
-        // 6. Load Program Draft & Program Packet
-        let programPacket = null;
-        try {
-            const draftRes = await withTimeout(
-                client.from('mfo_program_drafts')
-                    .select('*')
-                    .eq('task_id', state.task.id)
-                    .ilike('department', targetDept)
-                    .maybeSingle(),
-                3000,
-                { data: null }
-            );
-            if (draftRes?.data) {
-                state.programDraft = draftRes.data;
-                programPacket = draftRes.data;
-            }
-        } catch (e) {
-            warn('fetch mfo_program_drafts', e);
-        }
-
-        if (!programPacket) {
+        // 7. Check for Submitted Snapshot in mfo_snapshots
+        let snapshot = null;
+        if (programPacket?.id) {
             try {
-                const pktRes = await withTimeout(
-                    client.from('mfo_program_packets')
-                        .select('*')
-                        .eq('task_id', state.task.id)
-                        .ilike('department', targetDept)
-                        .maybeSingle(),
+                let snapQuery = client.from('mfo_snapshots')
+                    .select('*')
+                    .eq('program_packet_id', programPacket.id);
+
+                if (versionParam) {
+                    snapQuery = snapQuery.eq('version_no', parseInt(versionParam, 10));
+                } else if (programPacket.current_version) {
+                    snapQuery = snapQuery.eq('version_no', programPacket.current_version);
+                }
+
+                const snapRes = await withTimeout(
+                    snapQuery.order('created_at', { ascending: false }),
                     3000,
-                    { data: null }
+                    { data: [] }
                 );
-                if (pktRes?.data) {
-                    programPacket = pktRes.data;
+                const candidates = Array.isArray(snapRes?.data) ? snapRes.data : (snapRes?.data ? [snapRes.data] : []);
+                if (candidates.length > 0) {
+                    snapshot = candidates.find(s => s?.payload && (s.payload.sections || s.payload.all_sections || s.payload.frozenPayload?.sections))
+                        || candidates.find(s => s?.snapshot_reason === 'submitted_to_dean' || s?.snapshot_reason === 'resubmitted_to_dean')
+                        || candidates[0];
+                } else {
+                    const fallbackRes = await withTimeout(
+                        client.from('mfo_snapshots')
+                            .select('*')
+                            .eq('program_packet_id', programPacket.id)
+                            .order('created_at', { ascending: false }),
+                        3000,
+                        { data: [] }
+                    );
+                    const fallbackCandidates = Array.isArray(fallbackRes?.data) ? fallbackRes.data : (fallbackRes?.data ? [fallbackRes.data] : []);
+                    if (fallbackCandidates.length > 0) {
+                        snapshot = fallbackCandidates.find(s => s?.payload && (s.payload.sections || s.payload.all_sections || s.payload.frozenPayload?.sections))
+                            || fallbackCandidates.find(s => s?.snapshot_reason === 'submitted_to_dean' || s?.snapshot_reason === 'resubmitted_to_dean')
+                            || fallbackCandidates[0];
+                    }
                 }
             } catch (e) {
-                warn('fetch mfo_program_packets', e);
+                warn('fetch mfo_snapshots', e);
             }
         }
-        state.programPacket = programPacket;
 
-        // 7. Load Genuine Submissions, Faculty, and Packets
+        let snapshotPayload = snapshot?.payload || null;
+        if (snapshotPayload && snapshotPayload.frozenPayload?.sections) {
+            snapshotPayload = snapshotPayload.frozenPayload;
+        }
+        if ((!snapshotPayload || (!snapshotPayload.sections && !snapshotPayload.all_sections)) && programPacket?.notes) {
+            try {
+                if (typeof programPacket.notes === 'string' && programPacket.notes.trim().startsWith('{')) {
+                    const parsedNotes = JSON.parse(programPacket.notes);
+                    if (parsedNotes.sections || parsedNotes.frozenPayload?.sections) {
+                        snapshotPayload = parsedNotes.frozenPayload || parsedNotes;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // 8. If Submitted Snapshot Exists OR User is Final Approver (Dean), Render Frozen Snapshot
+        // When Chairperson is previewing working draft in draft/revision state without explicit version, fall through to Step 9
+        const packetState = String(programPacket?.packet_state || 'draft').toLowerCase();
+        const isSubmittedOrApproved = ['submitted', 'resubmitted', 'approved', 'declined'].includes(packetState);
+        const hasExplicitVersion = Boolean(versionParam);
+        const hasReportSections = Boolean(snapshotPayload && (snapshotPayload.sections || snapshotPayload.all_sections));
+        const shouldRenderSnapshot = hasReportSections || (isFinalApprover && snapshotPayload);
+
+        if (shouldRenderSnapshot) {
+            if (!snapshotPayload || (!snapshotPayload.sections && !snapshotPayload.all_sections)) {
+                throw new Error('No submitted consolidated MFO report snapshot was found for this department submission.');
+            }
+
+            const submittingChair = snapshotPayload.submitting_chairperson || {};
+            const chairName = submittingChair.name || submittingChair.full_name || 'Program Chairperson';
+            state.chairFaculty = {
+                id: submittingChair.id || programPacket?.chairperson_faculty_id || null,
+                full_name: chairName,
+                name: chairName,
+                employee_id: submittingChair.employee_id || null,
+                academic_rank: submittingChair.rank || null,
+                position: submittingChair.rank || null,
+                department: targetDept,
+                department_code: targetDept
+            };
+            state.faculty = state.chairFaculty;
+
+            state.programDraft = {
+                certified_by_name: chairName,
+                certified_at: snapshotPayload.submitted_at || snapshot?.created_at || programPacket?.updated_at,
+                packet_state: snapshotPayload.lifecycle_state || programPacket?.packet_state || 'submitted'
+            };
+
+            if (state.programPacket) {
+                state.programPacket.other_accomplishments = snapshotPayload.user_remarks || snapshotPayload.other_accomplishments || state.programPacket.other_accomplishments || '';
+            }
+
+            // Map sections to both table name and indicator code
+            const rawSections = snapshotPayload.sections || snapshotPayload.all_sections || {};
+            const mappedRows = {};
+            SECTIONS.forEach((def) => {
+                const list = rawSections[def.table] || rawSections[def.code] || [];
+                mappedRows[def.table] = Array.isArray(list) ? list : [];
+                mappedRows[def.code] = mappedRows[def.table];
+            });
+            Object.keys(rawSections).forEach((key) => {
+                if (!mappedRows[key] && Array.isArray(rawSections[key])) {
+                    mappedRows[key] = rawSections[key];
+                }
+            });
+            state.rows = mappedRows;
+
+            state.programRows = snapshotPayload.program_rows || snapshotPayload.program_portion || { pi1: [], pi2: [] };
+            state.contributingFacultyList = snapshotPayload.contributing_faculty || [];
+
+            const snapPeriod = snapshotPayload.reporting_period || {};
+            state.period = {
+                reporting_year: snapPeriod.reporting_year || programPacket?.reporting_year || state.task.reporting_year || new Date().getFullYear(),
+                quarter: snapPeriod.quarter || programPacket?.quarter || state.task.quarter || 1,
+                period_label: snapPeriod.period_label || programPacket?.period_label || state.task.reporting_period_label || 'Consolidated Accomplishment Report',
+                period_start: snapPeriod.period_start || state.task.period_start || null,
+                period_end: snapPeriod.period_end || state.task.period_end || null,
+                academic_year: snapPeriod.academic_year || state.task.academic_year || null,
+                semester: snapPeriod.semester || state.task.semester || null
+            };
+
+            autoMarkBlankSectionsAsNa();
+
+            // Hydrate submission files for gallery & evidence
+            const packetIds = new Set();
+            (state.contributingFacultyList || []).forEach((c) => {
+                if (c.packetId) packetIds.add(c.packetId);
+            });
+            Object.values(state.rows || {}).forEach((arr) => {
+                if (Array.isArray(arr)) {
+                    arr.forEach((row) => {
+                        if (row.packet_id) packetIds.add(row.packet_id);
+                    });
+                }
+            });
+
+            if (packetIds.size > 0) {
+                try {
+                    const filesRes = await withTimeout(
+                        client.from('wf_submission_files').select('*').in('mfo_packet_id', Array.from(packetIds)),
+                        4000,
+                        { data: [] }
+                    );
+                    state.files = filesRes?.data || [];
+                    await hydrateFileDisplayUrls(state.files);
+                } catch (e) {
+                    warn('submission files', e);
+                }
+            } else {
+                state.files = [];
+            }
+
+            renderPreview();
+            return;
+        }
+
+        // 9. Chairperson Working Draft Consolidation (when no submitted snapshot exists)
         const [subRes, facultyRes, packetsRes] = await Promise.all([
             withTimeout(client.from('wf_submissions').select('*').eq('task_id', state.task.id), 4000, { data: [] }),
             withTimeout(client.from('faculty').select('*'), 4000, { data: [] }),
@@ -1409,7 +1612,6 @@
         const taskPackets = packetsRes?.data || [];
         const packetIds = taskPackets.map((p) => p.id).filter(Boolean);
 
-        // 8. Load Child Accomplishment Rows
         const childRows = {};
         const sectionsToLoad = engine?.MFO_SECTIONS || SECTIONS;
         if (packetIds.length > 0) {
@@ -1423,7 +1625,6 @@
             }));
         }
 
-        // 9. Load Submission Files (documentation & photos)
         if (packetIds.length > 0) {
             try {
                 const filesRes = await withTimeout(client.from('wf_submission_files').select('*').in('mfo_packet_id', packetIds), 4000, { data: [] });
@@ -1434,7 +1635,6 @@
             }
         }
 
-        // 10. Load Program Rows (PI1 Licensure & PI2 Employment)
         const programRows = { pi1: [], pi2: [] };
         if (programPacket?.id) {
             try {
@@ -1450,7 +1650,6 @@
         }
         state.programRows = programRows;
 
-        // 11. Run Consolidation Engine
         let consolidation = null;
         if (engine?.buildDepartmentMfoConsolidation) {
             consolidation = engine.buildDepartmentMfoConsolidation({
@@ -1467,10 +1666,12 @@
             });
         }
 
-        // 12. Populate Compiled State
         if (consolidation?.frozenPayload?.sections) {
             state.rows = consolidation.frozenPayload.sections;
             state.contributingFacultyList = consolidation.contributingFaculty || [];
+            if (consolidation.programPortion) {
+                state.programRows = consolidation.programPortion;
+            }
             const snapPeriod = consolidation.frozenPayload.reporting_period || {};
             state.period = {
                 reporting_year: snapPeriod.reporting_year || state.task.reporting_year || new Date().getFullYear(),
@@ -1495,6 +1696,11 @@
     }
 
     function reviewerCanAct() {
+        if (state.isConsolidated) {
+            if (!state.isFinalApprover || !state.programPacket) return false;
+            const pState = String(state.programPacket.packet_state || '').toLowerCase();
+            return ['submitted', 'resubmitted', 'pending', 'underreview', 'in_review'].includes(pState);
+        }
         if (!state.reviewerMode || !state.submission) return false;
         const helper = global.CiteFlowWorkflow;
         const status = String(state.submission.status || '').toLowerCase();
@@ -1537,7 +1743,7 @@
         const action = modal.action;
         const comment = String(modal.comment || '').trim();
 
-        if ((action === 'revision' || action === 'rejected') && !comment) {
+        if ((action === 'revision' || action === 'rejected' || action === 'declined') && !comment) {
             modal.error = action === 'revision'
                 ? 'Please provide remarks explaining what needs revision.'
                 : 'Please provide a reason for declining this report.';
@@ -1549,12 +1755,53 @@
 
         if (!state.reviewerIsAdmin && action === 'approved') syncChairForm();
         closeReviewerModal();
-        await executeReviewAction(action, comment);
+        if (state.isConsolidated) {
+            await executeConsolidatedReviewAction(action, comment);
+        } else {
+            await executeReviewAction(action, comment);
+        }
     }
     const confirmReviewerModal = confirmReviewerAction;
 
     function reviewerAction(action) {
         openReviewerModal(action);
+    }
+
+    async function executeConsolidatedReviewAction(action, comment = '') {
+        const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
+        if (!engine?.applyConsolidatedMfoDeanReview || !state.programPacket) return;
+        const normalizedAction = (action === 'rejected' || action === 'decline') ? 'declined' : (action === 'approve' ? 'approved' : action);
+        const isApprove = normalizedAction === 'approved';
+        const busyMsg = isApprove ? 'Approving…' : normalizedAction === 'revision' ? 'Sending revision…' : 'Declining…';
+        if (!beginBusy(busyMsg)) return;
+        try {
+            const client = db();
+            const result = await engine.applyConsolidatedMfoDeanReview({
+                db: client,
+                programPacket: state.programPacket,
+                action: normalizedAction,
+                remarks: comment,
+                actorFaculty: state.chairFaculty || null,
+                actorName: state.user?.user_metadata?.full_name || 'Dean\'s Office'
+            });
+            if (!result.ok) {
+                toast(result.error || 'Failed to update review status.', 'error');
+                return;
+            }
+            const msg = isApprove
+                ? 'Department Consolidated MFO approved successfully!'
+                : (normalizedAction === 'revision'
+                    ? 'Revision requested. Chairperson notified.'
+                    : 'Department Consolidated MFO declined.');
+            toast(msg, 'success');
+            if (state.programPacket) state.programPacket.packet_state = result.nextState || normalizedAction;
+            render();
+        } catch (err) {
+            warn('consolidated review action', err);
+            toast('Review action failed: ' + (err?.message || err), 'error');
+        } finally {
+            endBusy();
+        }
     }
 
     async function executeReviewAction(action, comment = '') {
@@ -1725,7 +1972,9 @@
                 paperSize: state.paperSize || 'a4',
                 lastSaved: new Date().toISOString()
             };
-            localStorage.setItem(getBackupKey(), JSON.stringify(data));
+            if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(getBackupKey(), JSON.stringify(data));
+            }
         } catch (e) {
             warn('saveLocalBackup', e);
         }
@@ -1733,6 +1982,7 @@
 
     function loadLocalBackup() {
         try {
+            if (typeof localStorage === 'undefined') return null;
             const raw = localStorage.getItem(getBackupKey());
             return raw ? JSON.parse(raw) : null;
         } catch (e) {
@@ -3074,6 +3324,24 @@
             remarksPlaceholder = 'Specify the reason for declining this report...';
         }
 
+        if (state.isConsolidated) {
+            const deptLabel = (state.chairFaculty?.department || state.faculty?.department || 'Department').toUpperCase();
+            subtitle = `${deptLabel} Department Consolidated MFO`;
+            if (isApprove) {
+                title = 'Approve Department Consolidated MFO';
+                confirmBtnText = 'Final Approve';
+                promptText = `You are granting final institutional approval to the Department Consolidated MFO for <strong>${esc(deptLabel)}</strong> (Version ${state.programPacket?.current_version || 1}). The approved snapshot will be preserved as an immutable official record.`;
+            } else if (isRevision) {
+                title = 'Request Consolidated MFO Revision';
+                confirmBtnText = 'Request Revision';
+                promptText = `Return this consolidated report to the Chairperson of <strong>${esc(deptLabel)}</strong> for revisions. The Chairperson will be notified with your remarks so they can update accomplishments and resubmit.`;
+            } else if (isDecline) {
+                title = 'Decline Consolidated MFO Report';
+                confirmBtnText = 'Decline Report';
+                promptText = `Formally decline the Department Consolidated MFO for <strong>${esc(deptLabel)}</strong>. The Chairperson will be notified with your remarks and can create a corrected version to resubmit.`;
+            }
+        }
+
         return `
         <div class="mfo-review-overlay" onclick="if(event.target===this){CiteFlowMfoFaculty.closeReviewerModal()}">
             <div class="mfo-review-dialog" role="dialog" aria-modal="true" style="max-width: 500px;">
@@ -3669,8 +3937,12 @@
 
     function quarterLine(period) {
         const ordinals = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' };
-        const months = { 1: 'January to March', 2: 'April to June', 3: 'July to September', 4: 'October to December' };
         const q = Number(period.quarter || 0);
+        if (state.isConsolidated) {
+            const months = { 1: 'January - March', 2: 'April - June', 3: 'July - September', 4: 'October - December' };
+            return q && ordinals[q] ? `${ordinals[q]} Quarter – Months of ${months[q]}` : esc(period.period_label || '');
+        }
+        const months = { 1: 'January to March', 2: 'April to June', 3: 'July to September', 4: 'October to December' };
         return q && ordinals[q] ? `${ordinals[q]} Quarter, Months of ${months[q]}` : esc(period.period_label || '');
     }
 
@@ -3691,12 +3963,466 @@
         return `<div class="line" style="display:flex;align-items:flex-end;padding-bottom:2px;font-weight:600;">${esc(tv(name))}</div>`;
     }
 
+    function renderConsolidatedReportDocument() {
+        const period = state.period || {};
+        const profile = reportProfileModel();
+        const documentationEntries = reportPhotoEntries();
+        const chair = state.chairFaculty || state.faculty || {};
+        const chairDept = String(profile.department || state.task?.department || chair.department || chair.department_code || 'BSIT').trim();
+        const deptUpper = chairDept.toUpperCase();
+        const programTitle = String(profile.program || (deptUpper.includes('IT') || deptUpper === 'BSIT' ? 'Bachelor of Science in Information Technology' : (deptUpper.includes('DEPARTMENT') ? deptUpper : `Department of ${deptUpper}`))).toUpperCase();
+
+        const chairDeptLabel = deptUpper.includes('DEPARTMENT') ? deptUpper : `${deptUpper} Department`;
+        const chairDesignation = `Chair, ${chairDeptLabel}`;
+
+        const headerUnit = `
+            <div class="mfo-pdf-unit" style="text-align:center;margin-bottom:14px;">
+                ${reportHeader()}
+                <div class="mfo-doc-title" style="font-size:15px;font-weight:700;text-decoration:underline;margin-top:14px;margin-bottom:6px;letter-spacing:0.02em;">
+                    ${esc(programTitle)}
+                </div>
+                <div class="mfo-doc-title" style="font-size:13.5px;font-weight:700;margin-bottom:4px;letter-spacing:0.02em;">
+                    CONSOLIDATED ACCOMPLISHMENT REPORT – CY ${esc(period.reporting_year || new Date().getFullYear())}
+                </div>
+                <div class="mfo-doc-sub" style="font-size:12px;font-weight:700;">
+                    ${quarterLine(period)}
+                </div>
+            </div>
+        `;
+
+        function getRows(tableKey, altKey) {
+            const r1 = rowsOf(tableKey);
+            if (Array.isArray(r1) && r1.length) return r1;
+            if (altKey) {
+                const r2 = rowsOf(altKey);
+                if (Array.isArray(r2) && r2.length) return r2;
+            }
+            return [];
+        }
+
+        function formatAccomplishmentText(row, tableKey) {
+            if (!row) return '';
+            const title = String(row.title || row.activity_title || row.research_title || row.project_title || row.award_title || row.certification_title || row.training_title || row.course_title || row.program_enrolled || '').trim();
+            const desc = String(row.description || row.narrative || '').trim();
+
+            if (tableKey === 'mfo_pi1_licensure') {
+                if (row.exam_name) {
+                    const rate = row.passing_rate != null ? row.passing_rate : (row.total_takers ? Math.round((row.total_passers / row.total_takers) * 100) : 0);
+                    return `${row.exam_name}${row.exam_date ? ` (${row.exam_date})` : ''} — Passing Rate: ${rate}% (${row.total_passers || 0} passed / ${row.total_takers || 0} takers)`;
+                }
+            } else if (tableKey === 'mfo_pi2_employment') {
+                if (row.cohort_label) {
+                    const rate = row.employed_percentage != null ? row.employed_percentage : (row.total_graduates ? Math.round((row.employed_graduates / row.total_graduates) * 100) : 0);
+                    return `${row.cohort_label} — Employed Graduates: ${rate}% (${row.employed_graduates || 0} employed / ${row.total_graduates || 0} total graduates)`;
+                }
+            } else if (tableKey === 'mfo_pi4_syllabus') {
+                const courses = [row.subject_code, row.course_title].filter(Boolean).join(' — ');
+                const status = row.syllabus_status ? `Status: ${String(row.syllabus_status).replace(/_/g, ' ')}` : '';
+                const fac = row.contributing_faculty_name ? `Faculty: ${row.contributing_faculty_name}` : '';
+                const parts = [courses || title, status, fac].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_pi5_certifications') {
+                const cert = [row.certification_title || title, row.certification_nature].filter(Boolean).join(' — ');
+                const agency = row.granting_agency ? `Granting Agency: ${row.granting_agency}` : '';
+                const dt = row.date_granted ? `Date: ${row.date_granted}` : '';
+                const fac = row.contributing_faculty_name ? `Faculty: ${row.contributing_faculty_name}` : '';
+                const parts = [cert, agency, dt, fac].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_pi6_postgraduate') {
+                const prog = row.program_enrolled || title;
+                const inst = row.institution_name ? `Institution: ${row.institution_name}` : '';
+                const units = [row.earned_units != null ? `Earned: ${row.earned_units} units` : '', row.current_units != null ? `Current: ${row.current_units} units` : ''].filter(Boolean).join(', ');
+                const fac = row.contributing_faculty_name ? `Faculty: ${row.contributing_faculty_name}` : '';
+                const parts = [prog, inst, units, fac].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_pi7_trainings') {
+                const tTitle = row.title || row.training_title || title;
+                const venue = row.venue ? `Venue: ${row.venue}` : '';
+                const dt = row.activity_date || row.start_date ? `Date: ${row.activity_date || row.start_date}` : '';
+                const agency = row.sponsoring_agency ? `Sponsor: ${row.sponsoring_agency}` : '';
+                const fac = row.contributing_faculty_name ? `Faculty: ${row.contributing_faculty_name}` : '';
+                const parts = [tTitle, venue, dt, agency, fac].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_pi8_instructional_materials') {
+                const imTitle = row.title || title;
+                const imType = row.material_type ? `Type: ${row.material_type}` : '';
+                const courses = row.courses_utilizing ? `Courses: ${row.courses_utilizing}` : '';
+                const ip = row.ip_nature ? `IP: ${row.ip_nature}` : '';
+                const authors = row.authors_text || row.contributing_faculty_name ? `Authors: ${row.authors_text || row.contributing_faculty_name}` : '';
+                const parts = [imTitle, imType, courses, ip, authors].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_awards') {
+                const aTitle = row.award_title || row.title || title;
+                const aType = row.award_nature || row.award_type ? `Nature: ${row.award_nature || row.award_type}` : '';
+                const agency = row.granting_agency ? `Conferred by: ${row.granting_agency}` : '';
+                const dt = row.awarded_at ? `Date: ${row.awarded_at}` : '';
+                const fac = row.contributing_faculty_name ? `Recipient: ${row.contributing_faculty_name}` : '';
+                const parts = [aTitle, aType, agency, dt, fac].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_other_initiatives') {
+                const oTitle = row.activity_title || row.title || title;
+                const venue = row.venue ? `Venue: ${row.venue}` : '';
+                const dt = row.activity_date ? `Date: ${row.activity_date}` : '';
+                const students = row.students_involved ? `Students: ${row.students_involved}${row.student_role ? ` (${row.student_role})` : ''}` : '';
+                const faculty = row.faculty_involved || row.contributing_faculty_name ? `Faculty: ${row.faculty_involved || row.contributing_faculty_name}${row.faculty_role ? ` (${row.faculty_role})` : ''}` : '';
+                const parts = [oTitle, venue, dt, students, faculty].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_research_utilized') {
+                const rTitle = row.research_title || row.title || title;
+                const util = row.utilization_nature ? `Utilization: ${row.utilization_nature}` : '';
+                const partner = row.partner_name ? `Partner: ${row.partner_name}${row.partner_address ? ` (${row.partner_address})` : ''}` : '';
+                const prop = row.proponents_text || row.contributing_faculty_name ? `Proponents: ${row.proponents_text || row.contributing_faculty_name}` : '';
+                const parts = [rTitle, util, partner, prop].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_research_published' || tableKey === 'mfo_research_completed') {
+                const rTitle = row.research_title || row.title || title;
+                const pub = row.publication_name ? `Publication: ${row.publication_name}` : (row.research_status ? `Status: ${row.research_status}` : '');
+                const dt = row.published_at || row.completed_at ? `Date: ${row.published_at || row.completed_at}` : '';
+                const fund = row.funding_source ? `Funding: ${row.funding_source}` : '';
+                const prop = row.proponents_text || row.contributing_faculty_name ? `Proponents: ${row.proponents_text || row.contributing_faculty_name}` : '';
+                const parts = [rTitle, pub, dt, fund, prop].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_research_presented') {
+                const rTitle = row.research_title || row.title || title;
+                const conf = row.conference_title ? `Conference: ${row.conference_title}` : '';
+                const venue = row.venue ? `Venue: ${row.venue}` : '';
+                const dt = row.presented_at ? `Date: ${row.presented_at}` : '';
+                const prop = row.proponents_text || row.contributing_faculty_name ? `Proponents: ${row.proponents_text || row.contributing_faculty_name}` : '';
+                const parts = [rTitle, conf, venue, dt, prop].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_extension_partnerships') {
+                const pTitle = row.project_title || row.title || title;
+                const partner = row.partner_name ? `Partner: ${row.partner_name} (${row.has_moa ? 'with MOA' : 'without MOA'})` : '';
+                const loc = row.project_locale ? `Locale: ${row.project_locale}` : '';
+                const prop = row.proponents_text || row.contributing_faculty_name ? `Proponents: ${row.proponents_text || row.contributing_faculty_name}` : '';
+                const parts = [pTitle, partner, loc, prop].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            } else if (tableKey === 'mfo_extension_trainings') {
+                const tTitle = row.training_title || row.title || title;
+                const partner = row.partner_agency ? `Partner: ${row.partner_agency}` : '';
+                const ben = (row.beneficiaries_male != null || row.beneficiaries_female != null) ? `Beneficiaries: Male: ${row.beneficiaries_male || 0}, Female: ${row.beneficiaries_female || 0}` : '';
+                const hrs = row.training_hours != null ? `Hours: ${row.training_hours}` : '';
+                const parts = [tTitle, partner, ben, hrs].filter(Boolean);
+                if (parts.length) return parts.join(' | ');
+            }
+
+            if (title && desc) return `${title} — ${desc}`;
+            return title || desc || '—';
+        }
+
+        function renderStandard3ColumnTable(subheading, rows, defaultPiText, tableKey) {
+            let bodyHtml = '';
+            if (Array.isArray(rows) && rows.length > 0) {
+                bodyHtml = rows.map((row, idx) => {
+                    const pi = idx === 0 ? esc(defaultPiText || '') : '';
+                    const acc = esc(formatAccomplishmentText(row, tableKey));
+                    const strat = esc(row.remarks || row.outcomes || row.ched_strategies || '');
+                    return `
+                        <tr class="mfo-pdf-unit">
+                            <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:24%;">${pi}</td>
+                            <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:48%;">${acc}</td>
+                            <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:28%;">${strat}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                bodyHtml = `
+                    <tr class="mfo-pdf-unit">
+                        <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:24%;height:38px;">${esc(defaultPiText || '')}</td>
+                        <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:48%;"></td>
+                        <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:28%;"></td>
+                    </tr>
+                `;
+            }
+
+            return `
+                <div class="mfo-pdf-unit" style="margin-top:8px;">
+                    ${subheading ? `<div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:3px;letter-spacing:0.02em;">${esc(subheading)}</div>` : ''}
+                    <table style="width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;">
+                        <thead>
+                            <tr class="mfo-pdf-unit" style="background:#fff;">
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:24%;background:#fff;color:#000;">PERFORMANCE<br>INDICATOR</th>
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:48%;background:#fff;color:#000;">ACCOMPLISHMENTS</th>
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:28%;background:#fff;color:#000;">CHED STRATEGIES/ACTIONS &amp;<br>OUTCOMES</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${bodyHtml}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderSpecializedMfo1F(rows) {
+            let subRowsHtml = '';
+            if (Array.isArray(rows) && rows.length > 0) {
+                subRowsHtml = rows.map((r) => {
+                    const prog = esc(r.program || r.program_name || r.title || '');
+                    const status = esc(r.status || r.accreditation_status || r.description || '');
+                    const surveyDate = esc(r.date_of_survey || r.survey_date || r.activity_date || r.start_date || '');
+                    return `
+                        <tr>
+                            <td style="border:1px solid #000;padding:4px 6px;font-size:10.5px;">${prog}</td>
+                            <td style="border:1px solid #000;padding:4px 6px;font-size:10.5px;">${status}</td>
+                            <td style="border:1px solid #000;padding:4px 6px;font-size:10.5px;">${surveyDate}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                subRowsHtml = `
+                    <tr>
+                        <td style="border:1px solid #000;padding:4px 6px;height:35px;"></td>
+                        <td style="border:1px solid #000;padding:4px 6px;"></td>
+                        <td style="border:1px solid #000;padding:4px 6px;"></td>
+                    </tr>
+                `;
+            }
+
+            return `
+                <div class="mfo-pdf-unit" style="margin-top:8px;">
+                    <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:3px;letter-spacing:0.02em;">MFO 1F</div>
+                    <table style="width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;">
+                        <thead>
+                            <tr class="mfo-pdf-unit" style="background:#fff;">
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:24%;background:#fff;color:#000;">PERFORMANCE<br>INDICATOR</th>
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:48%;background:#fff;color:#000;">ACCOMPLISHMENTS</th>
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:28%;background:#fff;color:#000;">CHED STRATEGIES/ACTIONS &amp;<br>OUTCOMES</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="mfo-pdf-unit">
+                                <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:24%;font-weight:700;">Accreditation &amp; QA</td>
+                                <td style="border:1px solid #000;padding:4px;font-size:11px;vertical-align:top;width:48%;">
+                                    <div style="font-weight:700;margin-bottom:2px;font-size:11px;">Accreditation Status</div>
+                                    <table style="width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;margin:0;">
+                                        <thead>
+                                            <tr style="background:#fff;">
+                                                <th style="border:1px solid #000;padding:4px;font-size:10.5px;font-weight:700;text-align:center;width:38%;">Program</th>
+                                                <th style="border:1px solid #000;padding:4px;font-size:10.5px;font-weight:700;text-align:center;width:32%;">Status</th>
+                                                <th style="border:1px solid #000;padding:4px;font-size:10.5px;font-weight:700;text-align:center;width:30%;">Date of Survey:</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${subRowsHtml}
+                                        </tbody>
+                                    </table>
+                                </td>
+                                <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:28%;"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderSpecializedMfo1K(rows) {
+            let subRowsHtml = '';
+            let totalStudents = 0;
+            if (Array.isArray(rows) && rows.length > 0) {
+                subRowsHtml = rows.map((r) => {
+                    const sec = esc(r.section || r.program_year_section || r.title || '');
+                    const num = Number(r.students_enrolled != null ? r.students_enrolled : (r.num_students || 0)) || 0;
+                    totalStudents += num;
+                    const adviser = esc(r.adviser_name || r.adviser || r.contributing_faculty_name || '');
+                    return `
+                        <tr>
+                            <td style="border:1px solid #000;padding:4px 6px;font-size:10.5px;">${sec}</td>
+                            <td style="border:1px solid #000;padding:4px 6px;font-size:10.5px;text-align:center;">${num || ''}</td>
+                            <td style="border:1px solid #000;padding:4px 6px;font-size:10.5px;">${adviser}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                const blankRow = '<tr><td style="border:1px solid #000;height:24px;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td></tr>';
+                subRowsHtml = blankRow.repeat(6);
+            }
+
+            return `
+                <div class="mfo-pdf-unit" style="margin-top:8px;">
+                    <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:3px;letter-spacing:0.02em;">MFO 1K</div>
+                    <table style="width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;">
+                        <thead>
+                            <tr class="mfo-pdf-unit" style="background:#fff;">
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:24%;background:#fff;color:#000;">PERFORMANCE<br>INDICATOR</th>
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:48%;background:#fff;color:#000;">ACCOMPLISHMENTS</th>
+                                <th style="border:1px solid #000;padding:6px 4px;font-size:11px;font-weight:700;text-align:center;width:28%;background:#fff;color:#000;">CHED STRATEGIES/ACTIONS &amp;<br>OUTCOMES</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="mfo-pdf-unit">
+                                <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:24%;"></td>
+                                <td style="border:1px solid #000;padding:4px;font-size:11px;vertical-align:top;width:48%;">
+                                    <table style="width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;margin:0;">
+                                        <thead>
+                                            <tr style="background:#fff;">
+                                                <th style="border:1px solid #000;padding:4px;font-size:10.5px;font-weight:700;text-align:center;width:40%;">Prog/Year/Sec</th>
+                                                <th style="border:1px solid #000;padding:4px;font-size:10.5px;font-weight:700;text-align:center;width:30%;">No. of<br>Students</th>
+                                                <th style="border:1px solid #000;padding:4px;font-size:10.5px;font-weight:700;text-align:center;width:30%;">Adviser</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${subRowsHtml}
+                                            <tr style="font-weight:700;">
+                                                <td style="border:1px solid #000;padding:4px 6px;text-align:center;font-weight:700;font-size:10.5px;">TOTAL</td>
+                                                <td style="border:1px solid #000;padding:4px 6px;text-align:center;font-weight:700;font-size:10.5px;">${totalStudents}</td>
+                                                <td style="border:1px solid #000;padding:4px 6px;"></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </td>
+                                <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:28%;"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderRoseBanner(title) {
+            return `
+                <div class="mfo-pdf-unit" style="background:#d49b9b;color:#000;text-align:center;font-weight:700;font-size:13px;padding:5px 8px;margin-top:14px;margin-bottom:6px;border:1px solid #000;letter-spacing:0.02em;">
+                    ${esc(title)}
+                </div>
+            `;
+        }
+
+        function renderConsolidatedGallery(entries) {
+            const rawDocs = rowsOf('mfo_documentation_items');
+            const itemsToRender = (entries && entries.length) ? entries : (Array.isArray(rawDocs) ? rawDocs.map((r) => ({ row: r, photos: [] })) : []);
+            if (!itemsToRender.length) return '';
+
+            const itemsHtml = itemsToRender.map((entry) => {
+                const row = entry.row || entry;
+                const images = entry.photos || [];
+                const captionTitle = String(reportTitleFromRow(row) || row.caption || row.title || 'Supporting Document').toUpperCase();
+
+                const photosHtml = images.map((file) => {
+                    const src = String(file.pdf_data_url || '').trim();
+                    return `
+                        <div class="mfo-doc-photo mfo-pdf-unit" style="margin:12px auto;text-align:center;">
+                            <img alt="" src="${esc(src)}" width="${Number(file.pdf_px_w) || 1200}" height="${Number(file.pdf_px_h) || 800}" style="${photoFrameStyle(file)};margin:0 auto;"
+                                 data-storage-path="${esc(file.storage_path || file.file_path || '')}" data-file-url="${esc(file.file_url || '')}">
+                        </div>
+                    `;
+                }).join('');
+
+                const narrativeHtml = row.narrative && row.narrative !== captionTitle ? `<div style="font-size:11px;color:#333;margin-top:4px;">${esc(row.narrative)}</div>` : '';
+
+                return `
+                    <div class="mfo-pdf-unit" style="margin-top:18px;margin-bottom:18px;text-align:center;">
+                        <div style="font-weight:700;font-size:12.5px;letter-spacing:0.04em;text-transform:uppercase;margin-bottom:8px;text-align:center;">
+                            ${esc(captionTitle)}
+                        </div>
+                        ${photosHtml}
+                        ${narrativeHtml}
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="mfo-doc-break mfo-pdf-unit" style="margin-top:28px;">
+                    ${reportHeader()}
+                    <div style="background:#d49b9b;color:#000;text-align:center;font-size:22px;font-weight:900;letter-spacing:0.12em;padding:8px;margin-top:14px;margin-bottom:10px;border:1px solid #000;">
+                        GALLERY
+                    </div>
+                    <div style="font-size:13.5px;font-weight:700;letter-spacing:0.06em;text-align:center;margin-bottom:16px;">
+                        VERIFIABLE EVIDENCE / DOCUMENTS
+                    </div>
+                    ${itemsHtml}
+                    ${reportFooter()}
+                </div>
+            `;
+        }
+
+        const notes = officialNarrativeText();
+
+        const signatoriesUnit = `
+            <div class="mfo-doc-sign mfo-pdf-unit" style="display:flex;justify-content:space-between;margin-top:36px;margin-bottom:20px;padding:0 8px;">
+                <div class="box" style="min-width:65mm;">
+                    <div style="font-weight:700;margin-bottom:24px;">Prepared by:</div>
+                    ${submittedByLine(chair)}
+                    <div style="font-size:11.5px;font-weight:700;margin-top:6px;">${esc(chairDesignation)}</div>
+                </div>
+                <div class="box" style="min-width:65mm;">
+                    <div style="font-weight:700;margin-bottom:24px;">Submitted to:</div>
+                    <div class="line" style="height:12mm;border-bottom:1px solid #000;display:flex;align-items:flex-end;padding-bottom:2px;font-weight:700;">
+                        <span style="visibility:hidden;">Dean Signature</span>
+                    </div>
+                    <div style="font-size:11.5px;font-weight:700;margin-top:6px;">Dean, COTE</div>
+                </div>
+            </div>
+        `;
+
+        return `<div class="mfo-doc" id="mfoReportDoc">
+            ${headerUnit}
+
+            <!-- MFO 1 -->
+            ${renderRoseBanner('MFO 1: Advanced and Higher Education Services')}
+            ${renderStandard3ColumnTable('MFO 1A', [...(state.programRows?.pi1 || []), ...getRows('mfo_pi1_licensure', 'mfo1_pi1')], '', 'mfo_pi1_licensure')}
+            ${renderStandard3ColumnTable('MFO 1B', [...(state.programRows?.pi2 || []), ...getRows('mfo_pi2_employment', 'mfo1_pi2')], '', 'mfo_pi2_employment')}
+            ${renderStandard3ColumnTable('MFO 1C', getRows('mfo_pi4_syllabus', 'mfo1_pi4'), '', 'mfo_pi4_syllabus')}
+            ${renderStandard3ColumnTable('MFO 1D', getRows('mfo_pi5_certifications', 'mfo1_pi5'), '', 'mfo_pi5_certifications')}
+            ${renderStandard3ColumnTable('MFO 1E', getRows('mfo_pi6_postgraduate', 'mfo1_pi6'), '', 'mfo_pi6_postgraduate')}
+            ${renderSpecializedMfo1F(getRows('mfo_accreditation_qa', 'mfo_accreditation_qa'))}
+            ${renderStandard3ColumnTable('MFO 1G', getRows('mfo_pi7_trainings', 'mfo1_pi7'), '', 'mfo_pi7_trainings')}
+            ${renderStandard3ColumnTable('MFO 1H', getRows('mfo_pi8_instructional_materials', 'mfo1_pi8'), '', 'mfo_pi8_instructional_materials')}
+            ${renderStandard3ColumnTable('MFO 1I', getRows('mfo_awards', 'awards'), '', 'mfo_awards')}
+            ${renderStandard3ColumnTable('MFO 1J', getRows('mfo_other_initiatives', 'other_initiatives'), '', 'mfo_other_initiatives')}
+            ${renderSpecializedMfo1K(getRows('mfo_pi3_enrollment', 'mfo1_pi3'))}
+
+            <!-- MFO 2 -->
+            ${renderRoseBanner('MFO 2: Research and Development Services')}
+            ${renderStandard3ColumnTable('MFO 2A', getRows('mfo_research_utilized', 'mfo3_pi1'), '', 'mfo_research_utilized')}
+            ${renderStandard3ColumnTable('MFO 2B', [...getRows('mfo_research_published', 'mfo3_pi3'), ...getRows('mfo_research_completed', 'mfo3_pi2')], '', 'mfo_research_published')}
+            ${renderStandard3ColumnTable('MFO 2C', getRows('mfo_research_presented', 'mfo3_pi4'), '', 'mfo_research_presented')}
+
+            <!-- MFO 3 -->
+            ${renderRoseBanner('MFO 3: Extension Services')}
+            ${renderStandard3ColumnTable('MFO 3A', getRows('mfo_extension_partnerships', 'mfo4_pi1'), '', 'mfo_extension_partnerships')}
+            ${renderStandard3ColumnTable('MFO 3B', getRows('mfo_extension_trainings', 'mfo4_pi2'), '', 'mfo_extension_trainings')}
+
+            <!-- Production -->
+            ${renderRoseBanner('Production')}
+            ${renderStandard3ColumnTable('', getRows('mfo_production', 'mfo_production'), '', 'mfo_production')}
+
+            <!-- MFO 4 -->
+            ${renderRoseBanner('MFO 4: General Administration and Support Services')}
+            ${renderStandard3ColumnTable('MFO 4A', getRows('mfo_admin_initiatives', 'mfo_admin_initiatives'), '', 'mfo_admin_initiatives')}
+            ${renderStandard3ColumnTable('MFO 4B', getRows('mfo_support_services', 'mfo_support_services'), '', 'mfo_support_services')}
+
+            <!-- MFO 5 -->
+            ${renderRoseBanner('MFO 5: Management of Resources')}
+            ${renderStandard3ColumnTable('', getRows('mfo_resource_management', 'mfo_resource_management'), '', 'mfo_resource_management')}
+
+            ${notes ? `
+                <div class="mfo-pdf-unit" style="margin-top:14px;">
+                    <div class="mfo-doc-group" style="background:#d49b9b;color:#000;font-weight:700;">Other accomplishment/s of the program that you would like the College to report for this quarter:</div>
+                    <div class="mfo-doc-note">(policies created, external grant for instruction/research/extension, etc.)</div>
+                    <div class="mfo-doc-lines">${esc(notes)}</div>
+                </div>
+            ` : ''}
+
+            ${signatoriesUnit}
+            <div class="mfo-pdf-unit">${reportFooter()}</div>
+            ${renderConsolidatedGallery(documentationEntries)}
+        </div>`;
+    }
+
     function renderReportDocument() {
+        if (state.isConsolidated) {
+            return renderConsolidatedReportDocument();
+        }
         const faculty = state.faculty || {};
         const period = state.period || {};
         const profile = reportProfileModel();
         const ctx = { facultyName: profile.fullName || faculty.full_name || '' };
         const documentationEntries = reportPhotoEntries();
+        const isConsolidated = !!state.isConsolidated;
+        const chair = state.chairFaculty || state.faculty || {};
+        const chairDept = String(profile.department || state.task?.department || chair.department || chair.department_code || 'BSIT').trim();
+        const deptUpper = chairDept.toUpperCase();
+        const programTitle = String(profile.program || (deptUpper.includes('IT') || deptUpper === 'BSIT' ? 'Bachelor of Science in Information Technology' : `Department of ${deptUpper}`)).toUpperCase();
 
         const groupOrder = [];
         SECTIONS.filter((d) => !d.isDocumentation).forEach((def) => {
@@ -3705,9 +4431,21 @@
             else last.items.push(def);
         });
 
+        function formatGroupTitle(group) {
+            if (!isConsolidated) return esc(group);
+            const g = String(group || '').toLowerCase();
+            if (g.includes('mfo 1') || g.includes('higher education')) return 'MFO 1: Advanced and Higher Education Services';
+            if (g.includes('mfo 3') || g.includes('research')) return 'MFO 2: Research and Development Services';
+            if (g.includes('mfo 4') || g.includes('extension')) return 'MFO 3: Extension Services';
+            if (g.includes('other initiatives')) return 'Other initiatives/ activities undertaken relevant instruction/research/extension.';
+            if (g.includes('awards')) return 'Awards received for excellence in instruction, research, community extension work.';
+            return esc(group);
+        }
+
         const body = groupOrder.map((block, blockIndex) => {
             const only = block.items.length === 1 ? block.items[0] : null;
-            const heading = `<div class="mfo-doc-group mfo-pdf-unit">${esc(block.group)}${block.bare && only ? officialNaMark(only.code) : ''}</div>`;
+            const headingStyle = isConsolidated ? 'background:#d49b9b;color:#000;text-align:center;font-weight:700;' : '';
+            const heading = `<div class="mfo-doc-group mfo-pdf-unit" style="${headingStyle}">${formatGroupTitle(block.group)}${block.bare && only ? officialNaMark(only.code) : ''}</div>`;
             // Program-level PI1/PI2 print inside the MFO 1 group, before PI3.
             const programTables = blockIndex === 0
                 ? PROGRAM_LEVEL.map((ind) => `<div class="mfo-doc-pi mfo-pdf-unit">${esc(ind.heading)}</div>${programLevelTable(ind)}`).join('')
@@ -3721,39 +4459,90 @@
 
         const notes = officialNarrativeText();
 
-        return `<div class="mfo-doc" id="mfoReportDoc">
+        const headerUnit = isConsolidated ? `
+            <div class="mfo-pdf-unit" style="text-align:center;margin-bottom:12px;">
+                ${reportHeader()}
+                <div class="mfo-doc-title" style="font-size:15px;font-weight:700;text-decoration:underline;margin-top:12px;margin-bottom:6px;letter-spacing:0.02em;">
+                    ${esc(programTitle)}
+                </div>
+                <div class="mfo-doc-title" style="font-size:14px;font-weight:700;margin-bottom:4px;letter-spacing:0.03em;">
+                    CONSOLIDATED ACCOMPLISHMENT REPORT – CY ${esc(period.reporting_year || new Date().getFullYear())}
+                </div>
+                <div class="mfo-doc-sub" style="font-size:12px;font-weight:700;text-decoration:underline;">
+                    ${quarterLine(period)}
+                </div>
+            </div>
+        ` : `
             <div class="mfo-pdf-unit">
-            ${reportHeader()}
-            <div class="mfo-doc-title">Accomplishment Report – CY ${esc(period.reporting_year || '')}</div>
-            <div class="mfo-doc-sub">${quarterLine(period)}</div>
-            <div class="mfo-doc-sub">(for the Program Chairperson)</div>
-            <div class="mfo-doc-ident">
-                <div class="row"><span><b>Program Chairperson:</b> ${esc(tv(profile.chairperson))}</span><span><b>Program:</b> ${esc(tv(profile.program))}</span></div>
-                <div class="row"><span><b>Reporting Faculty:</b> ${esc(tv(profile.fullName))}</span><span><b>Faculty ID:</b> ${esc(tv(profile.employeeId))}</span></div>
-                <div class="row"><span><b>Department:</b> ${esc(tv(profile.department))}</span><span><b>Academic Rank / Position:</b> ${esc(tv(profile.rank))}</span></div>
-                <div class="row"><span><b>Academic period:</b> ${esc(tv(profile.academicPeriod))}</span><span><b>Status:</b> ${esc(statusLabel())}</span></div>
+                ${reportHeader()}
+                <div class="mfo-doc-title">Accomplishment Report – CY ${esc(period.reporting_year || '')}</div>
+                <div class="mfo-doc-sub">${quarterLine(period)}</div>
+                <div class="mfo-doc-sub">(for the Program Chairperson)</div>
+                <div class="mfo-doc-ident">
+                    <div class="row"><span><b>Program Chairperson:</b> ${esc(tv(profile.chairperson))}</span><span><b>Program:</b> ${esc(tv(profile.program))}</span></div>
+                    <div class="row"><span><b>Reporting Faculty:</b> ${esc(tv(profile.fullName))}</span><span><b>Faculty ID:</b> ${esc(tv(profile.employeeId))}</span></div>
+                    <div class="row"><span><b>Department:</b> ${esc(tv(profile.department))}</span><span><b>Academic Rank / Position:</b> ${esc(tv(profile.rank))}</span></div>
+                    <div class="row"><span><b>Academic period:</b> ${esc(tv(profile.academicPeriod))}</span><span><b>Status:</b> ${esc(statusLabel())}</span></div>
+                </div>
+                <div class="mfo-doc-instr">Instructions: Fill in the table with the required data. Write NA for sections/items not applicable to your program.</div>
             </div>
-            <div class="mfo-doc-instr">Instructions: Fill in the table with the required data. Write NA for sections/items not applicable to your program.</div>
+        `;
+
+        const chairDeptLabel = deptUpper.includes('DEPARTMENT') ? deptUpper : `${deptUpper} Department`;
+        const chairDesignation = `Chair, ${chairDeptLabel}`;
+
+        const signatoriesUnit = isConsolidated ? `
+            <div class="mfo-doc-sign mfo-pdf-unit" style="display:flex;justify-content:space-between;margin-top:28px;">
+                <div class="box" style="min-width:65mm;">
+                    <div style="font-weight:700;margin-bottom:8px;">Prepared by:</div>
+                    <div class="line" style="height:14mm;border-bottom:1px solid #000;display:flex;align-items:flex-end;padding-bottom:2px;font-weight:700;">
+                        ${submittedByLine(faculty)}
+                    </div>
+                    <div style="font-size:11.5px;font-weight:600;margin-top:4px;">${esc(chairDesignation)}</div>
+                </div>
+                <div class="box" style="min-width:65mm;">
+                    <div style="font-weight:700;margin-bottom:8px;">Submitted to:</div>
+                    <div class="line" style="height:14mm;border-bottom:1px solid #000;display:flex;align-items:flex-end;padding-bottom:2px;font-weight:700;">
+                        <span style="visibility:hidden;">Dean Signature</span>
+                    </div>
+                    <div style="font-size:11.5px;font-weight:600;margin-top:4px;">Dean, COTE</div>
+                </div>
             </div>
-            ${body}
-            <div class="mfo-pdf-unit">
-            <div class="mfo-doc-group">Other accomplishment/s of the program that you would like the College to report for this quarter:</div>
-            <div class="mfo-doc-note">(policies created, external grant for instruction/research/extension, etc.)</div>
-            <div class="mfo-doc-lines">${notes ? esc(notes) : NA}</div>
-            </div>
+        ` : `
             <div class="mfo-doc-sign mfo-pdf-unit">
                 <div class="box"><div><b>Date Submitted:</b></div><div class="line" style="display:flex;align-items:flex-end;padding-bottom:2px;">${esc(state.submission?.submitted_at ? reportDate(state.submission.submitted_at) : (state.programDraft?.certified_at ? reportDate(state.programDraft.certified_at) : NA))}</div></div>
                 <div class="box"><div><b>Submitted by:</b></div>${submittedByLine(faculty)}</div>
             </div>
+        `;
+
+        return `<div class="mfo-doc" id="mfoReportDoc">
+            ${headerUnit}
+            ${body}
+            <div class="mfo-pdf-unit">
+            <div class="mfo-doc-group" style="${isConsolidated ? 'background:#d49b9b;color:#000;font-weight:700;' : ''}">Other accomplishment/s of the program that you would like the College to report for this quarter:</div>
+            <div class="mfo-doc-note">(policies created, external grant for instruction/research/extension, etc.)</div>
+            <div class="mfo-doc-lines">${notes ? esc(notes) : NA}</div>
+            </div>
+            ${signatoriesUnit}
             <div class="mfo-pdf-unit">${reportFooter()}</div>
             ${documentationEntries.length ? renderDocumentationPages(documentationEntries, period) : ''}
         </div>`;
     }
 
     function renderDocumentationPages(rows, period) {
-        const reportingName = state.isConsolidated
-            ? (facultyFullName(state.chairFaculty) || facultyFullName(state.faculty))
-            : facultyFullName(state.faculty);
+        if (state.isConsolidated) {
+            return `<div class="mfo-pdf-page mfo-pdf-unit" style="margin-top:24px;">
+                ${reportHeader()}
+                <div class="mfo-doc-group mfo-pdf-unit" style="background:#d49b9b;color:#000;text-align:center;font-size:18px;font-weight:900;letter-spacing:0.1em;padding:8px;margin-top:14px;margin-bottom:10px;border:1px solid #000;">
+                    GALLERY
+                </div>
+                <div class="mfo-doc-title mfo-pdf-unit" style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-align:center;margin-bottom:14px;">
+                    VERIFIABLE EVIDENCE / DOCUMENTS
+                </div>
+            </div>
+            ${reportDocumentation(rows)}`;
+        }
+        const reportingName = facultyFullName(state.faculty);
         return `<div class="mfo-pdf-page mfo-pdf-unit">
             <div class="mfo-doc-title">Supporting Documentation</div>
             <div class="mfo-doc-sub">Accomplishment Report – CY ${esc(period.reporting_year || '')} · ${quarterLine(period)}</div>
@@ -3772,14 +4561,14 @@
             <p class="cite-subtitle">${esc(statusLabel())}${state.isConsolidated ? ` · ${esc(state.chairFaculty?.full_name || '')} (${esc(profile.department || '')})` : (state.reviewerMode ? ` · ${esc(state.faculty.full_name || '')}` : (state.previewPdfUrl ? ' · generated PDF' : ' · reflects the last saved values.'))}</p></div>
             <div class="flex flex-col sm:flex-row gap-2">
                 ${state.isConsolidated
-                    ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = 'submissions.html#chair-review';">← Back to Submissions</button>`
+                    ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = '${state.isFinalApprover ? '../admin/workflow-approval.html' : 'submissions.html#chair-review'}';">← Back</button>`
                     : (state.reviewerMode
                         ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = '${state.reviewerIsAdmin ? '../admin/workflow-approval.html' : 'submissions.html#chair-review'}';">← Back</button>`
                         : '<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closePreview()">← Back to editor</button>')
                 }
-                ${state.reviewerMode && reviewerCanAct() ? `
+                ${(state.reviewerMode || (state.isConsolidated && state.isFinalApprover)) && reviewerCanAct() ? `
                 <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.openReviewerModal('approved')">
-                    ${state.reviewerIsAdmin ? '<i class="fa-solid fa-check-double mr-1"></i> Certify & Approve' : '<i class="fa-solid fa-check mr-1"></i> Approve'}
+                    ${(state.reviewerIsAdmin || state.isFinalApprover) ? '<i class="fa-solid fa-check mr-1"></i> Final Approve' : '<i class="fa-solid fa-check mr-1"></i> Approve'}
                 </button>
                 <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.openReviewerModal('revision')">
                     <i class="fa-solid fa-rotate-left mr-1"></i> Request Revision

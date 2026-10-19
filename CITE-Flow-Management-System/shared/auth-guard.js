@@ -340,8 +340,9 @@
                     return;
                 }
             } else if (isFacultyArea) {
-                // Administrators should be sent to the admin dashboard
-                if (isAdminRole) {
+                const isMfoReport = currentPath.includes('mfo-report');
+                // Administrators should be sent to the admin dashboard, unless viewing/reviewing an MFO report
+                if (isAdminRole && !isMfoReport) {
                     window.location.replace(`${prefix}admin/dashboard.html`);
                     return;
                 }
@@ -352,7 +353,7 @@
                     console.warn('Auth Guard: authenticated user has no faculty profile yet; allowing page to handle it.');
                 }
 
-                if (onboardingRequired && facultyRecord) {
+                if (onboardingRequired && facultyRecord && !isAdminRole) {
                     console.info('Auth Guard: First-time onboarding required.');
                     window.location.replace(`${prefix}onboarding.html`);
                     return;

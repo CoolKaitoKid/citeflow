@@ -227,6 +227,29 @@
             ackHistory.push(existingConsolidation.acknowledgment);
         }
 
+        const existingDeanReview = existingConsolidation.dean_review || base.dean_review;
+        const deanReviewHistory = Array.isArray(existingConsolidation.dean_review_history)
+            ? [...existingConsolidation.dean_review_history]
+            : (Array.isArray(base.dean_review_history) ? [...base.dean_review_history] : []);
+
+        if (existingDeanReview) {
+            if (!existingDeanReview.decision && existingDeanReview.action) {
+                existingDeanReview.decision = existingDeanReview.action;
+            }
+            const alreadyInHistory = deanReviewHistory.some(h =>
+                (h.reviewed_at && h.reviewed_at === existingDeanReview.reviewed_at) ||
+                (h.action === existingDeanReview.action && h.remarks === existingDeanReview.remarks)
+            );
+            if (!alreadyInHistory) {
+                deanReviewHistory.push(existingDeanReview);
+            }
+        }
+        if (consolidationMeta?.dean_review) {
+            if (!consolidationMeta.dean_review.decision && consolidationMeta.dean_review.action) {
+                consolidationMeta.dean_review.decision = consolidationMeta.dean_review.action;
+            }
+        }
+
         base.citeflow_mfo_consolidation = {
             version: 1,
             ...existingConsolidation,
@@ -237,8 +260,326 @@
         if (ackHistory.length > 0) {
             base.citeflow_mfo_consolidation.acknowledgment_history = ackHistory;
         }
+        if (deanReviewHistory.length > 0) {
+            base.citeflow_mfo_consolidation.dean_review_history = deanReviewHistory;
+            base.dean_review_history = deanReviewHistory;
+        }
+        if (consolidationMeta?.corrected_from_version) {
+            base.corrected_from_version = consolidationMeta.corrected_from_version;
+        }
+        if (consolidationMeta?.previous_dean_review) {
+            base.previous_dean_review = consolidationMeta.previous_dean_review;
+        }
 
         return base;
+    }
+
+    /**
+     * Extracts manual customization metadata (overrides, additions, removals, source snapshots)
+     * from a draft, programPacket, notes field, or metadata object.
+     */
+    function extractManualCustomizations(source) {
+        const result = {
+            manual_overrides: {},
+            manual_additions: {},
+            manual_removals: new Set(),
+            source_snapshots: {},
+            program_portion_overrides: { pi1: null, pi2: null }
+        };
+
+        if (!source) return result;
+
+        let obj = null;
+        if (typeof source === 'string') {
+            const trimmed = source.trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                try {
+                    obj = JSON.parse(trimmed);
+                } catch (_) {}
+            }
+            if (!obj) {
+                const metaMatch = trimmed.match(/\[\[citeflow_consolidation_meta:([\s\S]*?)\]\]/);
+                if (metaMatch && metaMatch[1]) {
+                    try {
+                        obj = JSON.parse(metaMatch[1]);
+                    } catch (_) {}
+                }
+            }
+        } else if (typeof source === 'object') {
+            obj = source;
+        }
+
+        if (!obj) return result;
+
+        if (obj.notes && (!obj.customizations && !obj.citeflow_mfo_consolidation && !obj.manual_overrides)) {
+            const fromNotes = extractManualCustomizations(obj.notes);
+            if (fromNotes) return fromNotes;
+        }
+
+        const meta = obj.customizations
+            || obj.frozenPayload?.customizations
+            || obj.payload?.customizations
+            || obj.citeflow_mfo_consolidation
+            || obj.metadata?.citeflow_mfo_consolidation
+            || obj.metadata
+            || obj;
+
+        if (meta.manual_overrides && typeof meta.manual_overrides === 'object') {
+            result.manual_overrides = deepClone(meta.manual_overrides);
+        }
+        if (meta.manual_additions) {
+            if (Array.isArray(meta.manual_additions)) {
+                result.manual_additions = meta.manual_additions.map(deepClone);
+            } else if (typeof meta.manual_additions === 'object') {
+                result.manual_additions = deepClone(meta.manual_additions);
+            }
+        }
+        if (meta.manual_removals) {
+            let removalsList = [];
+            if (meta.manual_removals instanceof Set) {
+                removalsList = Array.from(meta.manual_removals);
+            } else if (Array.isArray(meta.manual_removals)) {
+                removalsList = meta.manual_removals.map(String);
+            } else if (typeof meta.manual_removals === 'object') {
+                removalsList = Object.keys(meta.manual_removals);
+            }
+            removalsList.forEach(id => {
+                result.manual_removals.add(id);
+                result.manual_removals[id] = true;
+            });
+        }
+        if (meta.source_snapshots && typeof meta.source_snapshots === 'object') {
+            result.source_snapshots = deepClone(meta.source_snapshots);
+        }
+        if (meta.program_portion_overrides && typeof meta.program_portion_overrides === 'object') {
+            result.program_portion_overrides = deepClone(meta.program_portion_overrides);
+        }
+
+        return result;
+    }
+
+    /**
+     * Format manual customization metadata for persistence in notes.
+     */
+    function formatManualCustomizations(customizations) {
+        const c = customizations || {};
+        const removals = c.manual_removals instanceof Set
+            ? Array.from(c.manual_removals)
+            : (Array.isArray(c.manual_removals)
+                ? c.manual_removals
+                : (c.manual_removals && typeof c.manual_removals === 'object' ? Object.keys(c.manual_removals) : []));
+
+        return {
+            manual_overrides: c.manual_overrides || {},
+            manual_additions: c.manual_additions || (Array.isArray(c.manual_additions) ? [] : {}),
+            manual_removals: removals,
+            source_snapshots: c.source_snapshots || {},
+            program_portion_overrides: c.program_portion_overrides || { pi1: null, pi2: null },
+            customized_at: new Date().toISOString()
+        };
+    }
+
+    /**
+     * Detects specific field-level updates in underlying faculty submissions
+     * compared to previously recorded source_snapshots.
+     *
+     * Pure function: compares incoming child rows to baseline snapshots without mutating.
+     */
+    function detectSourceAccomplishmentUpdates(params) {
+        const p = params || {};
+        const draft = p.draft || p.programPacket;
+        const customizations = extractManualCustomizations(p.customizations || draft || draft?.notes);
+        const sourceSnapshots = p.sourceSnapshots || customizations.source_snapshots || {};
+        const manualOverrides = p.manualOverrides || customizations.manual_overrides || {};
+        const manualRemovals = p.manualRemovals || customizations.manual_removals || new Set();
+        const childRows = p.childRows && typeof p.childRows === 'object' ? p.childRows : {};
+
+        const updates = [];
+        const checkedRowIds = new Set();
+
+        MFO_SECTIONS.forEach((secDef) => {
+            const tableName = secDef.table;
+            const secCode = secDef.code;
+            const rows = Array.isArray(childRows[tableName]) ? childRows[tableName] : (Array.isArray(childRows[secCode]) ? childRows[secCode] : []);
+
+            rows.forEach((row) => {
+                if (!row || row.id == null) return;
+                const rowId = String(row.id);
+                checkedRowIds.add(rowId);
+                const snapshot = sourceSnapshots[rowId];
+
+                if (!snapshot) {
+                    updates.push({
+                        type: 'new_entry',
+                        sourceRowId: rowId,
+                        table: tableName,
+                        sectionCode: secCode,
+                        sectionTitle: secDef.title,
+                        facultyId: row.faculty_id,
+                        rowTitle: row.title || row.activity_title || row.program_title || row.subject_code || row.course_title || row.award_name || row.name || 'New Accomplishment',
+                        newRecord: deepClone(row),
+                        description: `New accomplishment submitted by faculty in ${secDef.title}.`
+                    });
+                    return;
+                }
+
+                const fieldsToCompare = [
+                    { key: 'title', altKeys: ['activity_title', 'program_title', 'subject_code', 'course_title', 'award_name', 'name'], label: 'Title / Subject' },
+                    { key: 'description', altKeys: ['details', 'venue', 'remarks'], label: 'Description / Details' },
+                    { key: 'start_date', altKeys: ['date'], label: 'Date' },
+                    { key: 'end_date', altKeys: [], label: 'End Date' },
+                    { key: 'venue', altKeys: ['location'], label: 'Venue / Location' }
+                ];
+
+                fieldsToCompare.forEach(({ key, altKeys, label }) => {
+                    const findVal = (obj) => {
+                        if (!obj) return '';
+                        if (obj[key] !== undefined && obj[key] !== null) return String(obj[key]).trim();
+                        for (const k of altKeys) {
+                            if (obj[k] !== undefined && obj[k] !== null) return String(obj[k]).trim();
+                        }
+                        return '';
+                    };
+
+                    const prevVal = findVal(snapshot);
+                    const newVal = findVal(row);
+
+                    if (prevVal !== newVal && (prevVal || newVal)) {
+                        const chairOverride = manualOverrides[rowId]?.[key] !== undefined
+                            ? String(manualOverrides[rowId][key]).trim()
+                            : null;
+
+                        updates.push({
+                            type: 'field_updated',
+                            sourceRowId: rowId,
+                            table: tableName,
+                            sectionCode: secCode,
+                            sectionTitle: secDef.title,
+                            facultyId: row.faculty_id,
+                            facultyName: snapshot.faculty_name || 'Faculty',
+                            field: key,
+                            fieldLabel: label,
+                            previousSourceValue: prevVal,
+                            newSourceValue: newVal,
+                            chairpersonValue: chairOverride !== null ? chairOverride : prevVal,
+                            hasChairpersonOverride: chairOverride !== null,
+                            isManuallyRemoved: manualRemovals.has(rowId),
+                            rowTitle: snapshot.title || 'Accomplishment'
+                        });
+                    }
+                });
+            });
+        });
+
+        // Check if any previously snapshotted rows were removed by faculty
+        Object.keys(sourceSnapshots).forEach((rowId) => {
+            if (!checkedRowIds.has(rowId) && sourceSnapshots[rowId]?.id) {
+                updates.push({
+                    type: 'removed_by_faculty',
+                    sourceRowId: rowId,
+                    table: sourceSnapshots[rowId].table,
+                    sectionCode: sourceSnapshots[rowId].section_code,
+                    facultyName: sourceSnapshots[rowId].faculty_name || 'Faculty',
+                    rowTitle: sourceSnapshots[rowId].title || 'Accomplishment',
+                    description: `Faculty removed accomplishment "${sourceSnapshots[rowId].title || rowId}" from their submission.`
+                });
+            }
+        });
+
+        return {
+            hasUpdates: updates.length > 0,
+            updates,
+            updateCount: updates.length
+        };
+    }
+
+    /**
+     * Applies the Chairperson's decision on a source accomplishment update.
+     * Decisions:
+     *   - 'accept': Updates source snapshot and aligns value.
+     *   - 'decline': Keeps existing Chairperson override/value and advances snapshot to new value
+     *                (acknowledging the source change without adopting it).
+     */
+    function applySourceUpdateDecision(params) {
+        const p = params || {};
+        const draft = p.draft || p.programPacket || null;
+        let customizations = p.customizations;
+
+        if (!customizations) {
+            if (draft) {
+                customizations = extractManualCustomizations(draft.notes || draft);
+            } else if (p.sourceSnapshots || p.manualOverrides) {
+                customizations = {
+                    manual_overrides: p.manualOverrides ? deepClone(p.manualOverrides) : {},
+                    manual_additions: p.manualAdditions ? deepClone(p.manualAdditions) : {},
+                    manual_removals: p.manualRemovals instanceof Set ? new Set(p.manualRemovals) : new Set(p.manualRemovals || []),
+                    source_snapshots: p.sourceSnapshots ? deepClone(p.sourceSnapshots) : {},
+                    program_portion_overrides: p.programPortionOverrides ? deepClone(p.programPortionOverrides) : {}
+                };
+            }
+        }
+        if (!customizations) throw new Error('A valid draft or customizations object is required to apply source update decision.');
+
+        const sourceSnapshots = customizations.source_snapshots;
+        const manualOverrides = customizations.manual_overrides;
+        const update = p.update || p.updateItem;
+        const decision = p.decision; // 'accept' | 'decline'
+
+        if (!update || (!update.sourceRowId && !update.accomplishmentId)) {
+            throw new Error('Update details with sourceRowId or accomplishmentId are required.');
+        }
+
+        const rowId = String(update.sourceRowId || update.accomplishmentId);
+
+        // Support both single update object and update with .diffs array
+        const diffList = Array.isArray(update.diffs) && update.diffs.length > 0
+            ? update.diffs
+            : [{
+                field: update.field,
+                newSourceValue: update.newSourceValue !== undefined ? update.newSourceValue : update.facultyValue
+            }];
+
+        diffList.forEach((d) => {
+            const field = d.field;
+            const newVal = d.newSourceValue !== undefined ? d.newSourceValue : d.facultyValue;
+            if (!field) return;
+
+            if (decision === 'accept') {
+                if (update.type === 'removed_by_faculty') {
+                    customizations.manual_removals.add(rowId);
+                    delete sourceSnapshots[rowId];
+                } else if (update.type === 'new_entry') {
+                    if (update.newRecord) {
+                        sourceSnapshots[rowId] = deepClone(update.newRecord);
+                    }
+                } else {
+                    // Update baseline snapshot
+                    if (!sourceSnapshots[rowId]) sourceSnapshots[rowId] = {};
+                    sourceSnapshots[rowId][field] = newVal;
+
+                    // If chair had override on this field, remove it or align it with the accepted faculty value
+                    if (manualOverrides[rowId]) {
+                        delete manualOverrides[rowId][field];
+                        if (Object.keys(manualOverrides[rowId]).filter(k => !k.startsWith('_')).length === 0) {
+                            delete manualOverrides[rowId];
+                        }
+                    }
+                }
+            } else if (decision === 'decline') {
+                // Retain Chairperson's existing override/value, but advance source snapshot so it is acknowledged
+                if (!sourceSnapshots[rowId]) sourceSnapshots[rowId] = {};
+                sourceSnapshots[rowId][field] = newVal;
+            }
+        });
+
+        const formatted = formatManualCustomizations(customizations);
+        const mergedNotes = draft ? mergeNotesMetadata(draft.notes, formatted) : null;
+        return {
+            customizations,
+            notes: mergedNotes,
+            sourceSnapshots,
+            manualOverrides
+        };
     }
 
     /* ------------------------------------------------------------------ */
@@ -341,9 +682,37 @@
         const facultyList = Array.isArray(p.facultyList) ? p.facultyList : [];
         const assignments = Array.isArray(p.assignments) ? p.assignments : [];
         const childRows = p.childRows && typeof p.childRows === 'object' ? p.childRows : {};
-        const programPacket = p.programPacket || null;
+        const programPacket = p.programPacket || p.draft || null;
         const programRows = p.programRows || { pi1: [], pi2: [] };
         const excludedIds = extractExcludedAccomplishmentIds(p.excludedAccomplishmentIds || programPacket?.notes);
+
+        // Extract manual customizations (overrides, additions, removals, source snapshots)
+        const existingCustomizations = extractManualCustomizations(
+            p.customizations || p.draft || programPacket || programPacket?.notes
+        );
+        const manualOverrides = deepClone(p.manualOverrides || existingCustomizations.manual_overrides || {});
+        const manualAdditions = deepClone(p.manualAdditions || existingCustomizations.manual_additions || {});
+        const manualRemovals = p.manualRemovals instanceof Set
+            ? new Set(p.manualRemovals)
+            : (Array.isArray(p.manualRemovals) ? new Set(p.manualRemovals.map(String)) : new Set(existingCustomizations.manual_removals));
+        const sourceSnapshots = deepClone({ ...existingCustomizations.source_snapshots, ...(p.sourceSnapshots || {}) });
+        const programPortionOverrides = deepClone(p.programPortionOverrides || existingCustomizations.program_portion_overrides || {});
+
+        // Normalize manualAdditions so they can be looked up by section_code, indicator_code, or table name
+        const manualAdditionsBySection = {};
+        if (Array.isArray(manualAdditions)) {
+            manualAdditions.forEach((addEntry) => {
+                if (!addEntry) return;
+                const sec = addEntry.section_code || addEntry.sectionCode || addEntry.table || 'mfo1_pi7';
+                if (!manualAdditionsBySection[sec]) manualAdditionsBySection[sec] = [];
+                manualAdditionsBySection[sec].push(addEntry);
+            });
+        } else if (manualAdditions && typeof manualAdditions === 'object') {
+            Object.keys(manualAdditions).forEach((secKey) => {
+                const entries = manualAdditions[secKey];
+                manualAdditionsBySection[secKey] = Array.isArray(entries) ? entries : [entries];
+            });
+        }
 
         // Faculty lookup map by string ID
         const facultyMap = new Map();
@@ -492,6 +861,9 @@
         let totalItemsCount = 0;
         let activeItemsCount = 0;
         let excludedItemsCount = 0;
+        let manuallyEditedCount = 0;
+        let manualAdditionsCount = 0;
+        let manuallyRemovedCount = 0;
 
         // Build quick lookup for contributing packet & faculty by packet_id / faculty_id
         const contribByPacketId = new Map();
@@ -533,8 +905,48 @@
                     || norm(item.review_status) === 'rejected'
                     || item.is_rejected === true;
 
-                // Rule 4: Exclude if Chairperson marked for exclusion
+                // Rule 4: Exclude if Chairperson marked for rejection exclusion
                 const isExcluded = rowIsRejected && excludedIds.has(rowId);
+
+                // Baseline snapshot recording for source update detection
+                if (!sourceSnapshots[rowId]) {
+                    sourceSnapshots[rowId] = {
+                        id: rowId,
+                        table: tableName,
+                        section_code: secCode,
+                        title: item.title || item.activity_title || item.program_title || item.subject_code || item.course_title || item.award_name || item.name || '',
+                        description: item.description || item.details || item.venue || item.remarks || '',
+                        start_date: item.start_date || item.activity_date || item.date || null,
+                        end_date: item.end_date || null,
+                        venue: item.venue || item.location || '',
+                        status: item.status || item.review_status || 'submitted',
+                        faculty_id: match.facultyId,
+                        faculty_name: match.facultyName,
+                        updated_at: item.updated_at || item.created_at || new Date().toISOString()
+                    };
+                }
+
+                // Check for manual removal (Chairperson can remove unnecessary entries without deleting template structure)
+                const isManuallyRemoved = manualRemovals.has(rowId);
+                if (isManuallyRemoved) {
+                    item.is_manually_removed = true;
+                    manuallyRemovedCount += 1;
+                }
+
+                // Check for manual edits/overrides (Chairperson customized accomplishment details)
+                const rowOverrides = manualOverrides[rowId];
+                if (rowOverrides && typeof rowOverrides === 'object') {
+                    Object.keys(rowOverrides).forEach((key) => {
+                        if (!key.startsWith('_')) {
+                            item[key] = rowOverrides[key];
+                        }
+                    });
+                    item._isEdited = true;
+                    item._manualOverride = rowOverrides;
+                    item._editedFields = Object.keys(rowOverrides).filter((k) => !k.startsWith('_'));
+                    item._edited_at = rowOverrides._edited_at || null;
+                    manuallyEditedCount += 1;
+                }
 
                 // Attach provenance and display metadata
                 item._source = {
@@ -549,7 +961,9 @@
                     submissionStatus: match.submissionStatus,
                     statusLabel: match.statusLabel,
                     isRejected: rowIsRejected,
-                    isExcluded: isExcluded
+                    isExcluded: isExcluded,
+                    isManuallyRemoved: isManuallyRemoved,
+                    isEdited: !!item._isEdited
                 };
 
                 // Standardized attribution fields for table display
@@ -557,11 +971,13 @@
                 item.contributing_status_label = match.statusLabel;
                 item.is_excluded = isExcluded;
                 item.is_rejected = rowIsRejected;
+                item.is_manually_removed = isManuallyRemoved;
 
                 totalItemsCount += 1;
                 consolidatedSectionRows.push(item);
 
-                if (!isExcluded) {
+                // Active section rows omit both rejection-excluded and manually-removed rows
+                if (!isExcluded && !isManuallyRemoved) {
                     activeItemsCount += 1;
                     activeSectionRows.push(item);
                 } else {
@@ -569,21 +985,110 @@
                 }
             });
 
+            // Process manual additions for this section
+            const additionsForSection = manualAdditionsBySection[secCode] || manualAdditionsBySection[tableName] || [];
+            if (Array.isArray(additionsForSection)) {
+                additionsForSection.forEach((addEntry, addIndex) => {
+                    if (!addEntry) return;
+                    const addItem = deepClone(addEntry);
+                    const addId = addItem.id || `manual_add_${secCode}_${addIndex}`;
+                    addItem.id = addId;
+                    addItem._isManualAddition = true;
+                    addItem.is_manual_addition = true;
+                    addItem.contributing_faculty_name = addItem.contributing_faculty_name || 'Chairperson Addition';
+                    addItem.contributing_status_label = 'Manual Addition';
+                    addItem._source = {
+                        table: tableName,
+                        sectionCode: secCode,
+                        sourceRowId: addId,
+                        isManualAddition: true,
+                        facultyName: 'Chairperson Addition'
+                    };
+                    totalItemsCount += 1;
+                    manualAdditionsCount += 1;
+                    consolidatedSectionRows.push(addItem);
+                    activeItemsCount += 1;
+                    activeSectionRows.push(addItem);
+                });
+            }
+
+            // Strict preservation: official sections and tables are never removed, even if empty
             sections[secCode] = consolidatedSectionRows;
             sections[tableName] = consolidatedSectionRows;
             activeSections[secCode] = activeSectionRows;
             activeSections[tableName] = activeSectionRows;
         });
 
+        // Also process manual additions for any official sections not in MFO_SECTIONS
+        Object.keys(manualAdditionsBySection).forEach((key) => {
+            if (sections[key]) return;
+            const addList = manualAdditionsBySection[key];
+            if (!Array.isArray(addList) || !addList.length) return;
+            const extraConsolidated = [];
+            const extraActive = [];
+            addList.forEach((addEntry, addIndex) => {
+                if (!addEntry) return;
+                const addItem = deepClone(addEntry);
+                const addId = addItem.id || `manual_add_${key}_${addIndex}`;
+                addItem.id = addId;
+                addItem._isManualAddition = true;
+                addItem.is_manual_addition = true;
+                addItem.contributing_faculty_name = addItem.contributing_faculty_name || 'Chairperson Addition';
+                addItem.contributing_status_label = 'Manual Addition';
+                addItem._source = {
+                    table: key,
+                    sectionCode: key,
+                    sourceRowId: addId,
+                    isManualAddition: true,
+                    facultyName: 'Chairperson Addition'
+                };
+                totalItemsCount += 1;
+                manualAdditionsCount += 1;
+                extraConsolidated.push(addItem);
+                activeItemsCount += 1;
+                extraActive.push(addItem);
+            });
+            sections[key] = extraConsolidated;
+            activeSections[key] = extraActive;
+        });
+
         // Step 5: Process Program-Level Portion (PI1, PI2, and Program Narrative)
+        let pi1Rows = [];
+        if (Array.isArray(programPortionOverrides.pi1)) {
+            pi1Rows = deepClone(programPortionOverrides.pi1);
+        } else if (programPortionOverrides.pi1 && typeof programPortionOverrides.pi1 === 'object') {
+            pi1Rows = [{ ...programPortionOverrides.pi1, _isOverridden: true }];
+        } else if (Array.isArray(programRows.pi1)) {
+            pi1Rows = deepClone(programRows.pi1);
+        }
+
+        let pi2Rows = [];
+        if (Array.isArray(programPortionOverrides.pi2)) {
+            pi2Rows = deepClone(programPortionOverrides.pi2);
+        } else if (programPortionOverrides.pi2 && typeof programPortionOverrides.pi2 === 'object') {
+            pi2Rows = [{ ...programPortionOverrides.pi2, _isOverridden: true }];
+        } else if (Array.isArray(programRows.pi2)) {
+            pi2Rows = deepClone(programRows.pi2);
+        }
+
         const cleanProgramRows = {
-            pi1: deepClone(Array.isArray(programRows.pi1) ? programRows.pi1 : []),
-            pi2: deepClone(Array.isArray(programRows.pi2) ? programRows.pi2 : [])
+            pi1: pi1Rows,
+            pi2: pi2Rows
         };
 
+        const pi1Display = (programPortionOverrides.pi1 && typeof programPortionOverrides.pi1 === 'object' && !Array.isArray(programPortionOverrides.pi1))
+            ? { ...pi1Rows[0], _isOverridden: true }
+            : pi1Rows;
+
+        const pi2Display = (programPortionOverrides.pi2 && typeof programPortionOverrides.pi2 === 'object' && !Array.isArray(programPortionOverrides.pi2))
+            ? { ...pi2Rows[0], _isOverridden: true }
+            : pi2Rows;
+
         const programPortion = {
-            pi1: cleanProgramRows.pi1,
-            pi2: cleanProgramRows.pi2,
+            pi1: pi1Display,
+            pi2: pi2Display,
+            pi1_rows: cleanProgramRows.pi1,
+            pi2_rows: cleanProgramRows.pi2,
             other_accomplishments: String(programPacket?.other_accomplishments || p.options?.other_accomplishments || ''),
             other_accomplishments_not_applicable: !!(programPacket?.other_accomplishments_not_applicable || p.options?.other_accomplishments_not_applicable)
         };
@@ -608,7 +1113,17 @@
                 consolidated_at: new Date().toISOString(),
                 contributing_faculty_count: contributingFaculty.length,
                 total_expected_faculty: expectedFacultyIds.size || (contributingFaculty.length + unsubmittedFaculty.length),
-                excluded_accomplishment_ids: Array.from(excludedIds)
+                excluded_accomplishment_ids: Array.from(excludedIds),
+                manually_edited_count: manuallyEditedCount,
+                manual_additions_count: manualAdditionsCount,
+                manually_removed_count: manuallyRemovedCount
+            },
+            customizations: {
+                manual_overrides: manualOverrides,
+                manual_additions: manualAdditions,
+                manual_removals: Array.from(manualRemovals),
+                source_snapshots: sourceSnapshots,
+                program_portion_overrides: programPortionOverrides
             },
             reporting_period: reportingPeriod,
             contributing_faculty: contributingFaculty,
@@ -622,7 +1137,10 @@
                 statusCounts,
                 totalItemsCount,
                 activeItemsCount,
-                excludedItemsCount
+                excludedItemsCount,
+                manuallyEditedCount,
+                manualAdditionsCount,
+                manuallyRemovedCount
             }
         };
 
@@ -636,6 +1154,14 @@
             sections,
             activeSections,
             programPortion,
+            sourceSnapshots,
+            customizations: {
+                manual_overrides: manualOverrides,
+                manual_additions: manualAdditions,
+                manual_removals: manualRemovals,
+                source_snapshots: sourceSnapshots,
+                program_portion_overrides: programPortionOverrides
+            },
             summary: {
                 totalExpectedFaculty: expectedFacultyIds.size || (contributingFaculty.length + unsubmittedFaculty.length),
                 contributingFacultyCount: contributingFaculty.length,
@@ -643,6 +1169,9 @@
                 totalItemsCount,
                 activeItemsCount,
                 excludedItemsCount,
+                manuallyEditedCount,
+                manualAdditionsCount,
+                manuallyRemovedCount,
                 statusCounts
             },
             excludedAccomplishmentIds: excludedIds,
@@ -1106,7 +1635,27 @@
             }
         }
 
-        const isStale = newerSubmissions.length > 0 && !isAcknowledged;
+        // Check for field-level source accomplishment updates if childRows provided
+        let sourceUpdates = { hasUpdates: false, updates: [], updateCount: 0 };
+        if (p.childRows && typeof p.childRows === 'object') {
+            sourceUpdates = detectSourceAccomplishmentUpdates({
+                draft,
+                childRows: p.childRows
+            });
+            if (sourceUpdates.hasUpdates) {
+                sourceUpdates.updates.forEach((u) => {
+                    if (u.type === 'field_updated') {
+                        reasons.push(`Accomplishment "${u.rowTitle}" was updated by ${u.facultyName} (${u.fieldLabel}: "${u.previousSourceValue}" -> "${u.newSourceValue}").`);
+                    } else if (u.type === 'new_entry') {
+                        reasons.push(u.description);
+                    } else if (u.type === 'removed_by_faculty') {
+                        reasons.push(u.description);
+                    }
+                });
+            }
+        }
+
+        const isStale = (newerSubmissions.length > 0 || sourceUpdates.hasUpdates) && !isAcknowledged;
         const finalStatus = isStale ? 'stale' : 'fresh';
 
         return {
@@ -1116,6 +1665,7 @@
             draftGeneratedAt: draftTimestampRaw,
             reasons,
             newerSubmissions,
+            sourceUpdates,
             contributingCount: capturedMap.size,
             currentEligibleCount: currentEligible.length,
             acknowledged: isAcknowledged,
@@ -1125,7 +1675,7 @@
 
     /**
      * Rebuilds the Chairperson's departmental draft using the latest eligible submissions,
-     * preserving rejection inclusion/exclusion decisions and program narrative from the
+     * preserving rejection inclusion/exclusion decisions, manual customizations, and program narrative from the
      * previous draft.
      *
      * @param {object} params
@@ -1158,17 +1708,46 @@
             existingExclusions = extractExcludedAccomplishmentIds(source);
         }
 
+        // Preserve manual customizations from previous draft (Phase 4 Requirement 5: never overwrite manual edits on regenerate)
+        const existingCustomizations = extractManualCustomizations(
+            p.customizations || previousDraft?.frozenPayload?.customizations || previousDraft?.customizations || previousDraft?.notes
+        );
+        const manualOverrides = p.manualOverrides || existingCustomizations.manual_overrides;
+        const manualAdditions = p.manualAdditions || existingCustomizations.manual_additions;
+        const manualRemovals = p.manualRemovals || existingCustomizations.manual_removals;
+        const sourceSnapshots = p.sourceSnapshots || existingCustomizations.source_snapshots;
+        const programPortionOverrides = p.programPortionOverrides || existingCustomizations.program_portion_overrides;
+
         // Preserve program-level portions if not explicitly provided
         const programRows = p.programRows || previousDraft?.programPortion || { pi1: [], pi2: [] };
         const programPacket = p.programPacket || previousDraft?.programPacket || (previousDraft?.department ? previousDraft : null);
 
-        return buildDepartmentMfoConsolidation({
+        const consolidation = buildDepartmentMfoConsolidation({
             ...p,
+            taskId: p.taskId || previousDraft?.task_id || previousDraft?.taskId,
             department: targetDept,
             programRows,
             programPacket,
-            excludedAccomplishmentIds: existingExclusions || new Set()
+            excludedAccomplishmentIds: existingExclusions || new Set(),
+            manualOverrides,
+            manualAdditions,
+            manualRemovals,
+            sourceSnapshots,
+            programPortionOverrides
         });
+
+        const formatted = formatManualCustomizations({
+            manual_overrides: manualOverrides,
+            manual_additions: manualAdditions,
+            manual_removals: manualRemovals,
+            source_snapshots: sourceSnapshots,
+            program_portion_overrides: programPortionOverrides
+        });
+        const mergedNotes = previousDraft ? mergeNotesMetadata(previousDraft.notes, formatted) : null;
+
+        consolidation.consolidation = consolidation;
+        consolidation.notes = mergedNotes;
+        return consolidation;
     }
 
     /**
@@ -1283,30 +1862,67 @@
             return {
                 ok: false,
                 isDuplicate: true,
-                error: `Version ${draft.current_version || 1} has already been submitted to the Dean's Office. If you need to make changes, regenerate the draft first.`
+                error: `Version ${draft.current_version || 1} has already been submitted to the Dean's Office and is currently awaiting review. If you need to make changes, wait for Dean's feedback or revise the draft.`
             };
         }
         if (currentState === 'approved') {
             return {
                 ok: false,
                 isApproved: true,
-                error: 'This Department Consolidated MFO has already been approved by the Dean\'s Office.'
+                error: 'This Department Consolidated MFO has already been approved (already approved) by the Dean\'s Office and cannot be resubmitted.'
             };
         }
 
         // 3. Resolve versioning and lifecycle transition
         const currentVersion = Number(draft.current_version || 1);
+        let parsedNotes = {};
+        if (typeof draft.notes === 'string') {
+            try {
+                if (draft.notes.trim().startsWith('{')) parsedNotes = JSON.parse(draft.notes);
+            } catch (_) {}
+        } else if (draft.notes && typeof draft.notes === 'object') {
+            parsedNotes = draft.notes;
+        }
+
+        const isCorrectedDraft = Boolean(parsedNotes.corrected_from_version || parsedNotes.citeflow_mfo_consolidation?.corrected_from_version);
         const isRevisionResubmit = currentState === 'revision';
-        const nextVersion = isRevisionResubmit ? currentVersion + 1 : Math.max(currentVersion, 1);
-        const nextState = isRevisionResubmit ? 'resubmitted' : 'submitted';
+        const isDeclinedResubmit = currentState === 'declined';
+        const isResubmit = isRevisionResubmit || isDeclinedResubmit || (currentState === 'draft' && (isCorrectedDraft || currentVersion > 1));
+
+        let nextVersion;
+        if (isRevisionResubmit || isDeclinedResubmit) {
+            nextVersion = currentVersion + 1;
+        } else if (currentState === 'draft') {
+            nextVersion = Math.max(currentVersion, 1);
+        } else {
+            nextVersion = Math.max(currentVersion, 1);
+        }
+        const nextState = isResubmit ? 'resubmitted' : 'submitted';
         const now = p.now || new Date().toISOString();
 
         // 4. Extract decisions & metadata
         const existingExclusions = extractExcludedAccomplishmentIds(p.excludedAccomplishmentIds || draft.excludedAccomplishmentIds || draft.notes);
-        const userRemarks = p.userRemarks !== undefined ? String(p.userRemarks).trim() : '';
+        let userRemarks = p.userRemarks !== undefined ? String(p.userRemarks).trim() : '';
+        if (!userRemarks) {
+            userRemarks = parsedNotes.user_remarks || parsedNotes.citeflow_mfo_consolidation?.user_remarks || '';
+        }
 
         // 5. Build frozen payload
-        const consolidation = p.consolidation || (draft.frozenPayload ? draft : null);
+        let consolidation = p.consolidation || (draft.frozenPayload ? draft : null);
+        if (!consolidation && (p.childRows || p.submissions)) {
+            consolidation = buildDepartmentMfoConsolidation({
+                taskId: p.taskId || draft.task_id || draft.taskId,
+                department: targetDept,
+                draft,
+                submissions: p.submissions || [],
+                packets: p.packets || [],
+                facultyList: p.facultyList || [],
+                childRows: p.childRows || {},
+                programRows: p.programRows,
+                customizations: p.customizations || extractManualCustomizations(draft.notes || draft),
+                excludedAccomplishmentIds: existingExclusions
+            });
+        }
         const displayDept = (p.department || draft.department || targetDept || '').toString().toUpperCase();
         const frozenPayload = {
             task_id: p.taskId || draft.task_id || draft.taskId,
@@ -1314,6 +1930,7 @@
             version: nextVersion,
             lifecycle_state: nextState,
             submitted_at: now,
+            reporting_period: consolidation?.reportingPeriod || consolidation?.frozenPayload?.reporting_period || draft.reporting_period || null,
             submitting_chairperson: {
                 id: p.actorFaculty?.id || draft.chairperson_faculty_id || null,
                 name: p.actorFaculty?.full_name || p.actorFaculty?.name || 'Program Chairperson',
@@ -1322,7 +1939,9 @@
             },
             contributing_faculty: consolidation?.contributingFaculty || consolidation?.contributing_faculty || [],
             unsubmitted_faculty: consolidation?.unsubmittedFaculty || consolidation?.unsubmitted_faculty || [],
-            sections: consolidation?.sections || {},
+            sections: consolidation?.activeSections || consolidation?.sections || {},
+            all_sections: consolidation?.sections || {},
+            customizations: consolidation?.customizations || consolidation?.frozenPayload?.customizations || extractManualCustomizations(draft.notes || draft),
             program_rows: consolidation?.programRows || consolidation?.programPortion || { pi1: [], pi2: [] },
             excluded_accomplishments: Array.from(existingExclusions),
             user_remarks: userRemarks,
@@ -1333,10 +1952,12 @@
             }
         };
 
+        const customizationsToSave = consolidation?.customizations || consolidation?.frozenPayload?.customizations || extractManualCustomizations(draft.notes || draft);
         const notesMetadata = mergeNotesMetadata(draft.notes, {
             user_remarks: userRemarks,
             excluded_accomplishments: Array.from(existingExclusions),
             count: existingExclusions.size,
+            ...formatManualCustomizations(customizationsToSave),
             submitted_at: now,
             submitted_by_faculty_id: p.actorFaculty?.id || draft.chairperson_faculty_id || null,
             submitted_by_name: p.actorFaculty?.full_name || p.actorFaculty?.name || 'Program Chairperson',
@@ -1357,7 +1978,7 @@
                 packet_state: nextState,
                 current_version: nextVersion,
                 chairperson_faculty_id: p.actorFaculty?.id || draft.chairperson_faculty_id || null,
-                notes: notesMetadata,
+                notes: typeof draft.notes === 'string' ? JSON.stringify(notesMetadata) : notesMetadata,
                 updated_at: now
             }
         };
@@ -1451,10 +2072,26 @@
      */
     async function applyConsolidatedMfoDeanReview(params) {
         const p = params || {};
-        const programPacket = p.programPacket || p.draft;
+        let programPacket = p.programPacket || p.draft;
+        const programPacketId = p.programPacketId || programPacket?.id;
+        const db = p.db;
+
+        if (!programPacket && programPacketId && db) {
+            const { data: fetched } = await db
+                .from('mfo_program_packets')
+                .select('*')
+                .eq('id', programPacketId)
+                .maybeSingle();
+            if (fetched) programPacket = fetched;
+        }
+
         if (!programPacket?.id) return { ok: false, error: 'Target program packet ID is required.' };
 
-        const action = String(p.action || '').trim().toLowerCase();
+        let action = String(p.action || '').trim().toLowerCase();
+        if (action === 'approve') action = 'approved';
+        if (action === 'decline' || action === 'reject' || action === 'rejected') action = 'declined';
+        if (action === 'request_revision' || action === 'request-revision') action = 'revision';
+
         if (!['approved', 'revision', 'declined'].includes(action)) {
             return { ok: false, error: `Invalid review action "${action}". Must be approved, revision, or declined.` };
         }
@@ -1466,10 +2103,11 @@
 
         const nextState = action === 'approved' ? 'approved' : (action === 'revision' ? 'revision' : 'declined');
         const now = p.now || new Date().toISOString();
-        const reviewerName = p.actorName || p.actorFaculty?.full_name || 'Dean\'s Office';
+        const reviewerName = p.actorName || p.reviewerFaculty?.full_name || p.actorFaculty?.full_name || 'Dean\'s Office';
 
         const deanReviewMeta = {
             action,
+            decision: action,
             remarks,
             reviewed_by_name: reviewerName,
             reviewed_at: now
@@ -1482,16 +2120,17 @@
 
         const updatePayload = {
             packet_state: nextState,
-            notes: notesMetadata,
+            notes: typeof programPacket.notes === 'string' ? JSON.stringify(notesMetadata) : notesMetadata,
             updated_at: now
         };
 
-        const db = p.db;
         if (!db) {
             // Offline / test mode
             return {
                 ok: true,
+                packet_state: nextState,
                 nextState,
+                action,
                 deanReviewMeta,
                 notesMetadata,
                 updatePayload
@@ -1553,7 +2192,9 @@
         return {
             ok: true,
             programPacket: updatedPacket,
+            packet_state: nextState,
             nextState,
+            action,
             deanReviewMeta
         };
     }
@@ -1573,10 +2214,184 @@
                     return null;
                 }
             }
-            if (parsed?.dean_review) return parsed.dean_review;
-            if (parsed?.citeflow_mfo_consolidation?.dean_review) return parsed.citeflow_mfo_consolidation.dean_review;
+            if (parsed?.dean_review) {
+                if (!parsed.dean_review.decision && parsed.dean_review.action) {
+                    parsed.dean_review.decision = parsed.dean_review.action;
+                }
+                return parsed.dean_review;
+            }
+            if (parsed?.citeflow_mfo_consolidation?.dean_review) {
+                if (!parsed.citeflow_mfo_consolidation.dean_review.decision && parsed.citeflow_mfo_consolidation.dean_review.action) {
+                    parsed.citeflow_mfo_consolidation.dean_review.decision = parsed.citeflow_mfo_consolidation.dean_review.action;
+                }
+                return parsed.citeflow_mfo_consolidation.dean_review;
+            }
+            if (parsed?.previous_dean_review) {
+                if (!parsed.previous_dean_review.decision && parsed.previous_dean_review.action) {
+                    parsed.previous_dean_review.decision = parsed.previous_dean_review.action;
+                }
+                return parsed.previous_dean_review;
+            }
+            if (parsed?.citeflow_mfo_consolidation?.previous_dean_review) {
+                if (!parsed.citeflow_mfo_consolidation.previous_dean_review.decision && parsed.citeflow_mfo_consolidation.previous_dean_review.action) {
+                    parsed.citeflow_mfo_consolidation.previous_dean_review.decision = parsed.citeflow_mfo_consolidation.previous_dean_review.action;
+                }
+                return parsed.citeflow_mfo_consolidation.previous_dean_review;
+            }
         } catch (_) {}
         return null;
+    }
+
+    /**
+     * Creates a new corrected working draft from a declined (or revision) consolidated MFO report.
+     * Preserves:
+     *   1. Previous declined snapshot in mfo_snapshots (strictly untouched).
+     *   2. Chairperson manual additions, overrides, removals, and section assignments.
+     *   3. Program-level metrics (PI1/PI2).
+     *   4. Exclusion decisions.
+     *   5. Previous Dean decline remarks and review metadata.
+     * Increments version number and sets packet_state to 'draft' so Chairperson can edit.
+     */
+    async function createCorrectedVersion(params) {
+        const p = params || {};
+        const draft = p.draft || p.programPacket;
+        if (!draft?.id) return { ok: false, error: 'Target program packet ID is required.' };
+
+        const targetDept = normalizeDepartment(p.department || draft.department);
+        if (!targetDept) return { ok: false, error: 'Department is required.' };
+
+        // 1. Authorization check
+        if (p.actorFaculty) {
+            const auth = verifyChairpersonDepartmentAccess(p.actorFaculty, targetDept, p.delegatedAccess || []);
+            const wf = getWf();
+            const chairDepts = wf?.chairpersonAuthorizedDepartments
+                ? (wf.chairpersonAuthorizedDepartments(p.actorFaculty, p.delegatedAccess || []) || []).map(normalizeDepartment)
+                : (norm(p.actorFaculty.role).includes('chair') ? [normalizeDepartment(p.actorFaculty)] : []);
+            const isNativeOrOic = chairDepts.includes(targetDept);
+            if (!auth.authorized || !isNativeOrOic) {
+                return {
+                    ok: false,
+                    error: `Only the native Chairperson or an authorized OIC with active delegation for department "${targetDept.toUpperCase()}" can create a corrected version.`
+                };
+            }
+        }
+
+        const currentState = String(draft.packet_state || 'draft').toLowerCase();
+        if (currentState === 'approved') {
+            return {
+                ok: false,
+                isApproved: true,
+                error: 'Cannot create a corrected version for an approved Department Consolidated MFO.'
+            };
+        }
+        if (currentState === 'submitted' || currentState === 'resubmitted') {
+            return {
+                ok: false,
+                isPending: true,
+                error: 'Report is currently submitted to Dean\'s Office and awaiting review. You cannot create a corrected version while review is pending.'
+            };
+        }
+
+        const currentVersion = Number(draft.current_version || 1);
+        const nextVersion = currentVersion + 1;
+        const now = p.now || new Date().toISOString();
+
+        // 2. Extract and preserve all customizations
+        const customizations = p.customizations || extractManualCustomizations(draft.notes || draft);
+        const existingExclusions = extractExcludedAccomplishmentIds(p.excludedAccomplishmentIds || draft.excludedAccomplishmentIds || draft.notes);
+        const existingDeanReview = extractDeanReview(draft.notes);
+
+        // 3. Merge notes metadata with corrected version details
+        const notesMetadata = mergeNotesMetadata(draft.notes, {
+            ...formatManualCustomizations(customizations),
+            excluded_accomplishments: Array.from(existingExclusions),
+            count: existingExclusions.size,
+            corrected_from_version: currentVersion,
+            corrected_at: now,
+            corrected_by_faculty_id: p.actorFaculty?.id || draft.chairperson_faculty_id || null,
+            corrected_by_name: p.actorFaculty?.full_name || p.actorFaculty?.name || 'Program Chairperson',
+            last_action: 'created_corrected_version',
+            previous_dean_review: existingDeanReview,
+            dean_review: existingDeanReview
+        });
+
+        const updatePayload = {
+            packet_state: 'draft',
+            current_version: nextVersion,
+            notes: typeof draft.notes === 'string' ? JSON.stringify(notesMetadata) : notesMetadata,
+            updated_at: now
+        };
+
+        const db = p.db;
+        if (!db) {
+            // Offline / test mode
+            const updatedPacket = {
+                ...draft,
+                ...updatePayload,
+                notes: typeof draft.notes === 'string' ? JSON.stringify(notesMetadata) : notesMetadata
+            };
+            return {
+                ok: true,
+                version: nextVersion,
+                nextVersion,
+                lifecycleState: 'draft',
+                programPacket: updatedPacket,
+                notesMetadata
+            };
+        }
+
+        const { data: updatedPacket, error: updateErr } = await db
+            .from('mfo_program_packets')
+            .update({
+                ...updatePayload,
+                notes: JSON.stringify(notesMetadata)
+            })
+            .eq('id', draft.id)
+            .select('*')
+            .single();
+
+        if (updateErr) {
+            return { ok: false, error: updateErr.message || 'Failed to update program packet to corrected draft.' };
+        }
+
+        // Record a draft audit snapshot in mfo_snapshots (best effort)
+        try {
+            await db.from('mfo_snapshots').insert({
+                program_packet_id: draft.id,
+                version_no: nextVersion,
+                lifecycle_state: 'draft',
+                snapshot_reason: `Created corrected draft from declined v${currentVersion}`,
+                payload: {
+                    corrected_from_version: currentVersion,
+                    customizations,
+                    dean_review: existingDeanReview,
+                    created_at: now
+                },
+                created_by_faculty_id: p.actorFaculty?.id || null,
+                created_at: now
+            });
+        } catch (snapErr) {
+            console.warn('[MFO Corrected Draft] Snapshot log notice:', snapErr);
+        }
+
+        // Log in wf_activity_log
+        try {
+            await db.from('wf_activity_log').insert({
+                action: `Created Corrected Consolidated MFO Draft (v${nextVersion})`,
+                actor_name: p.actorFaculty?.full_name || p.actorFaculty?.name || 'Chairperson',
+                target: `Department Consolidated MFO (${targetDept.toUpperCase()}) - Version ${nextVersion}`,
+                log_type: 'draft_correction'
+            });
+        } catch (_) {}
+
+        return {
+            ok: true,
+            version: nextVersion,
+            nextVersion,
+            lifecycleState: 'draft',
+            programPacket: updatedPacket,
+            notesMetadata
+        };
     }
 
     /* ------------------------------------------------------------------ */
@@ -1601,8 +2416,14 @@
         prepareConsolidatedMfoSubmission,
         submitConsolidatedMfoToDean,
         applyConsolidatedMfoDeanReview,
+        applyDeanReviewAction: applyConsolidatedMfoDeanReview,
+        createCorrectedVersion,
         extractDeanReview,
-        formatStatus
+        formatStatus,
+        extractManualCustomizations,
+        formatManualCustomizations,
+        detectSourceAccomplishmentUpdates,
+        applySourceUpdateDecision
     };
 
     global.CiteFlowMfoConsolidation = api;
