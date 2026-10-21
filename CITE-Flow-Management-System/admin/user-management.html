@@ -1241,6 +1241,39 @@ async function createFacultyAccount(){
 
     const recipientEmail = activeEmail || loginEmail;
 
+    // Check duplicate email beforehand in faculty & admin_profiles
+    try {
+        const { data: dupFaculty } = await supabaseClient
+            .from('faculty')
+            .select('id, email, existing_email')
+            .or(`email.ilike.${loginEmail},existing_email.ilike.${loginEmail}`)
+            .limit(1);
+
+        if (dupFaculty && dupFaculty.length > 0) {
+            closeAddUserModal();
+            showAppAlert('This login email address is already registered in the faculty directory.', 'Account Creation Failed', 'error');
+            btn.disabled=false;
+            btn.textContent='Create Account & Send Email';
+            return;
+        }
+
+        const { data: dupAdmin } = await supabaseClient
+            .from('admin_profiles')
+            .select('id, email')
+            .ilike('email', loginEmail)
+            .limit(1);
+
+        if (dupAdmin && dupAdmin.length > 0) {
+            closeAddUserModal();
+            showAppAlert('This login email address is already registered as an administrator.', 'Account Creation Failed', 'error');
+            btn.disabled=false;
+            btn.textContent='Create Account & Send Email';
+            return;
+        }
+    } catch (checkErr) {
+        console.warn('Pre-check duplicate email notice:', checkErr);
+    }
+
     try {
         let sign=await onboardingClient.auth.signUp({
             email: loginEmail,
@@ -1259,9 +1292,18 @@ async function createFacultyAccount(){
             }
         });
 
-        if(sign.error) throw sign.error;
+        if(sign.error) {
+            const isDup = String(sign.error.message || '').toLowerCase().includes('already') ||
+                          String(sign.error.message || '').toLowerCase().includes('registered') ||
+                          sign.error.status === 422 || sign.error.status === 400;
+            closeAddUserModal();
+            showAppAlert(isDup ? 'This login email address is already registered in the system.' : sign.error.message, 'Account Creation Failed', 'error');
+            return;
+        }
         if(sign.data?.user&&Array.isArray(sign.data.user.identities)&&sign.data.user.identities.length===0){
-            throw new Error('This login email address is already registered in the system.');
+            closeAddUserModal();
+            showAppAlert('This login email address is already registered in the system.', 'Account Creation Failed', 'error');
+            return;
         }
         let userId=sign.data?.user?.id;
         if(!userId) throw new Error('Account created but no user ID was returned from the server.');
@@ -1278,7 +1320,8 @@ async function createFacultyAccount(){
             email:loginEmail,
             existing_email:recipientEmail,
             employee_id:facultyId,
-            position:'Faculty',
+            academic_rank:'Instructor I',
+            position:'Instructor I',
             status:statusVal,
             department:deptVal,
             phone:'',
@@ -1289,6 +1332,7 @@ async function createFacultyAccount(){
             salary,
             renewal:document.getElementById('add-renewal').value,
             role:'Faculty',
+            admin_access:false,
             profile_completed:false,
             must_change_password:true,
             updated_at:new Date().toISOString()
@@ -1332,7 +1376,10 @@ async function createFacultyAccount(){
 
     } catch(e) {
         console.error('Account creation error:', e);
-        alert('Failed to create account: ' + (e.message || 'An error occurred.'));
+        closeAddUserModal();
+        const msg = String(e?.message || e || 'An error occurred.');
+        const isDup = msg.toLowerCase().includes('already') || msg.toLowerCase().includes('registered');
+        showAppAlert(isDup ? 'This login email address is already registered in the system.' : ('Failed to create account: ' + msg), 'Account Creation Failed', 'error');
     } finally {
         await onboardingClient.auth.signOut();
         btn.disabled=false;

@@ -845,9 +845,43 @@
                         </div>
 
                         <div class="input-group col-span-2">
-                            <label class="input-label" for="position">Academic Rank <span style="color:#94a3b8; font-weight:normal;">(Assigned)</span></label>
+                            <label class="input-label" for="academicRank">Academic Rank <span style="color:#ef4444;">*</span></label>
                             <div class="input-wrapper">
-                                <input type="text" id="position" class="form-control no-icon" placeholder="Assigned by Admin" readonly style="background:#f1f5f9; cursor:not-allowed; opacity:0.85;">
+                                <select id="academicRank" class="form-control no-icon" required>
+                                    <option value="Part-time">Part-time</option>
+                                    <option value="Instructor I" selected>Instructor I</option>
+                                    <option value="Instructor II">Instructor II</option>
+                                    <option value="Instructor III">Instructor III</option>
+                                    <option value="Instructor IV">Instructor IV</option>
+                                    <option value="Instructor V">Instructor V</option>
+                                    <option value="Assistant Professor I">Assistant Professor I</option>
+                                    <option value="Assistant Professor II">Assistant Professor II</option>
+                                    <option value="Assistant Professor III">Assistant Professor III</option>
+                                    <option value="Assistant Professor IV">Assistant Professor IV</option>
+                                    <option value="Assistant Professor V">Assistant Professor V</option>
+                                    <option value="Associate Professor I">Associate Professor I</option>
+                                    <option value="Associate Professor II">Associate Professor II</option>
+                                    <option value="Associate Professor III">Associate Professor III</option>
+                                    <option value="Associate Professor IV">Associate Professor IV</option>
+                                    <option value="Associate Professor V">Associate Professor V</option>
+                                    <option value="Professor I">Professor I</option>
+                                    <option value="Professor II">Professor II</option>
+                                    <option value="Professor III">Professor III</option>
+                                    <option value="Professor IV">Professor IV</option>
+                                    <option value="Professor V">Professor V</option>
+                                    <option value="University Professor">University Professor</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="input-group col-span-2">
+                            <label class="input-label" for="userRole">Role <span style="color:#ef4444;">*</span></label>
+                            <div class="input-wrapper">
+                                <select id="userRole" class="form-control no-icon" required>
+                                    <option value="Faculty" selected>Faculty</option>
+                                    <option value="Chairperson">Chairperson</option>
+                                    <option value="Admin">Admin</option>
+                                </select>
                             </div>
                         </div>
 
@@ -968,7 +1002,9 @@
             const suffix = document.getElementById('suffix');
             const employeeId = document.getElementById('employeeId');
             const department = document.getElementById('department');
-            const position = document.getElementById('position');
+            const academicRank = document.getElementById('academicRank');
+            const userRole = document.getElementById('userRole');
+            const position = document.getElementById('position') || academicRank;
             const phone = document.getElementById('phone');
             const birthdate = document.getElementById('birthdate');
             const sex = document.getElementById('sex');
@@ -1017,15 +1053,33 @@
                 }
 
                 const meta = currentSessionUser.user_metadata || {};
-                const role = String(meta.role || profile?.role || profile?.position || '').toLowerCase();
-                const isAdminOnboarding = role === 'admin' || role === 'administrator' || Boolean(profile?.admin_access);
+                const initialRole = String(profile?.role || meta.role || (profile?.admin_access ? 'Admin' : '') || '').toLowerCase();
+                const isAdminOnboarding = initialRole === 'admin' || initialRole === 'administrator' || Boolean(profile?.admin_access);
                 existingFacultyRecordId = profile?.id ?? null;
                 facultyIdEditable = !isAdminOnboarding;
 
                 populateNameFields(meta.full_name || meta.name || '', meta.first_name || '', meta.last_name || '');
                 employeeId.value = meta.employee_id || meta.id_number || 'ASSIGNED-BY-ADMIN';
                 if (meta.department) department.value = meta.department;
-                if (meta.position || meta.role) position.value = meta.position || meta.role || 'Faculty';
+
+                // Academic Rank initialization
+                const initRank = profile?.academic_rank || meta.academic_rank || (meta.position && !['faculty','chairperson','admin','administrator'].includes(meta.position.toLowerCase()) ? meta.position : '') || (profile?.position && !['faculty','chairperson','admin','administrator'].includes(profile.position.toLowerCase()) ? profile.position : '') || 'Instructor I';
+                if (academicRank) {
+                    academicRank.value = initRank;
+                    if (!academicRank.value) academicRank.value = 'Instructor I';
+                }
+
+                // Role initialization
+                const roleLower = String(profile?.role || meta.role || (profile?.admin_access ? 'Admin' : '') || (['faculty','chairperson','admin','administrator'].includes(String(profile?.position || '').toLowerCase()) ? profile.position : '') || 'Faculty').toLowerCase();
+                if (userRole) {
+                    if (roleLower.includes('admin')) {
+                        userRole.value = 'Admin';
+                    } else if (roleLower.includes('chair')) {
+                        userRole.value = 'Chairperson';
+                    } else {
+                        userRole.value = 'Faculty';
+                    }
+                }
 
                 if (profile) {
                     if (profile.first_name) firstName.value = profile.first_name;
@@ -1037,7 +1091,11 @@
                     }
                     if (profile.employee_id) employeeId.value = profile.employee_id;
                     if (profile.department) department.value = profile.department;
-                    if (profile.position) position.value = profile.position;
+                    if (profile.academic_rank && academicRank) academicRank.value = profile.academic_rank;
+                    if (profile.role && userRole) {
+                        const r = profile.role.toLowerCase();
+                        userRole.value = r.includes('admin') ? 'Admin' : (r.includes('chair') ? 'Chairperson' : 'Faculty');
+                    }
                     if (profile.phone) phone.value = profile.phone;
                     if (profile.birthdate) birthdate.value = profile.birthdate ? String(profile.birthdate).split('T')[0] : '';
                     if (profile.sex) sex.value = profile.sex;
@@ -1250,7 +1308,9 @@
                             fullName: assembledFullName,
                             employeeId: employeeId.value.trim(),
                             department: department.value,
-                            position: position.value.trim() || 'Faculty',
+                            academicRank: academicRank ? academicRank.value : 'Instructor I',
+                            role: userRole ? userRole.value : 'Faculty',
+                            position: academicRank ? academicRank.value : 'Instructor I',
                             phone: phone.value.trim(),
                             birthdate: birthdate.value || null,
                             sex: sex.value || '',
@@ -1261,8 +1321,8 @@
                         showAlert('Onboarding complete! Redirecting to your dashboard...', 'success');
 
                         setTimeout(() => {
-                            const role = String(currentSessionUser?.user_metadata?.role || position?.value || '').toLowerCase();
-                            const isAdmin = role === 'admin' || role === 'administrator';
+                            const finalRole = String(userRole ? userRole.value : (currentSessionUser?.user_metadata?.role || '')).toLowerCase();
+                            const isAdmin = finalRole === 'admin' || finalRole === 'administrator';
                             window.location.href = isAdmin ? 'admin/dashboard.html' : 'faculty/dashboard.html';
                         }, 1200);
 

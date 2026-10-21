@@ -1221,6 +1221,39 @@
             </div>
 
 
+            <div>
+                <label class="block text-[11px] font-medium text-gray-500 mb-0.5">
+                    Academic Rank <span class="text-red-500">*</span>
+                </label>
+                <select
+                    id="add-academic-rank"
+                    class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#621708]"
+                >
+                    <option value="Part-time">Part-time</option>
+                    <option value="Instructor I" selected>Instructor I</option>
+                    <option value="Instructor II">Instructor II</option>
+                    <option value="Instructor III">Instructor III</option>
+                    <option value="Instructor IV">Instructor IV</option>
+                    <option value="Instructor V">Instructor V</option>
+                    <option value="Assistant Professor I">Assistant Professor I</option>
+                    <option value="Assistant Professor II">Assistant Professor II</option>
+                    <option value="Assistant Professor III">Assistant Professor III</option>
+                    <option value="Assistant Professor IV">Assistant Professor IV</option>
+                    <option value="Assistant Professor V">Assistant Professor V</option>
+                    <option value="Associate Professor I">Associate Professor I</option>
+                    <option value="Associate Professor II">Associate Professor II</option>
+                    <option value="Associate Professor III">Associate Professor III</option>
+                    <option value="Associate Professor IV">Associate Professor IV</option>
+                    <option value="Associate Professor V">Associate Professor V</option>
+                    <option value="Professor I">Professor I</option>
+                    <option value="Professor II">Professor II</option>
+                    <option value="Professor III">Professor III</option>
+                    <option value="Professor IV">Professor IV</option>
+                    <option value="Professor V">Professor V</option>
+                    <option value="University Professor">University Professor</option>
+                </select>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
 
                 <div>
@@ -1235,6 +1268,7 @@
                     >
                         <option value="Faculty">Faculty</option>
                         <option value="Chairperson">Chairperson</option>
+                        <option value="Admin">Admin</option>
                     </select>
 
                 </div>
@@ -1362,8 +1396,21 @@
 
 
             <div
-                id="emailFailedWarning"
+                id="credentialsFailedBlock"
                 class="hidden bg-red-50 rounded-lg p-3 border border-red-200 text-xs text-red-800 leading-relaxed"
+            >
+                <div class="font-bold text-red-900 mb-1 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-red-600 inline-block"></span>
+                    <span>Registration Failed</span>
+                </div>
+                <div id="credentialsFailedMessage" class="mt-1 font-medium text-red-700">
+                    This account could not be created because the email is already registered.
+                </div>
+            </div>
+
+            <div
+                id="emailFailedWarning"
+                class="hidden bg-amber-50 rounded-lg p-3 border border-amber-200 text-xs text-amber-800 leading-relaxed"
             >
 
                 <strong>Email delivery failed.</strong>
@@ -1373,10 +1420,7 @@
                 </div>
 
                 <div class="mt-1">
-                    The faculty account was created successfully,
-                    but EmailJS could not send the credential email.
-                    Please check the browser console and verify your
-                    EmailJS service and template configuration.
+                    Please check your EmailJS service and template configuration.
                 </div>
 
             </div>
@@ -3865,6 +3909,9 @@ function clearAddFacultyForm() {
         'add-position'
     ).value = 'Faculty';
 
+    const rankEl = document.getElementById('add-academic-rank');
+    if (rankEl) rankEl.value = 'Instructor I';
+
 
     document.getElementById(
         'add-department'
@@ -4196,166 +4243,88 @@ async function sendCredentialsEmail({
 
 function showFacultyCredentialsModal(
     privateEmail,
-    emailSent
+    statusOrEmailSent = true,
+    errorMessage = ''
 ) {
 
-    const modal =
-        document.getElementById(
-            'facultyCredentialsModal'
-        );
+    const modal = document.getElementById('facultyCredentialsModal');
+    const header = document.getElementById('credentialsModalHeader');
+    const icon = document.getElementById('credentialsModalIcon');
+    const title = document.getElementById('credentialsModalTitle');
+    const subtitle = document.getElementById('credentialsModalSubtitle');
+    const sentBlock = document.getElementById('credentialsSentBlock');
+    const adminBlock = document.getElementById('adminNotificationBlock');
+    const failedWarning = document.getElementById('emailFailedWarning');
+    const failedBlock = document.getElementById('credentialsFailedBlock');
+    const failedMsg = document.getElementById('credentialsFailedMessage');
+    const emailElement = document.getElementById('confirmSentToEmail');
+    const footer = document.getElementById('credentialsModalFooter');
 
-
-    const header =
-        document.getElementById(
-            'credentialsModalHeader'
-        );
-
-
-    const icon =
-        document.getElementById(
-            'credentialsModalIcon'
-        );
-
-
-    const title =
-        document.getElementById(
-            'credentialsModalTitle'
-        );
-
-
-    const subtitle =
-        document.getElementById(
-            'credentialsModalSubtitle'
-        );
-
-
-    const sentBlock =
-        document.getElementById(
-            'credentialsSentBlock'
-        );
-
-
-    const adminBlock =
-        document.getElementById(
-            'adminNotificationBlock'
-        );
-
-
-    const failedWarning =
-        document.getElementById(
-            'emailFailedWarning'
-        );
-
-
-    const emailElement =
-        document.getElementById(
-            'confirmSentToEmail'
-        );
-
-
-    emailElement.textContent =
-        privateEmail;
-
-
-    if (emailSent === true) {
-
-        header.classList.remove(
-            'bg-red-50'
-        );
-
-        header.classList.add(
-            'bg-emerald-50'
-        );
-
-
-        icon.className =
-            'w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-sm flex-shrink-0';
-
-
-        icon.textContent =
-            '✉️';
-
-
-        title.textContent =
-            'Faculty Account Created';
-
-
-        subtitle.textContent =
-            'Credentials were emailed successfully.';
-
-
-        sentBlock.classList.remove(
-            'hidden'
-        );
-
-
-        adminBlock.classList.remove(
-            'hidden'
-        );
-
-
-        failedWarning.classList.add(
-            'hidden'
-        );
-
-    } else {
-
-        header.classList.remove(
-            'bg-emerald-50'
-        );
-
-        header.classList.add(
-            'bg-red-50'
-        );
-
-
-        icon.className =
-            'w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-sm flex-shrink-0';
-
-
-        icon.textContent =
-            '⚠️';
-
-
-        title.textContent =
-            'Account Created, Email Failed';
-
-
-        subtitle.textContent =
-            'The faculty account exists, but the credential email could not be sent.';
-
-
-        sentBlock.classList.add(
-            'hidden'
-        );
-
-
-        adminBlock.classList.add(
-            'hidden'
-        );
-
-
-        failedWarning.classList.remove(
-            'hidden'
-        );
-
+    if (emailElement) {
+        emailElement.textContent = privateEmail;
     }
 
+    const isFailure = statusOrEmailSent === false || statusOrEmailSent === 'failed';
 
-    modal.classList.remove(
-        'hidden'
-    );
+    if (isFailure) {
+        // --- FAILED STATE ---
+        header.className = 'px-4 py-3 border-b bg-red-50 flex items-start gap-2.5 border-red-200';
+        icon.className = 'w-8 h-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-sm font-bold flex-shrink-0';
+        icon.textContent = '✕';
+        title.className = 'text-base font-semibold text-red-900';
+        title.textContent = 'Account Creation Failed';
+        subtitle.className = 'text-[11px] text-red-600';
+        subtitle.textContent = 'The faculty account could not be created.';
 
-    modal.classList.add(
-        'flex'
-    );
+        if (sentBlock) sentBlock.classList.add('hidden');
+        if (adminBlock) adminBlock.classList.add('hidden');
+        if (failedWarning) failedWarning.classList.add('hidden');
+        if (footer) footer.classList.add('hidden');
 
+        if (failedBlock) {
+            failedBlock.classList.remove('hidden');
+            if (failedMsg) {
+                failedMsg.textContent = errorMessage || 'This email address is already registered in the system.';
+            }
+        }
+    } else {
+        // --- SUCCESS OR PARTIAL SUCCESS STATE ---
+        if (failedBlock) failedBlock.classList.add('hidden');
+        if (footer) footer.classList.remove('hidden');
 
-    document.body.style.overflow =
-        'hidden';
+        const emailSuccess = statusOrEmailSent === true;
 
+        if (emailSuccess) {
+            header.className = 'px-4 py-3 border-b bg-emerald-50 flex items-start gap-2.5 border-emerald-100';
+            icon.className = 'w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-sm flex-shrink-0';
+            icon.textContent = '✉️';
+            title.className = 'text-base font-semibold text-gray-900';
+            title.textContent = 'Faculty Account Created';
+            subtitle.className = 'text-[11px] text-gray-600';
+            subtitle.textContent = 'Credentials were emailed successfully.';
+
+            if (sentBlock) sentBlock.classList.remove('hidden');
+            if (adminBlock) adminBlock.classList.remove('hidden');
+            if (failedWarning) failedWarning.classList.add('hidden');
+        } else {
+            header.className = 'px-4 py-3 border-b bg-amber-50 flex items-start gap-2.5 border-amber-200';
+            icon.className = 'w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-sm flex-shrink-0';
+            icon.textContent = '⚠️';
+            title.className = 'text-base font-semibold text-gray-900';
+            title.textContent = 'Account Created, Email Failed';
+            subtitle.className = 'text-[11px] text-gray-600';
+            subtitle.textContent = 'The faculty account exists, but the credential email could not be sent.';
+
+            if (sentBlock) sentBlock.classList.add('hidden');
+            if (adminBlock) adminBlock.classList.add('hidden');
+            if (failedWarning) failedWarning.classList.remove('hidden');
+        }
+    }
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.body.style.overflow = 'hidden';
 }
-
 
 function closeFacultyCredentialsModal() {
 
@@ -4485,9 +4454,13 @@ async function createFacultyAccount() {
     }
 
 
+    const academicRank =
+        document.getElementById('add-academic-rank')?.value || 'Instructor I';
+
     const allowedRoles = [
         'Faculty',
         'Chairperson',
+        'Admin',
         'Dean/Secretary'
     ];
 
@@ -4626,8 +4599,17 @@ async function createFacultyAccount() {
             employee_id:
                 generatedEmployeeId,
 
+            academic_rank:
+                academicRank,
+
             position:
+                academicRank,
+
+            role:
                 role,
+
+            admin_access:
+                role.toLowerCase() === 'admin',
 
             status:
                 'Active',
@@ -4643,9 +4625,6 @@ async function createFacultyAccount() {
 
             profile_photo_url:
                 null,
-
-            role:
-                role,
 
             profile_completed:
                 false,
@@ -4673,6 +4652,38 @@ async function createFacultyAccount() {
     let facultyAccountCreated =
         false;
 
+    // Check duplicate email in faculty and admin_profiles beforehand
+    try {
+        const { data: existingFaculty } = await supabaseClient
+            .from('faculty')
+            .select('id, email, existing_email, private_email')
+            .or(`email.ilike.${email},existing_email.ilike.${email},private_email.ilike.${email}`)
+            .limit(1);
+
+        if (existingFaculty && existingFaculty.length > 0) {
+            closeAddFacultyModal();
+            showFacultyCredentialsModal(privateEmail, false, 'This email address is already registered in the faculty directory.');
+            createButton.disabled = false;
+            createButton.textContent = 'Create Faculty Account';
+            return;
+        }
+
+        const { data: existingAdmin } = await supabaseClient
+            .from('admin_profiles')
+            .select('id, email')
+            .ilike('email', email)
+            .limit(1);
+
+        if (existingAdmin && existingAdmin.length > 0) {
+            closeAddFacultyModal();
+            showFacultyCredentialsModal(privateEmail, false, 'This email address is already registered as an administrator.');
+            createButton.disabled = false;
+            createButton.textContent = 'Create Faculty Account';
+            return;
+        }
+    } catch (checkErr) {
+        console.warn('Pre-check duplicate email notice:', checkErr);
+    }
 
     try {
 
@@ -4720,6 +4731,12 @@ async function createFacultyAccount() {
                         role:
                             role,
 
+                        academic_rank:
+                            academicRank,
+
+                        position:
+                            academicRank,
+
                         department:
                             department,
 
@@ -4740,10 +4757,13 @@ async function createFacultyAccount() {
 
 
         if (signUpError) {
-
-            throw signUpError;
+            const isDup = String(signUpError.message || '').toLowerCase().includes('already') ||
+                          String(signUpError.message || '').toLowerCase().includes('registered') ||
+                          signUpError.status === 422 || signUpError.status === 400;
+            closeAddFacultyModal();
+            showFacultyCredentialsModal(privateEmail, false, isDup ? 'This email address is already registered in the system.' : (signUpError.message || 'Account creation failed.'));
+            return;
         }
-
 
         /* =====================================================
            CHECK DUPLICATE EMAIL
@@ -4756,10 +4776,9 @@ async function createFacultyAccount() {
             ) &&
             signUpData.user.identities.length === 0
         ) {
-
-            throw new Error(
-                'This email is already registered. Please use a different email.'
-            );
+            closeAddFacultyModal();
+            showFacultyCredentialsModal(privateEmail, false, 'This email address is already registered in the system.');
+            return;
         }
 
 
@@ -4827,6 +4846,20 @@ async function createFacultyAccount() {
         console.log(
             '✅ Faculty profile created successfully.'
         );
+
+        if (role.toLowerCase() === 'admin') {
+            try {
+                await supabaseClient.from('admin_profiles').upsert({
+                    id: userId,
+                    email: email,
+                    first_name: firstName,
+                    last_name: lastName,
+                    role: 'Administrator',
+                    department: department,
+                    updated_at: new Date().toISOString()
+                });
+            } catch (_) {}
+        }
 
 
         /* =====================================================
@@ -4932,7 +4965,6 @@ async function createFacultyAccount() {
             error
         );
 
-
         const message =
             String(
                 error?.message ||
@@ -4940,32 +4972,14 @@ async function createFacultyAccount() {
                 'Unknown error'
             );
 
+        const isDup = message.toLowerCase().includes('already') || message.toLowerCase().includes('registered');
 
-        /* =====================================================
-           SUPABASE TRIGGER ERROR
-        ====================================================== */
-
-        if (
-            message
-                .toLowerCase()
-                .includes(
-                    'database error saving new user'
-                )
-        ) {
-
-            alert(
-                'Failed to create faculty account because a Supabase database trigger rejected the new user. Please check your Auth trigger and required fields.'
-            );
-
-
-        } else {
-
-            alert(
-                `Failed to create faculty account: ${message}`
-            );
-
-        }
-
+        closeAddFacultyModal();
+        showFacultyCredentialsModal(
+            privateEmail,
+            false,
+            isDup ? 'This email address is already registered in the system.' : message
+        );
 
     } finally {
 

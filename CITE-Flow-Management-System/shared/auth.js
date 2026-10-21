@@ -857,6 +857,8 @@ window.CiteFlowAuth = (function () {
         phone,
         birthdate,
         sex,
+        academicRank,
+        role,
         position,
         photoFile,
         facultyRecordId
@@ -908,10 +910,22 @@ window.CiteFlowAuth = (function () {
             }
         }
 
+        // Resolve clean academic rank & role without scrambling
+        const targetRank = academicRank || (position && !['faculty', 'chairperson', 'admin', 'administrator'].includes(position.toLowerCase()) ? position : 'Instructor I');
+        const rawRole = String(role || (position && ['faculty', 'chairperson', 'admin', 'administrator'].includes(position.toLowerCase()) ? position : 'Faculty')).toLowerCase();
+        let targetRole = 'Faculty';
+        if (rawRole.includes('admin')) targetRole = 'Admin';
+        else if (rawRole.includes('chair')) targetRole = 'Chairperson';
+        else targetRole = 'Faculty';
+
+        const isAdmin = targetRole === 'Admin';
+
         // 2. Update Supabase Auth User (Password & Metadata)
         const updateAuthPayload = {
             data: {
-                role: 'Faculty',
+                role: targetRole,
+                academic_rank: targetRank,
+                position: targetRank,
                 first_name: fn,
                 middle_name: cleanMiddle,
                 last_name: ln,
@@ -951,10 +965,12 @@ window.CiteFlowAuth = (function () {
             phone: phone || null,
             birthdate: birthdate || null,
             sex: sex || null,
-            position: position || 'Faculty',
+            academic_rank: targetRank,
+            position: targetRank,
+            role: targetRole,
+            admin_access: isAdmin,
             email: user.email,
             status: 'Active',
-            role: 'Faculty',
             profile_completed: true,
             must_change_password: false,
             first_login_completed_at: nowIso,
@@ -1015,6 +1031,23 @@ window.CiteFlowAuth = (function () {
             throw new Error("Profile record save failed: " + profileError.message);
         }
 
+        // If Admin role, sync to admin_profiles
+        if (isAdmin) {
+            try {
+                await sb.from('admin_profiles').upsert({
+                    id: user.id,
+                    email: user.email,
+                    first_name: fn,
+                    last_name: ln,
+                    role: 'Administrator',
+                    department: department,
+                    updated_at: nowIso
+                });
+            } catch (err) {
+                console.warn("CiteFlowAuth: admin_profiles sync notice on onboarding:", err?.message || err);
+            }
+        }
+
         // 4. Also update public.profiles for messenger name resolution
         try {
             await sb.from('profiles').upsert({
@@ -1022,14 +1055,14 @@ window.CiteFlowAuth = (function () {
                 email: user.email,
                 first_name: fn,
                 last_name: ln,
-                role: 'Faculty'
+                role: targetRole
             }, { onConflict: 'id' });
         } catch (_) {
             // Non-critical — profiles is a secondary source
         }
 
         // Cache updated info so login routing uses completed state immediately
-        cacheUserInfo(user, 'Faculty', profilePayload);
+        cacheUserInfo(user, targetRole, profilePayload);
 
         return { success: true };
     }
