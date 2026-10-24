@@ -105,8 +105,9 @@
         const activeNav = isLight ? mix(theme, '#000000', 0.18) : mix(theme, '#000000', 0.25);
         const panel = isLight ? mix(theme, '#FFFFFF', 0.78) : mix(theme, '#FFFFFF', 0.16);
         const panelText = luminance(panel) > 0.55 ? '#0f172a' : '#FFFFFF';
+        const ink = isLight ? mix(theme, '#000000', 0.62) : theme;
 
-        return { theme, text, textMuted, border, hover, activeNav, panel, panelText, isLight };
+        return { theme, text, textMuted, border, hover, activeNav, panel, panelText, isLight, ink };
     }
 
     function applyTheme(color) {
@@ -122,6 +123,7 @@
         root.style.setProperty('--cite-theme-active', palette.activeNav);
         root.style.setProperty('--cite-theme-soft', palette.panel);
         root.style.setProperty('--cite-theme-soft-text', palette.panelText);
+        root.style.setProperty('--cite-theme-ink', palette.ink);
         root.style.setProperty('--cite-brand', palette.theme);
         root.style.setProperty('--cite-brand-2', palette.hover);
 
@@ -164,7 +166,9 @@
                 color: var(--cite-theme-text) !important;
                 border: 1px solid var(--cite-theme-border) !important;
             }
-            button[class*="hover:bg-[#4a1206]"]:hover, button[class*="hover:bg-[#8c2a10]"]:hover {
+            [class*="hover:bg-[#4a1206]"]:hover,
+            [class*="hover:bg-[#4a1006]"]:hover,
+            [class*="hover:bg-[#8c2a10]"]:hover {
                 background-color: var(--cite-theme-hover) !important;
             }
             .theme-soft { 
@@ -183,18 +187,78 @@
                 color: var(--cite-theme-text) !important;
                 border: 1px solid var(--cite-theme-border) !important;
             }
-            [class*="text-[#621708]"] { color: var(--cite-theme) !important; }
-            [class*="border-[#621708]"] { border-color: var(--cite-theme) !important; }
+            [class*="text-[#621708]"],
+            [class*="text-[#8c2a10]"] { color: var(--cite-theme-ink) !important; }
+            [class*="border-[#621708]"],
+            [class*="border-[#8c2a10]"] { border-color: var(--cite-theme) !important; }
+            [class*="border-l-[#621708]"] { border-left-color: var(--cite-theme) !important; }
+            [class*="border-r-[#621708]"] { border-right-color: var(--cite-theme) !important; }
+            [class*="border-t-[#621708]"] { border-top-color: var(--cite-theme) !important; }
+            [class*="border-b-[#621708]"] { border-bottom-color: var(--cite-theme) !important; }
             [class*="bg-[#621708]"] { background-color: var(--cite-theme) !important; }
+            [class*="accent-[#621708]"] { accent-color: var(--cite-theme) !important; }
+            [class*="ring-[#621708]"],
+            [class*="ring-[#8c2a10]"] {
+                --tw-ring-color: color-mix(in srgb, var(--cite-theme) 22%, transparent) !important;
+            }
+            [class*="bg-[#fff0eb]"],
+            [class*="bg-[#f6eee9]"],
+            [class*="bg-[#fff8f6]"] {
+                background-color: color-mix(in srgb, var(--cite-theme) 10%, white) !important;
+            }
+            [class*="border-[#fbdacf]"] {
+                border-color: color-mix(in srgb, var(--cite-theme) 28%, white) !important;
+            }
             .tab-btn.active {
-                color: var(--cite-theme) !important;
+                color: var(--cite-theme-ink) !important;
                 border-bottom-color: var(--cite-theme) !important;
             }
+            .submission-card.highlighted,
+            .wf-stat.active {
+                border-color: var(--cite-theme) !important;
+                background: color-mix(in srgb, var(--cite-theme) 8%, white) !important;
+            }
+            .nav-notif-mark,
+            .file-chip-dl,
+            .file-action-btn,
+            .cite-form-kicker,
+            .wf-drawer-back:hover,
+            .notif-target:hover .text-sm {
+                color: var(--cite-theme-ink) !important;
+            }
+            .nav-notif-filter.is-active,
+            .compact-select-option.active,
+            .wf-seg button.active,
+            .timeline-dot.active,
+            .mini-bar-fill,
+            .chair-btn-primary,
+            .view-btn.active,
+            .document-primary-btn {
+                background-color: var(--cite-theme) !important;
+                color: var(--cite-theme-text) !important;
+                border-color: var(--cite-theme) !important;
+            }
+            .chair-btn-primary:hover,
+            .document-primary-btn:hover:not(:disabled) {
+                background-color: var(--cite-theme-hover) !important;
+            }
+            .chair-btn-revision {
+                color: var(--cite-theme-ink) !important;
+                border-color: var(--cite-theme) !important;
+            }
+            .nav-notif-action:hover,
+            .citeflow-modal-input:focus,
+            .field-input:focus,
+            .field:focus,
+            .modal-field:focus {
+                border-color: var(--cite-theme) !important;
+            }
+            .nav-notif-action:hover { color: var(--cite-theme-ink) !important; }
             .day-num.today, .mini-day.active {
                 background-color: var(--cite-theme) !important;
                 color: var(--cite-theme-text) !important;
             }
-            .cite-kicker { color: var(--cite-theme) !important; }
+            .cite-kicker { color: var(--cite-theme-ink) !important; }
         `;
 
         let styleEl = document.getElementById('citeflow-theme-style');
@@ -540,13 +604,13 @@
             }
             .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange,
             .flatpickr-day.selected:hover, .flatpickr-day.selected:focus {
-                background: #621708 !important;
-                border-color: #621708 !important;
-                color: #ffffff !important;
+                background: var(--cite-theme, #621708) !important;
+                border-color: var(--cite-theme, #621708) !important;
+                color: var(--cite-theme-text, #ffffff) !important;
                 font-weight: 700 !important;
             }
             .flatpickr-day.today {
-                border-color: #621708 !important;
+                border-color: var(--cite-theme, #621708) !important;
             }
             .flatpickr-day:hover {
                 background: #f1f5f9 !important;

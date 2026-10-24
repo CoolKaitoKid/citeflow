@@ -18,7 +18,7 @@
         body { background: #f8fafc; }
         .folder-card, .doc-card { transition: all 0.2s ease; }
         .folder-card:hover, .doc-card:hover { transform: translateY(-3px); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
-        .view-btn.active { background-color: #621708; color: white; }
+        .view-btn.active { background-color: var(--cite-theme, #621708); color: white; }
         .soft-shadow { box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06); }
         .drive-list {
             background: #fff;
@@ -117,8 +117,8 @@
         .document-modal-backdrop { background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); }
         .document-modal-panel { box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35); animation: modalIn 0.2s ease-out; }
         .document-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; border-radius: 1rem; font-size: 0.875rem; font-weight: 700; transition: all 0.18s ease; }
-        .document-primary-btn { background: #621708; color: #fff; }
-        .document-primary-btn:hover:not(:disabled) { background: #8c2a10; }
+        .document-primary-btn { background: var(--cite-theme, #621708); color: #fff; }
+        .document-primary-btn:hover:not(:disabled) { background: var(--cite-theme-hover, #8c2a10); }
         .document-secondary-btn { background: #fff; color: #334155; border: 1px solid #e2e8f0; }
         .document-secondary-btn:hover:not(:disabled) { border-color: #cbd5e1; background: #f8fafc; }
         /* Same toast as shared/messenger.css .citeflow-toast / CiteFlowModal.toast */
@@ -149,17 +149,17 @@
         }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .context-menu { position: absolute; right: 12px; top: 48px; min-width: 180px; z-index: 30; }
-        .color-choice.active { outline: 3px solid rgba(98, 23, 8, 0.22); outline-offset: 3px; }
+        .color-choice.active { outline: 3px solid color-mix(in srgb, var(--cite-theme, #621708) 22%, transparent); outline-offset: 3px; }
         .drop-zone { border: 2px dashed #cbd5e1; background: #f8fafc; transition: all 0.2s ease; cursor: pointer; }
-        .drop-zone:hover, .drop-zone.drag-over { border-color: #621708; background: rgba(98, 23, 8, 0.04); transform: scale(1.005); }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--cite-theme, #621708); background: color-mix(in srgb, var(--cite-theme, #621708) 4%, transparent); transform: scale(1.005); }
         .upload-file-item { transition: all 0.15s ease; }
         .upload-file-item:hover { background: #f8fafc; }
         .color-chip { width: 32px; height: 32px; border-radius: 9999px; transition: transform 0.15s ease, box-shadow 0.15s ease; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border: 2px solid transparent; }
         .color-chip:hover { transform: scale(1.12); }
-        .color-chip.active { border-color: #ffffff; box-shadow: 0 0 0 3px #621708; transform: scale(1.12); }
+        .color-chip.active { border-color: #ffffff; box-shadow: 0 0 0 3px var(--cite-theme, #621708); transform: scale(1.12); }
         .icon-chip { width: 44px; height: 44px; border-radius: 12px; background: #f1f5f9; color: #475569; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer; transition: all 0.15s ease; border: 1.5px solid transparent; }
         .icon-chip:hover { background: #e2e8f0; color: #1e293b; transform: translateY(-1px); }
-        .icon-chip.active { background: rgba(98, 23, 8, 0.08); color: #621708; border-color: #621708; font-weight: bold; }
+        .icon-chip.active { background: color-mix(in srgb, var(--cite-theme, #621708) 8%, transparent); color: var(--cite-theme-ink, #621708); border-color: var(--cite-theme, #621708); font-weight: bold; }
         .badge-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
 
         /* Compact layout refinements */
@@ -168,7 +168,7 @@
         .compact-action-bar { width: fit-content; max-width: 100%; margin-left: auto; padding: 0.55rem 0.65rem 0.55rem 0.9rem; border-radius: 1rem; }
         .compact-doc-button { min-height: 36px; }
         .doc-card { border-radius: 1.25rem; }
-        .doc-checkbox { width: 18px; height: 18px; accent-color: #621708; }
+        .doc-checkbox { width: 18px; height: 18px; accent-color: var(--cite-theme, #621708); }
         @media (max-width: 768px) {
             .compact-action-bar { width: 100%; margin-left: 0; }
         }
@@ -255,7 +255,7 @@
                 border: 0;
             }
             .compact-select-option.active {
-                background: #621708;
+                background: var(--cite-theme, #621708);
                 color: #ffffff;
             }
         }
@@ -2027,92 +2027,6 @@ document.addEventListener('keydown',e=>{
     hideSimpleUploadModal();
     hideMoveDocsModal();
 });
-async function runDocumentVaultDiagnostic() {
-    try {
-        const client = getVaultClient() || window.supabaseClient;
-        if (!client || !client.auth) {
-            console.warn('[DOCUMENT VAULT AUTH] Supabase client or auth not available');
-            return;
-        }
-
-        // 1. Call client.auth.getSession()
-        const { data: sessionData, error: sessionError } = await client.auth.getSession();
-        const session = sessionData?.session;
-        const hasSession = Boolean(session);
-        const authUid = session?.user?.id || null;
-        const email = session?.user?.email || null;
-
-        // 2. Log ONLY: [DOCUMENT VAULT AUTH] -> hasSession, authUid, email, sessionError
-        console.log('[DOCUMENT VAULT AUTH]', {
-            hasSession,
-            authUid,
-            email,
-            sessionError: sessionError ? (sessionError.message || sessionError) : null
-        });
-
-        // 3. If a session exists, query public.admin_profiles using session.user.id
-        let adminProfile = null;
-        let adminError = null;
-        if (session?.user?.id) {
-            const profileRes = await client
-                .from('admin_profiles')
-                .select('id,email,role')
-                .eq('id', session.user.id)
-                .maybeSingle();
-            adminProfile = profileRes.data || null;
-            adminError = profileRes.error ? (profileRes.error.message || profileRes.error) : null;
-        }
-
-        // 4. Log: [DOCUMENT VAULT ADMIN PROFILE] -> adminProfile, adminError
-        console.log('[DOCUMENT VAULT ADMIN PROFILE]', {
-            adminProfile,
-            adminError
-        });
-
-        // 5. Also call: client.rpc('is_document_vault_admin')
-        let checkData = null;
-        let checkError = null;
-        try {
-            const rpcRes = await client.rpc('is_document_vault_admin');
-            checkData = rpcRes.data;
-            checkError = rpcRes.error ? (rpcRes.error.message || rpcRes.error) : null;
-        } catch(e) {
-            checkError = e.message || String(e);
-        }
-
-        // Log: [DOCUMENT VAULT ADMIN CHECK] -> data, error
-        console.log('[DOCUMENT VAULT ADMIN CHECK]', {
-            data: checkData,
-            error: checkError
-        });
-
-        // 6. Check storage bucket metadata
-        try {
-            const { data: bucketData, error: bucketError } = await client.storage.getBucket(STORAGE_BUCKET);
-            console.log('[DOCUMENT VAULT BUCKET INFO]', {
-                bucketData,
-                bucketError: bucketError ? (bucketError.message || bucketError) : null
-            });
-        } catch(bErr) {
-            console.warn('[DOCUMENT VAULT BUCKET INFO ERROR]:', bErr.message);
-        }
-
-        // 7. List all buckets visible to current session
-        try {
-            const { data: allBuckets, error: listError } = await client.storage.listBuckets();
-            console.log('[DOCUMENT VAULT LIST BUCKETS]', {
-                allBuckets: allBuckets ? allBuckets.map(b => ({ id: b.id, name: b.name, public: b.public })) : null,
-                listError: listError ? listError.message : null
-            });
-        } catch(lErr) {
-            console.warn('[DOCUMENT VAULT LIST BUCKETS ERROR]:', lErr.message);
-        }
-    } catch(err) {
-        console.error('Error during Document Vault diagnostic:', err);
-    }
-}
-window.runDocumentVaultDiagnostic = runDocumentVaultDiagnostic;
-
 async function initVaultApp() {
     // 1. Instant Cache Render: paint folders and stats immediately (0ms wait for user)
     restoreCachedFolders();
@@ -2120,10 +2034,7 @@ async function initVaultApp() {
     initCompactSelects();
     setFolderView(currentFolderView, false);
 
-    // 2. Run Document Vault diagnostic using existing Supabase client/session
-    runDocumentVaultDiagnostic();
-
-    // 3. Parallel Background tasks: non-blocking sidebar load + fresh vault sync
+    // Parallel background tasks: non-blocking sidebar load + fresh vault sync
     if (typeof loadSidebar === 'function') {
         loadSidebar().catch(err => console.warn('Sidebar background load error:', err));
     }

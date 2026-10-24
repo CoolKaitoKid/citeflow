@@ -3,7 +3,7 @@
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (root) root.CiteFlowGlobalSearch = api;
 })(typeof window !== 'undefined' ? window : globalThis, function (root) {
-    const MAROON = '#621708';
+    const MAROON = 'var(--cite-theme-ink, #621708)';
     const LIMIT = 8;
 
     const FACULTY_PAGES = [
@@ -552,11 +552,11 @@
             .cite-search-tab{border:0;background:transparent;color:#57534e;font-size:12px;font-weight:600;padding:8px 8px 10px;white-space:nowrap;border-bottom:2px solid transparent;cursor:pointer}
             .cite-search-tab.is-active{color:${MAROON};border-bottom-color:${MAROON}}
             .cite-search-count{display:inline-flex;min-width:16px;height:16px;margin-left:4px;padding:0 4px;border-radius:999px;background:#f5f5f4;color:#44403c;font-size:10px;align-items:center;justify-content:center}
-            .cite-search-tab.is-active .cite-search-count{background:#f3e8e4;color:${MAROON}}
+            .cite-search-tab.is-active .cite-search-count{background:color-mix(in srgb, var(--cite-theme, #621708) 12%, white);color:${MAROON}}
             .cite-search-list{max-height:min(420px,60vh);overflow:auto;padding:6px}
             .cite-search-item{width:100%;display:flex;gap:10px;align-items:flex-start;text-align:left;border:0;background:transparent;border-radius:12px;padding:8px;cursor:pointer}
             .cite-search-item:hover,.cite-search-item.is-active{background:#faf7f6}
-            .cite-search-icon{width:32px;height:32px;border-radius:10px;background:#f6f3f2;color:${MAROON};display:flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:13px}
+            .cite-search-icon{width:32px;height:32px;border-radius:10px;background:color-mix(in srgb, var(--cite-theme, #621708) 8%, white);color:${MAROON};display:flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:13px}
             .cite-search-title{display:block;font-size:13px;font-weight:600;color:#1c1917;line-height:1.3}
             .cite-search-detail{display:block;margin-top:2px;font-size:12px;color:#78716c;line-height:1.35}
             .cite-search-empty,.cite-search-guide{padding:22px 16px;text-align:center;color:#78716c;font-size:13px}

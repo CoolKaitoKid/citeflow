@@ -3280,7 +3280,7 @@
         let subtitle = 'MFO Accomplishment Report';
         let iconHtml = '';
         let confirmBtnText = 'Confirm';
-        let confirmBtnStyle = 'background:#621708;border-color:#621708;color:#fff;';
+        let confirmBtnStyle = 'background:var(--cite-theme,#621708);border-color:var(--cite-theme,#621708);color:var(--cite-theme-text,#fff);';
         let promptText = '';
         let requireRemarks = false;
         let remarksPlaceholder = '';

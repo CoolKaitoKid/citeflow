@@ -1725,9 +1725,9 @@
             const confirmBtnText = options.confirmText || (isDanger ? 'Confirm' : 'Continue');
             const cancelBtnText = options.cancelText || 'Cancel';
             const iconClass = isDanger ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-question';
-            const iconColor = isDanger ? '#e11d48' : '#8c2a10';
-            const iconBg = isDanger ? '#ffe4e6' : '#fdf2e9';
-            const confirmBtnBg = isDanger ? '#be123c' : '#621708';
+            const iconColor = isDanger ? '#e11d48' : 'var(--cite-theme-ink, #621708)';
+            const iconBg = isDanger ? '#ffe4e6' : 'color-mix(in srgb, var(--cite-theme, #621708) 12%, white)';
+            const confirmBtnBg = isDanger ? '#be123c' : 'var(--cite-theme, #621708)';
 
             overlay.innerHTML = `
                 <div class="citeflow-modal-card" role="dialog" aria-modal="true" style="
@@ -1882,52 +1882,15 @@
             }
         }
         const clientSession = session;
-        const authUser = clientSession?.user || null;
-        const isChair = isChairperson(faculty);
-        const isAdmin = isWorkflowAdmin(faculty);
-
-        const debug = {
-            authUserId: authUser?.id || null,
-            authEmail: authUser?.email || null,
-            facultyId: faculty?.id ?? null,
-            facultyAuthUserId: faculty?.auth_user_id || null,
-            facultyName: faculty?.full_name || faculty?.name || null,
-            role: faculty?.role || null,
-            rawRole: faculty?.raw_role || null,
-            position: faculty?.position || null,
-            department: faculty?.department || faculty?.department_code || null,
-            isChairperson: isChair,
-            sessionPresent: !!session?.user,
-            clientSessionPresent: !!clientSession?.user,
-            clientJwtPresent: !!clientSession?.access_token,
-            grantFound: false,
-            grantId: null,
-            grantActive: false,
-            grantError: null,
-            rpcValue: null,
-            rpcError: null,
-            shouldShow: false
-        };
 
         faculty = faculty || (typeof window !== 'undefined' ? (window.currentFaculty || window.CiteFlowAuthGuard?.faculty) : null);
-        if (!faculty || !client) {
-            debug.shouldShow = false;
-            console.info('[Chairperson Access Debug]', debug);
-            return false;
-        }
+        if (!faculty || !client) return false;
 
-        if (!clientSession?.user?.id || !clientSession?.access_token) {
-            debug.shouldShow = false;
-            debug.rpcError = 'shared Supabase client has no authenticated session';
-            console.info('[Chairperson Access Debug]', debug);
-            return false;
-        }
+        if (!clientSession?.user?.id || !clientSession?.access_token) return false;
 
         // Prefer database authorization when the session is present.
         try {
             const rpc = await client.rpc('wf_current_user_has_chairperson_grant');
-            debug.rpcValue = rpc.data;
-            debug.rpcError = rpc.error?.message || null;
             if (rpc.error && Number(rpc.error.status || 0) === 401) {
                 console.warn('CiteFlowWorkflow: chairperson grant RPC returned 401 with client session present.', {
                     authUserId: clientSession.user.id,
@@ -1935,16 +1898,8 @@
                     error: rpc.error.message || rpc.error
                 });
             }
-            if (!rpc.error && rpc.data === true) {
-                debug.shouldShow = true;
-                console.info('[Chairperson Access Debug]', debug);
-                return true;
-            }
-            if (!rpc.error && rpc.data === false) {
-                debug.shouldShow = false;
-                console.info('[Chairperson Access Debug]', debug);
-                return false;
-            }
+            if (!rpc.error && rpc.data === true) return true;
+            if (!rpc.error && rpc.data === false) return false;
             if (rpc.error) {
                 console.error('CiteFlowWorkflow: chairperson grant RPC failed:', {
                     message: rpc.error.message || null,
@@ -1952,15 +1907,10 @@
                     details: rpc.error.details || null,
                     hint: rpc.error.hint || null
                 });
-                debug.shouldShow = false;
-                console.info('[Chairperson Access Debug]', debug);
                 return false;
             }
         } catch (error) {
-            debug.rpcError = error?.message || String(error);
             console.error('CiteFlowWorkflow: chairperson grant RPC threw:', error);
-            debug.shouldShow = false;
-            console.info('[Chairperson Access Debug]', debug);
             return false;
         }
         return false;
@@ -2362,11 +2312,6 @@
         }
 
         const transition = computeReviewTransition(submission, action, actorFaculty, config, task);
-        console.info('[Workflow Review Debug]', {
-            current_approval_stage: stage,
-            review_action: action,
-            next_approval_stage: transition.nextStage
-        });
         const update = buildReviewUpdate(transition, comment, actorName, submission);
 
         const written = await updateSubmissionStrict(sb, submissionId, update);

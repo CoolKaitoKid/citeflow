@@ -1,6 +1,4 @@
 /* Chairperson Review — lives inside faculty/submissions.html */
-console.log("[Submissions Debug] chairperson-review.js file executed");
-
 (function initCiteFlowChairReview(global) {
     'use strict';
 
@@ -1383,10 +1381,7 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
     function syncTabs() {
         if (typeof document === 'undefined') return;
         const wrap = document.getElementById('submissionsModeTabs');
-        if (!wrap) {
-            console.info('[Chairperson Access Debug] submissionsModeTabs not in the DOM yet');
-            return;
-        }
+        if (!wrap) return;
         wrap.classList?.toggle?.('hidden', !review.access);
         wrap.classList?.toggle?.('is-visible', review.access);
         wrap.style?.setProperty?.('display', review.access ? 'flex' : 'none', 'important');
@@ -1401,13 +1396,11 @@ console.log("[Submissions Debug] chairperson-review.js file executed");
         const faculty = facultyOverride || global.currentFaculty;
         const user = userOverride || global.currentUser;
         if (!helper) {
-            console.info('[Chairperson Access Debug] CiteFlowWorkflow is not loaded');
             review.access = false;
             syncTabs();
             return false;
         }
         if (!faculty) {
-            console.info('[Chairperson Access Debug] currentFaculty is not loaded yet');
             if (typeof global.refreshFacultyChairReviewNav === 'function') {
                 setTimeout(() => global.refreshFacultyChairReviewNav(), 400);
             }

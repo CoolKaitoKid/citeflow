@@ -1832,7 +1832,7 @@ window.CiteFlowMessenger = (function () {
             mountDOM();
 
             const hasUser = await resolveCurrentUser();
-            console.log("CiteFlowMessenger: init() hasUser:", hasUser, "userId:", State.currentUserId);
+
             if (hasUser) {
                 await detectOptionalMessengerSchema();
                 await loadConversations(true);
@@ -1855,7 +1855,7 @@ window.CiteFlowMessenger = (function () {
         document.getElementById("msgrBackdrop")?.classList.add("show");
 
         await resolveCurrentUser();
-        console.log("CiteFlowMessenger: openPanel() userId:", State.currentUserId);
+
         await detectOptionalMessengerSchema();
         await loadConversations(State.conversations.length === 0);
         if (!channelHealthy(State.inboxChannel)) subscribeToInbox();
@@ -1965,7 +1965,7 @@ window.CiteFlowMessenger = (function () {
         try {
             State.isLoadingConvos = true;
 
-            console.log("CiteFlowMessenger: loadConversations for userId:", State.currentUserId);
+
 
             // STRICT PRIVACY: Query ONLY conversations where current user is registered as a participant
             const { data: participantRows, error: pErr } = await sb
@@ -1978,7 +1978,7 @@ window.CiteFlowMessenger = (function () {
                 throw pErr;
             }
 
-            console.log("CiteFlowMessenger: participantRows found:", participantRows?.length || 0);
+
 
             const pMap = new Map();
             if (Array.isArray(participantRows)) {
@@ -2143,7 +2143,7 @@ window.CiteFlowMessenger = (function () {
             });
 
             State.conversations = finalConvos;
-            console.log("CiteFlowMessenger: Loaded", finalConvos.length, "conversations.");
+
 
             if (State.activeConversationId && !finalConvos.some((c) => String(c.id) === String(State.activeConversationId))) {
                 closeActiveChat();
@@ -3022,9 +3022,6 @@ window.CiteFlowMessenger = (function () {
 
         channel.subscribe((status) => {
             if (myToken !== State._messageChannelToken) return;
-            if (status === "SUBSCRIBED") {
-                console.log(`CiteFlowMessenger: Active chat listener connected for ${conversationId}.`);
-            }
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
                 console.warn(`CiteFlowMessenger: Active chat listener error (${status}). Reconnecting...`);
                 setTimeout(() => {
@@ -3109,9 +3106,6 @@ window.CiteFlowMessenger = (function () {
 
         channel.subscribe((status) => {
             if (myToken !== State._inboxChannelToken) return;
-            if (status === "SUBSCRIBED") {
-                console.log("CiteFlowMessenger: Inbox realtime listener connected.");
-            }
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
                 console.warn(`CiteFlowMessenger: Inbox listener status: ${status}. Scheduling recovery...`);
                 clearTimeout(State.reconnectTimer);
