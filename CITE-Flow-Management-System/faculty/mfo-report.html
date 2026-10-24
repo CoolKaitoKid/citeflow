@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        (function() {
+            try {
+                var p = new URLSearchParams(window.location.search);
+                if (p.get('embed') === '1' || window.self !== window.top) {
+                    document.documentElement.classList.add('mfo-embedded');
+                }
+            } catch (_) {}
+        })();
+    </script>
+    <title>MFO Report - CITE-Flow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js?v=auth-nav-session-1"></script>
+    <script src="../shared/auth.js?v=auth-mfo-rpc-1"></script>
+    <script src="../shared/workflow.js?v=auth-session-4"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-session-1"></script>
+    <script src="../shared/cite-settings.js"></script>
+    <script src="../shared/mfo-sources.js?v=mfo-accomplishment-map-2"></script>
+    <script src="../shared/mfo-consolidation.js?v=mfo-52"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <link rel="stylesheet" href="faculty-nav.css?v=chair-sidebar-only">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+        body { background: #f3f4f7; color: #111827; }
+
+        /* Embedded modal preview styles */
+        html.mfo-embedded, html.mfo-embedded body {
+            background: #f8fafc !important;
+            overflow-x: auto !important;
+            min-height: auto !important;
+        }
+        .mfo-embedded #sidebar-container,
+        .mfo-embedded #navbar-container {
+            display: none !important;
+        }
+        .mfo-embedded .mfo-main {
+            margin-left: 0 !important;
+            padding: 0 !important;
+            min-width: 0 !important;
+            overflow-x: visible !important;
+        }
+        .mfo-embedded .mfo-main > div {
+            padding: 8px !important;
+            max-width: 100% !important;
+            padding-bottom: 24px !important;
+        }
+        .mfo-embedded .mfo-doc-toolbar button:not([onclick*="print"]) {
+            display: none !important;
+        }
+
+        .mfo-sticky {
+            position: sticky; top: 72px; z-index: 30;
+            background: rgba(255,255,255,.94);
+            backdrop-filter: blur(10px);
+            border: 1px solid #e8eaef;
+        }
+        .mfo-section { border: 1px solid #e8eaef; background: #fff; }
+        .mfo-section[open] > summary .mfo-chevron { transform: rotate(180deg); }
+        .mfo-section summary::-webkit-details-marker { display: none; }
+        .mfo-section summary { flex-wrap: wrap; }
+        .mfo-na-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #334155;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
+            padding: 6px 12px;
+            flex-shrink: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+        .mfo-na-toggle:disabled {
+            opacity: .55;
+            cursor: default;
+        }
+        .mfo-na-check {
+            width: 15px;
+            height: 15px;
+            border: 1.5px solid #64748b;
+            border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            line-height: 1;
+            color: #fff;
+            background: #fff;
+        }
+        .mfo-na-toggle[aria-pressed="true"] .mfo-na-check {
+            background: var(--cite-theme, #621708);
+            border-color: var(--cite-theme, #621708);
+        }
+        .mfo-na-toggle input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            margin: 0;
+            accent-color: var(--cite-theme, #621708);
+            cursor: pointer;
+        }
+        /* Official form N/A mark sits on the existing PI heading line. */
+        .mfo-doc-na {
+            font-weight: 400;
+            font-size: 10.5px;
+            margin-left: 6px;
+            white-space: nowrap;
+        }
+        .mfo-doc-na input { vertical-align: -2px; }
+        .mfo-doc-lines-input {
+            display: block;
+            width: 100%;
+            border: 0;
+            border-bottom: 1px solid #000;
+            min-height: 18mm;
+            font: inherit;
+            font-size: 11.5px;
+            padding: 4px 2px;
+            margin-top: 4px;
+            resize: vertical;
+            background: transparent;
+        }
+        .mfo-doc-edit { margin-top: 3px; font-size: 10px; }
+        .mfo-doc-cell {
+            width: 100%;
+            border: 0;
+            padding: 0;
+            margin: 0;
+            font: inherit;
+            font-size: 10.5px;
+            line-height: inherit;
+            background: transparent;
+            color: inherit;
+            box-sizing: border-box;
+        }
+        .mfo-doc-title-input { font-weight: 700; font-size: 12px; }
+        .mfo-doc-pair { display: inline-block; margin-right: 6px; white-space: nowrap; }
+        .mfo-doc-pair .mfo-doc-cell { width: 48px; display: inline-block; }
+        @media print {
+            .mfo-doc-edit { display: none !important; }
+            .mfo-doc-lines-input { border: 0; border-bottom: 1px solid #000; resize: none; }
+            .mfo-doc-cell { border: 0; }
+        }
+        /* display:none file inputs do not open a picker in several browsers.
+           Keep them in the layout, just off-screen. */
+        .mfo-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        /* Modern, clean, and elegant fillable field design for CITE-Flow MFO */
+        .mfo-field {
+            width: 100%;
+            height: 42px;
+            min-height: 42px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 9px;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #1e293b;
+            background: #ffffff;
+            line-height: 1.4;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+            box-sizing: border-box;
+        }
+        .mfo-field::placeholder {
+            color: #94a3b8;
+            font-weight: 400;
+        }
+        .mfo-field:hover:not(:disabled):not(:focus) {
+            border-color: #94a3b8;
+            background: #ffffff;
+        }
+        .mfo-field:focus {
+            outline: none;
+            border-color: var(--cite-theme, #621708);
+            background: #ffffff;
+            box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--cite-theme, #621708) 12%, transparent);
+        }
+        .mfo-field:disabled {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+            color: #64748b;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        select.mfo-field {
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23475569' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 15px 15px;
+            padding-right: 36px;
+            cursor: pointer;
+        }
+        select.mfo-field:disabled {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            cursor: not-allowed;
+        }
+        textarea.mfo-field {
+            height: auto;
+            min-height: 80px;
+            padding: 10px 12px;
+            resize: vertical;
+        }
+        .mfo-field-checkbox-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 42px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #334155;
+            cursor: pointer;
+            user-select: none;
+        }
+        .mfo-field-checkbox {
+            width: 17px;
+            height: 17px;
+            border-radius: 4px;
+            border: 1.5px solid #cbd5e1;
+            accent-color: var(--cite-theme, #621708);
+            cursor: pointer;
+        }
+        .mfo-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+            line-height: 1.3;
+        }
+        .mfo-label-text {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .mfo-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 3px 10px;
+            border: 1px solid #fed7aa;
+            background: #fff7ed;
+            color: #c2410c;
+        }
+        .mfo-chip-calc { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+        .mfo-chip-lock { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+        .mfo-flag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: .02em;
+            text-transform: uppercase;
+            border-radius: 999px;
+            padding: 2px 7.5px;
+            border: 1px solid transparent;
+            line-height: 1.2;
+            vertical-align: middle;
+        }
+        .mfo-flag-auto { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+        .mfo-flag-manual { background: #f0f9ff; border-color: #bae6fd; color: #0284c7; }
+        .mfo-flag-need { background: #fffbeb; border-color: #fde68a; color: #b45309; }
+        .mfo-flag-na { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+        .mfo-record {
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 16px;
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .mfo-record:hover {
+            border-color: #cbd5e1;
+            box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+        }
+        @keyframes modalFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes modalPop {
+            from { opacity: 0; transform: scale(0.96) translateY(6px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        /* Above faculty-nav (1000–2200). Tailwind z-50 sat behind the sidebar. */
+        .mfo-review-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 8000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            padding-top: max(16px, calc(var(--cite-navbar-offset, 60px) + 12px));
+            background: rgba(15, 23, 42, 0.48);
+            backdrop-filter: blur(2px);
+            animation: modalFadeIn 0.15s ease-out;
+        }
+        .mfo-review-dialog {
+            width: min(42rem, 100%);
+            max-height: min(85dvh, calc(100dvh - var(--cite-navbar-offset, 60px) - 32px));
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            border-radius: 16px;
+            border: 1px solid #e8eaef;
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2), 0 2px 8px rgba(15, 23, 42, 0.08);
+            animation: modalPop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .mfo-review-header,
+        .mfo-review-footer {
+            flex-shrink: 0;
+            padding: 16px 20px;
+        }
+        .mfo-review-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            border-bottom: 1px solid #edf0f5;
+        }
+        .mfo-review-close {
+            width: 32px;
+            height: 32px;
+            border: 0;
+            border-radius: 999px;
+            background: #f1f5f9;
+            color: #334155;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .mfo-review-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 8px 20px 16px;
+        }
+        .mfo-review-footer {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-top: 1px solid #edf0f5;
+            background: #fff;
+        }
+        @media (min-width: 640px) {
+            .mfo-review-footer { flex-direction: row; }
+        }
+        #mfoToast {
+            position: fixed; right: 16px; bottom: 20px; z-index: 9600;
+            display: none; max-width: 360px; padding: 12px 16px;
+            border-radius: 14px; font-size: 13px; font-weight: 600;
+            box-shadow: 0 16px 40px rgba(15,23,42,.16);
+        }
+        #mfoToast.ok { display: block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        #mfoToast.err { display: block; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .cite-action-primary {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            background: var(--cite-theme, #621708); color: #fff; border: 1px solid var(--cite-theme, #621708);
+            border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 700;
+        }
+        .cite-action-primary:disabled { opacity: .55; cursor: not-allowed; }
+        /* ---- Completed report view -------------------------------------
+           Mirrors the official accomplishment report: serif body, ruled
+           tables, institutional letterhead. Sized in millimetres so the
+           on-screen preview matches the printed sheet. */
+        .mfo-doc {
+            background: #fff; color: #000;
+            font-family: 'Times New Roman', Times, serif;
+            width: 210mm; max-width: 100%;
+            margin: 0 auto; padding: 14mm 12mm;
+            box-shadow: 0 10px 40px rgba(15,23,42,.12);
+        }
+        .mfo-doc-title { text-align: center; font-size: 15px; font-weight: 700; }
+        .mfo-doc-sub { text-align: center; font-size: 12px; margin-top: 2px; }
+        .mfo-doc-ident { margin: 12px 0 8px; font-size: 12px; }
+        .mfo-doc-ident .row { display: flex; gap: 12mm; flex-wrap: wrap; margin-bottom: 4px; }
+        .mfo-doc-ident .row span { flex: 1 1 60mm; }
+        .mfo-doc-instr { font-size: 11px; font-style: italic; margin: 6px 0 4px; letter-spacing: .06em; }
+        .mfo-doc-group {
+            margin-top: 14px; font-size: 12px; font-weight: 700;
+            background: #eee; border: 1px solid #000; padding: 4px 6px;
+        }
+        .mfo-doc-pi { margin-top: 9px; font-size: 11.5px; font-weight: 700; }
+        .mfo-doc-note { font-size: 10.5px; font-style: italic; margin: 3px 0; }
+        .mfo-doc-lines {
+            border-bottom: 1px solid #000; min-height: 18mm;
+            font-size: 11.5px; padding: 4px 2px; margin-top: 4px;
+            white-space: pre-wrap;
+        }
+        .mfo-doc-break { break-before: page; page-break-before: always; margin-top: 18px; }
+        .mfo-doc-photos { display: block; margin-top: 5px; }
+        .mfo-doc-photo { width: 100%; max-width: 170mm; margin-top: 6mm; break-inside: avoid; page-break-inside: avoid; }
+        .mfo-doc-photo img {
+            width: 160mm; max-width: 100%; height: auto; max-height: 170mm;
+            object-fit: contain; border: 1px solid #000; display: block; background: #fff;
+        }
+        .mfo-doc-photo .cap { font-size: 11px; margin-top: 4px; text-align: left; white-space: pre-wrap; }
+        .mfo-pdf-frame { width: 100%; height: 85vh; border: 1px solid #cbd5e1; border-radius: 12px; background: #fff; }
+        .mfo-pdf-overlay {
+            z-index: 8000;
+            padding: 20px;
+            padding-top: 20px;
+            background: rgba(15, 23, 42, 0.55);
+        }
+        .mfo-review-dialog.mfo-pdf-dialog {
+            width: min(1080px, 100%);
+            height: min(96dvh, calc(100dvh - 40px));
+            max-height: min(96dvh, calc(100dvh - 40px));
+        }
+        .mfo-pdf-dialog .mfo-review-header { padding: 14px 20px; }
+        .mfo-pdf-dialog .mfo-review-body {
+            padding: 0; background: #e8edf2;
+            display: flex; flex-direction: column; overflow: auto;
+        }
+        .mfo-pdf-dialog .mfo-pdf-frame {
+            display: block; width: 100%; flex: 1 1 auto; height: 100%; min-height: 70vh;
+            border: 0; border-radius: 0; background: #fff;
+        }
+        .mfo-pdf-waiting {
+            flex: 1 1 auto; min-height: 70vh; display: flex; align-items: center; justify-content: center;
+            color: #334155; font-weight: 600; background: #fff;
+        }
+        .mfo-pdf-footer {
+            flex-direction: row;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .mfo-overlay-front { z-index: 9100; }
+        .mfo-doc table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
+        .mfo-doc th, .mfo-doc td {
+            border: 1px solid #000; padding: 4px 5px;
+            font-size: 10.5px; vertical-align: top;
+            word-wrap: break-word; overflow-wrap: anywhere;
+        }
+        .mfo-doc th { background: #f2f2f2; font-weight: 700; text-align: left; }
+        .mfo-doc-entry { border: 1px solid #000; padding: 6px 8px; margin-top: 6px; font-size: 11px; }
+        .mfo-doc-entry .t { font-weight: 700; font-size: 12px; }
+        .mfo-doc-entry dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; margin: 4px 0; }
+        .mfo-doc-entry dt { font-weight: 700; }
+        .mfo-doc-sign { margin-top: 18px; font-size: 12px; display: flex; gap: 16mm; flex-wrap: wrap; }
+        .mfo-doc-sign .box { min-width: 70mm; }
+        .mfo-doc-sign .line { border-bottom: 1px solid #000; height: 12mm; display: flex; align-items: flex-end; padding-bottom: 2px; }
+        .mfo-doc-sign .line.sig { display: flex; align-items: flex-end; }
+        .mfo-doc-sign .line.sig img { max-height: 11.5mm; max-width: 100%; object-fit: contain; }
+        /* Official letterhead and accreditation strip, at the template's own
+           display widths (108.24mm / 151.39mm), both centred as the document
+           has them. Width alone plus height:auto keeps each banner's aspect
+           ratio, so neither logo can stretch. */
+        .mfo-doc-head { text-align: center; margin-bottom: 6px; }
+        .mfo-doc-head img { width: 108.24mm; height: auto; display: inline-block; }
+        .mfo-doc-foot { text-align: center; margin-top: 14px; }
+        .mfo-doc-foot img { width: 151.39mm; height: auto; display: inline-block; }
+        @media (max-width: 768px) {
+            .mfo-doc-head img, .mfo-doc-foot img { width: 100%; }
+        }
+
+        @media print {
+            /* Print only the report: no chrome, no toolbar, no buttons. */
+            @page { size: A4 portrait; margin: 12mm; }
+            html, body { background: #fff !important; }
+            body * { visibility: hidden; }
+            #mfoReportDoc, #mfoReportDoc * { visibility: visible; }
+            #mfoReportDoc {
+                position: absolute; left: 0; top: 0;
+                width: 100%; margin: 0; padding: 0;
+                box-shadow: none;
+            }
+            #sidebar-container, #navbar-container, #mfoToast,
+            .mfo-doc-toolbar, .mfo-sticky { display: none !important; }
+            main.mfo-main { margin-left: 0 !important; }
+            /* Keep a section's heading with its table and never split a row. */
+            .mfo-doc-group, .mfo-doc-pi { break-after: avoid; page-break-after: avoid; }
+            .mfo-doc table, .mfo-doc-entry { break-inside: avoid; page-break-inside: avoid; }
+            .mfo-doc tr, .mfo-doc img { break-inside: avoid; page-break-inside: avoid; }
+            .mfo-doc thead { display: table-header-group; }
+            .mfo-doc-sign { break-inside: avoid; page-break-inside: avoid; }
+            /* The template carries the letterhead once at the top and the
+               accreditation strip once at the end, so both stay in the flow:
+               nothing is fixed over the page and the footer cannot cover the
+               last table or the submitted-by line. Keeping each banner unsplit
+               prevents clipping, and avoiding a break before the footer stops
+               it from stranding on a blank final page. */
+            .mfo-doc-head, .mfo-doc-foot { break-inside: avoid; page-break-inside: avoid; }
+            .mfo-doc-head img, .mfo-doc-foot img { max-width: 100%; }
+            .mfo-doc-foot { break-before: avoid; page-break-before: avoid; }
+        }
+
+        @media (max-width: 768px) {
+            .mfo-doc { width: 100%; padding: 16px; }
+            .mfo-sticky { top: 64px; }
+            .mfo-actions { width: 100%; }
+            .mfo-actions .cite-action,
+            .mfo-actions .cite-action-primary { width: 100%; justify-content: center; }
+            main.mfo-main { margin-left: 0 !important; }
+        }
+
+        /* Editor polish: keep the existing markup and hooks, but give the
+           long report a calmer rhythm and clearer visual hierarchy.  Scoped
+           to screen media so the established official print layout is left
+           untouched. */
+        @media screen {
+            main.mfo-main > div {
+                padding-top: clamp(1.25rem, 2.5vw, 2.25rem);
+            }
+            #mfoApp > .mb-4:first-child {
+                max-width: 920px;
+                margin-bottom: 1.5rem;
+            }
+            #mfoApp > .mb-4:first-child > a {
+                display: inline-flex;
+                align-items: center;
+                min-height: 2rem;
+                color: #7c2d12;
+                text-decoration: none;
+            }
+            #mfoApp > .mb-4:first-child > a:hover { text-decoration: underline; }
+            #mfoApp .cite-kicker { margin-top: .9rem; letter-spacing: .12em; }
+            #mfoApp .cite-title {
+                max-width: 760px;
+                margin-top: .35rem;
+                line-height: 1.12;
+                text-wrap: balance;
+            }
+            #mfoApp .cite-subtitle {
+                max-width: 780px;
+                margin-top: .7rem;
+                line-height: 1.55;
+            }
+            #mfoApp > .mb-4:not(:first-child),
+            #mfoApp > .mfo-sticky + .surface,
+            #mfoApp > .mfo-sticky + .mfo-section {
+                max-width: 1120px;
+            }
+            .mfo-sticky {
+                margin-bottom: 1.25rem;
+                padding: .9rem 1rem;
+                border-color: #e2e8f0;
+                box-shadow: 0 8px 24px rgba(15,23,42,.06);
+            }
+            .mfo-sticky > div:first-child { min-width: 12rem; }
+            .mfo-sticky > div:first-child .text-sm { letter-spacing: .01em; }
+            .mfo-actions {
+                align-items: stretch;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+            }
+            .mfo-actions .cite-action,
+            .mfo-actions .cite-action-primary {
+                min-height: 2.5rem;
+                white-space: nowrap;
+                box-shadow: 0 1px 1px rgba(15,23,42,.04);
+                transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+            }
+            .mfo-actions .cite-action:hover:not(:disabled),
+            .mfo-actions .cite-action-primary:hover:not(:disabled),
+            .mfo-section > div > .cite-action:hover:not(:disabled) {
+                transform: translateY(-1px);
+                box-shadow: 0 5px 12px rgba(15,23,42,.10);
+            }
+            #mfoApp > .surface,
+            #mfoApp > .mfo-section {
+                border-color: #e2e8f0;
+                box-shadow: 0 3px 14px rgba(15,23,42,.035);
+            }
+            #mfoApp > .surface { padding: clamp(1rem, 2vw, 1.35rem); }
+            #mfoApp > .surface h2 {
+                color: #1e293b;
+                letter-spacing: -.01em;
+            }
+            #mfoApp > .surface .grid { row-gap: 1.1rem; }
+            #mfoApp > .surface .font-semibold {
+                color: #1f2937;
+                line-height: 1.4;
+            }
+            .mfo-label {
+                margin-bottom: .35rem;
+                color: #475569;
+                letter-spacing: .04em;
+            }
+            .mfo-field {
+                height: 42px;
+                min-height: 42px;
+                border-color: #cbd5e1;
+                border-radius: 9px;
+                line-height: 1.4;
+                transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+            }
+            textarea.mfo-field { min-height: 5.5rem; height: auto; }
+            .mfo-section {
+                overflow: clip;
+                border-color: #e2e8f0;
+                box-shadow: 0 3px 14px rgba(15,23,42,.035);
+            }
+            .mfo-section summary {
+                min-height: 4.25rem;
+                background: linear-gradient(180deg, #fff, #fcfdff);
+                border-bottom: 1px solid transparent;
+                transition: background .15s ease;
+            }
+            .mfo-section[open] summary { border-bottom-color: #eef2f7; }
+            .mfo-section summary:hover { background: #f8fafc; }
+            .mfo-section summary > div:first-child { min-width: 0; flex: 1 1 15rem; }
+            .mfo-section summary > div:first-child > div:last-child {
+                margin-top: .2rem;
+                line-height: 1.35;
+            }
+            .mfo-na-toggle {
+                min-height: 2rem;
+                padding: .42rem .7rem;
+                gap: .45rem;
+                border-color: #dbe3ec;
+                background: #f8fafc;
+            }
+            .mfo-na-toggle:hover { border-color: #cbd5e1; background: #f1f5f9; }
+            .mfo-section > div {
+                padding-top: 1rem;
+            }
+            .mfo-record {
+                padding: clamp(.85rem, 1.6vw, 1.1rem);
+                margin-bottom: .8rem;
+                border-color: #e5eaf0;
+                background: #fcfdff;
+            }
+            .mfo-record .grid { row-gap: .9rem; }
+            .mfo-record .text-sm { line-height: 1.35; }
+            .mfo-record > .flex:first-child { padding-bottom: .1rem; }
+            .mfo-record .mfo-chip { max-width: 100%; line-height: 1.35; }
+            .mfo-doc-edit { color: #64748b; }
+            .mfo-doc-edit button {
+                color: #7c2d12;
+                font-size: 11px;
+                font-weight: 700;
+                text-decoration: underline;
+            }
+            .mfo-review-dialog { box-shadow: 0 24px 70px rgba(15,23,42,.22); }
+            .mfo-review-header h2 { line-height: 1.25; }
+            .mfo-review-body { padding-top: 1rem; }
+            .mfo-review-footer .cite-action,
+            .mfo-review-footer .cite-action-primary { min-height: 2.55rem; }
+            .mfo-doc {
+                border: 1px solid #e5e7eb;
+                border-radius: 4px;
+            }
+            .mfo-doc-ident {
+                padding: .65rem .75rem;
+                border: 1px solid #d1d5db;
+                background: #fafafa;
+            }
+            .mfo-doc-group { margin-top: 1.35rem; padding: .48rem .65rem; }
+            .mfo-doc-pi { margin-top: .85rem; line-height: 1.35; }
+            .mfo-doc table { margin-top: .45rem; }
+            .mfo-doc th, .mfo-doc td { padding: .42rem .5rem; }
+            .mfo-doc-entry { padding: .65rem .75rem; }
+            .mfo-doc-sign { gap: 1.25rem; }
+            @media (max-width: 900px) {
+                .mfo-actions { width: 100%; }
+                .mfo-actions .cite-action,
+                .mfo-actions .cite-action-primary { flex: 1 1 11rem; }
+            }
+            @media (max-width: 640px) {
+                main.mfo-main > div { padding-left: .9rem; padding-right: .9rem; }
+                .mfo-sticky { top: 60px; padding: .8rem; }
+                .mfo-sticky > div:first-child { min-width: 0; }
+                .mfo-section summary { align-items: flex-start; padding-top: 1rem; padding-bottom: 1rem; }
+                .mfo-na-toggle { order: 3; width: 100%; justify-content: center; }
+                .mfo-section summary > .mfo-chevron { margin-top: .35rem; }
+                .mfo-doc { border-radius: 0; }
+                .mfo-doc-ident .row { gap: .3rem; }
+                .mfo-doc-ident .row span { flex-basis: 100%; }
+                .mfo-doc table { display: block; overflow-x: auto; white-space: normal; }
+                .mfo-doc th, .mfo-doc td { min-width: 7rem; }
+                .mfo-doc-entry dl { grid-template-columns: 1fr; gap: 0; }
+                .mfo-doc-entry dt { margin-top: .35rem; }
+                .mfo-doc-sign .box { min-width: min(70mm, 100%); width: 100%; }
+            }
+        }
+    </style>
+</head>
+<body class="cite-page bg-slate-50 overflow-x-hidden min-h-screen">
+<div class="flex min-h-screen w-full">
+    <div id="sidebar-container"></div>
+    <main class="mfo-main flex-1 min-w-0 ml-[220px] overflow-x-hidden">
+        <div id="navbar-container"></div>
+        <div class="px-4 sm:px-6 lg:px-8 py-6 pb-24 max-w-[1320px] mx-auto">
+            <div id="mfoApp">
+                <div class="surface rounded-[16px] p-6">
+                    <div class="skeleton-text xl" style="width:220px;margin-bottom:12px"></div>
+                    <div class="skeleton-text" style="width:70%"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+<div id="mfoToast"></div>
+<script src="faculty-nav.js?v=auth-session-9"></script>
+<script src="../shared/system-ui.js"></script>
+<script src="mfo-report.js?v=mfo-faculty-token-1"></script>
+</body>
+</html>

@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Vault | CTU</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/auth.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/auth-guard.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/workflow.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <link rel="stylesheet" href="faculty-nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+
+        .card-shadow { 
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        }
+
+        .folder-card {
+            transition: all 0.25s ease;
+        }
+        .folder-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.10);
+        }
+        .drive-list {
+            background: #fff;
+            border: 1px solid #e8eaed;
+            border-radius: 8px;
+            overflow: hidden;
+            overflow-x: auto;
+        }
+        .drive-list-head,
+        .drive-row {
+            display: grid;
+            grid-template-columns: minmax(180px, 1.5fr) 140px 130px 90px 44px;
+            align-items: center;
+            gap: 8px;
+            min-height: 48px;
+            padding: 0 12px 0 16px;
+            min-width: 600px;
+        }
+        .drive-list-head {
+            color: #5f6368;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 1px solid #e8eaed;
+        }
+        .drive-list-head button {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: inherit;
+            font: inherit;
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+        }
+        .drive-list-head button:hover { color: #202124; }
+        .view-btn {
+            width: 40px;
+            height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 0.85rem;
+            color: #64748b;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        .view-btn.active { background-color: var(--cite-theme, #621708); color: white; }
+        .soft-shadow { box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06); }
+        .doc-card { transition: all 0.2s ease; border-radius: 1.25rem; }
+        .doc-card:hover { transform: translateY(-3px); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .drive-row {
+            position: relative;
+            border-bottom: 1px solid #e8eaed;
+            cursor: pointer;
+            color: #202124;
+            font-size: 14px;
+        }
+        .drive-row:last-child { border-bottom: none; }
+        .drive-row:hover { background: #f8f9fa; }
+        .drive-name {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+            font-weight: 500;
+        }
+        .drive-name i { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; }
+        .drive-owner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #5f6368;
+            font-size: 13px;
+        }
+        .drive-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #f9ab00;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .drive-muted { color: #5f6368; font-size: 13px; }
+        .drive-sort { justify-self: end; color: #5f6368; font-size: 13px; }
+        .drive-kebab {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            color: #5f6368;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .drive-kebab:hover { background: #e8eaed; color: #202124; }
+        .drive-row .context-menu {
+            position: absolute;
+            right: 8px;
+            top: 42px;
+            min-width: 180px;
+            z-index: 30;
+        }
+
+        .modal {
+            animation: fadeInScale 0.2s ease forwards;
+        }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+        }
+        .file-card {
+            transition: all 0.2s ease;
+        }
+        .file-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 18px -8px rgb(0 0 0 / 0.20);
+        }
+
+        .document-modal-backdrop {
+            background: rgba(15, 23, 42, 0.72);
+            backdrop-filter: blur(8px);
+        }
+        .document-modal-panel {
+            box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35);
+            animation: documentModalIn 0.2s ease-out;
+        }
+        @keyframes documentModalIn {
+            from { opacity: 0; transform: translateY(12px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .document-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.55rem;
+            border-radius: 0.85rem;
+            font-size: 0.825rem;
+            font-weight: 600;
+            transition: all 0.18s ease;
+        }
+        .document-action-btn:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+        .document-primary-btn {
+            background: var(--cite-theme, #621708);
+            color: #ffffff;
+        }
+        .document-primary-btn:hover:not(:disabled) {
+            background: var(--cite-theme-hover, #8c2a10);
+        }
+        .document-secondary-btn {
+            background: #ffffff;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+        }
+        .document-secondary-btn:hover:not(:disabled) {
+            border-color: #cbd5e1;
+            background: #f8fafc;
+        }
+        .document-toast {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 2600;
+            background: #0f172a;
+            color: white;
+            border-radius: 16px;
+            padding: 12px 18px;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.28);
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+        .document-toast.show {
+            display: flex;
+        }
+
+        /* Consistent Dropdown Styling */
+        .cite-select-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            width: 100%;
+        }
+        .cite-select-wrap > select {
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            background-color: #ffffff !important;
+            background-image: none !important;
+            padding-right: 38px !important;
+            cursor: pointer;
+        }
+        .cite-select-chevron {
+            position: absolute !important;
+            right: 12px !important;
+            top: 50% !important;
+            width: 14px !important;
+            height: 14px !important;
+            margin-top: -7px !important;
+            pointer-events: none !important;
+            color: #475569 !important;
+            z-index: 2 !important;
+            display: block !important;
+        }
+    </style>
+    <style id="vault-compact-dropdown">
+    select:not([multiple]) {
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    .compact-select { position: relative; display: inline-block; width: 100%; max-width: 100%; }
+    .compact-select-trigger, .compact-select-panel { display: none; }
+    @media (max-width: 767px) {
+        .cite-select-wrap .cite-select-chevron { display: none !important; }
+        .compact-select { width: 100%; display: block; }
+        .compact-select-native {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            overflow: hidden !important;
+            border: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .compact-select-trigger {
+            display: flex !important;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            position: relative;
+            padding-right: 40px !important;
+            padding-left: 14px !important;
+            background-color: #ffffff;
+            color: #0f172a;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            min-height: 40px;
+            font-size: 13px;
+        }
+        .compact-select-trigger::after {
+            content: "";
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            width: 12px;
+            height: 8px;
+            margin-top: -4px;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1h10L6 7z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-size: 12px 8px;
+        }
+        .compact-select-trigger span {
+            min-width: 0;
+            flex: 1;
+            overflow: hidden;
+            text-align: left;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .compact-select-panel {
+            display: none;
+            position: fixed !important;
+            z-index: 100050 !important;
+            max-height: 220px !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+            pointer-events: auto !important;
+            padding: 4px;
+        }
+        .compact-select-panel.open { display: block !important; }
+        .compact-select-header {
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #ffffff;
+            background: var(--cite-theme, #621708);
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            margin-bottom: 4px;
+        }
+        .compact-select-option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 13px;
+            line-height: 1.3;
+            color: #334155;
+            background: #ffffff;
+            border: 0;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 2px;
+        }
+        .compact-select-option:hover,
+        .compact-select-option:active {
+            background: #f1f5f9;
+        }
+        .compact-select-option.active {
+            background: #f8fafc;
+            font-weight: bold;
+        }
+    }
+    </style>
+</head>
+<body class="bg-gray-50 overflow-x-hidden min-h-screen">
+
+<div class="flex min-h-screen">
+    <div id="sidebar-container"></div>
+    
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] bg-slate-50 w-full overflow-x-hidden transition-all duration-300">
+        <div id="navbar-container"></div>
+
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <section id="main-view" class="max-w-7xl mx-auto">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+                    <div>
+                        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">Document Vault</h1>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Browse official templates, forms, and academic guidelines.</p>
+                    </div>
+                </div>
+
+                <p class="text-xs sm:text-sm text-slate-500 mb-4">
+                    <span id="stat-folders">0</span> folders ·
+                    <span id="stat-documents">0</span> documents
+                </p>
+
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
+                    <h2 class="text-sm font-semibold text-slate-800">Folders</h2>
+                    <div class="flex items-center gap-2 sm:gap-3 flex-wrap w-full sm:w-auto">
+                        <div class="relative flex-1 sm:flex-initial">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="search" id="vault-folder-search" placeholder="Search folders..." oninput="renderFolders()" class="border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs sm:text-sm bg-white w-full sm:w-56 focus:outline-none focus:border-[#621708]">
+                        </div>
+                        <div class="cite-select-wrap flex-1 sm:flex-initial sm:w-56">
+                            <select id="vault-category-filter" onchange="renderFolders()" class="border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm bg-white w-full focus:outline-none focus:border-[#621708]">
+                                <option value="">All Categories</option>
+                                <option value="DTR">DTR</option>
+                                <option value="LDP">LDP</option>
+                                <option value="Syllabus">Syllabus</option>
+                                <option value="IPCR">IPCR</option>
+                                <option value="TOS">Table of Specifications (TOS)</option>
+                            </select>
+                            <svg class="cite-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                        <button onclick="refreshVault()" class="text-xs sm:text-sm font-bold text-slate-500 hover:text-[#621708] px-1 py-2">
+                            <i class="fa-solid fa-rotate-right mr-1.5"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+                <div id="foldersGrid">
+                    <div class="drive-list">
+                        <div class="text-center py-12">
+                            <div class="text-5xl mb-3 text-gray-300"><i class="fa-solid fa-folder-open"></i></div>
+                            <h3 class="text-lg font-bold text-gray-700 mb-1">Loading folders...</h3>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="folder-view" class="hidden max-w-7xl mx-auto">
+                <button onclick="goBackToMain()" class="inline-flex items-center gap-2 text-slate-500 hover:text-[#621708] mb-4 text-xs sm:text-sm font-semibold">
+                    <i class="fa-solid fa-arrow-left"></i> Back to Document Vault
+                </button>
+
+                <div class="bg-white rounded-2xl sm:rounded-[1.5rem] border border-slate-100 soft-shadow p-4 sm:p-5 mb-5">
+                    <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+                        <div id="folder-icon" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shrink-0"></div>
+                        <div class="min-w-0">
+                            <h1 id="folder-title" class="text-xl sm:text-2xl font-extrabold text-slate-900 truncate leading-tight"></h1>
+                            <p id="folder-desc" class="text-xs sm:text-sm text-slate-500 mt-0.5 hidden"></p>
+                            <p id="folder-count" class="text-xs sm:text-sm text-slate-500 mt-0.5"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <div class="relative w-full sm:w-80">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs sm:text-sm"></i>
+                        <input type="search" id="folder-search" placeholder="Search documents..." oninput="filterFolderDocuments()" class="w-full bg-white border border-slate-200 rounded-xl pl-9 sm:pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:border-[#621708] focus:ring-4 focus:ring-[#621708]/5">
+                    </div>
+                    <div class="flex items-center justify-between sm:justify-end gap-2">
+                        <div class="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Layout</div>
+                        <div class="flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                            <button title="Compact cards" onclick="setFolderView('large')" id="folder-btn-large" class="view-btn"><i class="fa-solid fa-grip"></i></button>
+                            <button title="Tiles" onclick="setFolderView('tiles')" id="folder-btn-tiles" class="view-btn"><i class="fa-solid fa-table-cells-large"></i></button>
+                            <button title="List" onclick="setFolderView('list')" id="folder-btn-list" class="view-btn active"><i class="fa-solid fa-list"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <div id="folder-documents-container"></div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<!-- Document Preview Modal -->
+<div id="documentPreviewModal" class="hidden fixed inset-0 document-modal-backdrop flex items-center justify-center z-[2600] p-3 sm:p-5 overflow-y-auto min-h-screen">
+    <div class="document-modal-panel bg-white rounded-[1.5rem] sm:rounded-[2rem] w-full max-w-6xl h-[92vh] sm:h-[88vh] overflow-hidden flex flex-col my-auto">
+        <div class="px-5 py-3.5 sm:px-7 sm:py-4 border-b border-gray-100 flex items-center justify-between bg-white">
+            <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+                <div id="previewFileIcon" class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-lg sm:text-xl shrink-0">
+                    <i class="fa-solid fa-file-lines"></i>
+                </div>
+                <div class="min-w-0">
+                    <h3 id="previewDocumentTitle" class="text-sm sm:text-lg font-bold text-gray-900 truncate">Document Preview</h3>
+                    <p id="previewDocumentMeta" class="text-[11px] sm:text-xs text-gray-500 truncate">Preparing document...</p>
+                </div>
+            </div>
+            <button onclick="closeDocumentPreviewModal()" class="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 flex items-center justify-center transition-colors" aria-label="Close preview">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 grid grid-cols-1 lg:grid-cols-[260px_1fr] min-h-0">
+            <aside class="border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/80 p-4 sm:p-6 overflow-y-auto max-h-[160px] lg:max-h-full">
+                <div class="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Document Details</div>
+                <div class="grid grid-cols-2 lg:grid-cols-1 gap-2.5 text-xs">
+                    <div>
+                        <div class="text-[10px] text-gray-400 font-semibold uppercase">File Name</div>
+                        <div id="previewSideName" class="font-bold text-gray-800 truncate sm:break-words">-</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-gray-400 font-semibold uppercase">File Type</div>
+                        <div id="previewSideType" class="font-bold text-gray-800">-</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-gray-400 font-semibold uppercase">File Size</div>
+                        <div id="previewSideSize" class="font-bold text-gray-800">-</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-gray-400 font-semibold uppercase">Uploaded</div>
+                        <div id="previewSideDate" class="font-bold text-gray-800">-</div>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex lg:flex-col gap-2">
+                    <button onclick="downloadCurrentPreviewDocument()" id="previewDownloadBtn" class="document-action-btn document-primary-btn flex-1 py-2 sm:py-2.5">
+                        <i class="fa-solid fa-download"></i> Download
+                    </button>
+                    <button onclick="openPreviewInNewTab()" id="previewOpenBtn" class="document-action-btn document-secondary-btn flex-1 py-2 sm:py-2.5">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Tab
+                    </button>
+                </div>
+            </aside>
+
+            <main class="bg-slate-100 min-h-0 relative flex-1">
+                <div id="previewLoading" class="absolute inset-0 flex items-center justify-center bg-slate-100 z-10">
+                    <div class="bg-white rounded-2xl px-5 py-3 shadow-sm border border-gray-100 flex items-center gap-2.5">
+                        <i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i>
+                        <span class="text-xs sm:text-sm font-semibold text-gray-700">Loading preview...</span>
+                    </div>
+                </div>
+                <iframe id="documentPreviewFrame" title="Document preview" class="w-full h-full bg-white border-0" src="about:blank"></iframe>
+            </main>
+        </div>
+    </div>
+</div>
+
+<div id="documentToast" class="document-toast">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="documentToastText">Done</span>
+</div>
+
+<div id="message-container"></div>
+
+<script>
+    // ==================== SUPABASE SETUP ====================
+    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+
+    const DOCUMENT_STORAGE_BUCKETS = ['documents', 'document', 'document-vault', 'faculty-documents', 'uploads', 'files'];
+
+    let supabaseClient = window.CiteFlowAuth?.ensureSharedClient?.() || window.supabaseClient || null;
+    const supabaseLib = window.supabase || window.Supabase;
+    if (!supabaseClient && supabaseLib && typeof supabaseLib.createClient === 'function') {
+        supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseAnonKey, {
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        });
+        window.supabaseClient = supabaseClient;
+    }
+    if (!supabaseClient) {
+        console.error("Supabase client library failed to load.");
+        alert('Supabase library failed to load. Please refresh the page.');
+    }
+
+    let folders = [];
+    let documents = [];
+    let currentFolderId = null;
+    let vaultFolderSort = { key: 'name', dir: 'asc' };
+    let vaultDocSort = { key: 'date', dir: 'desc' };
+    let currentFolderView = localStorage.getItem('facultyDocumentVaultView') || 'list';
+    let allDocumentCount = 0;
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function jsArg(value) {
+        return JSON.stringify(String(value ?? ''));
+    }
+
+    function formatDriveDate(value) {
+        if (!value) return '';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return '';
+        const opts = { month: 'short', day: 'numeric' };
+        if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+        return d.toLocaleDateString('en-US', opts);
+    }
+
+    function resolveFolderColor(color) {
+        const map = {
+            'text-amber-600': '#d97706',
+            'text-blue-600': '#2563eb',
+            'text-emerald-600': '#059669',
+            'text-purple-600': '#7c3aed',
+            'text-rose-600': '#e11d48',
+            'text-orange-600': '#ea580c',
+            'text-cyan-600': '#0891b2'
+        };
+        if (!color) return '#5f6368';
+        if (String(color).startsWith('#')) return color;
+        return map[color] || '#5f6368';
+    }
+
+    function setVaultFolderSort(key) {
+        if (vaultFolderSort.key === key) vaultFolderSort.dir = vaultFolderSort.dir === 'asc' ? 'desc' : 'asc';
+        else { vaultFolderSort.key = key; vaultFolderSort.dir = key === 'name' ? 'asc' : 'desc'; }
+        renderFolders();
+    }
+
+    function sortArrow(key) {
+        if (vaultFolderSort.key !== key) return '';
+        return vaultFolderSort.dir === 'asc'
+            ? '<i class="fa-solid fa-arrow-up text-xs text-blue-600"></i>'
+            : '<i class="fa-solid fa-arrow-down text-xs text-blue-600"></i>';
+    }
+
+    function setVaultDocSort(key) {
+        if (vaultDocSort.key === key) vaultDocSort.dir = vaultDocSort.dir === 'asc' ? 'desc' : 'asc';
+        else { vaultDocSort.key = key; vaultDocSort.dir = key === 'name' ? 'asc' : 'desc'; }
+        renderFolderDocuments();
+    }
+
+    function sortDocArrow(key) {
+        if (vaultDocSort.key !== key) return '';
+        return vaultDocSort.dir === 'asc'
+            ? '<i class="fa-solid fa-arrow-up text-xs text-blue-600"></i>'
+            : '<i class="fa-solid fa-arrow-down text-xs text-blue-600"></i>';
+    }
+
+    function sortDocuments(list) {
+        return list.slice().sort((a, b) => {
+            const dir = vaultDocSort.dir === 'asc' ? 1 : -1;
+            if (vaultDocSort.key === 'size') return ((Number(a.size_bytes) || 0) - (Number(b.size_bytes) || 0)) * dir;
+            if (vaultDocSort.key === 'date') return (new Date(a.uploaded_at || a.created_at || 0) - new Date(b.uploaded_at || b.created_at || 0)) * dir;
+            return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }) * dir;
+        });
+    }
+
+    function getFileIconColor(filename, mimeType = '') {
+        const ext = getFileExtension(filename);
+        const type = String(mimeType || '').toLowerCase();
+        if (ext === 'pdf' || type.includes('pdf')) return '#ea4335';
+        if (['doc', 'docx'].includes(ext) || type.includes('word')) return '#4285f4';
+        if (['xls', 'xlsx', 'csv'].includes(ext) || type.includes('spreadsheet') || type.includes('excel')) return '#0f9d58';
+        if (['ppt', 'pptx'].includes(ext) || type.includes('presentation') || type.includes('powerpoint')) return '#fbbc04';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || type.includes('image')) return '#a142f4';
+        return '#5f6368';
+    }
+
+    function openFolderMenu(id) {
+        document.querySelectorAll('.context-menu').forEach(m => m.classList.add('hidden'));
+        document.getElementById(`folder-menu-${id}`)?.classList.toggle('hidden');
+    }
+
+    function openDocMenu(id) {
+        document.querySelectorAll('.context-menu').forEach(m => m.classList.add('hidden'));
+        document.getElementById(`doc-menu-${id}`)?.classList.toggle('hidden');
+    }
+
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.context-menu').forEach(m => m.classList.add('hidden'));
+    });
+
+    // ==================== LOAD DATA ====================
+    function formatVaultFolderName(name) {
+        if (window.CiteFlowWorkflow && typeof CiteFlowWorkflow.resolveDocumentCategory === 'function') {
+            const resolved = CiteFlowWorkflow.resolveDocumentCategory(name);
+            if (resolved) return CiteFlowWorkflow.formatDocumentCategory(resolved);
+        }
+        return name || '';
+    }
+
+    async function loadFolders() {
+        const { data: folderData, error: folderError } = await supabaseClient
+            .from('folders')
+            .select('*')
+            .order('name');
+
+        if (folderError) {
+            console.error("Load Folders Error:", folderError);
+            alert("Error loading folders: " + folderError.message);
+            return;
+        }
+
+        const { data: documentData, error: documentError } = await supabaseClient
+            .from('documents')
+            .select('folder_id');
+
+        if (documentError) {
+            console.error("Load Document Counts Error:", documentError);
+            folders = folderData || [];
+            allDocumentCount = 0;
+            updateVaultStats();
+            return;
+        }
+
+        const countMap = (documentData || []).reduce((acc, doc) => {
+            acc[doc.folder_id] = (acc[doc.folder_id] || 0) + 1;
+            return acc;
+        }, {});
+
+        allDocumentCount = (documentData || []).length;
+        folders = (folderData || []).map(folder => ({
+            ...folder,
+            count: countMap[folder.id] || 0
+        }));
+        updateVaultStats();
+    }
+
+    function updateVaultStats() {
+        const statF = document.getElementById('stat-folders');
+        const statD = document.getElementById('stat-documents');
+        if (statF) statF.textContent = folders.length;
+        if (statD) statD.textContent = allDocumentCount;
+    }
+
+    async function refreshVault() {
+        await loadFolders();
+        renderFolders();
+        if (currentFolderId) {
+            await loadDocumentsByFolder(currentFolderId);
+            const countEl = document.getElementById('folder-count');
+            if (countEl) countEl.textContent = `${documents.length} document${documents.length !== 1 ? 's' : ''}`;
+            renderFolderDocuments();
+        }
+    }
+
+    async function loadDocumentsByFolder(folderId) {
+        const { data, error } = await supabaseClient
+            .from('documents')
+            .select('*')
+            .eq('folder_id', folderId)
+            .order('uploaded_at', { ascending: false });
+
+        if (error) {
+            console.error(error);
+            documents = [];
+        } else {
+            documents = data || [];
+        }
+    }
+
+    // ==================== RENDER ====================
+    function renderFolders() {
+        const container = document.getElementById('foldersGrid');
+        const categoryFilter = document.getElementById('vault-category-filter')?.value || '';
+        const search = (document.getElementById('vault-folder-search')?.value || '').toLowerCase().trim();
+        const folderList = (Array.isArray(folders) ? folders : []).filter(folder => {
+            if (search) {
+                const hay = `${formatVaultFolderName(folder.name)} ${folder.name || ''} ${folder.description || ''}`.toLowerCase();
+                if (!hay.includes(search)) return false;
+            }
+            if (!categoryFilter) return true;
+            if (window.CiteFlowWorkflow && typeof CiteFlowWorkflow.matchesDocumentCategory === 'function') {
+                return CiteFlowWorkflow.matchesDocumentCategory(folder.name, categoryFilter);
+            }
+            return String(folder.name || '').toUpperCase() === String(categoryFilter).toUpperCase();
+        }).slice().sort((a, b) => {
+            const dir = vaultFolderSort.dir === 'asc' ? 1 : -1;
+            if (vaultFolderSort.key === 'date') {
+                return (new Date(a.updated_at || a.created_at || 0) - new Date(b.updated_at || b.created_at || 0)) * dir;
+            }
+            return String(formatVaultFolderName(a.name)).localeCompare(String(formatVaultFolderName(b.name))) * dir;
+        });
+        
+        if (!folders.length) {
+            container.innerHTML = `
+                <div class="drive-list">
+                    <div class="text-center py-12">
+                        <div class="text-5xl mb-3 text-gray-300"><i class="fa-solid fa-folder-open"></i></div>
+                        <h3 class="text-lg font-bold text-gray-700 mb-1">No folders yet</h3>
+                        <p class="text-xs text-gray-500">Documents will appear here once added by administrators.</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        if (!folderList.length) {
+            const isSearch = Boolean(search);
+            container.innerHTML = `
+                <div class="drive-list">
+                    <div class="text-center py-12">
+                        <div class="text-5xl mb-3 text-gray-300"><i class="fa-solid ${isSearch ? 'fa-magnifying-glass' : 'fa-filter'}"></i></div>
+                        <h3 class="text-lg font-bold text-gray-700 mb-1">${isSearch ? 'No folders match your search' : 'No folders in this category'}</h3>
+                        <p class="text-xs text-gray-500">${isSearch ? 'Try a different name or clear the search.' : 'Switch to All Categories to see every folder.'}</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `<div class="drive-list">
+            <div class="drive-list-head">
+                <button type="button" onclick="setVaultFolderSort('name')">Name ${sortArrow('name')}</button>
+                <div class="drive-col-owner">Owner</div>
+                <button type="button" class="drive-col-date" onclick="setVaultFolderSort('date')">Date modified ${sortArrow('date')}</button>
+                <div class="drive-col-size">File size</div>
+                <div class="drive-sort"><i class="fa-solid fa-arrow-down-short-wide mr-1"></i>Sort</div>
+            </div>
+            ${folderList.map(folder => `
+                <div onclick='openFolder(${jsArg(folder.id)})' class="drive-row">
+                    <div class="drive-name">
+                        <i class="fa-solid ${folder.icon || 'fa-folder'}" style="color: ${resolveFolderColor(folder.color)}"></i>
+                        <span class="truncate">${escapeHtml(formatVaultFolderName(folder.name))}</span>
+                    </div>
+                    <div class="drive-owner drive-col-owner"><span class="drive-avatar">A</span> Admin</div>
+                    <div class="drive-muted drive-col-date">${escapeHtml(formatDriveDate(folder.updated_at || folder.created_at))}</div>
+                    <div class="drive-muted drive-col-size">—</div>
+                    <div onclick="event.stopPropagation()">
+                        <button type="button" class="drive-kebab" onclick='openFolderMenu(${jsArg(folder.id)})' title="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                        <div id="folder-menu-${escapeHtml(folder.id)}" class="context-menu hidden bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden">
+                            <button onclick='openFolder(${jsArg(folder.id)})' class="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-gray-50">
+                                <i class="fa-solid fa-folder-open mr-2 text-gray-400"></i>Open
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>`;
+    }
+
+    async function openFolder(folderId) {
+        currentFolderId = folderId;
+        const folder = folders.find(f => String(f.id) === String(folderId));
+        if (!folder) return;
+
+        document.getElementById('main-view').classList.add('hidden');
+        document.getElementById('folder-view').classList.remove('hidden');
+        const iconEl = document.getElementById('folder-icon');
+        const color = resolveFolderColor(folder.color);
+        iconEl.innerHTML = `<i class="fa-solid ${folder.icon || 'fa-folder'}"></i>`;
+        iconEl.style.color = color;
+        iconEl.style.backgroundColor = `${color}16`;
+        document.getElementById('folder-title').textContent = formatVaultFolderName(folder.name);
+        const descEl = document.getElementById('folder-desc');
+        const description = String(folder.description || '').trim();
+        if (description) {
+            descEl.textContent = description;
+            descEl.classList.remove('hidden');
+        } else {
+            descEl.textContent = '';
+            descEl.classList.add('hidden');
+        }
+        const searchEl = document.getElementById('folder-search');
+        if (searchEl) searchEl.value = '';
+
+        await loadDocumentsByFolder(folderId);
+        document.getElementById('folder-count').textContent = `${documents.length} document${documents.length !== 1 ? 's' : ''}`;
+        setFolderView(currentFolderView, false);
+        renderFolderDocuments();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function goBackToMain() {
+        document.getElementById('folder-view').classList.add('hidden');
+        document.getElementById('main-view').classList.remove('hidden');
+        currentFolderId = null;
+    }
+
+    function setFolderView(mode, render = true) {
+        currentFolderView = mode;
+        localStorage.setItem('facultyDocumentVaultView', mode);
+        document.querySelectorAll('#folder-view .view-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`folder-btn-${mode}`)?.classList.add('active');
+        if (render) renderFolderDocuments();
+    }
+
+    function filterFolderDocuments() {
+        renderFolderDocuments();
+    }
+
+    function getFilteredDocuments() {
+        const q = (document.getElementById('folder-search')?.value || '').toLowerCase().trim();
+        return sortDocuments(
+            documents
+                .filter(d => String(d.folder_id) === String(currentFolderId))
+                .filter(d => !q || String(d.name || '').toLowerCase().includes(q))
+        );
+    }
+
+    function renderFolderDocuments() {
+        const q = (document.getElementById('folder-search')?.value || '').toLowerCase().trim();
+        const filtered = getFilteredDocuments();
+        const container = document.getElementById('folder-documents-container');
+        if (!container) return;
+
+        if (!filtered.length) {
+            container.innerHTML = `
+                <div class="bg-white rounded-2xl p-8 text-center border border-slate-100">
+                    <div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-file-circle-xmark"></i></div>
+                    <h3 class="text-base font-extrabold text-slate-700">No documents found</h3>
+                    <p class="text-sm text-slate-500 mt-1">${q ? 'Try a different search.' : 'Check back later for official templates.'}</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (currentFolderView === 'list') {
+            container.innerHTML = `<div class="drive-list">
+                <div class="drive-list-head">
+                    <button type="button" onclick="setVaultDocSort('name')">Name ${sortDocArrow('name')}</button>
+                    <div class="drive-col-owner">Owner</div>
+                    <button type="button" class="drive-col-date" onclick="setVaultDocSort('date')">Date modified ${sortDocArrow('date')}</button>
+                    <button type="button" class="drive-col-size" onclick="setVaultDocSort('size')">File size ${sortDocArrow('size')}</button>
+                    <div class="drive-sort"><i class="fa-solid fa-arrow-down-short-wide mr-1"></i>Sort</div>
+                </div>
+                ${filtered.map(doc => `
+                    <div class="drive-row" onclick='viewDocument(${jsArg(doc.id)})'>
+                        <div class="drive-name">
+                            <i class="fa-solid ${getFileIconClass(doc.name, doc.mime_type)}" style="color:${getFileIconColor(doc.name, doc.mime_type)}"></i>
+                            <span class="truncate">${escapeHtml(doc.name)}</span>
+                        </div>
+                        <div class="drive-owner drive-col-owner"><span class="drive-avatar">A</span> Admin</div>
+                        <div class="drive-muted drive-col-date">${escapeHtml(formatDriveDate(doc.uploaded_at || doc.created_at))}</div>
+                        <div class="drive-muted drive-col-size">${formatFileSize(doc.size_bytes)}</div>
+                        <div onclick="event.stopPropagation()">
+                            <button type="button" class="drive-kebab" onclick='openDocMenu(${jsArg(doc.id)})' title="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                            <div id="doc-menu-${escapeHtml(doc.id)}" class="context-menu hidden bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden">
+                                <button onclick='viewDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-gray-50">
+                                    <i class="fa-solid fa-eye mr-2 text-gray-400"></i>Preview
+                                </button>
+                                <button onclick='downloadDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-gray-50">
+                                    <i class="fa-solid fa-download mr-2 text-gray-400"></i>Download
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>`;
+            return;
+        }
+
+        const isTiles = currentFolderView === 'tiles';
+        const grid = isTiles ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
+        container.innerHTML = `<div class="grid ${grid} gap-4">${filtered.map(doc => isTiles ? renderTileDoc(doc) : renderLargeDoc(doc)).join('')}</div>`;
+    }
+
+    function docMeta(doc) {
+        const date = doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'Unknown';
+        return `${getFileTypeLabel(doc.name, doc.mime_type)} • ${formatFileSize(doc.size_bytes)} • ${date}`;
+    }
+
+    function renderLargeDoc(doc) {
+        return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow">
+            <div class="h-20 sm:h-24 rounded-2xl mb-3 flex items-center justify-center text-3xl sm:text-4xl bg-slate-100" style="color:${getFileIconColor(doc.name, doc.mime_type)}"><i class="fa-solid ${getFileIconClass(doc.name, doc.mime_type)}"></i></div>
+            <div class="font-extrabold text-xs sm:text-sm leading-snug line-clamp-2 text-slate-900 min-h-[34px] sm:min-h-[38px]">${escapeHtml(doc.name)}</div>
+            <div class="text-[10px] sm:text-[11px] text-slate-500 mt-1 truncate">${escapeHtml(docMeta(doc))}</div>
+            <div class="grid grid-cols-2 gap-2 mt-3">
+                <button onclick='viewDocument(${jsArg(doc.id)})' class="text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-xl font-bold text-slate-700 py-1.5"><i class="fa-solid fa-eye mr-1"></i>Preview</button>
+                <button onclick='downloadDocument(${jsArg(doc.id)})' class="text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl font-bold py-1.5"><i class="fa-solid fa-download mr-1"></i>Download</button>
+            </div>
+        </div>`;
+    }
+
+    function renderTileDoc(doc) {
+        return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow flex gap-3 items-start">
+            <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-xl sm:text-2xl shrink-0" style="color:${getFileIconColor(doc.name, doc.mime_type)}"><i class="fa-solid ${getFileIconClass(doc.name, doc.mime_type)}"></i></div>
+            <div class="flex-1 min-w-0">
+                <div class="font-extrabold text-xs sm:text-sm text-slate-900 truncate">${escapeHtml(doc.name)}</div>
+                <div class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 truncate">${escapeHtml(docMeta(doc))}</div>
+                <div class="flex flex-wrap gap-1.5 sm:gap-2 mt-2.5 sm:mt-3">
+                    <button onclick='viewDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-lg font-bold text-slate-700"><i class="fa-solid fa-eye mr-1"></i>Preview</button>
+                    <button onclick='downloadDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-lg font-bold"><i class="fa-solid fa-download mr-1"></i>Download</button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // ==================== DOCUMENT ACTIONS ====================
+    let currentPreviewDocument = null;
+    let currentPreviewAccess = null;
+
+    function getFileExtension(filename) {
+        return String(filename || '').split('.').pop().toLowerCase();
+    }
+
+    function getFileTypeLabel(filename, mimeType = '') {
+        const ext = getFileExtension(filename);
+        if (ext) return ext.toUpperCase();
+        if (mimeType) return mimeType;
+        return 'FILE';
+    }
+
+    function getFileIconClass(filename, mimeType = '') {
+        const ext = getFileExtension(filename);
+        const type = String(mimeType || '').toLowerCase();
+        if (ext === 'pdf' || type.includes('pdf')) return 'fa-file-pdf';
+        if (['doc', 'docx'].includes(ext) || type.includes('word')) return 'fa-file-word';
+        if (['xls', 'xlsx', 'csv'].includes(ext) || type.includes('spreadsheet') || type.includes('excel')) return 'fa-file-excel';
+        if (['ppt', 'pptx'].includes(ext) || type.includes('presentation') || type.includes('powerpoint')) return 'fa-file-powerpoint';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || type.includes('image')) return 'fa-file-image';
+        if (['zip', 'rar', '7z'].includes(ext)) return 'fa-file-zipper';
+        if (['txt', 'md'].includes(ext) || type.includes('text')) return 'fa-file-lines';
+        return 'fa-file-lines';
+    }
+
+    function getFilePreviewKind(doc) {
+        const ext = getFileExtension(doc.name);
+        const type = String(doc.mime_type || '').toLowerCase();
+        if (ext === 'pdf' || type.includes('pdf')) return 'direct';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || type.includes('image')) return 'direct';
+        if (['txt', 'md', 'csv'].includes(ext) || type.includes('text')) return 'direct';
+        if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) return 'office';
+        return 'direct';
+    }
+
+    function makePreviewUrl(doc, access) {
+        const kind = getFilePreviewKind(doc);
+        if (kind === 'office' && access?.url && !access.url.startsWith('blob:')) {
+            return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(access.url)}`;
+        }
+        return access.url;
+    }
+
+    function formatFileSize(bytes) {
+        if (!bytes) return '—';
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    function showDocumentToast(message) {
+        const toast = document.getElementById('documentToast');
+        const text = document.getElementById('documentToastText');
+        if (!toast || !text) return;
+
+        text.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(window.__documentToastTimer);
+        window.__documentToastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    function getCandidatePaths(originalPath) {
+        const candidates = [];
+        const safeOriginal = String(originalPath || '').trim();
+        if (safeOriginal) candidates.push(safeOriginal);
+
+        if (safeOriginal.startsWith('documents/')) {
+            candidates.push(safeOriginal.replace(/^documents\//, ''));
+        } else if (safeOriginal) {
+            candidates.push(`documents/${safeOriginal}`);
+        }
+
+        return [...new Set(candidates.filter(Boolean))];
+    }
+
+    function getDocumentBucketCandidates(doc) {
+        const rawBuckets = [
+            doc?.bucket,
+            doc?.bucket_id,
+            doc?.bucket_name,
+            doc?.storage_bucket,
+            ...DOCUMENT_STORAGE_BUCKETS
+        ];
+
+        return [...new Set(rawBuckets.map(value => String(value || '').trim()).filter(Boolean))];
+    }
+
+    async function tryResolveInBucket(bucketName, path, expiresInSeconds) {
+        const { data: signedData, error: signedError } = await supabaseClient.storage
+            .from(bucketName)
+            .createSignedUrl(path, expiresInSeconds);
+
+        if (!signedError && signedData?.signedUrl) {
+            return { url: signedData.signedUrl, path, bucket: bucketName, revoke: null };
+        }
+
+        const { data: blobData, error: blobError } = await supabaseClient.storage
+            .from(bucketName)
+            .download(path);
+
+        if (!blobError && blobData) {
+            const url = URL.createObjectURL(blobData);
+            return { url, path, bucket: bucketName, revoke: () => URL.revokeObjectURL(url) };
+        }
+
+        const { data: publicData } = supabaseClient.storage
+            .from(bucketName)
+            .getPublicUrl(path);
+
+        if (publicData?.publicUrl) {
+            return { url: publicData.publicUrl, path, bucket: bucketName, revoke: null };
+        }
+
+        return null;
+    }
+
+    async function resolveDocumentAccessUrl(doc, expiresInSeconds = 3600) {
+        if (!doc?.file_path) return null;
+
+        const paths = getCandidatePaths(doc.file_path);
+        const buckets = getDocumentBucketCandidates(doc);
+        const attempts = [];
+
+        for (const bucketName of buckets) {
+            for (const path of paths) {
+                attempts.push(`${bucketName}/${path}`);
+                try {
+                    const access = await tryResolveInBucket(bucketName, path, expiresInSeconds);
+                    if (access?.url) return access;
+                } catch (error) {
+                    console.warn('Document access attempt failed:', bucketName, path, error?.message || error);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function openDocumentPreviewModal(doc, access) {
+        currentPreviewDocument = doc;
+        currentPreviewAccess = access;
+
+        const modal = document.getElementById('documentPreviewModal');
+        const frame = document.getElementById('documentPreviewFrame');
+        const loader = document.getElementById('previewLoading');
+        const fileSize = formatFileSize(doc.size_bytes);
+        const fileType = getFileTypeLabel(doc.name, doc.mime_type);
+        const uploadedDate = doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'Unknown';
+        const iconClass = getFileIconClass(doc.name, doc.mime_type);
+
+        document.getElementById('previewFileIcon').innerHTML = `<i class="fa-solid ${iconClass}"></i>`;
+        document.getElementById('previewDocumentTitle').textContent = doc.name || 'Document Preview';
+        document.getElementById('previewDocumentMeta').textContent = `${fileType} • ${fileSize} • Uploaded ${uploadedDate}`;
+        document.getElementById('previewSideName').textContent = doc.name || '-';
+        document.getElementById('previewSideType').textContent = fileType;
+        document.getElementById('previewSideSize').textContent = fileSize;
+        document.getElementById('previewSideDate').textContent = uploadedDate;
+
+        loader.style.display = 'flex';
+        frame.src = 'about:blank';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        setTimeout(() => {
+            frame.src = makePreviewUrl(doc, access);
+        }, 50);
+
+        frame.onload = () => {
+            loader.style.display = 'none';
+        };
+
+        setTimeout(() => {
+            loader.style.display = 'none';
+        }, 3500);
+    }
+
+    function closeDocumentPreviewModal() {
+        const modal = document.getElementById('documentPreviewModal');
+        const frame = document.getElementById('documentPreviewFrame');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        frame.src = 'about:blank';
+
+        if (currentPreviewAccess && typeof currentPreviewAccess.revoke === 'function') {
+            currentPreviewAccess.revoke();
+        }
+
+        currentPreviewDocument = null;
+        currentPreviewAccess = null;
+    }
+
+    function openPreviewInNewTab() {
+        if (!currentPreviewDocument || !currentPreviewAccess?.url) return;
+        window.open(makePreviewUrl(currentPreviewDocument, currentPreviewAccess), '_blank');
+    }
+
+    async function viewDocument(id) {
+        const doc = documents.find(d => String(d.id) === String(id));
+        if (!doc) {
+            alert('Document not found.');
+            return;
+        }
+
+        try {
+            showDocumentToast('Preparing preview...');
+            const access = await resolveDocumentAccessUrl(doc, 3600);
+            if (!access?.url) {
+                alert('Unable to preview document. Storage path could not be resolved.');
+                return;
+            }
+            openDocumentPreviewModal(doc, access);
+        } catch (err) {
+            console.error('Preview error:', err);
+            alert('Unable to preview document.');
+        }
+    }
+
+    async function downloadDocument(id) {
+        const doc = documents.find(d => String(d.id) === String(id));
+        if (!doc) {
+            alert('Document not found.');
+            return;
+        }
+
+        try {
+            showDocumentToast('Preparing download...');
+            const access = await resolveDocumentAccessUrl(doc, 300);
+            if (!access?.url) {
+                alert('Unable to download document. Storage path could not be resolved.');
+                return;
+            }
+
+            const a = document.createElement('a');
+            a.href = access.url;
+            a.download = doc.name || 'document';
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            showDocumentToast('Download started.');
+
+            if (window.EngagementLogger?.logDownload) {
+                window.EngagementLogger.logDownload({
+                    fileName: doc.name,
+                    sourceModule: 'Document Vault',
+                    description: 'Downloaded ' + (doc.name || 'a document') + ' from shared academic resources.'
+                });
+            }
+
+            if (typeof access.revoke === 'function') {
+                setTimeout(access.revoke, 60000);
+            }
+        } catch (err) {
+            console.error('Download error:', err);
+            alert('Unable to download document.');
+        }
+    }
+
+    async function downloadCurrentPreviewDocument() {
+        if (!currentPreviewDocument) return;
+        await downloadDocument(currentPreviewDocument.id);
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape') return;
+        const preview = document.getElementById('documentPreviewModal');
+        if (preview && !preview.classList.contains('hidden')) {
+            closeDocumentPreviewModal();
+            return;
+        }
+        if (currentFolderId) goBackToMain();
+    });
+
+    // ==================== COMPACT SELECT SCRIPT (Calendar/Submissions Style) ====================
+    function closeAllCompactSelects(exceptPanel) {
+        document.querySelectorAll('.compact-select-panel').forEach((panel) => {
+            if (panel === exceptPanel) return;
+            panel.classList.remove('open', 'open-up');
+            panel.style.position = '';
+            panel.style.left = '';
+            panel.style.width = '';
+            panel.style.top = '';
+            panel.style.bottom = '';
+            panel.style.zIndex = '';
+        });
+    }
+    function positionCompactPanel(panel, wrap) {
+        const rect = wrap.getBoundingClientRect();
+        const openUp = rect.bottom + 230 > window.innerHeight && rect.top > 230;
+        panel.classList.toggle('open-up', openUp);
+        panel.style.position = 'fixed';
+        panel.style.left = `${Math.max(12, rect.left)}px`;
+        panel.style.width = `${Math.max(rect.width, 160)}px`;
+        panel.style.zIndex = '100050';
+        if (openUp) {
+            panel.style.top = 'auto';
+            panel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+        } else {
+            panel.style.top = `${rect.bottom + 6}px`;
+            panel.style.bottom = 'auto';
+        }
+    }
+    function compactEsc(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
+        }[c]));
+    }
+    function refreshCompactSelect(select) {
+        if (!select) return;
+        const wrap = select.closest('.compact-select');
+        if (!wrap) return;
+        const triggerLabel = wrap.querySelector('.compact-select-trigger span');
+        const panel = wrap.querySelector('.compact-select-panel');
+        const selected = select.selectedOptions[0];
+        if (triggerLabel) triggerLabel.textContent = selected ? selected.textContent : '';
+        if (!panel) return;
+        const headerText = selected ? selected.textContent : 'Select Option';
+        panel.innerHTML = `
+            <div class="compact-select-header">${compactEsc(headerText)}</div>
+            ${[...select.options].filter((option) => !option.hidden).map((option) => `
+                <button type="button" class="compact-select-option ${option.selected ? 'active' : ''}" data-value="${compactEsc(option.value)}">${compactEsc(option.textContent)}</button>
+            `).join('')}
+        `;
+    }
+    function initCompactSelects() {
+        document.querySelectorAll('select:not([multiple])').forEach((select) => {
+            if (select.closest('.csc-form')) return;
+            let wrap = select.closest('.compact-select');
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.className = 'compact-select';
+                select.parentNode.insertBefore(wrap, select);
+                wrap.appendChild(select);
+                select.classList.add('compact-select-native');
+
+                const trigger = document.createElement('button');
+                trigger.type = 'button';
+                trigger.className = 'compact-select-trigger';
+                trigger.innerHTML = '<span></span>';
+
+                const panel = document.createElement('div');
+                panel.className = 'compact-select-panel';
+
+                wrap.appendChild(trigger);
+                wrap.appendChild(panel);
+
+                trigger.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (window.innerWidth > 767) return;
+                    const willOpen = !panel.classList.contains('open');
+                    closeAllCompactSelects();
+                    if (!willOpen) return;
+                    refreshCompactSelect(select);
+                    positionCompactPanel(panel, wrap);
+                    panel.classList.add('open');
+                });
+
+                panel.addEventListener('click', (event) => {
+                    const option = event.target.closest('.compact-select-option');
+                    if (!option) return;
+                    select.value = option.dataset.value;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    refreshCompactSelect(select);
+                    closeAllCompactSelects();
+                });
+            }
+            refreshCompactSelect(select);
+        });
+    }
+    document.addEventListener('click', (event) => {
+        if (event.target.closest('.compact-select-option')) return;
+        if (event.target.closest('.compact-select-trigger')) return;
+        closeAllCompactSelects();
+    });
+    document.addEventListener('scroll', () => {
+        const openPanel = document.querySelector('.compact-select-panel.open');
+        if (!openPanel) return;
+        const wrap = openPanel.closest('.compact-select');
+        if (wrap) positionCompactPanel(openPanel, wrap);
+    }, true);
+    window.addEventListener('resize', () => closeAllCompactSelects());
+
+    // ==================== INITIALIZE ====================
+    window.onload = async () => {
+        await loadSidebar();
+        if (supabaseClient) {
+            await loadFolders();
+            renderFolders();
+            setFolderView(currentFolderView, false);
+        }
+        initCompactSelects();
+    };
+
+    setInterval(() => {
+        if (typeof initCompactSelects === 'function') {
+            initCompactSelects();
+        }
+    }, 400);
+</script>
+
+<script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
+<script src="../admin/engagement-logger.js"></script>
+<script src="faculty-nav.js?v=auth-session-3"></script>
+</body>
+</html>

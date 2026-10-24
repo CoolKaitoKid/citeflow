@@ -1,0 +1,2958 @@
+/**
+ * CITE-Flow shared workflow helpers
+ * Single source of truth for submission review stages, status labels, and Supabase utilities.
+ */
+(function initCiteFlowWorkflow(global) {
+    'use strict';
+
+    const VALID_DB_STATUSES = new Set([
+        'notsubmitted', 'submitted', 'late', 'underreview', 'approved', 'rejected', 'revision'
+    ]);
+
+    const APPROVAL_STAGES = {
+        CHAIRPERSON: 'chairperson',
+        FINAL: 'final_approver',
+        APPROVED: 'approved',
+        REVISION: 'revision',
+        DECLINED: 'declined'
+    };
+
+    let workflowChannel = null;
+    let debounceTimer = null;
+
+    function getSupabaseClient() {
+        if (global.CiteFlowAuth?.ensureSharedClient) {
+            const shared = global.CiteFlowAuth.ensureSharedClient();
+            if (shared) return shared;
+        }
+        if (global.supabaseClient) return global.supabaseClient;
+        if (global.db) return global.db;
+        const url = global.__SUPABASE_URL__;
+        const key = global.__SUPABASE_ANON__;
+        if (global.supabase?.createClient && url && key) {
+            const options = global.CiteFlowAuth?.AUTH_CLIENT_OPTIONS || {
+                auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+            };
+            global.supabaseClient = global.supabase.createClient(url, key, options);
+            return global.supabaseClient;
+        }
+        return null;
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[c]));
+    }
+
+    function normalizeText(value) {
+        return String(value ?? '').trim().toLowerCase();
+    }
+
+    /**
+     * Standard document categories. Internal values follow the live
+     * wf_report_configs.report_name / wf_tasks.title convention (DTR, LDP, Syllabus).
+     * TOS is stored as "TOS" and displayed as "Table of Specifications (TOS)".
+     */
+    const DOCUMENT_CATEGORIES = [
+        { value: 'DTR', label: 'DTR' },
+        { value: 'LDP', label: 'LDP' },
+        { value: 'Syllabus', label: 'Syllabus' },
+        { value: 'IPCR', label: 'IPCR' },
+        { value: 'TOS', label: 'Table of Specifications (TOS)' },
+        { value: 'MFO', label: 'MFO (Accomplishment Report)' }
+    ];
+
+    const QUICK_SUBMISSION_CATEGORY_VALUES = ['Syllabus', 'DTR', 'TOS', 'IPCR', 'LDP'];
+
+    const DOCUMENT_CATEGORY_VALUES = DOCUMENT_CATEGORIES.map((item) => item.value);
+
+    function getDocumentCategories() {
+        return DOCUMENT_CATEGORIES.slice();
+    }
+
+    function getQuickSubmissionCategories() {
+        return QUICK_SUBMISSION_CATEGORY_VALUES.map((value) => {
+            const found = DOCUMENT_CATEGORIES.find((item) => item.value === value);
+            return {
+                value,
+                label: found ? found.label : value,
+                shortLabel: value === 'TOS' ? 'TOS' : value
+            };
+        });
+    }
+
+    function tokenizeCategorySource(value) {
+        return normalizeText(value).split(/[^a-z0-9]+/).filter(Boolean);
+    }
+
+    function resolveDocumentCategory(source) {
+        if (source && typeof source === 'object') {
+            const explicit = source.document_category || source.category || source.report_name;
+            const fromExplicit = resolveDocumentCategory(explicit);
+            if (fromExplicit) return fromExplicit;
+            source = source.title || source.name || source.folder_name || '';
+        }
+
+        const raw = String(source ?? '').trim();
+        if (!raw) return '';
+        const lower = normalizeText(raw);
+
+        for (const cat of DOCUMENT_CATEGORIES) {
+            const value = normalizeText(cat.value);
+            const label = normalizeText(cat.label);
+            if (lower === value || lower === label) return cat.value;
+        }
+
+        if (lower.includes('table of specifications')) return 'TOS';
+        if (lower.includes('major final output')) return 'MFO';
+
+        const tokens = tokenizeCategorySource(raw);
+        for (const cat of DOCUMENT_CATEGORIES) {
+            if (tokens.includes(normalizeText(cat.value))) return cat.value;
+        }
+
+        return '';
+    }
+
+    function formatDocumentCategory(value) {
+        const resolved = resolveDocumentCategory(value);
+        if (resolved) {
+            const found = DOCUMENT_CATEGORIES.find((item) => item.value === resolved);
+            if (found) return found.label;
+        }
+        if (value && typeof value === 'object') {
+            return String(value.report_name || value.title || value.name || '').trim();
+        }
+        return String(value ?? '').trim();
+    }
+
+    function matchesDocumentCategory(source, categoryValue) {
+        if (!categoryValue) return true;
+        return resolveDocumentCategory(source) === categoryValue;
+    }
+
+    function documentCategoryOptionsHtml(selectedValue, options) {
+        const opts = options || {};
+        const selected = String(selectedValue || '');
+        const parts = [];
+        if (opts.includeAll) {
+            parts.push(`<option value=""${selected === '' ? ' selected' : ''}>All Categories</option>`);
+        }
+        if (opts.includeCustom) {
+            const isKnown = DOCUMENT_CATEGORY_VALUES.includes(selected);
+            const isCustom = selected === 'custom' || (selected !== '' && !isKnown);
+            parts.push(`<option value="custom"${isCustom ? ' selected' : ''}>Custom</option>`);
+        }
+        DOCUMENT_CATEGORIES.forEach((cat) => {
+            parts.push(
+                `<option value="${escapeHtml(cat.value)}"${selected === cat.value ? ' selected' : ''}>${escapeHtml(cat.label)}</option>`
+            );
+        });
+        return parts.join('');
+    }
+
+    function ensureTitleReflectsCategory(title, categoryValue) {
+        if (!categoryValue || categoryValue === 'custom') return String(title || '').trim();
+        const label = formatDocumentCategory(categoryValue);
+        const trimmed = String(title || '').trim();
+        if (!trimmed) return label;
+        if (resolveDocumentCategory(trimmed) === categoryValue) return trimmed;
+        return `${label} — ${trimmed}`;
+    }
+
+    function normalizeRoleValue(role) {
+        const r = normalizeText(role);
+        if (!r) return '';
+        if (r.includes('superadmin') || r.includes('administrator') || r === 'admin' || r.includes('system admin') || r.includes('workflow admin')) return 'admin';
+        if (r.includes('dean')) return 'dean';
+        if (r.includes('secretary')) return 'college_secretary';
+        if (r.includes('chair') || r.includes('oic') || r.includes('head')) return 'chairperson';
+        if (r === 'faculty') return 'faculty';
+        return r;
+    }
+
+    function normalizeFaculty(row) {
+        if (!row) return null;
+        const dept = row.department_code || row.department || 'N/A';
+        const role = normalizeRoleValue(row.role || row.position || '');
+        const status = normalizeText(row.status || 'active');
+        return {
+            ...row,
+            id: row.id,
+            auth_user_id: row.auth_user_id || null,
+            full_name: row.full_name || row.name || [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') || row.email || 'Faculty Member',
+            department_code: dept,
+            department: dept,
+            role,
+            raw_role: row.role || row.position || '',
+            admin_access: row.admin_access === true,
+            is_active: row.access_enabled !== false && (status === 'active' || status === ''),
+            employee_id: row.employee_id || row.faculty_id || null
+        };
+    }
+
+    function normalizeRole(faculty) {
+        if (!faculty) return { role: '', admin_access: false };
+        const fromRole = normalizeRoleValue(faculty.role);
+        const fromPosition = normalizeRoleValue(faculty.position || faculty.raw_role);
+        const adminRoles = ['admin', 'dean', 'college_secretary', 'administrator', 'superadmin'];
+        let role = '';
+        if (adminRoles.includes(fromRole)) {
+            role = fromRole;
+        } else if (adminRoles.includes(fromPosition)) {
+            role = fromPosition;
+        } else if (fromRole === 'chairperson' || fromPosition === 'chairperson') {
+            role = 'chairperson';
+        } else {
+            role = fromRole || fromPosition;
+        }
+        return {
+            role,
+            admin_access: faculty.admin_access === true || faculty.is_admin === true || adminRoles.includes(role)
+        };
+    }
+
+    function isChairperson(faculty) {
+        if (!faculty) return false;
+        if (normalizeRole(faculty).role === 'chairperson') return true;
+        return /chair/i.test(String(
+            faculty.role || faculty.position || faculty.raw_role || ''
+        ));
+    }
+
+    function isWorkflowAdmin(faculty) {
+        if (!faculty) return false;
+        if (faculty.admin_access === true || faculty.is_admin === true) return true;
+        const { role, admin_access } = normalizeRole(faculty);
+        if (admin_access) return true;
+        const adminRoles = ['admin', 'dean', 'college_secretary', 'administrator', 'superadmin'];
+        if (adminRoles.includes(role)) return true;
+        const fromRole = normalizeRoleValue(faculty.role);
+        const fromPosition = normalizeRoleValue(faculty.position || faculty.raw_role);
+        return adminRoles.includes(fromRole) || adminRoles.includes(fromPosition);
+    }
+
+    function isFinalApprover(faculty) {
+        return isWorkflowAdmin(faculty);
+    }
+
+    function sameDepartment(a, b) {
+        if (!a || !b) return false;
+        return normalizeText(a.department_code || a.department) === normalizeText(b.department_code || b.department);
+    }
+
+    function facultyDepartmentCode(faculty) {
+        return normalizeText(faculty?.department_code || faculty?.department || '');
+    }
+
+    function parseDepartmentCodes(value) {
+        if (Array.isArray(value)) {
+            return value.map((code) => normalizeText(code)).filter(Boolean);
+        }
+        if (value == null || value === '') return [];
+        return String(value)
+            .replace(/^{|}$/g, '')
+            .split(',')
+            .map((code) => normalizeText(code.replace(/^"|"$/g, '')))
+            .filter(Boolean);
+    }
+
+    function grantIsActive(grant) {
+        return !!(grant && grant.is_active !== false);
+    }
+
+    function grantMatchesChairperson(grant, faculty) {
+        if (!grantIsActive(grant) || !faculty) return false;
+
+        const facultyId = faculty.id != null ? String(faculty.id) : '';
+        const grantFacultyId = grant.grantee_faculty_id || grant.faculty_id;
+        if (facultyId && grantFacultyId != null && String(grantFacultyId) === facultyId) return true;
+
+        const authId = faculty.auth_user_id ? String(faculty.auth_user_id) : '';
+        const grantAuthId = grant.grantee_auth_user_id;
+        if (authId && grantAuthId != null && String(grantAuthId) === authId) return true;
+
+        const grantName = normalizeText(grant.grantee_name);
+        const facultyName = normalizeText(faculty.full_name || faculty.name);
+        if (grantName && facultyName && (grantName === facultyName || grantName.includes(facultyName) || facultyName.includes(grantName))) return true;
+
+        const grantEmail = normalizeText(grant.grantee_email || grant.email);
+        const facultyEmail = normalizeText(faculty.email || faculty.existing_email);
+        if (grantEmail && facultyEmail && grantEmail === facultyEmail) return true;
+
+        return false;
+    }
+
+    function getChairpersonGrant(faculty, delegatedAccess) {
+        const grants = Array.isArray(delegatedAccess) ? delegatedAccess : [];
+        return grants.find((grant) => grantMatchesChairperson(grant, faculty)) || null;
+    }
+
+    function matchingChairpersonGrants(faculty, delegatedAccess) {
+        const grants = Array.isArray(delegatedAccess) ? delegatedAccess : [];
+        return grants.filter((grant) => grantMatchesChairperson(grant, faculty));
+    }
+
+    function hasChairpersonWorkflowAccess(faculty, delegatedAccess) {
+        if (!faculty) return false;
+        if (isChairperson(faculty)) return true;
+        if (isWorkflowAdmin(faculty)) return true;
+        return matchingChairpersonGrants(faculty, delegatedAccess).length > 0;
+    }
+
+    function chairpersonAuthorizedDepartments(faculty, delegatedAccess) {
+        if (!hasChairpersonWorkflowAccess(faculty, delegatedAccess)) return [];
+        const fromGrants = matchingChairpersonGrants(faculty, delegatedAccess)
+            .flatMap((grant) => parseDepartmentCodes(grant.department_codes || grant.department_code || grant.department || grant.departments))
+            .filter(Boolean);
+        const own = facultyDepartmentCode(faculty);
+        const ownDept = (own && own !== 'n/a') ? own : null;
+        const result = [...fromGrants];
+        if (ownDept && isChairperson(faculty)) {
+            result.unshift(ownDept);
+        } else if (!result.length && ownDept) {
+            result.push(ownDept);
+        }
+        return [...new Set(result)];
+    }
+
+    function isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess) {
+        if (!hasChairpersonWorkflowAccess(actorFaculty, delegatedAccess)) return false;
+        if (!targetFaculty) return true;
+        const targetDept = facultyDepartmentCode(targetFaculty);
+        if (!targetDept) return true;
+        const authorized = chairpersonAuthorizedDepartments(actorFaculty, delegatedAccess);
+        return authorized.includes(targetDept);
+    }
+
+    function canBrowseAsChairperson(actorFaculty, targetFaculty, delegatedAccess) {
+        return isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess);
+    }
+
+    function requiresChairpersonReview(config, task) {
+        const flag = config?.requires_chairperson_review;
+        if (flag === false || flag === 'false' || flag === 0) return false;
+        if (flag === true || flag === 'true' || flag === 1) return true;
+        if (config && (flag == null || flag === '')) return true;
+        const taskFlag = task?.requires_chairperson_review;
+        if (taskFlag === false || taskFlag === 'false' || taskFlag === 0) return false;
+        if (taskFlag === true || taskFlag === 'true' || taskFlag === 1) return true;
+        // MFO accomplishment reports are explicitly submitted to the Program Chairperson.
+        const isMfo = resolveDocumentCategory(config) === 'MFO'
+            || resolveDocumentCategory(task) === 'MFO'
+            || /\bmfo\b|major final output/i.test([config?.report_name, task?.title].join(' '));
+        if (isMfo) return true;
+        return false;
+    }
+
+    function resolveInitialApprovalStage(config, task) {
+        return requiresChairpersonReview(config, task)
+            ? APPROVAL_STAGES.CHAIRPERSON
+            : APPROVAL_STAGES.FINAL;
+    }
+
+    /**
+     * True when this person would be the reviewer of their own submission.
+     *
+     * A chairperson still has to file their own report, and the chairperson
+     * stage is scoped by department. If the only grant covering their
+     * department is their own, routing the report to the chairperson stage
+     * parks it forever: they are excluded from reviewing themselves, and no
+     * other chairperson is in scope.
+     */
+    function submitterIsOwnChairperson(faculty, delegatedAccess) {
+        if (!faculty) return false;
+        if (!hasChairpersonWorkflowAccess(faculty, delegatedAccess)) return false;
+        const own = facultyDepartmentCode(faculty);
+        if (!own || own === 'n/a') return false;
+        return chairpersonAuthorizedDepartments(faculty, delegatedAccess).includes(own);
+    }
+
+    /**
+     * Decide the stage a brand-new submission enters.
+     *
+     * Preference order is deliberate. wf_resolve_initial_approval_stage() runs
+     * with full visibility of every grant, which the browser does not have —
+     * RLS shows a chairperson only their own grant rows, so the client alone
+     * cannot tell "I am the only chairperson for my department" from "another
+     * chairperson also covers it". When the function is not deployed we fall
+     * back to the local rule, which is correct for the common case.
+     */
+    async function resolveInitialApprovalStageForSubmission(sb, options) {
+        const { config, task, submitterFaculty, delegatedAccess } = options || {};
+        const localStage = resolveInitialApprovalStage(config, task);
+
+        const client = sb || getSupabaseClient();
+        if (client?.rpc && task?.id) {
+            try {
+                const { data, error } = await client.rpc('wf_resolve_initial_approval_stage', {
+                    p_task_id: task.id
+                });
+                if (!error && typeof data === 'string' && data) {
+                    return data;
+                }
+                const missingRpc = !error ? false : (
+                    error.code === 'PGRST202'
+                    || error.code === '42883'
+                    || Number(error.status || error.statusCode || 0) === 404
+                    || /could not find the function|does not exist/i.test(String(error.message || ''))
+                );
+                if (error && !missingRpc) {
+                    console.warn('CiteFlowWorkflow: stage routing RPC failed:', error.message || error);
+                }
+            } catch (error) {
+                console.warn('CiteFlowWorkflow: stage routing RPC threw:', error);
+            }
+        }
+
+        if (localStage === APPROVAL_STAGES.CHAIRPERSON
+            && submitterIsOwnChairperson(submitterFaculty, delegatedAccess)) {
+            return APPROVAL_STAGES.FINAL;
+        }
+        return localStage;
+    }
+
+    function normalizeStageValue(stage) {
+        const s = normalizeText(stage);
+        if (!s) return '';
+        if (s === 'final' || s === 'final_approver' || s === 'final_approval' || s === 'admin') return APPROVAL_STAGES.FINAL;
+        if (s === 'chairperson' || s === 'chair') return APPROVAL_STAGES.CHAIRPERSON;
+        if (s === 'approved') return APPROVAL_STAGES.APPROVED;
+        if (s === 'revision') return APPROVAL_STAGES.REVISION;
+        if (s === 'declined' || s === 'rejected') return APPROVAL_STAGES.DECLINED;
+        return s;
+    }
+
+    function getApprovalStage(submission, config, task) {
+        const stored = normalizeStageValue(submission?.approval_stage);
+        const status = sanitizeDbStatus(submission?.status);
+        const required = requiresChairpersonReview(config, task);
+
+        if (stored === APPROVAL_STAGES.FINAL) {
+            const hasBeenReviewed = !!(submission?.reviewed_at || submission?.reviewed_by_name || submission?.last_reviewed_by_role);
+            const isResubmission = Number(submission?.resubmission_count || 0) > 0;
+            if (required && ['submitted', 'late'].includes(status) && !hasBeenReviewed && !isResubmission) {
+                return APPROVAL_STAGES.CHAIRPERSON;
+            }
+            return APPROVAL_STAGES.FINAL;
+        }
+
+        if (required && ['submitted', 'late'].includes(status) && !stored) {
+            return APPROVAL_STAGES.CHAIRPERSON;
+        }
+        if (stored) return stored;
+        if (config || task) return resolveInitialApprovalStage(config, task);
+        return APPROVAL_STAGES.FINAL;
+    }
+
+    function isPendingChairpersonReview(submission, config, task) {
+        if (!submission) return false;
+        const status = sanitizeDbStatus(submission.status);
+        if (!['submitted', 'late', 'underreview'].includes(status)) return false;
+        if (getApprovalStage(submission, config, task) !== APPROVAL_STAGES.CHAIRPERSON) return false;
+        if (config) return requiresChairpersonReview(config, task);
+        return submission.approval_stage === APPROVAL_STAGES.CHAIRPERSON;
+    }
+
+    function resolveReviewContext(context) {
+        if (!context) return { delegatedAccess: [], config: null, task: null };
+        if (Array.isArray(context)) return { delegatedAccess: context, config: null, task: null };
+        return {
+            delegatedAccess: Array.isArray(context.delegatedAccess) ? context.delegatedAccess : [],
+            config: context.config || null,
+            task: context.task || null
+        };
+    }
+
+    function sanitizeDbStatus(status) {
+        const s = normalizeText(status);
+        if (VALID_DB_STATUSES.has(s)) return s;
+        if (s === 'pending') return 'underreview';
+        return 'submitted';
+    }
+
+    function getWorkflowStage(submission, task, config) {
+        const status = sanitizeDbStatus(submission?.status);
+        const stage = getApprovalStage(submission, config, task);
+
+        if (status === 'approved' && stage === APPROVAL_STAGES.APPROVED) return 'completed';
+        if (status === 'rejected' || stage === APPROVAL_STAGES.DECLINED) return 'rejected';
+        if (status === 'revision' || stage === APPROVAL_STAGES.REVISION) return 'revision_required';
+        if (!submission?.submitted_at && (status === 'notsubmitted' || !submission)) {
+            const due = task?.deadline_at || task?.due_at;
+            if (due && new Date(due) < new Date()) return 'late_pending';
+            return 'assigned';
+        }
+        if (stage === APPROVAL_STAGES.CHAIRPERSON && ['submitted', 'late', 'underreview'].includes(status)) {
+            return 'chairperson_review';
+        }
+        if (stage === APPROVAL_STAGES.FINAL) return 'final_approval';
+        if (status === 'approved') return 'completed';
+        if (['submitted', 'late'].includes(status)) return 'submitted';
+        return 'submitted';
+    }
+
+    function isFinallyApproved(submission, task, config) {
+        if (!submission) return false;
+        return getWorkflowStage(submission, task, config) === 'completed';
+    }
+
+    /**
+     * MFO submission analytics.
+     *
+     * Summary metrics (a person is in exactly one of submitted / not submitted):
+     *   expected        one wf_task_assignments row per faculty for the task
+     *   submitted       that assignment has a qualifying wf_submissions row
+     *   not submitted   assigned, with no qualifying submission
+     *
+     * Qualifying submission: a row whose status is not "notsubmitted" and that
+     * either has submitted_at or a received/review status. Department membership
+     * never creates an assignment.
+     *
+     * Exclusive breakdown of submitted rows. These five keys sum to submitted
+     * and do not overlap. "Approved" is final approval only.
+     *   pending_chair    awaiting Chairperson/OIC review
+     *   needs_revision   existing revision state
+     *   pending_final    received, past Chairperson review, not finally approved
+     *   approved         getWorkflowStage === completed
+     *   rejected         rejected status or declined stage
+     *
+     * Precedence follows getWorkflowStage: rejected, revision, final approval,
+     * Chairperson review, then any other received submission as pending final.
+     * not_submitted_overdue is a subset of not submitted, not a sixth bucket.
+     */
+    const MFO_ANALYTICS_DEPARTMENTS = ['BSIT', 'BIT', 'BSIE'];
+
+    const MFO_ANALYTICS_STATUS_KEYS = [
+        'pending_chair',
+        'needs_revision',
+        'pending_final',
+        'approved',
+        'rejected'
+    ];
+
+    function isMfoWorkflowRecord(task, config) {
+        if (resolveDocumentCategory(config) === 'MFO') return true;
+        if (resolveDocumentCategory(task) === 'MFO') return true;
+        const blob = [config?.report_name, config?.title, task?.title, task?.name].filter(Boolean).join(' ');
+        return /\bmfo\b|major final output/i.test(blob);
+    }
+
+    function mfoDisplayDepartment(facultyOrDepartment) {
+        const code = facultyOrDepartment && typeof facultyOrDepartment === 'object'
+            ? facultyDepartmentCode(facultyOrDepartment)
+            : normalizeText(facultyOrDepartment);
+        if (code === 'bsit') return 'BSIT';
+        if (code === 'bit') return 'BIT';
+        if (code === 'bsie') return 'BSIE';
+        if (facultyOrDepartment && typeof facultyOrDepartment === 'object') {
+            return String(facultyOrDepartment.department_code || facultyOrDepartment.department || '').trim();
+        }
+        return String(facultyOrDepartment || '').trim();
+    }
+
+    function departmentIsAuthorized(facultyOrDepartment, authorizedDepartments) {
+        const allowed = (Array.isArray(authorizedDepartments) ? authorizedDepartments : [])
+            .map((code) => normalizeText(code))
+            .filter((code) => code && code !== 'n/a');
+        if (!allowed.length) return false;
+        const code = facultyOrDepartment && typeof facultyOrDepartment === 'object'
+            ? facultyDepartmentCode(facultyOrDepartment)
+            : normalizeText(facultyOrDepartment);
+        if (!code || code === 'n/a') return false;
+        return allowed.includes(code);
+    }
+
+    function isGenuineSubmission(submission) {
+        if (!submission) return false;
+        if (submission.packet_state === 'draft' || submission.mfo_packet?.packet_state === 'draft' || submission.is_draft === true) return false;
+        const status = normalizeText(submission.status);
+        if (status === 'notsubmitted' || status === 'draft') return false;
+        if (submission.submitted_at) return true;
+        if (!status && !submission.id) return false;
+        return ['submitted', 'late', 'underreview', 'approved', 'rejected', 'revision'].includes(status);
+    }
+
+    function hasQualifyingMfoSubmission(submission) {
+        return isGenuineSubmission(submission);
+    }
+
+    function mfoDeadlinePassed(deadline, now) {
+        if (!deadline) return false;
+        const time = new Date(deadline).getTime();
+        if (Number.isNaN(time)) return false;
+        return time < Number(now || Date.now());
+    }
+
+    function classifyMfoSubmission(submission, task, config) {
+        if (!hasQualifyingMfoSubmission(submission)) return 'not_submitted';
+        const stage = getWorkflowStage(submission, task, config);
+        if (stage === 'rejected') return 'rejected';
+        if (stage === 'revision_required') return 'needs_revision';
+        if (stage === 'completed') return 'approved';
+        if (stage === 'chairperson_review') return 'pending_chair';
+        return 'pending_final';
+    }
+
+    function emptyMfoAnalyticsCounts() {
+        return {
+            expected: 0,
+            submitted: 0,
+            not_submitted: 0,
+            not_submitted_overdue: 0,
+            not_submitted_open: 0,
+            pending_chair: 0,
+            needs_revision: 0,
+            pending_final: 0,
+            approved: 0,
+            rejected: 0
+        };
+    }
+
+    function addMfoAnalyticsCount(counts, category, overdue) {
+        if (!counts) return;
+        counts.expected += 1;
+        if (category === 'not_submitted') {
+            counts.not_submitted += 1;
+            if (overdue) counts.not_submitted_overdue += 1;
+            else counts.not_submitted_open += 1;
+            return;
+        }
+        counts.submitted += 1;
+        if (Object.prototype.hasOwnProperty.call(counts, category)) counts[category] += 1;
+    }
+
+    function mfoAnalyticsBalances(counts) {
+        const exclusive = MFO_ANALYTICS_STATUS_KEYS.reduce((sum, key) => sum + Number(counts?.[key] || 0), 0);
+        return {
+            exclusiveMatchesSubmitted: exclusive === Number(counts?.submitted || 0),
+            coverageMatchesExpected: Number(counts?.submitted || 0) + Number(counts?.not_submitted || 0) === Number(counts?.expected || 0)
+        };
+    }
+
+    /**
+     * @param {Array} entries assignment rows already loaded for the viewer.
+     *   { task, config, facultyId, department|faculty, submission, deadline }
+     * @param {{ now?: number, authorizedDepartments?: string[]|null }} [options]
+     *   authorizedDepartments null/omitted keeps every entry (Dean overview).
+     *   An array keeps only those departments.
+     */
+    function buildMfoAnalytics(entries, options) {
+        const now = options?.now || Date.now();
+        const restrict = Array.isArray(options?.authorizedDepartments);
+        const allowed = restrict ? options.authorizedDepartments : null;
+        const groups = new Map();
+        const seen = new Set();
+
+        (Array.isArray(entries) ? entries : []).forEach((entry) => {
+            if (!entry) return;
+            const task = entry.task || null;
+            const taskId = String(entry.taskId || task?.id || '').trim();
+            const facultyId = String(entry.facultyId || entry.faculty?.id || '').trim();
+            if (!taskId || !facultyId) return;
+            const departmentSource = entry.faculty || entry.department || entry.department_code || '';
+            if (restrict && !departmentIsAuthorized(departmentSource, allowed)) return;
+            const dedupe = `${taskId}|${facultyId}`;
+            if (seen.has(dedupe)) return;
+            seen.add(dedupe);
+
+            if (!groups.has(taskId)) {
+                groups.set(taskId, {
+                    taskId,
+                    title: String(task?.title || entry.title || 'MFO task').trim() || 'MFO task',
+                    deadline: entry.deadline || task?.deadline_at || task?.due_at || null,
+                    counts: emptyMfoAnalyticsCounts(),
+                    departmentCounts: new Map()
+                });
+            }
+            const group = groups.get(taskId);
+            const deadline = entry.deadline || group.deadline || null;
+            if (!group.deadline && deadline) group.deadline = deadline;
+            const category = classifyMfoSubmission(entry.submission, task, entry.config || null);
+            const overdue = category === 'not_submitted' && mfoDeadlinePassed(deadline, now);
+            addMfoAnalyticsCount(group.counts, category, overdue);
+
+            const label = mfoDisplayDepartment(departmentSource) || 'Unspecified';
+            if (!group.departmentCounts.has(label)) group.departmentCounts.set(label, emptyMfoAnalyticsCounts());
+            addMfoAnalyticsCount(group.departmentCounts.get(label), category, overdue);
+        });
+
+        const tasks = Array.from(groups.values()).map((group) => {
+            const present = new Set(group.departmentCounts.keys());
+            const ordered = [];
+            const base = restrict
+                ? MFO_ANALYTICS_DEPARTMENTS.filter((code) => departmentIsAuthorized(code, allowed))
+                : MFO_ANALYTICS_DEPARTMENTS.slice();
+            base.forEach((code) => {
+                ordered.push({
+                    code,
+                    counts: group.departmentCounts.get(code) || emptyMfoAnalyticsCounts()
+                });
+                present.delete(code);
+            });
+            Array.from(present).sort().forEach((code) => {
+                ordered.push({ code, counts: group.departmentCounts.get(code) });
+            });
+            const balance = mfoAnalyticsBalances(group.counts);
+            return {
+                taskId: group.taskId,
+                title: group.title,
+                deadline: group.deadline,
+                counts: group.counts,
+                departments: ordered,
+                exclusiveMatchesSubmitted: balance.exclusiveMatchesSubmitted,
+                coverageMatchesExpected: balance.coverageMatchesExpected
+            };
+        });
+
+        return {
+            tasks,
+            counts: tasks.reduce((sum, task) => {
+                Object.keys(sum).forEach((key) => { sum[key] += Number(task.counts[key] || 0); });
+                return sum;
+            }, emptyMfoAnalyticsCounts())
+        };
+    }
+
+    /**
+     * Standardized Submission Analytics Engine (Phase 1)
+     *
+     * Invariants for assignment-based tasks:
+     *   Expected = Submitted + Not Submitted
+     *   Submitted = Pending Review + Needs Revision + Approved + Rejected
+     *   Not Submitted = Not Submitted (Open) + Not Submitted (Overdue)
+     *
+     * Submission completion is distinguished from final approval:
+     *   - Submissions returned for revision and rejected submissions count as submitted
+     *     provided a genuine submission exists.
+     *   - Assigned faculty without a submission are partitioned into not_submitted_open
+     *     (future deadline or no deadline) and not_submitted_overdue (passed deadline).
+     *   - Timing (on-time vs late) is orthogonal and kept separate from review status.
+     *   - Unassigned/orphaned submissions are tracked separately and do not inflate Expected.
+     */
+    const SUBMISSION_ANALYTICS_REVIEW_KEYS = [
+        'pending_review',
+        'needs_revision',
+        'approved',
+        'rejected'
+    ];
+
+    const SUBMISSION_ANALYTICS_NON_SUBMITTED_KEYS = [
+        'not_submitted_open',
+        'not_submitted_overdue'
+    ];
+
+    const SUBMISSION_ANALYTICS_ALL_KEYS = [
+        ...SUBMISSION_ANALYTICS_REVIEW_KEYS,
+        ...SUBMISSION_ANALYTICS_NON_SUBMITTED_KEYS
+    ];
+
+    function emptySubmissionAnalyticsCounts() {
+        return {
+            expected: 0,
+            submitted: 0,
+            not_submitted: 0,
+            not_submitted_open: 0,
+            not_submitted_overdue: 0,
+            pending_review: 0,
+            needs_revision: 0,
+            approved: 0,
+            rejected: 0,
+            timing_on_time: 0,
+            timing_late: 0,
+            orphaned_submissions: 0
+        };
+    }
+
+    function isSubmissionDeadlinePassed(deadline, now) {
+        if (!deadline) return false;
+        const time = new Date(deadline).getTime();
+        if (Number.isNaN(time)) return false;
+        return time < Number(now || Date.now());
+    }
+
+    function getSubmissionTiming(submission, task, now) {
+        if (!isGenuineSubmission(submission)) {
+            const deadline = task?.deadline_at || task?.due_at;
+            if (isSubmissionDeadlinePassed(deadline, now)) return 'overdue';
+            return 'open';
+        }
+        if (submission.submitted_status === 'late' || submission.is_late === true) {
+            return 'late';
+        }
+        const deadline = task?.deadline_at || task?.due_at;
+        if (deadline && submission.submitted_at) {
+            const diff = new Date(submission.submitted_at).getTime() - new Date(deadline).getTime();
+            if (diff > 0) return 'late';
+        }
+        if (normalizeText(submission.status) === 'late') {
+            return 'late';
+        }
+        return 'on_time';
+    }
+
+    function selectLatestSubmission(submissions, taskId, facultyId) {
+        const subs = (Array.isArray(submissions) ? submissions : []).filter((s) =>
+            s && String(s.task_id) === String(taskId) && String(s.faculty_id) === String(facultyId)
+        );
+        if (!subs.length) return null;
+
+        // If genuine submissions exist, sort genuine submissions first
+        const genuineSubs = subs.filter(isGenuineSubmission);
+        const candidateList = genuineSubs.length > 0 ? genuineSubs : subs;
+
+        return candidateList.slice().sort((a, b) => {
+            const timeA = new Date(a.updated_at || a.submitted_at || a.created_at || 0).getTime();
+            const timeB = new Date(b.updated_at || b.submitted_at || b.created_at || 0).getTime();
+            if (timeB !== timeA) return timeB - timeA;
+            return String(b.id || '').localeCompare(String(a.id || ''));
+        })[0];
+    }
+
+    function classifySubmissionRecord(submission, task, config, now) {
+        const genuine = isGenuineSubmission(submission);
+        const deadline = task?.deadline_at || task?.due_at;
+        const overdue = isSubmissionDeadlinePassed(deadline, now);
+        const timing = getSubmissionTiming(submission, task, now);
+
+        if (!genuine) {
+            const category = overdue ? 'not_submitted_overdue' : 'not_submitted_open';
+            return {
+                is_submitted: false,
+                category,
+                status_key: category,
+                status_label: overdue ? 'Not Submitted (Overdue)' : 'Not Submitted (Open)',
+                review_status: null,
+                timing,
+                is_late: false,
+                is_overdue: overdue
+            };
+        }
+
+        const stage = getWorkflowStage(submission, task, config);
+        const status = sanitizeDbStatus(submission?.status);
+        const approvalStage = normalizeStageValue(submission?.approval_stage);
+
+        let review_status;
+        if (status === 'rejected' || approvalStage === APPROVAL_STAGES.DECLINED || stage === 'rejected') {
+            review_status = 'rejected';
+        } else if (status === 'revision' || approvalStage === APPROVAL_STAGES.REVISION || stage === 'revision_required') {
+            review_status = 'needs_revision';
+        } else if (isFinallyApproved(submission, task, config) || stage === 'completed' || status === 'approved') {
+            review_status = 'approved';
+        } else {
+            review_status = 'pending_review';
+        }
+
+        return {
+            is_submitted: true,
+            category: review_status,
+            status_key: review_status,
+            status_label: formatApprovalStage(review_status) || review_status,
+            review_status,
+            timing,
+            is_late: timing === 'late',
+            is_overdue: false
+        };
+    }
+
+    function submissionAnalyticsBalances(counts) {
+        const submitted = Number(counts?.submitted || 0);
+        const notSubmitted = Number(counts?.not_submitted || 0);
+        const expected = Number(counts?.expected || 0);
+
+        const reviewSum = Number(counts?.pending_review || 0) +
+                          Number(counts?.needs_revision || 0) +
+                          Number(counts?.approved || 0) +
+                          Number(counts?.rejected || 0);
+
+        const notSubmittedSum = Number(counts?.not_submitted_open || 0) +
+                                Number(counts?.not_submitted_overdue || 0);
+
+        return {
+            exclusiveMatchesSubmitted: reviewSum === submitted,
+            notSubmittedMatchesCategories: notSubmittedSum === notSubmitted,
+            coverageMatchesExpected: (submitted + notSubmitted) === expected
+        };
+    }
+
+    function computeSubmissionAnalytics(assignments, submissions, tasksOrTask, options) {
+        const now = options?.now || Date.now();
+        const counts = emptySubmissionAnalyticsCounts();
+        const taskMap = new Map();
+
+        if (Array.isArray(tasksOrTask)) {
+            tasksOrTask.forEach((t) => { if (t?.id) taskMap.set(String(t.id), t); });
+        } else if (tasksOrTask?.id) {
+            taskMap.set(String(tasksOrTask.id), tasksOrTask);
+        }
+
+        const configMap = new Map();
+        if (Array.isArray(options?.reportConfigs)) {
+            options.reportConfigs.forEach((c) => { if (c?.id) configMap.set(String(c.id), c); });
+        }
+
+        const mfoPacketMap = new Map();
+        if (Array.isArray(options?.mfoPackets)) {
+            options.mfoPackets.forEach((p) => {
+                if (!p) return;
+                if (p.submission_id) mfoPacketMap.set(`sub_${p.submission_id}`, p);
+                if (p.task_id && p.faculty_id) mfoPacketMap.set(`tf_${p.task_id}_${p.faculty_id}`, p);
+            });
+        }
+
+        const normalizedSubmissions = (Array.isArray(submissions) ? submissions : []).map((sub) => {
+            if (!sub) return sub;
+            if (sub.mfo_packet) return sub;
+            const pkt = mfoPacketMap.get(`sub_${sub.id}`) || mfoPacketMap.get(`tf_${sub.task_id}_${sub.faculty_id}`);
+            return pkt ? { ...sub, mfo_packet: pkt } : sub;
+        });
+
+        const seenAssignments = new Set();
+        const assignedRecords = [];
+
+        // 1. Process deduplicated assignments
+        (Array.isArray(assignments) ? assignments : []).forEach((assign) => {
+            if (!assign) return;
+            const taskId = String(assign.task_id || '').trim();
+            const facultyId = String(assign.faculty_id || '').trim();
+            if (!taskId || !facultyId) return;
+
+            const dedupeKey = `${taskId}|${facultyId}`;
+            if (seenAssignments.has(dedupeKey)) return;
+            seenAssignments.add(dedupeKey);
+
+            const task = taskMap.get(taskId) || assign.task || null;
+            const config = task?.report_config_id ? configMap.get(String(task.report_config_id)) : (assign.config || null);
+            const latestSub = selectLatestSubmission(normalizedSubmissions, taskId, facultyId);
+
+            const classification = classifySubmissionRecord(latestSub, task, config, now);
+
+            counts.expected += 1;
+            if (classification.is_submitted) {
+                counts.submitted += 1;
+                counts[classification.review_status] += 1;
+                if (classification.timing === 'late') {
+                    counts.timing_late += 1;
+                } else {
+                    counts.timing_on_time += 1;
+                }
+            } else {
+                counts.not_submitted += 1;
+                if (classification.is_overdue) {
+                    counts.not_submitted_overdue += 1;
+                } else {
+                    counts.not_submitted_open += 1;
+                }
+            }
+
+            assignedRecords.push({
+                task_id: taskId,
+                faculty_id: facultyId,
+                submission: latestSub,
+                classification,
+                is_assigned: true,
+                is_orphaned: false
+            });
+        });
+
+        // 2. Identify orphaned submissions (submissions without an assignment)
+        const orphanedRecords = [];
+        const seenOrphaned = new Set();
+        normalizedSubmissions.forEach((sub) => {
+            if (!sub) return;
+            const taskId = String(sub.task_id || '').trim();
+            const facultyId = String(sub.faculty_id || '').trim();
+            if (!taskId || !facultyId) return;
+
+            const dedupeKey = `${taskId}|${facultyId}`;
+            if (seenAssignments.has(dedupeKey)) return; // assigned, already handled
+            if (seenOrphaned.has(dedupeKey)) return;
+            seenOrphaned.add(dedupeKey);
+
+            if (isGenuineSubmission(sub)) {
+                counts.orphaned_submissions += 1;
+                const task = taskMap.get(taskId) || null;
+                const config = task?.report_config_id ? configMap.get(String(task.report_config_id)) : null;
+                const classification = classifySubmissionRecord(sub, task, config, now);
+                orphanedRecords.push({
+                    task_id: taskId,
+                    faculty_id: facultyId,
+                    submission: sub,
+                    classification,
+                    is_assigned: false,
+                    is_orphaned: true
+                });
+            }
+        });
+
+        const balances = submissionAnalyticsBalances(counts);
+
+        return {
+            counts,
+            balances,
+            assignedRecords,
+            orphanedRecords
+        };
+    }
+
+    function isRecurringTask(task) {
+        if (!task) return false;
+        const flag = task.is_recurring;
+        if (flag === true || flag === 1 || String(flag).toLowerCase() === 'true') return true;
+        return task.report_config_id != null && String(task.report_config_id).trim() !== '';
+    }
+
+    function resolveReportingFrequency(task, config) {
+        if (isMfoWorkflowRecord(task, config)) return 'quarterly';
+        if (task?.frequency) return String(task.frequency).toLowerCase();
+        if (config?.frequency) return String(config.frequency).toLowerCase();
+        if (task?.reporting_period_frequency) return String(task.reporting_period_frequency).toLowerCase();
+        const hay = [task?.title, task?.reporting_period_label, task?.instructions, config?.report_name].filter(Boolean).join(' ').toLowerCase();
+        if (hay.includes('quarter') || /\bq[1-4]\b/i.test(hay)) return 'quarterly';
+        if (hay.includes('semi-annual') || hay.includes('semiannual') || hay.includes('mid-year') || hay.includes('1st sem') || hay.includes('2nd sem')) return 'semi_annual';
+        if (hay.includes('annual') || hay.includes('year-end') || hay.includes('fiscal year')) return 'annual';
+        if (hay.includes('month') || /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(hay)) return 'monthly';
+        return 'monthly';
+    }
+
+    function groupRecurringReportTasks(tasks, reportConfigs) {
+        const configs = Array.isArray(reportConfigs) ? reportConfigs : [];
+        const configMap = new Map();
+        configs.forEach((c) => { if (c?.id) configMap.set(String(c.id), c); });
+
+        const recurringTasks = (Array.isArray(tasks) ? tasks : []).filter(isRecurringTask);
+        const groupMap = new Map();
+
+        recurringTasks.forEach((task) => {
+            const configId = task.report_config_id ? String(task.report_config_id) : null;
+            const config = configId ? configMap.get(configId) : null;
+            const freq = resolveReportingFrequency(task, config);
+            const isMfo = isMfoWorkflowRecord(task, config);
+
+            // Base series title stripping cycle suffixes (e.g. " - October 2026")
+            const rawTitle = config?.report_name || task.title || 'Recurring Report';
+            const baseTitle = String(rawTitle)
+                .replace(/\s*[-–—]\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|q[1-4]|1st sem|2nd sem|\d{4}).*$/i, '')
+                .trim();
+            const groupKey = configId ? `cfg_${configId}` : `title_${baseTitle.toLowerCase()}`;
+
+            if (!groupMap.has(groupKey)) {
+                groupMap.set(groupKey, {
+                    group_key: groupKey,
+                    config_id: configId,
+                    report_name: config?.report_name || baseTitle,
+                    frequency: freq,
+                    is_mfo: isMfo,
+                    cycles: []
+                });
+            }
+            groupMap.get(groupKey).cycles.push(task);
+        });
+
+        const groups = Array.from(groupMap.values());
+
+        // Sort cycles in each group by deadline / due_at / created_at descending (newest first)
+        groups.forEach((g) => {
+            g.cycles.sort((a, b) => {
+                const timeA = new Date(a.deadline_at || a.due_at || a.created_at || 0).getTime();
+                const timeB = new Date(b.deadline_at || b.due_at || b.created_at || 0).getTime();
+                return timeB - timeA;
+            });
+        });
+
+        // Sort groups by frequency (Monthly -> Quarterly -> Semi-Annual -> Annual) then name
+        const freqOrder = { monthly: 1, quarterly: 2, semi_annual: 3, annual: 4 };
+        groups.sort((a, b) => {
+            const oA = freqOrder[a.frequency] || 99;
+            const oB = freqOrder[b.frequency] || 99;
+            if (oA !== oB) return oA - oB;
+            return a.report_name.localeCompare(b.report_name);
+        });
+
+        return groups;
+    }
+
+    function computeRecurringReportAnalytics(tasks, assignments, submissions, reportConfigs, options) {
+        const groups = groupRecurringReportTasks(tasks, reportConfigs);
+        const now = options?.now || Date.now();
+        const cycleAnalyticsMap = new Map();
+        const overallCounts = emptySubmissionAnalyticsCounts();
+
+        const allAssignments = Array.isArray(assignments) ? assignments : [];
+        const allSubmissions = Array.isArray(submissions) ? submissions : [];
+
+        groups.forEach((group) => {
+            group.cycles.forEach((task) => {
+                const taskId = String(task.id);
+                // Strictly isolate assignments and submissions to this specific task cycle
+                const taskAssignments = allAssignments.filter((a) => String(a.task_id) === taskId);
+                const taskSubmissions = allSubmissions.filter((s) => String(s.task_id) === taskId);
+
+                const analytics = computeSubmissionAnalytics(taskAssignments, taskSubmissions, task, {
+                    ...options,
+                    reportConfigs,
+                    now
+                });
+
+                cycleAnalyticsMap.set(taskId, {
+                    task,
+                    group,
+                    counts: analytics.counts,
+                    balances: analytics.balances,
+                    assignedRecords: analytics.assignedRecords,
+                    orphanedRecords: analytics.orphanedRecords
+                });
+
+                // Aggregate overall counts across all cycles
+                SUBMISSION_ANALYTICS_ALL_KEYS.forEach((key) => {
+                    overallCounts[key] += (analytics.counts[key] || 0);
+                });
+                overallCounts.expected += (analytics.counts.expected || 0);
+                overallCounts.submitted += (analytics.counts.submitted || 0);
+                overallCounts.not_submitted += (analytics.counts.not_submitted || 0);
+                overallCounts.timing_on_time += (analytics.counts.timing_on_time || 0);
+                overallCounts.timing_late += (analytics.counts.timing_late || 0);
+                overallCounts.orphaned_submissions += (analytics.counts.orphaned_submissions || 0);
+            });
+        });
+
+        const overallBalances = submissionAnalyticsBalances(overallCounts);
+
+        return {
+            groups,
+            cycleAnalyticsMap,
+            overallCounts,
+            overallBalances
+        };
+    }
+
+    function canFacultyManageSubmissionFiles(submission, task, config) {
+        if (!submission) return true;
+        if (isFinallyApproved(submission, task, config)) return false;
+        const status = sanitizeDbStatus(submission.status);
+        if (status === 'rejected') return false;
+        const stage = getApprovalStage(submission, config, task);
+        if (status === 'approved' && stage === APPROVAL_STAGES.APPROVED) return false;
+        if (stage === APPROVAL_STAGES.FINAL && requiresChairpersonReview(config, task)) return false;
+        return true;
+    }
+
+    function canFacultyUnsubmit(submission, task, config) {
+        if (!submission) return false;
+        if (isFinallyApproved(submission, task, config)) return false;
+        const status = sanitizeDbStatus(submission.status);
+        if (!['submitted', 'late', 'underreview', 'revision'].includes(status)) return false;
+        if (status === 'rejected') return false;
+        const stage = getApprovalStage(submission, config, task);
+        if (stage === APPROVAL_STAGES.APPROVED || stage === APPROVAL_STAGES.DECLINED) return false;
+        if (stage === APPROVAL_STAGES.FINAL && requiresChairpersonReview(config, task)) return false;
+        return true;
+    }
+
+    function facultyFilesWereUpdatedAfterReview(submission) {
+        if (!submission?.submitted_at || !submission?.reviewed_at) return false;
+        return new Date(submission.submitted_at).getTime() > new Date(submission.reviewed_at).getTime();
+    }
+
+    function buildFacultyFileChangeUpdate(submission, task, remainingFileCount, config) {
+        const approvalStage = resolveInitialApprovalStage(config, task);
+        if (!remainingFileCount) {
+            return {
+                status: 'notsubmitted',
+                submitted_at: null,
+                is_late: false,
+                submitted_status: null,
+                approval_stage: approvalStage
+            };
+        }
+
+        const due = task?.deadline_at || task?.due_at;
+        const late = !!(due && new Date(due) < new Date());
+        const prevStatus = sanitizeDbStatus(submission?.status);
+        const wasReturned = prevStatus === 'revision' || prevStatus === 'rejected';
+        const update = {
+            status: late ? 'late' : 'submitted',
+            submitted_at: new Date().toISOString(),
+            is_late: late,
+            submitted_status: late ? 'late' : 'on_time',
+            approval_stage: approvalStage
+        };
+
+        if (wasReturned) {
+            update.resubmission_count = Number(submission?.resubmission_count || 0) + 1;
+        }
+
+        return update;
+    }
+
+    function getTaskDeadline(task) {
+        return task?.deadline_at || task?.due_at || null;
+    }
+
+    function getTaskRequirementText(task) {
+        return String(task?.instructions || task?.submission_instructions || '').trim();
+    }
+
+    const DEADLINE_REMINDER_WINDOWS = [
+        { daysBefore: 3, phrase: 'in 3 days' },
+        { daysBefore: 1, phrase: 'tomorrow' },
+        { daysBefore: 0, phrase: 'today' }
+    ];
+
+    let reminderInFlight = null;
+    let lastReminderRunAt = 0;
+
+    function manilaCalendarYmd(value) {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Manila',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(value instanceof Date ? value : new Date(value));
+    }
+
+    function manilaCalendarDaysUntil(deadlineIso) {
+        if (!deadlineIso) return null;
+        const today = Date.parse(`${manilaCalendarYmd(new Date())}T00:00:00+08:00`);
+        const due = Date.parse(`${manilaCalendarYmd(deadlineIso)}T00:00:00+08:00`);
+        if (!Number.isFinite(today) || !Number.isFinite(due)) return null;
+        return Math.round((due - today) / 86400000);
+    }
+
+    function formatManilaDateTime(iso) {
+        if (!iso) return '';
+        return new Date(iso).toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+    }
+
+    function shouldReceiveDeadlineReminder(submission, task) {
+        if (isFinallyApproved(submission, task)) return false;
+        if (!submission) return true;
+        const status = sanitizeDbStatus(submission.status);
+        if (!submission.submitted_at || status === 'notsubmitted') return true;
+        return status === 'revision' || status === 'rejected';
+    }
+
+    function buildDeadlineReminderMessage(task, windowSpec) {
+        const deadline = getTaskDeadline(task);
+        const when = formatManilaDateTime(deadline);
+        const title = task?.title || 'Assigned report';
+        return `Reminder: "${title}" is due ${windowSpec.phrase} (${when} Asia/Manila).`;
+    }
+
+    function reminderDedupeKey(row) {
+        return `${row.faculty_id}|${row.task_id}|${row.message}`;
+    }
+
+    async function runDeadlineReminderPass(sb, options) {
+        const facultyFilter = options.facultyId;
+        let assignQuery = sb.from('wf_task_assignments').select('task_id,faculty_id');
+        if (facultyFilter != null) assignQuery = assignQuery.eq('faculty_id', facultyFilter);
+        const { data: assignments, error: assignError } = await assignQuery;
+        if (assignError) throw assignError;
+        if (!assignments?.length) return { sent: 0 };
+
+        const taskIds = [...new Set(assignments.map((row) => row.task_id).filter(Boolean))];
+        if (!taskIds.length) return { sent: 0 };
+
+        const { data: tasks, error: taskError } = await sb.from('wf_tasks').select('*').in('id', taskIds);
+        if (taskError) throw taskError;
+
+        let subQuery = sb.from('wf_submissions').select('*').in('task_id', taskIds);
+        if (facultyFilter != null) subQuery = subQuery.eq('faculty_id', facultyFilter);
+        const { data: submissions, error: subError } = await subQuery;
+        if (subError) throw subError;
+
+        let notifQuery = sb
+            .from('wf_notifications')
+            .select('faculty_id,task_id,message')
+            .eq('type', 'task')
+            .ilike('message', 'Reminder:%');
+        if (facultyFilter != null) notifQuery = notifQuery.eq('faculty_id', facultyFilter);
+        const { data: existing, error: notifError } = await notifQuery.limit(1000);
+        if (notifError) throw notifError;
+
+        const existingKeys = new Set((existing || []).map(reminderDedupeKey));
+        const taskMap = new Map((tasks || []).map((task) => [String(task.id), task]));
+        const subMap = new Map();
+        (submissions || []).forEach((row) => {
+            subMap.set(`${row.task_id}|${row.faculty_id}`, row);
+        });
+
+        const rows = [];
+        assignments.forEach((assignment) => {
+            const task = taskMap.get(String(assignment.task_id));
+            const deadline = getTaskDeadline(task);
+            if (!task || !deadline) return;
+
+            const submission = subMap.get(`${assignment.task_id}|${assignment.faculty_id}`);
+            if (!shouldReceiveDeadlineReminder(submission, task)) return;
+
+            const days = manilaCalendarDaysUntil(deadline);
+            const windowSpec = DEADLINE_REMINDER_WINDOWS.find((item) => item.daysBefore === days);
+            if (!windowSpec) return;
+
+            const message = buildDeadlineReminderMessage(task, windowSpec);
+            const row = {
+                type: 'task',
+                faculty_id: assignment.faculty_id,
+                task_id: assignment.task_id,
+                message,
+                is_read: false
+            };
+            const key = reminderDedupeKey(row);
+            if (existingKeys.has(key)) return;
+            existingKeys.add(key);
+            rows.push(row);
+        });
+
+        if (!rows.length) return { sent: 0 };
+
+        const { error: insertError } = await sb.from('wf_notifications').insert(rows);
+        if (insertError) throw insertError;
+        return { sent: rows.length };
+    }
+
+    async function processDeadlineReminders(sb, options = {}) {
+        const client = sb || getSupabaseClient();
+        if (!client) return { sent: 0 };
+        if (reminderInFlight) return reminderInFlight;
+        if (!options.force && lastReminderRunAt && Date.now() - lastReminderRunAt < 60000) {
+            return { sent: 0, skipped: true };
+        }
+
+        reminderInFlight = runDeadlineReminderPass(client, options)
+            .then((result) => {
+                lastReminderRunAt = Date.now();
+                return result;
+            })
+            .catch((error) => {
+                console.error('CiteFlowWorkflow.processDeadlineReminders:', error);
+                return { sent: 0, error: error.message || String(error) };
+            })
+            .finally(() => {
+                reminderInFlight = null;
+            });
+
+        return reminderInFlight;
+    }
+
+    function formatWorkflowStatus(submission, task, config) {
+        const stage = getWorkflowStage(submission, task, config);
+        if (stage === 'rejected') {
+            const role = normalizeText(submission?.last_reviewed_by_role || submission?.actor_role || '');
+            if (role.includes('chair')) return 'Chairperson Declined';
+            if (role.includes('final') || role.includes('admin') || role.includes('dean') || role.includes('secret')) {
+                return 'Admin Declined';
+            }
+            return 'Declined';
+        }
+        const map = {
+            assigned: 'Not Submitted',
+            late_pending: 'Overdue — Not Submitted',
+            submitted: 'Submitted',
+            chairperson_review: 'Pending Chairperson Review',
+            final_approval: 'Pending Admin Final Approval',
+            completed: 'Completed',
+            revision_required: 'Revision Requested',
+            rejected: 'Declined'
+        };
+        return map[stage] || 'Unknown';
+    }
+
+    function isFacultySubmitter(faculty, submission) {
+        if (!faculty || !submission) return false;
+        return String(faculty.id) === String(submission.faculty_id);
+    }
+
+    function getStatusClass(submission, task) {
+        const stage = getWorkflowStage(submission, task);
+        const map = {
+            assigned: 'bg-gray-100 text-gray-700 border-gray-200',
+            late_pending: 'bg-red-50 text-red-700 border-red-100',
+            submitted: 'bg-blue-50 text-blue-700 border-blue-100',
+            chairperson_review: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+            final_approval: 'bg-amber-50 text-amber-800 border-amber-100',
+            completed: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+            revision_required: 'bg-purple-50 text-purple-700 border-purple-100',
+            rejected: 'bg-rose-50 text-rose-700 border-rose-100'
+        };
+        return map[stage] || map.assigned;
+    }
+
+    function canReviewAsChairperson(submission, actorFaculty, targetFaculty, context) {
+        if (!submission || !actorFaculty) return false;
+        if (isFacultySubmitter(actorFaculty, submission)) return false;
+        const { delegatedAccess, config, task } = resolveReviewContext(context);
+        if (!hasChairpersonWorkflowAccess(actorFaculty, delegatedAccess)) return false;
+        if (targetFaculty && !isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess)) return false;
+        return isPendingChairpersonReview(submission, config, task);
+    }
+
+    /**
+     * Ask the database whether this session holds a chairperson grant, and
+     * remember the answer for the rest of the page's life.
+     *
+     * This exists because the two halves of the chairperson feature disagreed
+     * about who is authorized. The review queue is populated by
+     * wf_list_chairperson_submissions(), a SECURITY DEFINER function, so it can
+     * legitimately return rows while RLS on wf_delegated_access hides the grant
+     * row itself from the browser. The client-side grant check then found no
+     * grant and refused the action with "You are not authorized...", even
+     * though the database would have allowed the write. The server is the only
+     * component that can see both sides, so it decides.
+     */
+    let chairGrantServerAnswer = null;
+    async function serverConfirmsChairpersonGrant(sb) {
+        if (chairGrantServerAnswer !== null) return chairGrantServerAnswer;
+        const client = sb || getSupabaseClient();
+        if (!client?.rpc) return false;
+        try {
+            const session = (await client.auth?.getSession?.())?.data?.session || null;
+            if (!session?.user?.id || !session?.access_token) return false;
+            const { data, error } = await client.rpc('wf_current_user_has_chairperson_grant');
+            if (error) {
+                console.warn('CiteFlowWorkflow: chairperson grant RPC unavailable:', error.message || error);
+                return false;
+            }
+            chairGrantServerAnswer = data === true;
+            return chairGrantServerAnswer;
+        } catch (error) {
+            console.warn('CiteFlowWorkflow: chairperson grant RPC threw:', error);
+            return false;
+        }
+    }
+
+    function resetChairpersonGrantCache() {
+        chairGrantServerAnswer = null;
+    }
+
+    function canReviewAsFinalApprover(submission, actorFaculty, context) {
+        if (!submission || !actorFaculty) return false;
+        if (isChairperson(actorFaculty) && !isWorkflowAdmin(actorFaculty) && !isFinalApprover(actorFaculty)) return false;
+        if (!isFinalApprover(actorFaculty) && !isWorkflowAdmin(actorFaculty)) return false;
+        const { config, task } = resolveReviewContext(context);
+        const stage = getApprovalStage(submission, config, task);
+        const awaitingFinal = stage === APPROVAL_STAGES.FINAL ||
+            (stage === APPROVAL_STAGES.CHAIRPERSON && !requiresChairpersonReview(config, task));
+        if (!awaitingFinal) return false;
+        const status = sanitizeDbStatus(submission.status);
+        return status === 'underreview' || status === 'submitted' || status === 'late';
+    }
+
+    function canAccessWorkflowApproval(faculty, delegatedAccess) {
+        if (!faculty) return false;
+        if (isFinalApprover(faculty) || isWorkflowAdmin(faculty)) return true;
+        return hasChairpersonWorkflowAccess(faculty, delegatedAccess);
+    }
+
+    function canAccessFacultyPortal(faculty, userMeta) {
+        if (!faculty) return false;
+        const role = faculty.role || normalizeRoleValue(userMeta?.role);
+        return role === 'faculty' || role === 'chairperson';
+    }
+
+    async function getFreshSession(sb) {
+        const client = sb || getSupabaseClient();
+        if (!client) return null;
+        if (global.CiteFlowAuthGuard?.session?.user && global.CiteFlowAuthGuard?.session?.access_token) {
+            const exp = Number(global.CiteFlowAuthGuard.session.expires_at || 0);
+            const nowSec = Math.floor(Date.now() / 1000);
+            if (!exp || exp > nowSec + 15) {
+                return global.CiteFlowAuthGuard.session;
+            }
+        }
+        if (global.CiteFlowAuth?.ensureActiveSession) {
+            return global.CiteFlowAuth.ensureActiveSession(client);
+        }
+        if (global.CiteFlowAuth?.getFreshSession) {
+            return global.CiteFlowAuth.getFreshSession(client);
+        }
+        const { data: { session }, error } = await client.auth.getSession();
+        if (error || !session?.user) return null;
+        const expiresAt = Number(session.expires_at || 0);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (expiresAt && expiresAt > nowSec + 30) return session;
+        if (global.CiteFlowAuth?.refreshSessionShared) {
+            const shared = await global.CiteFlowAuth.refreshSessionShared(client);
+            return shared?.user ? shared : session;
+        }
+        return session;
+    }
+
+    async function getCurrentUser() {
+        const sb = getSupabaseClient();
+        if (!sb) return null;
+        // Use a refreshed local session. Calling auth.getUser() with an expired
+        // access token hits /auth/v1/user and produces a 401 in the console.
+        const session = await getFreshSession(sb);
+        return session?.user || null;
+    }
+
+    async function getCurrentFaculty(user) {
+        const sb = getSupabaseClient();
+        const authUser = user || await getCurrentUser();
+        if (!sb || !authUser) return null;
+
+        const email = String(authUser.email || '').toLowerCase();
+        const orFilter = email
+            ? `auth_user_id.eq.${authUser.id},email.eq.${email},existing_email.eq.${email}`
+            : `auth_user_id.eq.${authUser.id}`;
+
+        let response = await sb.from('faculty').select('*').or(orFilter);
+
+        if (response.error) {
+            console.error('CiteFlowWorkflow.getCurrentFaculty:', response.error);
+        }
+
+        const rows = Array.isArray(response.data) ? response.data : (response.data ? [response.data] : []);
+        const byAuth = rows.filter((row) => String(row.auth_user_id || '') === String(authUser.id));
+        const looksChair = (row) => /chair/i.test(String(row.role || row.position || ''));
+        const matched = byAuth.find(looksChair)
+            || byAuth[0]
+            || rows.find(looksChair)
+            || rows[0]
+            || null;
+
+        if (matched) {
+            return normalizeFaculty(matched);
+        }
+
+        // Fallback for Admin users from admin_profiles or user_metadata
+        try {
+            const adminResp = await sb
+                .from('admin_profiles')
+                .select('*')
+                .eq('id', authUser.id)
+                .maybeSingle();
+
+            if (adminResp.data) {
+                const a = adminResp.data;
+                return normalizeFaculty({
+                    id: a.id,
+                    auth_user_id: a.id,
+                    full_name: a.full_name || [a.first_name, a.last_name].filter(Boolean).join(' ') || a.email || 'Administrator',
+                    first_name: a.first_name,
+                    last_name: a.last_name,
+                    email: a.email,
+                    role: 'admin',
+                    department: a.department || 'All',
+                    admin_access: true
+                });
+            }
+        } catch (_) { }
+
+        const meta = authUser.user_metadata || {};
+        const metaRole = String(meta.role || '').toLowerCase();
+        if (metaRole.includes('chair')) {
+            return normalizeFaculty({
+                id: authUser.id,
+                auth_user_id: authUser.id,
+                full_name: meta.full_name || meta.name || [meta.first_name, meta.last_name].filter(Boolean).join(' ') || authUser.email || 'Chairperson',
+                first_name: meta.first_name || '',
+                last_name: meta.last_name || '',
+                email: authUser.email,
+                role: 'chairperson',
+                department: meta.department || '',
+                admin_access: false
+            });
+        }
+
+        const isAdminMeta = !metaRole || metaRole === 'admin' || metaRole === 'administrator' ||
+            metaRole === 'superadmin' || metaRole === 'dean' || metaRole.includes('secretary');
+        if (!isAdminMeta) return null;
+
+        return normalizeFaculty({
+            id: authUser.id,
+            auth_user_id: authUser.id,
+            full_name: meta.full_name || meta.name || [meta.first_name, meta.last_name].filter(Boolean).join(' ') || authUser.email || 'Administrator',
+            first_name: meta.first_name || '',
+            last_name: meta.last_name || '',
+            email: authUser.email,
+            role: metaRole || 'admin',
+            department: meta.department || 'All',
+            admin_access: true
+        });
+    }
+
+    /**
+     * Load assigned workflow tasks for a faculty member using a joined query
+     * so task rows always match assignment rows.
+     */
+    async function loadFacultyAssignedTasks(facultyId) {
+        const sb = getSupabaseClient();
+        if (!sb || facultyId == null) {
+            return { tasks: [], assignments: [], error: null };
+        }
+
+        const numericId = Number(facultyId);
+        const idFilter = Number.isFinite(numericId) ? numericId : facultyId;
+
+        async function fetchTasksByIds(taskIds) {
+            if (!taskIds.length) return [];
+            const { data, error } = await sb
+                .from('wf_tasks')
+                .select('*')
+                .in('id', taskIds);
+            if (error) throw error;
+            return data || [];
+        }
+
+        let assignmentRows = [];
+        let taskMap = new Map();
+
+        const joined = await sb
+            .from('wf_task_assignments')
+            .select('*, wf_tasks(*)')
+            .eq('faculty_id', idFilter)
+            .order('assigned_at', { ascending: false });
+
+        if (!joined.error && Array.isArray(joined.data)) {
+            joined.data.forEach((row) => {
+                const task = row.wf_tasks;
+                const assignment = { ...row };
+                delete assignment.wf_tasks;
+                assignmentRows.push(assignment);
+                if (task?.id) {
+                    taskMap.set(String(task.id), task);
+                }
+            });
+        } else {
+            const plain = await sb
+                .from('wf_task_assignments')
+                .select('*')
+                .eq('faculty_id', idFilter)
+                .order('assigned_at', { ascending: false });
+
+            if (plain.error) {
+                return { tasks: [], assignments: [], error: plain.error };
+            }
+
+            assignmentRows = plain.data || [];
+        }
+
+        const missingTaskIds = assignmentRows
+            .map((row) => row.task_id)
+            .filter((taskId) => taskId && !taskMap.has(String(taskId)));
+
+        if (missingTaskIds.length) {
+            try {
+                const fetchedTasks = await fetchTasksByIds([...new Set(missingTaskIds)]);
+                fetchedTasks.forEach((task) => {
+                    if (task?.id) taskMap.set(String(task.id), task);
+                });
+            } catch (taskError) {
+                return { tasks: [], assignments: assignmentRows, error: taskError };
+            }
+        }
+
+        const tasks = Array.from(taskMap.values()).sort((a, b) => {
+            const aTime = new Date(a.created_at || a.due_at || 0).getTime();
+            const bTime = new Date(b.created_at || b.due_at || 0).getTime();
+            return bTime - aTime;
+        });
+
+        return { tasks, assignments: assignmentRows, error: null };
+    }
+
+    async function canAccessFacultyPortalSession(user) {
+        const sb = getSupabaseClient();
+        if (!sb || !user) return { allowed: false, faculty: null };
+
+        let faculty = await getCurrentFaculty(user);
+        const metaRole = normalizeRoleValue(user.user_metadata?.role);
+        const profileRole = faculty?.role || normalizeRoleValue(faculty?.raw_role || faculty?.position || '');
+        const role = profileRole || metaRole;
+
+        // Any linked faculty profile may use the faculty portal.
+        // Do not require the role string to equal exactly "faculty".
+        const allowed = !!faculty
+            || role === 'faculty'
+            || role === 'chairperson'
+            || String(role || '').includes('chair')
+            || role === 'dean'
+            || role === 'college_secretary'
+            || String(role || '').includes('secretary')
+            || role === 'admin'
+            || role === 'administrator'
+            || !role;
+
+        return { allowed, faculty };
+    }
+
+    function getActorDisplayName(faculty, user) {
+        if (faculty?.full_name) return faculty.full_name;
+        const meta = user?.user_metadata || {};
+        const name = [meta.first_name, meta.last_name].filter(Boolean).join(' ').trim();
+        return name || user?.email || 'User';
+    }
+
+    function showToast(message, type) {
+        if (typeof global.showToast === 'function') {
+            global.showToast(message, type);
+            return;
+        }
+        if (global.CiteFlowUI?.showMessage) {
+            global.CiteFlowUI.showMessage(message, type === 'error' ? 'error' : 'info');
+            return;
+        }
+        console.log(`[${type || 'info'}]`, message);
+    }
+
+    async function confirmAction(message, title, options = {}) {
+        if (typeof document === 'undefined') {
+            return global.confirm ? global.confirm(title ? `${title}\n\n${message}` : message) : true;
+        }
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'citeflow-modal-overlay';
+            overlay.style.cssText = `
+                position: fixed; inset: 0; z-index: 99999;
+                background: rgba(15, 23, 42, 0.48); backdrop-filter: blur(2px);
+                display: flex; align-items: center; justify-content: center;
+                padding: 16px;
+            `;
+
+            const isDanger = options.danger || /decline|reject|delete|remove|unsubmit/i.test(title || message);
+            const confirmBtnText = options.confirmText || (isDanger ? 'Confirm' : 'Continue');
+            const cancelBtnText = options.cancelText || 'Cancel';
+            const iconClass = isDanger ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-question';
+            const iconColor = isDanger ? '#e11d48' : 'var(--cite-theme-ink, #621708)';
+            const iconBg = isDanger ? '#ffe4e6' : 'color-mix(in srgb, var(--cite-theme, #621708) 12%, white)';
+            const confirmBtnBg = isDanger ? '#be123c' : 'var(--cite-theme, #621708)';
+
+            overlay.innerHTML = `
+                <div class="citeflow-modal-card" role="dialog" aria-modal="true" style="
+                    width: min(440px, 100%); background: #ffffff; border-radius: 16px;
+                    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2), 0 2px 8px rgba(15, 23, 42, 0.08);
+                    border: 1px solid #e2e8f0; overflow: hidden; font-family: inherit;
+                ">
+                    <div style="padding: 22px 24px 18px;">
+                        <div style="display: flex; align-items: flex-start; gap: 14px;">
+                            <div style="
+                                width: 42px; height: 42px; border-radius: 12px; background: ${iconBg}; color: ${iconColor};
+                                display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+                                font-size: 18px;
+                            ">
+                                <i class="${iconClass}"></i>
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+                                    ${title || 'Confirmation'}
+                                </h3>
+                                <p style="margin: 6px 0 0; font-size: 13.5px; color: #475569; line-height: 1.5; white-space: pre-wrap;">
+                                    ${message || ''}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="
+                        display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+                        padding: 14px 24px; background: #f8fafc; border-top: 1px solid #edf2f7;
+                    ">
+                        <button type="button" id="citeModalCancel" style="
+                            padding: 8px 16px; font-size: 13px; font-weight: 600; color: #475569;
+                            background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px;
+                            cursor: pointer; transition: all 0.15s ease;
+                        ">
+                            ${cancelBtnText}
+                        </button>
+                        <button type="button" id="citeModalConfirm" style="
+                            padding: 8px 18px; font-size: 13px; font-weight: 600; color: #ffffff;
+                            background: ${confirmBtnBg}; border: 1px solid ${confirmBtnBg}; border-radius: 10px;
+                            cursor: pointer; transition: all 0.15s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+                        ">
+                            ${confirmBtnText}
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            function cleanup(res) {
+                overlay.remove();
+                resolve(res);
+            }
+
+            overlay.querySelector('#citeModalCancel').onclick = () => cleanup(false);
+            overlay.querySelector('#citeModalConfirm').onclick = () => cleanup(true);
+            overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+            document.body.appendChild(overlay);
+        });
+    }
+
+    async function logActivity(sb, payload) {
+        if (!sb || !payload) return false;
+        try {
+            const row = {
+                action: String(payload.action || 'activity'),
+                actor_name: payload.actor_name || null,
+                target: payload.target || null,
+                log_type: payload.log_type || 'system'
+            };
+            const { error } = await sb.from('wf_activity_log').insert(row);
+            if (error) console.warn('CiteFlowWorkflow.logActivity:', error?.message || error);
+            return !error;
+        } catch (err) {
+            console.warn('CiteFlowWorkflow.logActivity threw:', err);
+            return false;
+        }
+    }
+
+    async function createWorkflowNotification(sb, payload) {
+        if (!sb) return false;
+        const rows = (Array.isArray(payload) ? payload : [payload]).filter(Boolean);
+        if (!rows.length) return true;
+
+        const validTypes = new Set(['task', 'submission', 'review', 'comment', 'system']);
+        const sanitized = rows.map((r) => {
+            const type = validTypes.has(r.type) ? r.type : 'review';
+            const row = {
+                type,
+                message: String(r.message || ''),
+                is_read: r.is_read === true
+            };
+            if (r.faculty_id != null) row.faculty_id = r.faculty_id;
+            if (r.task_id != null) row.task_id = r.task_id;
+            if (r.submission_id != null) row.submission_id = r.submission_id;
+            if (r.title != null) row.title = String(r.title);
+            return row;
+        });
+
+        try {
+            const { error } = await sb.from('wf_notifications').insert(sanitized);
+            if (error) {
+                console.warn('CiteFlowWorkflow.createWorkflowNotification first attempt:', error?.message || error);
+                // Fallback attempt: minimal core notification payload
+                const fallback = sanitized.map((row) => {
+                    const next = {
+                        type: row.type || 'review',
+                        message: row.message || '',
+                        is_read: false
+                    };
+                    if (row.faculty_id != null) next.faculty_id = row.faculty_id;
+                    if (row.task_id != null) next.task_id = row.task_id;
+                    return next;
+                });
+                const res2 = await sb.from('wf_notifications').insert(fallback);
+                if (res2.error) {
+                    console.warn('CiteFlowWorkflow.createWorkflowNotification fallback error:', res2.error?.message || res2.error);
+                    return false;
+                }
+            }
+            return true;
+        } catch (err) {
+            console.warn('CiteFlowWorkflow.createWorkflowNotification threw:', err);
+            return false;
+        }
+    }
+
+    async function loadActiveDelegatedAccess(sb) {
+        const { data, error } = await sb.from('wf_delegated_access').select('*');
+        if (error) {
+            console.error('CiteFlowWorkflow.loadActiveDelegatedAccess:', error);
+            return [];
+        }
+        return (data || []).filter((grant) => grantIsActive(grant));
+    }
+
+    async function currentUserHasChairpersonGrant(sb, faculty, user) {
+        const client = sb || getSupabaseClient();
+        chairGrantServerAnswer = null;
+        let session = null;
+        if (client) {
+            const guard = global.CiteFlowAuthGuard;
+            if (guard?.ready && guard.state === guard.AuthState?.INITIALIZING) {
+                await guard.ready;
+            }
+            if (global.CiteFlowAuth?.waitForSession) {
+                session = await global.CiteFlowAuth.waitForSession({
+                    timeoutMs: 8000,
+                    client
+                });
+            } else {
+                session = (await client.auth?.getSession?.())?.data?.session || null;
+            }
+        }
+        const clientSession = session;
+
+        faculty = faculty || (typeof window !== 'undefined' ? (window.currentFaculty || window.CiteFlowAuthGuard?.faculty) : null);
+        if (!faculty || !client) return false;
+
+        if (!clientSession?.user?.id || !clientSession?.access_token) return false;
+
+        // Prefer database authorization when the session is present.
+        try {
+            const rpc = await client.rpc('wf_current_user_has_chairperson_grant');
+            if (rpc.error && Number(rpc.error.status || 0) === 401) {
+                console.warn('CiteFlowWorkflow: chairperson grant RPC returned 401 with client session present.', {
+                    authUserId: clientSession.user.id,
+                    clientJwtPresent: !!clientSession.access_token,
+                    error: rpc.error.message || rpc.error
+                });
+            }
+            if (!rpc.error && rpc.data === true) return true;
+            if (!rpc.error && rpc.data === false) return false;
+            if (rpc.error) {
+                console.error('CiteFlowWorkflow: chairperson grant RPC failed:', {
+                    message: rpc.error.message || null,
+                    code: rpc.error.code || null,
+                    details: rpc.error.details || null,
+                    hint: rpc.error.hint || null
+                });
+                return false;
+            }
+        } catch (error) {
+            console.error('CiteFlowWorkflow: chairperson grant RPC threw:', error);
+            return false;
+        }
+        return false;
+    }
+
+    function formatApprovalStage(stage) {
+        const map = {
+            chairperson: 'Pending Chairperson Review',
+            final_approver: 'Pending Admin Final Approval',
+            approved: 'Admin Approved',
+            revision: 'Revision Requested',
+            declined: 'Declined',
+            rejected: 'Declined'
+        };
+        return map[normalizeText(stage)] || (stage ? String(stage) : '—');
+    }
+
+    async function loadFacultyDirectory(sb) {
+        const { data, error } = await sb
+            .from('faculty')
+            .select('id,auth_user_id,full_name,name,email,existing_email,department,role,position,status');
+        if (error) {
+            console.error('CiteFlowWorkflow.loadFacultyDirectory:', error);
+            return [];
+        }
+        return (data || []).map(normalizeFaculty);
+    }
+
+    async function resolveTaskConfig(sb, task) {
+        if (!task?.report_config_id) return null;
+        const { data, error } = await sb
+            .from('wf_report_configs')
+            .select('*')
+            .eq('id', task.report_config_id)
+            .maybeSingle();
+        if (error) {
+            console.error('CiteFlowWorkflow.resolveTaskConfig:', error);
+            return null;
+        }
+        return data || null;
+    }
+
+    function authorizedChairpersonsForSubmission(submitter, facultyList, grants, config, task) {
+        if (!submitter || !requiresChairpersonReview(config, task)) return [];
+        return (facultyList || []).filter((chair) => {
+            if (!hasChairpersonWorkflowAccess(chair, grants)) return false;
+            return isInChairpersonScope(chair, submitter, grants);
+        });
+    }
+
+    async function notifyAuthorizedChairpersons(sb, { submitter, task, taskId, submissionId, message }) {
+        const [grants, facultyList] = await Promise.all([
+            loadActiveDelegatedAccess(sb),
+            loadFacultyDirectory(sb)
+        ]);
+        const config = await resolveTaskConfig(sb, task);
+        const chairs = authorizedChairpersonsForSubmission(submitter, facultyList, grants, config, task);
+        if (!chairs.length) return true;
+
+        return createWorkflowNotification(sb, chairs.map((chair) => ({
+            type: 'submission',
+            faculty_id: chair.id,
+            recipient_auth_user_id: chair.auth_user_id || null,
+            task_id: taskId || task?.id || null,
+            submission_id: submissionId || null,
+            message,
+            is_read: false
+        })));
+    }
+
+    async function notifyFinalApprovers(sb, { task, taskId, submissionId, message }) {
+        const facultyList = await loadFacultyDirectory(sb);
+        const deans = (facultyList || []).filter((person) => isWorkflowAdmin(person));
+        const coveredAuth = new Set(deans.map((dean) => dean.auth_user_id).filter(Boolean));
+        if (deans.length) {
+            await createWorkflowNotification(sb, deans.map((dean) => ({
+                type: 'review',
+                faculty_id: dean.id,
+                recipient_auth_user_id: dean.auth_user_id || null,
+                task_id: taskId || task?.id || null,
+                submission_id: submissionId || null,
+                message,
+                is_read: false
+            })));
+        }
+
+        try {
+            const { data: admins, error } = await sb.from('admin_profiles').select('*').limit(50);
+            if (error) return true;
+            const taskKey = taskId || task?.id || '';
+            const link = `workflow-approval.html${taskKey ? '#task=' + encodeURIComponent(taskKey) : ''}`;
+            const rows = (admins || []).filter((admin) => {
+                const uid = admin.auth_user_id || admin.id;
+                return uid && !coveredAuth.has(uid) && !/chair/i.test(String(admin.role || ''));
+            }).map((admin) => ({
+                user_id: admin.auth_user_id || admin.id,
+                type: 'review',
+                title: 'Final Approval Needed',
+                message,
+                link,
+                audience: 'admin',
+                is_read: false
+            }));
+            let current = rows;
+            for (let attempt = 0; attempt < 6 && current.length; attempt += 1) {
+                const inserted = await sb.from('notifications').insert(current);
+                if (!inserted.error) break;
+                const raw = String(inserted.error.message || '');
+                const match = raw.match(/column "([^"]+)"/i) || raw.match(/'([^']+)' column/i);
+                if (!match) {
+                    console.warn('CiteFlowWorkflow.notifyFinalApprovers:', raw);
+                    break;
+                }
+                const column = match[1];
+                current = current.map((row) => {
+                    const next = { ...row };
+                    delete next[column];
+                    return next;
+                });
+            }
+        } catch (err) {
+            console.warn('CiteFlowWorkflow.notifyFinalApprovers:', err);
+        }
+        return true;
+    }
+
+    /**
+     * Name the column the database is rejecting.
+     *
+     *   42703     column wf_submissions.foo does not exist
+     *   PGRST204  Could not find the 'foo' column of 'wf_submissions' in the
+     *             schema cache
+     */
+    function unknownColumnFromError(error) {
+        const raw = String(error?.message || '');
+        const code = String(error?.code || '');
+        if (code && code !== '42703' && code !== 'PGRST204' && !/column|schema cache/i.test(raw)) {
+            return null;
+        }
+        const patterns = [
+            /column\s+(?:[\w.]*\.)?"?([a-z0-9_]+)"?\s+does not exist/i,
+            /could not find the '([a-z0-9_]+)' column/i,
+            /'([a-z0-9_]+)' column of/i
+        ];
+        for (const pattern of patterns) {
+            const match = raw.match(pattern);
+            if (match && match[1]) return match[1];
+        }
+        return null;
+    }
+
+    /**
+     * Approval history is the audit trail behind every "who declined this and
+     * why". A failure here used to be a console line, which meant a decline
+     * could report success while its reason was never recorded. The caller now
+     * gets the error so it can tell the user the action was only partly saved.
+     */
+    async function recordApprovalHistory(sb, entry) {
+        const optional = new Set();
+        const build = () => {
+            const copy = { ...entry };
+            optional.forEach((column) => { delete copy[column]; });
+            return copy;
+        };
+
+        let { error } = await sb.from('wf_approval_history').insert(build());
+        const maxPasses = Object.keys(entry).length + 1;
+        for (let pass = 0; pass < maxPasses && error; pass += 1) {
+            const column = unknownColumnFromError(error);
+            if (!column || optional.has(column) || column === 'submission_id') break;
+            optional.add(column);
+            ({ error } = await sb.from('wf_approval_history').insert(build()));
+        }
+
+        if (error) {
+            console.error('CiteFlowWorkflow.recordApprovalHistory:', error);
+            return { ok: false, error: error.message || 'Failed to record approval history.' };
+        }
+        return { ok: true };
+    }
+
+    /**
+     * Compute next submission state after a review action.
+     * Never returns "pending" — maps to underreview for DB enum compatibility.
+     */
+    function computeReviewTransition(submission, action, actorFaculty, config, task) {
+        const stage = getApprovalStage(submission, config, task);
+        const actorRole = normalizeRole(actorFaculty).role;
+        const requiresChair = requiresChairpersonReview(config, task);
+        const requiresFinal = config?.requires_final_approval !== false;
+
+        let nextStage = stage;
+        let nextStatus = sanitizeDbStatus(submission?.status);
+        let historyAction = action;
+        let actorRoleLabel = actorRole.toUpperCase();
+
+        if (action === 'approved') {
+            if (stage === APPROVAL_STAGES.CHAIRPERSON && requiresChair) {
+                if (requiresFinal) {
+                    nextStage = APPROVAL_STAGES.FINAL;
+                    nextStatus = 'underreview';
+                    historyAction = 'chairperson_approved';
+                } else {
+                    nextStage = APPROVAL_STAGES.APPROVED;
+                    nextStatus = 'approved';
+                    historyAction = 'final_approved';
+                }
+            } else if (stage === APPROVAL_STAGES.FINAL || (stage === APPROVAL_STAGES.CHAIRPERSON && !requiresChair)) {
+                nextStage = APPROVAL_STAGES.APPROVED;
+                nextStatus = 'approved';
+                historyAction = 'final_approved';
+                actorRoleLabel = actorRole === 'chairperson' ? 'CHAIRPERSON' : 'FINAL APPROVER';
+            }
+        } else if (action === 'revision') {
+            nextStage = stage === APPROVAL_STAGES.FINAL ? APPROVAL_STAGES.FINAL : APPROVAL_STAGES.CHAIRPERSON;
+            nextStatus = 'revision';
+            historyAction = stage === APPROVAL_STAGES.FINAL ? 'final_revision' : 'chairperson_revision';
+        } else if (action === 'rejected') {
+            nextStage = stage === APPROVAL_STAGES.FINAL ? APPROVAL_STAGES.FINAL : APPROVAL_STAGES.CHAIRPERSON;
+            nextStatus = 'rejected';
+            historyAction = stage === APPROVAL_STAGES.FINAL ? 'final_declined' : 'chairperson_declined';
+        }
+
+        return { nextStage, nextStatus, historyAction, actorRoleLabel };
+    }
+
+    /**
+     * Apply a review update and prove that a row actually changed.
+     *
+     * PostgREST returns no error for an UPDATE whose WHERE clause matches
+     * nothing once RLS has filtered it, so the previous fire-and-forget call
+     * reported "Submission marked rejected" for a decline the database had
+     * silently refused. Asking for the updated row back turns that into a real
+     * failure the caller can show.
+     *
+     * The retry loop exists because this schema has drifted from the migrations
+     * in the repo; rather than fail outright on a column that a given
+     * deployment lacks, drop it and retry. Status and approval_stage are never
+     * dropped — an update that cannot move the workflow forward must fail.
+     */
+    async function updateSubmissionStrict(sb, submissionId, update) {
+        const dropped = new Set();
+        const build = () => {
+            const copy = { ...update };
+            dropped.forEach((column) => { delete copy[column]; });
+            return copy;
+        };
+
+        let result = await sb.from('wf_submissions')
+            .update(build()).eq('id', submissionId).select('id');
+
+        const maxPasses = Object.keys(update).length + 1;
+        for (let pass = 0; pass < maxPasses && result.error; pass += 1) {
+            const column = unknownColumnFromError(result.error);
+            if (!column || dropped.has(column)) break;
+            if (column === 'status' || column === 'approval_stage') break;
+            console.warn(`CiteFlowWorkflow: wf_submissions has no "${column}" column; retrying without it.`);
+            dropped.add(column);
+            result = await sb.from('wf_submissions')
+                .update(build()).eq('id', submissionId).select('id');
+        }
+
+        if (result.error) {
+            console.error('CiteFlowWorkflow.applySubmissionReview update:', result.error);
+            const message = String(result.error.message || '');
+            if (result.error.code === '42501' || /row-level security/i.test(message)) {
+                return {
+                    ok: false,
+                    error: 'The database refused this action for your account. '
+                        + 'Your login is not recognised as an approver for this submission.'
+                };
+            }
+            return { ok: false, error: message || 'Failed to update submission.' };
+        }
+
+        if (!Array.isArray(result.data) || result.data.length === 0) {
+            return {
+                ok: false,
+                error: 'No submission was updated. Your account does not have permission '
+                    + 'to review this submission, or it was changed by someone else. '
+                    + 'Nothing was saved.'
+            };
+        }
+
+        return { ok: true };
+    }
+
+    function buildReviewUpdate(transition, comment, actorName, rawSubmission) {
+        const trimmed = String(comment || '').trim();
+
+        const update = {
+            status: transition.nextStatus,
+            approval_stage: transition.nextStage,
+            reviewed_by_name: actorName,
+            reviewed_at: new Date().toISOString(),
+            last_reviewed_by_role: transition.actorRoleLabel
+        };
+
+        // Approve carries no remarks, and writing null here used to erase the
+        // chairperson's revision remarks that faculty were still reading on the
+        // status-tracking page. Only overwrite when there is something to say.
+        if (trimmed) {
+            update.review_remarks = trimmed;
+        }
+
+        if (transition.nextStage === APPROVAL_STAGES.APPROVED) {
+            update.final_approved_at = new Date().toISOString();
+            update.final_approved_by_name = actorName;
+            update.final_approval_remarks = trimmed || null;
+        }
+
+        // Only a revision sends the report back for another round. A decline is
+        // terminal, so counting it as a resubmission overstated the count.
+        if (transition.nextStatus === 'revision') {
+            update.resubmission_count = Number(rawSubmission?.resubmission_count || 0) + 1;
+        }
+
+        if (transition.nextStage === APPROVAL_STAGES.CHAIRPERSON && transition.nextStatus === 'submitted') {
+            update.approval_stage = APPROVAL_STAGES.CHAIRPERSON;
+        }
+
+        return update;
+    }
+
+    async function applySubmissionReview(sb, options) {
+        let {
+            submissionId,
+            submission,
+            action,
+            comment,
+            actorFaculty,
+            actorUser,
+            targetFaculty,
+            task,
+            config,
+            delegatedAccess
+        } = options || {};
+
+        if (!actorFaculty && actorUser) {
+            try {
+                actorFaculty = await getCurrentFaculty(actorUser);
+            } catch (_) { }
+        }
+        if (!actorFaculty && actorUser) {
+            const meta = actorUser.user_metadata || {};
+            const metaRole = String(meta.role || '').toLowerCase();
+            const isAdmin = !metaRole || metaRole === 'admin' || metaRole === 'administrator' ||
+                metaRole === 'superadmin' || metaRole === 'dean' || metaRole.includes('secretary');
+            if (isAdmin) {
+                actorFaculty = normalizeFaculty({
+                    id: actorUser.id,
+                    auth_user_id: actorUser.id,
+                    full_name: meta.full_name || meta.name || [meta.first_name, meta.last_name].filter(Boolean).join(' ') || actorUser.email || 'Administrator',
+                    email: actorUser.email,
+                    role: metaRole || 'admin',
+                    department: meta.department || 'All',
+                    admin_access: true
+                });
+            }
+        }
+
+        const actorName = getActorDisplayName(actorFaculty, actorUser);
+        const stage = getApprovalStage(submission, config, task);
+        const target = targetFaculty || actorFaculty;
+        const reviewContext = { delegatedAccess: delegatedAccess || [], config, task };
+
+        // A chairperson whose grant row is hidden from the browser by RLS still
+        // fails the local check, so fall back to asking the database before
+        // refusing. This only ever widens the check to what the database itself
+        // would permit: the write is still governed by RLS, and
+        // updateSubmissionStrict() reports an actual refusal honestly.
+        const chairAllowedLocally = canReviewAsChairperson(submission, actorFaculty, target, reviewContext);
+        const chairStageIsOpen = isPendingChairpersonReview(submission, config, task);
+        const chairAllowed = chairAllowedLocally
+            || (chairStageIsOpen && await serverConfirmsChairpersonGrant(sb));
+
+        if (action === 'approved') {
+            if (stage === APPROVAL_STAGES.CHAIRPERSON) {
+                const finalSkipChair = canReviewAsFinalApprover(submission, actorFaculty, reviewContext);
+                if (!chairAllowed && !finalSkipChair) {
+                    return { ok: false, error: 'You are not authorized to perform chairperson review on this submission.' };
+                }
+            } else if (stage === APPROVAL_STAGES.FINAL) {
+                if (!canReviewAsFinalApprover(submission, actorFaculty, reviewContext)) {
+                    return { ok: false, error: 'You are not authorized to perform final approval on this submission.' };
+                }
+            } else if (stage === APPROVAL_STAGES.APPROVED) {
+                return { ok: false, error: 'This submission is already fully approved.' };
+            }
+        } else {
+            const canFinal = canReviewAsFinalApprover(submission, actorFaculty, reviewContext);
+            if (!chairAllowed && !canFinal) {
+                return { ok: false, error: 'You are not authorized to review this submission.' };
+            }
+        }
+
+        if ((action === 'revision' || action === 'rejected') && !String(comment || '').trim()) {
+            return { ok: false, error: 'Please provide remarks before submitting this action.' };
+        }
+
+        const transition = computeReviewTransition(submission, action, actorFaculty, config, task);
+        const update = buildReviewUpdate(transition, comment, actorName, submission);
+
+        const written = await updateSubmissionStrict(sb, submissionId, update);
+        if (!written.ok) return written;
+
+        const history = await recordApprovalHistory(sb, {
+            submission_id: submissionId,
+            task_id: submission.task_id,
+            faculty_id: submission.faculty_id,
+            actor_name: actorName,
+            actor_role: transition.actorRoleLabel,
+            action: transition.historyAction,
+            status: transition.nextStatus,
+            comment: comment || null
+        });
+
+        await logActivity(sb, {
+            action: action === 'approved'
+                ? (transition.nextStage === APPROVAL_STAGES.APPROVED ? 'Final approval' : 'Chairperson approval')
+                : action === 'revision' ? 'Returned for revision' : 'Rejected',
+            actor_name: actorName,
+            target: `${target?.full_name || 'Faculty'} - ${task?.title || 'Submission'}`,
+            log_type: action,
+            task_id: submission.task_id,
+            submission_id: submissionId
+        });
+
+        const notifyMessage = action === 'approved' && transition.nextStage === APPROVAL_STAGES.FINAL
+            ? `Submission approved by chairperson — pending final approval: ${task?.title || 'Submission'}`
+            : action === 'approved' && transition.nextStage === APPROVAL_STAGES.APPROVED
+                ? `Submission fully approved: ${task?.title || 'Submission'}`
+                : action === 'revision'
+                    ? `Revision required: ${task?.title || 'Submission'}`
+                    : `Submission rejected: ${task?.title || 'Submission'}`;
+
+        await createWorkflowNotification(sb, {
+            type: 'review',
+            message: notifyMessage,
+            is_read: false,
+            faculty_id: submission.faculty_id,
+            recipient_auth_user_id: target?.auth_user_id || null,
+            task_id: submission.task_id,
+            submission_id: submissionId
+        });
+
+        if (action === 'approved' && transition.nextStage === APPROVAL_STAGES.FINAL) {
+            await notifyFinalApprovers(sb, {
+                task,
+                taskId: submission.task_id,
+                submissionId,
+                message: `Final approval required: ${task?.title || 'Submission'}`
+            });
+        }
+
+        // The status change is committed at this point, so the action succeeded.
+        // A failed audit row is still worth telling the reviewer about, because
+        // the decision will not appear in the approval history panel.
+        return {
+            ok: true,
+            transition,
+            update,
+            warning: history.ok
+                ? null
+                : 'The decision was saved, but it could not be added to the approval history.'
+        };
+    }
+
+    async function unsubmitSubmission(sb, options) {
+        const {
+            submissionId,
+            submission,
+            actorFaculty,
+            actorUser,
+            task,
+            config
+        } = options || {};
+
+        if (!submission || !actorFaculty) {
+            return { ok: false, error: 'Submission could not be unsubmitted.' };
+        }
+        if (String(actorFaculty.id) !== String(submission.faculty_id)) {
+            return { ok: false, error: 'You can only unsubmit your own work.' };
+        }
+        if (!canFacultyUnsubmit(submission, task, config)) {
+            return { ok: false, error: 'This submission can no longer be unsubmitted.' };
+        }
+
+        const actorName = getActorDisplayName(actorFaculty, actorUser);
+        const update = {
+            status: 'notsubmitted',
+            submitted_at: null,
+            is_late: false,
+            submitted_status: null,
+            approval_stage: resolveInitialApprovalStage(config, task),
+            reviewed_by_name: null,
+            reviewed_at: null
+        };
+
+        const { error } = await sb.from('wf_submissions').update(update).eq('id', submissionId);
+        if (error) {
+            console.error('CiteFlowWorkflow.unsubmitSubmission:', error);
+            return { ok: false, error: error.message || 'Failed to unsubmit.' };
+        }
+
+        await recordApprovalHistory(sb, {
+            submission_id: submissionId,
+            task_id: submission.task_id,
+            faculty_id: submission.faculty_id,
+            actor_name: actorName,
+            actor_role: 'FACULTY',
+            action: 'unsubmitted',
+            status: 'notsubmitted',
+            comment: 'Faculty unsubmitted this work before the next approval stage.'
+        });
+
+        await logActivity(sb, {
+            action: 'Unsubmitted task',
+            actor_name: actorName,
+            target: task?.title || 'Submission',
+            log_type: 'submission',
+            task_id: submission.task_id,
+            submission_id: submissionId
+        });
+
+        return { ok: true, update };
+    }
+
+    async function recordSubmissionEvent(sb, { faculty, task, taskId, submissionId, isResubmit }) {
+        const actorName = faculty.full_name;
+        await logActivity(sb, {
+            action: isResubmit ? 'Resubmitted task' : 'Submitted task',
+            actor_name: actorName,
+            target: task?.title || 'Task',
+            log_type: 'submission',
+            task_id: taskId,
+            submission_id: submissionId || null
+        });
+
+        await createWorkflowNotification(sb, {
+            type: 'submission',
+            faculty_id: faculty.id,
+            recipient_auth_user_id: faculty.auth_user_id || null,
+            task_id: taskId,
+            submission_id: submissionId || null,
+            message: `${isResubmit ? 'Resubmission' : 'New submission'} from ${actorName}: ${task?.title || 'Task'}`,
+            is_read: false
+        });
+
+        await notifyAuthorizedChairpersons(sb, {
+            submitter: faculty,
+            task,
+            taskId,
+            submissionId,
+            message: `${isResubmit ? 'Resubmission' : 'New submission'} from ${actorName} requires Chairperson review: ${task?.title || 'Task'}`
+        });
+
+        if (submissionId) {
+            await recordApprovalHistory(sb, {
+                submission_id: submissionId,
+                task_id: taskId,
+                faculty_id: faculty.id,
+                actor_name: actorName,
+                actor_role: 'FACULTY',
+                action: isResubmit ? 'resubmitted' : 'submitted',
+                status: 'submitted',
+                comment: null
+            });
+        }
+    }
+
+    async function recordFacultyFileChange(sb, { faculty, task, taskId, submissionId, changeType }) {
+        const actorName = faculty?.full_name || 'Faculty';
+        const title = task?.title || 'Submission';
+        const actionMap = {
+            deleted: 'Deleted submission file',
+            replaced: 'Replaced submission file',
+            added: 'Added submission file'
+        };
+        const messageMap = {
+            deleted: `${actorName} deleted a file on ${title}`,
+            replaced: `${actorName} replaced a file on ${title}`,
+            added: `${actorName} added a file on ${title}`
+        };
+        await logActivity(sb, {
+            action: actionMap[changeType] || 'Updated submission files',
+            actor_name: actorName,
+            target: title,
+            log_type: 'submission',
+            task_id: taskId,
+            submission_id: submissionId || null
+        });
+        await createWorkflowNotification(sb, {
+            type: 'submission',
+            faculty_id: faculty?.id,
+            recipient_auth_user_id: faculty?.auth_user_id || null,
+            task_id: taskId,
+            submission_id: submissionId || null,
+            message: messageMap[changeType] || `${actorName} updated files on ${title}`,
+            is_read: false
+        });
+        await notifyAuthorizedChairpersons(sb, {
+            submitter: faculty,
+            task,
+            taskId,
+            submissionId,
+            message: `${actorName} updated files and returned "${title}" for Chairperson review`
+        });
+        if (submissionId) {
+            await recordApprovalHistory(sb, {
+                submission_id: submissionId,
+                task_id: taskId,
+                faculty_id: faculty?.id,
+                actor_name: actorName,
+                actor_role: 'FACULTY',
+                action: changeType === 'replaced' ? 'file_replaced' : (changeType === 'deleted' ? 'file_deleted' : 'file_added'),
+                status: 'submitted',
+                comment: actionMap[changeType] || 'Updated submission files'
+            });
+        }
+    }
+
+    function subscribeWorkflow(onChange, tables) {
+        const sb = getSupabaseClient();
+        if (!sb || typeof onChange !== 'function') return null;
+
+        const watched = tables || [
+            'wf_submissions',
+            'wf_approval_history',
+            'wf_notifications',
+            'wf_task_assignments',
+            'wf_tasks',
+            'wf_submission_files',
+            'wf_delegated_access'
+        ];
+
+        cleanupWorkflowRealtime();
+
+        workflowChannel = sb.channel(`wf-shared-${Date.now()}`);
+        watched.forEach((table) => {
+            workflowChannel.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(onChange, 400);
+            });
+        });
+
+        workflowChannel.subscribe((status) => {
+            if (status === 'CHANNEL_ERROR') {
+                console.warn('CiteFlowWorkflow: realtime channel error — continuing without live updates.');
+            }
+        });
+
+        return workflowChannel;
+    }
+
+    function cleanupWorkflowRealtime() {
+        const sb = getSupabaseClient();
+        if (workflowChannel && sb) {
+            sb.removeChannel(workflowChannel);
+            workflowChannel = null;
+        }
+        clearTimeout(debounceTimer);
+    }
+
+    if (typeof global.addEventListener === 'function') {
+        global.addEventListener('beforeunload', cleanupWorkflowRealtime);
+    }
+
+    function buildTimelineSteps(submission, task, assignment, approvalHistory, config) {
+        const history = Array.isArray(approvalHistory) ? approvalHistory : [];
+        const subHistory = history.filter(h => String(h.submission_id) === String(submission?.id));
+        const includeChairStep = requiresChairpersonReview(config, task);
+
+        const findHistory = (actions) => subHistory.find(h => actions.includes(normalizeText(h.action)));
+
+        const assigned = {
+            key: 'assigned',
+            label: 'Assigned',
+            done: true,
+            date: assignment?.assigned_at || task?.created_at,
+            note: 'Report assigned to you.'
+        };
+
+        const submittedEntry = findHistory(['submitted', 'resubmitted']);
+        const submitted = {
+            key: 'submitted',
+            label: 'Submitted',
+            done: !!submission?.submitted_at,
+            date: submission?.submitted_at || submittedEntry?.created_at,
+            note: submission?.submitted_at ? 'Your submission was received.' : 'Waiting for your submission.'
+        };
+
+        const chairEntry = findHistory(['chairperson_approved', 'chairperson_revision']);
+        const stage = getWorkflowStage(submission, task);
+        const chairDone = !!chairEntry || ['final_approval', 'completed'].includes(stage) ||
+            getApprovalStage(submission) === APPROVAL_STAGES.FINAL ||
+            submission?.status === 'approved';
+        const chairActive = stage === 'chairperson_review';
+        const chair = {
+            key: 'chairperson',
+            label: 'Chairperson Review',
+            done: chairDone,
+            active: chairActive,
+            date: chairEntry?.created_at || (chairDone ? submission?.reviewed_at : null),
+            note: chairActive
+                ? 'Your department chairperson is reviewing this submission.'
+                : chairDone ? 'Chairperson review completed.' : 'Waiting for chairperson review.'
+        };
+
+        const finalEntry = findHistory(['final_approved', 'final_revision']);
+        const finalDone = submission?.status === 'approved' && getApprovalStage(submission) === APPROVAL_STAGES.APPROVED;
+        const finalActive = stage === 'final_approval';
+        const finalStep = {
+            key: 'final',
+            label: 'Final Approval',
+            done: finalDone || !!finalEntry,
+            active: finalActive,
+            date: submission?.final_approved_at || finalEntry?.created_at,
+            note: finalActive
+                ? 'Awaiting final approval from the college administrator.'
+                : finalDone ? 'Final approval completed.' : 'Waiting for final approval.'
+        };
+
+        const completed = {
+            key: 'completed',
+            label: 'Completed',
+            done: stage === 'completed',
+            active: false,
+            date: submission?.final_approved_at,
+            note: stage === 'completed' ? 'Your submission has been fully approved.' : 'Waiting for completion.'
+        };
+
+        if (stage === 'revision_required') {
+            return [assigned, submitted, {
+                key: 'revision',
+                label: 'Revision Required',
+                done: true,
+                active: true,
+                date: submission?.reviewed_at,
+                note: submission?.review_remarks || 'Your submission was returned for revision.'
+            }];
+        }
+
+        if (stage === 'rejected') {
+            return [assigned, submitted, {
+                key: 'rejected',
+                label: 'Rejected',
+                done: true,
+                active: true,
+                date: submission?.reviewed_at,
+                note: submission?.review_remarks || 'Your submission was rejected.'
+            }];
+        }
+
+        return includeChairStep
+            ? [assigned, submitted, chair, finalStep, completed]
+            : [assigned, submitted, finalStep, completed];
+    }
+
+    // =========================================================================
+    // ACCOMPLISHMENT REPORT WORKFLOW HELPERS
+    // =========================================================================
+
+    const AR_STATUSES = {
+        draft: { label: 'Draft', css: 'bg-gray-100 text-gray-700 border-gray-200' },
+        submitted: { label: 'Submitted', css: 'bg-blue-50 text-blue-700 border-blue-100' },
+        chair_approved: { label: 'Chair Certified', css: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+        dean_approved: { label: 'Approved', css: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+        revision: { label: 'Revision Requested', css: 'bg-purple-50 text-purple-700 border-purple-100' },
+        rejected: { label: 'Declined', css: 'bg-rose-50 text-rose-700 border-rose-100' }
+    };
+
+    function formatAccomplishmentReportStatus(status) {
+        return (AR_STATUSES[status] || AR_STATUSES.draft).label;
+    }
+
+    function getAccomplishmentReportStatusCss(status) {
+        return (AR_STATUSES[status] || AR_STATUSES.draft).css;
+    }
+
+    /**
+     * Check if the actor can review an accomplishment report submission as Chairperson.
+     * Returns true if:
+     *  - Actor is a chairperson with delegated access
+     *  - Report status is 'submitted'
+     *  - Actor's department scope covers the faculty member
+     */
+    function canReviewAccomplishmentAsChair(actor, reportSubmission, targetFaculty, delegatedAccess) {
+        if (!actor || !reportSubmission) return false;
+        if (reportSubmission.status !== 'submitted') return false;
+        if (!hasChairpersonWorkflowAccess(actor, delegatedAccess)) return false;
+        if (targetFaculty && !isInChairpersonScope(actor, targetFaculty, delegatedAccess)) return false;
+        return true;
+    }
+
+    /**
+     * Check if the actor can review an accomplishment report submission as Dean/Admin.
+     * Returns true if:
+     *  - Actor is an admin/dean/college_secretary
+     *  - Report status is 'chair_approved'
+     */
+    function canReviewAccomplishmentAsDean(actor, reportSubmission) {
+        if (!actor || !reportSubmission) return false;
+        if (reportSubmission.status !== 'chair_approved') return false;
+        if (!isWorkflowAdmin(actor) && !isFinalApprover(actor)) return false;
+        return true;
+    }
+
+    /**
+     * Apply a review action to an accomplishment report submission.
+     * @param {object} sb - Supabase client
+     * @param {object} options
+     * @param {number} options.reportId - accomplishment_report_submissions.id
+     * @param {string} options.action - 'approve' | 'revision' | 'reject'
+     * @param {string} options.actorRole - 'chairperson' | 'dean' | 'admin'
+     * @param {string} options.actorName - Display name of reviewer
+     * @param {number} options.actorId - Faculty/admin ID
+     * @param {string} [options.remarks] - Review remarks
+     * @param {number} [options.facultyId] - Target faculty ID (for notification)
+     */
+    async function reviewAccomplishmentReport(sb, options) {
+        const { reportId, action, actorRole, actorName, actorId, remarks, facultyId } = options;
+        if (!reportId || !action || !actorRole) {
+            throw new Error('Missing required review parameters');
+        }
+
+        const isChairRole = actorRole === 'chairperson';
+        const now = new Date().toISOString();
+        let update = { updated_at: now };
+        let notifMessage = '';
+
+        // Resolve target faculty ID and report period details
+        let targetFacultyId = facultyId;
+        let periodStr = '';
+        try {
+            const { data: rep } = await sb
+                .from('accomplishment_report_submissions')
+                .select('faculty_id, period_start, period_end')
+                .eq('id', reportId)
+                .single();
+            if (rep) {
+                targetFacultyId = targetFacultyId || rep.faculty_id;
+                if (rep.period_start && rep.period_end) {
+                    const fmt = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    periodStr = ` (${fmt(rep.period_start)} – ${fmt(rep.period_end)})`;
+                }
+            }
+        } catch (_) { }
+
+        if (isChairRole) {
+            // Chairperson actions
+            if (action === 'approve') {
+                update.status = 'chair_approved';
+                update.chair_reviewed_by = actorName;
+                update.chair_reviewed_by_id = actorId;
+                update.chair_reviewed_at = now;
+                update.chair_remarks = remarks || null;
+                notifMessage = `Your accomplishment report${periodStr} has been certified by Chairperson ${actorName}.`;
+            } else if (action === 'revision') {
+                update.status = 'revision';
+                update.chair_reviewed_by = actorName;
+                update.chair_reviewed_by_id = actorId;
+                update.chair_reviewed_at = now;
+                update.chair_remarks = remarks || 'Please revise and resubmit.';
+                notifMessage = `Your accomplishment report${periodStr} was returned for revision by ${actorName}. Remarks: ${remarks || 'Please revise and resubmit.'}`;
+            } else if (action === 'reject') {
+                update.status = 'rejected';
+                update.chair_reviewed_by = actorName;
+                update.chair_reviewed_by_id = actorId;
+                update.chair_reviewed_at = now;
+                update.chair_remarks = remarks || 'Report declined.';
+                notifMessage = `Your accomplishment report${periodStr} was declined by ${actorName}.`;
+            }
+        } else {
+            // Dean / Admin actions
+            if (action === 'approve') {
+                update.status = 'dean_approved';
+                update.dean_reviewed_by = actorName;
+                update.dean_reviewed_by_id = actorId;
+                update.dean_reviewed_at = now;
+                update.dean_remarks = remarks || null;
+                notifMessage = `Your accomplishment report${periodStr} has been fully approved by ${actorName}.`;
+            } else if (action === 'revision') {
+                update.status = 'revision';
+                update.dean_reviewed_by = actorName;
+                update.dean_reviewed_by_id = actorId;
+                update.dean_reviewed_at = now;
+                update.dean_remarks = remarks || 'Please revise and resubmit.';
+                notifMessage = `Your accomplishment report${periodStr} was returned for revision by ${actorName}. Remarks: ${remarks || 'Please revise and resubmit.'}`;
+            } else if (action === 'reject') {
+                update.status = 'rejected';
+                update.dean_reviewed_by = actorName;
+                update.dean_reviewed_by_id = actorId;
+                update.dean_reviewed_at = now;
+                update.dean_remarks = remarks || 'Report declined.';
+                notifMessage = `Your accomplishment report${periodStr} was declined by ${actorName}.`;
+            }
+        }
+
+        const { error } = await sb
+            .from('accomplishment_report_submissions')
+            .update(update)
+            .eq('id', reportId);
+
+        if (error) throw error;
+
+        // Send notification to the faculty member
+        if (targetFacultyId && notifMessage) {
+            await createWorkflowNotification(sb, {
+                faculty_id: targetFacultyId,
+                type: 'review',
+                message: notifMessage,
+                is_read: false,
+                link: 'faculty-profile.html#accomplishments-subs'
+            });
+        }
+
+        // Log activity
+        await logActivity(sb, {
+            actor_name: actorName,
+            action: `accomplishment_report_${action}`,
+            target: `Report #${reportId}`,
+            log_type: 'accomplishment_report'
+        });
+
+        return update;
+    }
+
+    const api = {
+        VALID_DB_STATUSES,
+        APPROVAL_STAGES,
+        DOCUMENT_CATEGORIES,
+        DOCUMENT_CATEGORY_VALUES,
+        QUICK_SUBMISSION_CATEGORY_VALUES,
+        getDocumentCategories,
+        getQuickSubmissionCategories,
+        resolveDocumentCategory,
+        formatDocumentCategory,
+        matchesDocumentCategory,
+        documentCategoryOptionsHtml,
+        ensureTitleReflectsCategory,
+        getSupabaseClient,
+        getCurrentUser,
+        getFreshSession,
+        getCurrentFaculty,
+        loadFacultyAssignedTasks,
+        canAccessFacultyPortalSession,
+        normalizeFaculty,
+        normalizeRole,
+        normalizeRoleValue,
+        normalizeText,
+        isChairperson,
+        isWorkflowAdmin,
+        isFinalApprover,
+        canReviewAsChairperson,
+        canBrowseAsChairperson,
+        canReviewAsFinalApprover,
+        canAccessWorkflowApproval,
+        canAccessFacultyPortal,
+        getChairpersonGrant,
+        hasChairpersonWorkflowAccess,
+        currentUserHasChairpersonGrant,
+        serverConfirmsChairpersonGrant,
+        resetChairpersonGrantCache,
+        loadActiveDelegatedAccess,
+        formatApprovalStage,
+        chairpersonAuthorizedDepartments,
+        isInChairpersonScope,
+        facultyDepartmentCode,
+        requiresChairpersonReview,
+        resolveInitialApprovalStage,
+        resolveInitialApprovalStageForSubmission,
+        submitterIsOwnChairperson,
+        unknownColumnFromError,
+        isPendingChairpersonReview,
+        grantMatchesChairperson,
+        getApprovalStage,
+        getWorkflowStage,
+        isFinallyApproved,
+        MFO_ANALYTICS_DEPARTMENTS,
+        MFO_ANALYTICS_STATUS_KEYS,
+        isMfoWorkflowRecord,
+        mfoDisplayDepartment,
+        departmentIsAuthorized,
+        hasQualifyingMfoSubmission,
+        classifyMfoSubmission,
+        buildMfoAnalytics,
+        mfoAnalyticsBalances,
+        canFacultyManageSubmissionFiles,
+        canFacultyUnsubmit,
+        facultyFilesWereUpdatedAfterReview,
+        buildFacultyFileChangeUpdate,
+        getTaskDeadline,
+        getTaskRequirementText,
+        processDeadlineReminders,
+        formatWorkflowStatus,
+        getStatusClass,
+        sanitizeDbStatus,
+        computeReviewTransition,
+        buildReviewUpdate,
+        applySubmissionReview,
+        unsubmitSubmission,
+        recordSubmissionEvent,
+        recordFacultyFileChange,
+        recordApprovalHistory,
+        logActivity,
+        createWorkflowNotification,
+        notifyFinalApprovers,
+        getActorDisplayName,
+        showToast,
+        confirmAction,
+        subscribeWorkflow,
+        cleanupWorkflowRealtime,
+        buildTimelineSteps,
+        AR_STATUSES,
+        formatAccomplishmentReportStatus,
+        getAccomplishmentReportStatusCss,
+        canReviewAccomplishmentAsChair,
+        canReviewAccomplishmentAsDean,
+        reviewAccomplishmentReport,
+        escapeHtml,
+        sameDepartment,
+        isGenuineSubmission,
+        isSubmissionDeadlinePassed,
+        getSubmissionTiming,
+        classifySubmissionRecord,
+        selectLatestSubmission,
+        SUBMISSION_ANALYTICS_REVIEW_KEYS,
+        SUBMISSION_ANALYTICS_NON_SUBMITTED_KEYS,
+        SUBMISSION_ANALYTICS_ALL_KEYS,
+        emptySubmissionAnalyticsCounts,
+        submissionAnalyticsBalances,
+        computeSubmissionAnalytics,
+        isRecurringTask,
+        resolveReportingFrequency,
+        groupRecurringReportTasks,
+        computeRecurringReportAnalytics
+    };
+
+    global.CiteFlowWorkflow = api;
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = api;
+    }
+})(typeof window !== 'undefined' ? window : globalThis);
+
