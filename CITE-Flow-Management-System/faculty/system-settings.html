@@ -3,259 +3,621 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Settings - CITE-Flow</title>
+    <title>Settings - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/auth.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/auth-guard.js?v=auth-mfo-keep-1"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <link rel="stylesheet" href="faculty-nav.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
+        :root {
+            --cite-theme: #621708;
+            --cite-theme-hover: #8c2a10;
+            --cite-theme-text: #ffffff;
+            --cite-theme-border: rgba(98, 23, 8, 0.14);
         }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
+        .settings-workspace {
+            display: grid;
+            grid-template-columns: 220px minmax(0, 1fr);
+            gap: 28px;
+            align-items: start;
         }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
-        }
-
-        .section-header {
+        .settings-nav { position: sticky; top: 92px; }
+        .settings-nav-label {
+            margin: 16px 12px 6px;
             font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
             text-transform: uppercase;
+            color: #94a3b8;
         }
-
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
+        .settings-nav-label:first-child { margin-top: 0; }
+        .settings-nav-btn {
+            display: flex;
+            width: 100%;
+            text-align: left;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border: 0;
+            border-radius: 10px;
+            background: transparent;
+            color: #475569;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background .15s, color .15s;
         }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
+        .settings-nav-btn i { width: 16px; text-align: center; font-size: 13px; color: #94a3b8; }
+        .settings-nav-btn:hover { background: #eef1f5; color: #0f172a; }
+        .settings-nav-btn.is-active {
+            background: color-mix(in srgb, var(--cite-theme) 10%, white);
+            color: var(--cite-theme);
         }
-
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        .settings-nav-btn.is-active i { color: var(--cite-theme); }
+        .settings-panel { display: none; }
+        .settings-panel.is-active { display: block; }
+        .settings-card {
+            background: #fff;
+            border: 1px solid #e7ebf0;
+            border-radius: 16px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
-
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
+        .settings-card-head { padding: 22px 22px 0; }
+        .settings-card-head h2 { font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+        .settings-card-head p { margin-top: 4px; font-size: 13px; line-height: 1.5; color: #64748b; max-width: 62ch; }
+        .settings-card-body { padding: 18px 22px 22px; }
+        .section-icon { display: none; }
+        .primary-btn {
+            background: var(--cite-theme); color: var(--cite-theme-text);
+            border: 1px solid var(--cite-theme-border); border-radius: 12px;
+            padding: 10px 16px; font-size: 13px; font-weight: 700;
         }
-
-        .color-swatch {
-            width: 32px;
-            height: 32px;
-            border-radius: 9999px;
-            cursor: pointer;
-            border: 3px solid white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        .primary-btn:hover { background: var(--cite-theme-hover); }
+        .secondary-btn {
+            background: #fff; color: #334155; border: 1px solid #e2e8f0;
+            border-radius: 12px; padding: 10px 16px; font-size: 13px; font-weight: 700;
         }
-        .color-swatch.active {
-            border-color: #f5e8c7;
-            box-shadow: 0 0 0 3px rgba(245, 232, 199, 0.5);
+        .secondary-btn:hover { background: #f8fafc; }
+        .reset-btn { color: #9f1239; border-color: #fecdd3; display: inline-flex; align-items: center; gap: 6px; }
+        .reset-btn:hover { background: #fff1f2; }
+        .ghost-link { display: inline-flex; align-items: center; gap: 8px; color: var(--cite-theme); font-size: 13px; font-weight: 700; }
+        .toggle { position: relative; display: inline-flex; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle span { position: absolute; inset: 0; background: #e5e7eb; border-radius: 999px; transition: .2s; }
+        .toggle span:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 999px; transition: .2s; box-shadow: 0 1px 3px rgba(15,23,42,.2); }
+        .toggle input:checked + span { background: var(--cite-theme); }
+        .toggle input:checked + span:before { transform: translateX(20px); }
+        .toggle input:disabled + span { cursor: default; opacity: .7; }
+        .theme-picker-swatch {
+            width: 72px; height: 72px; border-radius: 999px; border: 4px solid #fff;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12), 0 0 0 1px #e5e7eb;
         }
+        #themePickerLabel { cursor: default; }
+        body.settings-editing #themePickerLabel { cursor: pointer; }
+        body.settings-editing #themePickerLabel:hover .theme-picker-swatch { transform: scale(1.04); }
+        .preview-shell { border: 1px solid #e8eaef; border-radius: 14px; overflow: hidden; background: #fff; }
+        .action-row {
+            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px;
+            padding: 14px 0; border: 0; border-bottom: 1px solid #eef2f6; border-radius: 0; background: transparent;
+        }
+        .action-row:last-child { border-bottom: 0; padding-bottom: 0; }
+        .action-row .secondary-btn { flex-shrink: 0; }
+        #notifRows > label {
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+            padding: 14px 0; margin: 0;
+            background: transparent; border: 0; border-bottom: 1px solid #eef2f6; border-radius: 0;
+        }
+        #notifRows > label:last-child { border-bottom: 0; padding-bottom: 0; }
+        .settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        @media (max-width: 860px) {
+            .settings-workspace { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+            .settings-nav { position: static; margin: 0 -4px; overflow-x: auto; }
+            .settings-nav-scroll { display: flex; gap: 6px; width: max-content; padding-bottom: 2px; }
+            .settings-nav-label { display: none; }
+            .settings-nav-btn { width: auto; white-space: nowrap; background: #fff; border: 1px solid #e7ebf0; }
+            .settings-nav-btn.is-active { border-color: color-mix(in srgb, var(--cite-theme) 35%, white); }
+        }
+        @media (max-width: 640px) {
+            .action-row { align-items: stretch; }
+            .action-row .secondary-btn { width: 100%; text-align: center; }
+            .settings-card-head, .settings-card-body { padding-left: 16px; padding-right: 16px; }
+        }
+        .toast { position: fixed; right: 20px; bottom: 20px; z-index: 2600; transform: translateY(16px); opacity: 0; pointer-events: none; transition: .25s; }
+        .toast.show { transform: none; opacity: 1; }
+        body:not(.settings-editing) .edit-only { pointer-events: none; }
     </style>
 </head>
-<body class="bg-gray-50">
-
-<div class="flex h-screen overflow-hidden">
-
-    <!-- SIDEBAR - Consistent Navigation -->
-    <div class="sidebar text-white flex flex-col h-full">
-
-        <!-- CTU Logo -->
-        <div onclick="window.location.href='dashboard.html'" 
-             class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" 
-                 alt="CTU Logo" 
-                 class="h-16 w-auto mb-3">
-            <div class="text-center">
-                <div class="font-semibold text-base leading-tight">College of Technology</div>
-                <div class="font-semibold text-base leading-tight">and Engineering</div>
-            </div>
-        </div>
-
-        <!-- Navigation -->
-        <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
-
-            <!-- DOCUMENT MANAGEMENT -->
-            <div>
-                <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='submissions.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Submissions
-                </div>
-                <div onclick="window.location.href='status-tracking.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9-6-18-3 9H2"/></svg>
-                    Submission Status
-                </div>
-            </div>
-
-            <!-- EVENTS -->
-            <div>
-                <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
-            </div>
-
-            <!-- SYSTEM -->
-            <div>
-                <div class="section-header text-white/70">SYSTEM</div>
-                <div onclick="window.location.href='system-settings.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-            </div>
-
-        </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='faculty-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Faculty Member</div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- MAIN SETTINGS CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
-        <div class="max-w-4xl mx-auto">
-            <div class="flex items-center gap-3 mb-8">
-                <button onclick="window.history.back()" class="text-2xl">←</button>
+<body class="bg-gray-50 overflow-x-hidden min-h-screen">
+<div class="flex min-h-screen">
+    <div id="sidebar-container"></div>
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] bg-slate-50 w-full overflow-x-hidden">
+        <div id="navbar-container"></div>
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
                 <div>
-                    <h1 class="text-3xl font-semibold">System Settings</h1>
-                    <p class="text-gray-500">Customize your account and preferences</p>
+                    <p class="text-[11px] font-bold tracking-[0.14em] uppercase mb-1" style="color: var(--cite-theme)">Faculty</p>
+                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950">Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1 max-w-xl">Manage your account and preferences.</p>
+                </div>
+                <div class="settings-actions self-start sm:self-auto">
+                    <button id="resetBtn" type="button" class="secondary-btn reset-btn"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                    <button id="editBtn" type="button" class="primary-btn" data-theme-primary="true">Edit</button>
+                    <button id="cancelBtn" type="button" class="secondary-btn hidden">Cancel</button>
+                    <button id="saveBtn" type="button" class="primary-btn hidden" data-theme-primary="true">Save Changes</button>
+                </div>
+            </header>
+
+            <div id="settingsError" class="hidden mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+            <div class="settings-workspace pb-10">
+                <nav class="settings-nav" aria-label="Settings sections">
+                    <div class="settings-nav-scroll">
+                        <div class="settings-nav-label">Account</div>
+                        <button type="button" class="settings-nav-btn is-active" data-settings-target="account" aria-selected="true"><i class="fa-regular fa-user"></i> Profile</button>
+                        <button type="button" class="settings-nav-btn" data-settings-target="security"><i class="fa-solid fa-shield-halved"></i> Security</button>
+                        <div class="settings-nav-label">Preferences</div>
+                        <button type="button" class="settings-nav-btn" data-settings-target="appearance"><i class="fa-solid fa-palette"></i> Appearance</button>
+                        <button type="button" class="settings-nav-btn" data-settings-target="notifications"><i class="fa-regular fa-bell"></i> Notifications</button>
+                        <button type="button" class="settings-nav-btn" data-settings-target="period"><i class="fa-regular fa-calendar"></i> Academic Period</button>
+                    </div>
+                </nav>
+                <div class="min-w-0">
+                <section class="settings-panel is-active" data-settings-panel="account">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Profile</h2>
+                        <p>Your identity is managed in My Profile. Department is set by administration.</p>
+                    </header>
+                    <div class="settings-card-body">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div class="flex items-center gap-4 min-w-0">
+                            <div id="accountAvatar" class="w-16 h-16 rounded-2xl bg-slate-100 text-slate-500 font-bold flex items-center justify-center overflow-hidden shrink-0">—</div>
+                            <div class="min-w-0 flex-1">
+                                <div id="accountName" class="text-lg font-bold text-slate-950 truncate">Loading…</div>
+                                <div id="accountEmail" class="text-sm text-slate-500 truncate">—</div>
+                                <div class="mt-2">
+                                    <span id="accountDept" class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">—</span>
+                                </div>
+                            </div>
+                        </div>
+                        <a href="faculty-profile.html" class="ghost-link shrink-0 self-start sm:self-auto">Open My Profile <i class="fa-solid fa-arrow-right text-xs"></i></a>
+                    </div>
+                    </div>
+                </article>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="appearance">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Appearance</h2>
+                        <p>Choose any color for the CITE-Flow theme. It updates the sidebar, buttons, and accents across the system.</p>
+                    </header>
+                    <div class="settings-card-body">
+                    <div class="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-5">
+                        <div>
+                            <div class="text-xs font-bold text-slate-700 mb-3">Theme color</div>
+                            <div class="flex items-center gap-4">
+                                <label id="themePickerLabel" for="themePicker" class="relative shrink-0">
+                                    <input type="color" id="themePicker" value="#621708" disabled
+                                        class="absolute inset-0 opacity-0 w-full h-full cursor-pointer">
+                                    <div id="themePreview" class="theme-picker-swatch transition" style="background:var(--cite-theme, #621708)"></div>
+                                </label>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800">Click the circle to choose any color</p>
+                                    <p class="text-xs text-slate-500 mt-0.5">Current: <b id="themeHexDisplay" class="font-mono">#621708</b></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="preview-shell">
+                            <div class="h-9" style="background: var(--cite-theme)"></div>
+                            <div class="p-3 space-y-2">
+                                <div class="h-2 rounded bg-slate-200 w-2/3"></div>
+                                <div class="h-2 rounded bg-slate-100 w-full"></div>
+                                <button type="button" class="mt-1 px-3 py-1.5 rounded-lg text-xs font-bold" data-theme-primary="true">Action</button>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </article>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="notifications">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Notifications</h2>
+                        <p>In-app alerts for submissions, reviews, and tasks. Messenger mute stays in Messenger.</p>
+                    </header>
+                    <div class="settings-card-body">
+                    <div id="notifRows"></div>
+                    </div>
+                </article>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="period">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Academic Period</h2>
+                        <p>Set by Administration. Faculty cannot change this.</p>
+                    </header>
+                    <div class="settings-card-body">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                            <div class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Academic Year</div>
+                            <div id="academicYearLabel" class="text-sm font-bold text-slate-950 mt-1">—</div>
+                        </div>
+                        <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                            <div class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Semester</div>
+                            <div id="academicSemesterLabel" class="text-sm font-bold text-slate-950 mt-1">—</div>
+                        </div>
+                    </div>
+                    </div>
+                </article>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="security">
+                <article class="settings-card">
+                    <header class="settings-card-head">
+                        <h2>Security</h2>
+                        <p>Password, two-factor authentication, and sign out.</p>
+                    </header>
+                    <div class="settings-card-body">
+                    <div>
+                        <div class="action-row">
+                            <div class="min-w-0">
+                                <div class="text-sm font-bold text-slate-900">Change Password</div>
+                                <div class="text-xs text-slate-500 mt-0.5">Send a reset code to your account email.</div>
+                            </div>
+                            <button id="settings-change-password" type="button" class="secondary-btn w-full sm:w-auto text-center">Change</button>
+                        </div>
+                        <div class="action-row">
+                            <div class="min-w-0">
+                                <div class="text-sm font-bold text-slate-900">Two-Factor Authentication</div>
+                                <div id="twofa-status-text" class="text-xs text-slate-500 mt-0.5">Add an extra layer of security to your account.</div>
+                            </div>
+                            <button id="twofa-toggle-btn" type="button" class="secondary-btn w-full sm:w-auto text-center"><span id="twofa-toggle-label">Enable</span></button>
+                        </div>
+                        <div class="action-row">
+                            <div class="min-w-0">
+                                <div class="text-sm font-bold text-slate-900">Sign Out</div>
+                                <div class="text-xs text-slate-500 mt-0.5">End your current CITE-Flow session.</div>
+                            </div>
+                            <button id="settings-sign-out" type="button" class="secondary-btn text-red-600 border-red-200 w-full sm:w-auto text-center">Sign Out</button>
+                        </div>
+                    </div>
+                    </div>
+                </article>
+                </section>
                 </div>
             </div>
+        </div>
+    </main>
+</div>
 
-            <div class="space-y-10">
-                <!-- General Settings -->
-                <div class="bg-white rounded-3xl p-8 card-shadow">
-                    <h2 class="font-semibold text-xl mb-6">General Settings</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                            <input type="text" value="John Doe" class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                            <input type="email" value="john.doe@cite.edu.ph" class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Department</label>
-                            <select class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
-                                <option>BIT - Bachelor of Industrial Technology</option>
-                                <option>BSIT - Bachelor of Science in Information Technology</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                            <input type="tel" value="+63 912 345 6789" class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
-                        </div>
-                    </div>
-                    <button onclick="saveSettings()" 
-                            class="mt-8 bg-[#621708] hover:bg-[#8c2a10] text-white px-8 py-3 rounded-2xl text-sm font-medium">
-                        Save Changes
-                    </button>
-                </div>
-
-                <!-- Notification Preferences -->
-                <div class="bg-white rounded-3xl p-8 card-shadow">
-                    <h2 class="font-semibold text-xl mb-6">Notification Preferences</h2>
-                    <div class="space-y-6">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="font-medium">Email Notifications</div>
-                                <div class="text-sm text-gray-500">Receive updates about submissions and deadlines</div>
-                            </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" checked class="sr-only peer">
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#621708]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#621708]"></div>
-                            </label>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="font-medium">Deadline Reminders</div>
-                                <div class="text-sm text-gray-500">Get notified 3 days before submission due dates</div>
-                            </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" checked class="sr-only peer">
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#621708]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#621708]"></div>
-                            </label>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="font-medium">Event Invitations</div>
-                                <div class="text-sm text-gray-500">Calendar events and faculty meetings</div>
-                            </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" checked class="sr-only peer">
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#621708]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#621708]"></div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Appearance -->
-                <div class="bg-white rounded-3xl p-8 card-shadow">
-                    <h2 class="font-semibold text-xl mb-6">Appearance</h2>
-                    <div class="mb-6">
-                        <div class="text-sm font-medium text-gray-700 mb-3">Theme Color</div>
-                        <div class="flex gap-4">
-                            <div onclick="changeTheme(this, '#621708')" class="color-swatch bg-[#621708] active"></div>
-                            <div onclick="changeTheme(this, '#1f2937')" class="color-swatch bg-gray-800"></div>
-                            <div onclick="changeTheme(this, '#2563eb')" class="color-swatch bg-blue-600"></div>
-                            <div onclick="changeTheme(this, '#ea580c')" class="color-swatch bg-orange-600"></div>
-                        </div>
-                    </div>
-                    <button onclick="saveSettings()" 
-                            class="bg-[#621708] hover:bg-[#8c2a10] text-white px-8 py-3 rounded-2xl text-sm font-medium">
-                        Apply Theme
-                    </button>
-                </div>
-            </div>
+<div id="confirmModal" class="hidden fixed inset-0 bg-slate-950/50 z-[2500] items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+        <div class="p-6">
+            <h3 id="confirmTitle" class="text-lg font-bold text-slate-950">Confirm</h3>
+            <p id="confirmMessage" class="text-sm text-slate-500 mt-1"></p>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 flex justify-end gap-2.5">
+            <button type="button" id="confirmNo" class="secondary-btn">Cancel</button>
+            <button type="button" id="confirmYes" class="primary-btn" data-theme-primary="true">Confirm</button>
         </div>
     </div>
 </div>
 
+<div id="twofa-modal" class="hidden fixed inset-0 bg-slate-950/50 z-[2500] items-center justify-center p-4">
+    <div class="bg-white rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-start justify-between">
+            <div>
+                <p class="text-[10px] font-semibold tracking-[0.18em] uppercase" style="color: var(--cite-theme)">Security</p>
+                <h2 class="text-lg font-semibold text-slate-950 mt-1">Set Up Two-Factor Authentication</h2>
+            </div>
+            <button type="button" id="twofa-modal-close" class="secondary-btn px-3 py-2">Close</button>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="text-sm text-slate-600">Scan this QR code with an authenticator app, then enter the code.</p>
+            <div id="twofa-qr-container" class="p-4 border border-slate-200 rounded-2xl flex items-center justify-center min-h-[180px] bg-slate-50 text-sm text-slate-500">Generating QR code...</div>
+            <form id="twofa-verify-form" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Authentication Code</label>
+                    <input id="twofa-code" type="text" inputmode="numeric" maxlength="8" placeholder="123456" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm tracking-widest">
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" id="twofa-modal-cancel" class="secondary-btn">Cancel</button>
+                    <button id="twofa-verify-btn" type="submit" class="primary-btn" data-theme-primary="true">Verify and Enable</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast">
+    <div class="rounded-2xl border border-emerald-200 bg-white shadow-xl px-4 py-3 max-w-sm">
+        <div id="toastTitle" class="text-sm font-bold text-slate-900">Settings saved</div>
+        <div id="toastMessage" class="text-xs text-slate-500 mt-0.5">Your preferences have been updated.</div>
+    </div>
+</div>
+
+<script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
+<script src="../shared/account-security.js"></script>
+<script src="../shared/workflow.js"></script>
+<script src="faculty-nav.js?v=auth-session-3"></script>
 <script>
-    function saveSettings() {
-        alert("✅ Settings saved successfully!");
+    const FACULTY_NOTIFS = [
+        { key: 'tasks', title: 'Task updates', hint: 'New assignments and deadline reminders.' },
+        { key: 'approvals', title: 'Approvals', hint: 'When a submission is approved.' },
+        { key: 'revision', title: 'Returned for revision', hint: 'When a reviewer requests changes.' },
+        { key: 'rejection', title: 'Rejection', hint: 'When a submission is rejected.' },
+        { key: 'submissions', title: 'Submission updates', hint: 'Confirmations when you submit or update files.' }
+    ];
+
+    let isEditing = false;
+    let snapshot = null;
+    let confirmResolver = null;
+    let resetVersion = 0;
+    let savedTheme = toThemeHex(window.CiteFlowUI.getDefaultTheme());
+    let selectedTheme = savedTheme;
+
+    function showToast(title, message) {
+        document.getElementById('toastTitle').textContent = title;
+        document.getElementById('toastMessage').textContent = message;
+        const toast = document.getElementById('toast');
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2600);
     }
 
-    function changeTheme(el, color) {
-        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
-        el.classList.add('active');
-        alert(`Theme color changed to ${color}`);
+    function showError(message) {
+        const el = document.getElementById('settingsError');
+        if (!message) { el.classList.add('hidden'); el.textContent = ''; return; }
+        el.textContent = message;
+        el.classList.remove('hidden');
     }
+
+    function initials(name, email) {
+        const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+        if (parts[0]) return parts[0].slice(0, 2).toUpperCase();
+        return String(email || 'FM').slice(0, 2).toUpperCase();
+    }
+
+    function renderAccount(profile) {
+        const name = profile.name || 'Faculty';
+        const email = profile.email || '—';
+        document.getElementById('accountName').textContent = name;
+        document.getElementById('accountEmail').textContent = email;
+        document.getElementById('accountDept').textContent = profile.department || '—';
+        const avatar = document.getElementById('accountAvatar');
+        if (profile.avatar) {
+            avatar.innerHTML = `<img src="${profile.avatar}" alt="" class="w-full h-full object-cover">`;
+        } else {
+            avatar.textContent = initials(name, email);
+        }
+    }
+
+    function renderNotifRows(prefs) {
+        document.getElementById('notifRows').innerHTML = FACULTY_NOTIFS.map((item) => `
+            <label class="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div>
+                    <div class="text-sm font-bold text-slate-900">${item.title}</div>
+                    <div class="text-xs text-slate-500 mt-0.5">${item.hint}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" data-pref="${item.key}" ${prefs[item.key] !== false ? 'checked' : ''} disabled><span></span></label>
+            </label>
+        `).join('');
+    }
+
+    function collectPrefs() {
+        const prefs = window.CiteFlowSettings.defaultPrefs('faculty');
+        document.querySelectorAll('[data-pref]').forEach((input) => {
+            prefs[input.dataset.pref] = input.checked;
+        });
+        return prefs;
+    }
+
+    function toThemeHex(color) {
+        const fallback = String(window.CiteFlowUI.getDefaultTheme()).toLowerCase();
+        const value = String(color || fallback).trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toLowerCase();
+        if (/^#[0-9a-fA-F]{3}$/.test(value)) {
+            return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase();
+        }
+        return fallback;
+    }
+
+    function renderTheme(color) {
+        selectedTheme = toThemeHex(color);
+        const picker = document.getElementById('themePicker');
+        const preview = document.getElementById('themePreview');
+        const hex = document.getElementById('themeHexDisplay');
+        if (picker) {
+            picker.value = selectedTheme;
+            picker.disabled = !isEditing;
+        }
+        if (preview) preview.style.background = selectedTheme;
+        if (hex) hex.textContent = selectedTheme.toUpperCase();
+    }
+
+    function applyThemeLive(color) {
+        selectedTheme = toThemeHex(color);
+        if (window.CiteFlowUI?.previewTheme) window.CiteFlowUI.previewTheme(selectedTheme);
+        else window.CiteFlowUI?.setTheme?.(selectedTheme);
+        renderTheme(selectedTheme);
+    }
+
+    function applySavedTheme() {
+        selectedTheme = savedTheme;
+        window.CiteFlowUI.setTheme(savedTheme);
+        renderTheme(savedTheme);
+    }
+
+    function applyDefaultTheme() {
+        savedTheme = toThemeHex(window.CiteFlowUI.getDefaultTheme());
+        selectedTheme = savedTheme;
+        window.CiteFlowUI.setTheme(savedTheme);
+        renderTheme(savedTheme);
+    }
+
+    function setEditing(next) {
+        isEditing = next;
+        document.body.classList.toggle('settings-editing', next);
+        document.getElementById('editBtn').classList.toggle('hidden', next);
+        document.getElementById('cancelBtn').classList.toggle('hidden', !next);
+        document.getElementById('saveBtn').classList.toggle('hidden', !next);
+        document.querySelectorAll('[data-pref]').forEach((el) => { el.disabled = !next; });
+        renderTheme(selectedTheme);
+    }
+
+    function takeSnapshot() {
+        snapshot = { theme: savedTheme, prefs: collectPrefs() };
+    }
+
+    function restoreSnapshot() {
+        if (!snapshot) return;
+        savedTheme = snapshot.theme || savedTheme;
+        renderNotifRows(snapshot.prefs);
+        applySavedTheme();
+        if (isEditing) setEditing(true);
+    }
+
+    function askConfirm(title, message, confirmLabel) {
+        document.getElementById('confirmTitle').textContent = title;
+        document.getElementById('confirmMessage').textContent = message;
+        document.getElementById('confirmYes').textContent = confirmLabel || 'Confirm';
+        const modal = document.getElementById('confirmModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        return new Promise((resolve) => { confirmResolver = resolve; });
+    }
+
+    function closeConfirmModal(result) {
+        const modal = document.getElementById('confirmModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (confirmResolver) confirmResolver(result);
+        confirmResolver = null;
+    }
+
+    async function loadAccount() {
+        const sb = window.supabaseClient;
+        const { data } = await sb.auth.getUser();
+        const user = data?.user;
+        if (!user) return;
+        let profile = {
+            name: user.user_metadata?.full_name || user.user_metadata?.name || user.email,
+            email: user.email,
+            department: user.user_metadata?.department || '—',
+            avatar: user.user_metadata?.avatar_url || user.user_metadata?.profile_photo_url || ''
+        };
+        if (window.CiteFlowWorkflow?.getCurrentFaculty) {
+            const faculty = await window.CiteFlowWorkflow.getCurrentFaculty(user);
+            if (faculty) {
+                profile = {
+                    name: faculty.full_name || faculty.name || profile.name,
+                    email: faculty.email || profile.email,
+                    department: faculty.department || profile.department,
+                    avatar: faculty.profile_photo_url || faculty.avatar_url || profile.avatar
+                };
+            }
+        }
+        renderAccount(profile);
+    }
+
+    async function saveAll() {
+        try {
+            await window.CiteFlowSettings.savePreferences(collectPrefs());
+            savedTheme = toThemeHex(selectedTheme);
+            window.CiteFlowUI?.setTheme?.(savedTheme);
+            showToast('Saved', 'Your preferences have been updated.');
+            setEditing(false);
+            takeSnapshot();
+            showError('');
+        } catch (error) {
+            showError(error.message || 'Unable to save settings.');
+        }
+    }
+
+    async function resetToDefaults() {
+        const ok = await askConfirm(
+            'Reset to Default Settings?',
+            'All current settings will be restored to the default CITE-Flow configuration.',
+            'Reset'
+        );
+        if (!ok) return;
+        resetVersion += 1;
+        const stayEditing = isEditing;
+        applyDefaultTheme();
+        const prefs = window.CiteFlowSettings.defaultPrefs('faculty');
+        renderNotifRows(prefs);
+        if (stayEditing) setEditing(true);
+        takeSnapshot();
+        try {
+            await window.CiteFlowSettings.savePreferences(prefs);
+            showError('');
+        } catch (error) {
+            showError(error.message || 'The default theme was restored, but notification settings could not be saved.');
+        }
+        showToast('Reset', 'Settings reset successfully.');
+    }
+
+    document.getElementById('editBtn').addEventListener('click', () => { takeSnapshot(); setEditing(true); });
+    document.getElementById('cancelBtn').addEventListener('click', () => { restoreSnapshot(); setEditing(false); });
+    document.getElementById('saveBtn').addEventListener('click', saveAll);
+    document.getElementById('resetBtn').addEventListener('click', resetToDefaults);
+    document.getElementById('confirmYes').addEventListener('click', () => closeConfirmModal(true));
+    document.getElementById('confirmNo').addEventListener('click', () => closeConfirmModal(false));
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const versionAtStart = resetVersion;
+        if (typeof loadSidebar === 'function') await loadSidebar();
+        if (!isEditing && versionAtStart === resetVersion) {
+            savedTheme = toThemeHex(window.CiteFlowUI.getTheme());
+            selectedTheme = savedTheme;
+        }
+        document.getElementById('themePicker')?.addEventListener('input', (event) => {
+            if (!isEditing) return;
+            applyThemeLive(event.target.value);
+        });
+        document.getElementById('themePickerLabel')?.addEventListener('click', (event) => {
+            if (!isEditing) event.preventDefault();
+        });
+        const [period, prefs] = await Promise.all([
+            window.CiteFlowSettings.getAcademicPeriod(true),
+            window.CiteFlowSettings.loadPreferences(true)
+        ]);
+        document.getElementById('academicYearLabel').textContent = period.academic_year;
+        document.getElementById('academicSemesterLabel').textContent = period.semester;
+        if (versionAtStart === resetVersion) {
+            renderNotifRows(prefs);
+            if (!isEditing) {
+                applySavedTheme();
+                takeSnapshot();
+            } else if (snapshot) {
+                snapshot.theme = savedTheme;
+                snapshot.prefs = { ...prefs };
+                if (window.CiteFlowUI.previewTheme) window.CiteFlowUI.previewTheme(selectedTheme);
+            }
+        }
+        await loadAccount();
+    });
+
+    function showSettingsPanel(name) {
+        document.querySelectorAll('[data-settings-panel]').forEach((panel) => {
+            panel.classList.toggle('is-active', panel.getAttribute('data-settings-panel') === name);
+        });
+        document.querySelectorAll('[data-settings-target]').forEach((button) => {
+            const active = button.getAttribute('data-settings-target') === name;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+    }
+    document.querySelectorAll('[data-settings-target]').forEach((button) => {
+        button.addEventListener('click', () => showSettingsPanel(button.getAttribute('data-settings-target')));
+    });
 </script>
 </body>
 </html>

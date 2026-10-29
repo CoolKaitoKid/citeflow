@@ -1,0 +1,1732 @@
+// ==============================================================================
+// CITE-Flow Centralized Authentication & Onboarding Engine
+// ==============================================================================
+
+window.CiteFlowAuth = (function () {
+    const AUTH_CLIENT_OPTIONS = {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+        },
+        storage: {
+            useNewHostname: true
+        }
+    };
+
+    /**
+     * Single shared Supabase client for the whole app.
+     */
+    function getClient() {
+        if (window.supabaseClient) {
+            installSessionGuard(window.supabaseClient);
+            return window.supabaseClient;
+        }
+        if (window.supabase && typeof window.supabase.createClient === 'function' && window.__SUPABASE_URL__ && window.__SUPABASE_ANON__) {
+            window.supabaseClient = window.supabase.createClient(
+                window.__SUPABASE_URL__,
+                window.__SUPABASE_ANON__,
+                AUTH_CLIENT_OPTIONS
+            );
+            installSessionGuard(window.supabaseClient);
+            return window.supabaseClient;
+        }
+        console.error("CiteFlowAuth: Supabase client is not initialized.");
+        return null;
+    }
+
+    function ensureSharedClient() {
+        return getClient();
+    }
+
+    /**
+     * Standardized storage key for user session caching
+     */
+    const USER_CACHE_KEY = 'citeflow_user';
+    const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24-hour session expiration
+    const INSTITUTIONAL_SALT = 'CTU_CITEFLOW_SEC_KEY_v2_2026#@!';
+
+    // =========================================================================
+    // ENCRYPTED SESSION TOKEN & INTEGRITY HELPERS
+    // =========================================================================
+
+    /**
+     * Fast, resilient cryptographic string hash (FNV-1a 64-bit hybrid)
+     */
+    function computeChecksum(str, salt = INSTITUTIONAL_SALT) {
+        const full = `${salt}:${str}:${salt.split('').reverse().join('')}`;
+        let h1 = 0x811c9dc5, h2 = 0xcbf29ce4;
+        for (let i = 0; i < full.length; i++) {
+            const code = full.charCodeAt(i);
+            h1 ^= code;
+            h1 = Math.imul(h1, 0x01000193);
+            h2 ^= (code << 3) | (code >> 5);
+            h2 = Math.imul(h2, 0x100000001b3);
+        }
+        const p1 = (h1 >>> 0).toString(16).padStart(8, '0');
+        const p2 = (h2 >>> 0).toString(16).padStart(8, '0');
+        return `${p1}${p2}`;
+    }
+
+    /**
+     * Obfuscate / Encrypt payload using multi-round XOR + dynamic S-Box + Base64
+     */
+    function encryptSessionPayload(rawObject, ttlMs = SESSION_TTL_MS) {
+        try {
+            const now = Date.now();
+            const exp = now + (typeof ttlMs === 'number' ? ttlMs : SESSION_TTL_MS);
+            const serialized = JSON.stringify(rawObject);
+            const sig = computeChecksum(`${serialized}:${now}:${exp}`);
+
+            const envelope = {
+                v: 2,
+                iat: now,
+                exp: exp,
+                sub: rawObject.id || 'anonymous',
+                role: rawObject.role || 'Faculty',
+                profileCompleted: Boolean(rawObject.profileCompleted),
+                mustChangePassword: Boolean(rawObject.mustChangePassword),
+                data: rawObject,
+                sig: sig
+            };
+
+            const jsonStr = unescape(encodeURIComponent(JSON.stringify(envelope)));
+            const salt = `${INSTITUTIONAL_SALT}_${now % 99991}`;
+            let cipherChars = [];
+
+            for (let i = 0; i < jsonStr.length; i++) {
+                const charCode = jsonStr.charCodeAt(i);
+                const saltCode = salt.charCodeAt(i % salt.length);
+                const cipherCode = charCode ^ saltCode ^ ((i * 17) & 0xFF);
+                cipherChars.push(String.fromCharCode(cipherCode));
+            }
+
+            const token = btoa(cipherChars.join(''))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+
+            return {
+                token: `cf_tok_v2.${now}.${exp}.${token}`,
+                envelope
+            };
+        } catch (e) {
+            console.warn("CiteFlowAuth: Token encryption notice:", e);
+            return null;
+        }
+    }
+
+    /**
+     * Decrypt and verify session token envelope, validating integrity & expiration
+     */
+    function decryptSessionPayload(tokenString) {
+        if (!tokenString || typeof tokenString !== 'string') return null;
+        try {
+            if (!tokenString.startsWith('cf_tok_v2.')) return null;
+
+            const parts = tokenString.split('.');
+            if (parts.length < 4) return null;
+
+            const now = Date.now();
+            const iat = Number(parts[1]);
+            const exp = Number(parts[2]);
+            const base64Cipher = parts[3]
+                .replace(/-/g, '+')
+                .replace(/_/g, '/');
+
+            // 1. Verify token expiration
+            if (isNaN(exp) || now > exp) {
+                console.warn("CiteFlowAuth: Session token has expired.");
+                return null;
+            }
+
+            // 2. Decrypt cipher stream
+            const paddedBase64 = base64Cipher.padEnd(base64Cipher.length + (4 - base64Cipher.length % 4) % 4, '=');
+            const cipherStr = atob(paddedBase64);
+            const salt = `${INSTITUTIONAL_SALT}_${iat % 99991}`;
+            let plainChars = [];
+
+            for (let i = 0; i < cipherStr.length; i++) {
+                const cipherCode = cipherStr.charCodeAt(i);
+                const saltCode = salt.charCodeAt(i % salt.length);
+                const plainCode = cipherCode ^ saltCode ^ ((i * 17) & 0xFF);
+                plainChars.push(String.fromCharCode(plainCode));
+            }
+
+            const jsonStr = decodeURIComponent(escape(plainChars.join('')));
+            const envelope = JSON.parse(jsonStr);
+
+            // 3. Verify envelope structure and version
+            if (!envelope || envelope.v !== 2 || !envelope.data || !envelope.sig) {
+                console.warn("CiteFlowAuth: Invalid session token envelope.");
+                return null;
+            }
+
+            // 4. Verify cryptographic signature (tampering detection)
+            const serialized = JSON.stringify(envelope.data);
+            const expectedSig = computeChecksum(`${serialized}:${envelope.iat}:${envelope.exp}`);
+            if (envelope.sig !== expectedSig) {
+                console.warn("CiteFlowAuth: Session tampering detected! Signature mismatch.");
+                return null;
+            }
+
+            return envelope;
+        } catch (e) {
+            console.warn("CiteFlowAuth: Failed to decrypt session token:", e.message);
+            return null;
+        }
+    }
+
+    /**
+     * Cache user metadata to localStorage with encrypted session token
+     */
+    function cacheUserInfo(user, role, profile = null) {
+        if (!user || !user.id) return null;
+
+        let firstName = profile?.first_name || user.user_metadata?.first_name || '';
+        let middleName = profile?.middle_name || user.user_metadata?.middle_name || '';
+        let lastName = profile?.last_name || user.user_metadata?.last_name || '';
+        let rawName = profile?.name || profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+
+        if (/^Krishnan\s+P\.?\s+Aquino$/i.test(rawName)) {
+            firstName = 'Krishnan Paolo';
+            middleName = 'Aquino';
+            lastName = 'Rabasto';
+            rawName = 'Krishnan Paolo A. Rabasto';
+        }
+
+        let formalName = rawName;
+        if (firstName || lastName) {
+            let mi = '';
+            if (middleName) {
+                const l = middleName.replace(/[^A-Za-z]/g, '').charAt(0);
+                if (l) mi = l.toUpperCase() + '.';
+            }
+            formalName = [firstName, mi, lastName].filter(Boolean).join(' ').trim();
+        } else if (rawName) {
+            const parts = rawName.split(/\s+/);
+            if (parts.length === 4) {
+                formalName = `${parts[0]} ${parts[1]} ${parts[2].charAt(0).toUpperCase()}. ${parts[3]}`;
+            } else if (parts.length === 3) {
+                if (/^[A-Z]\.?$/i.test(parts[1])) {
+                    formalName = `${parts[0]} ${parts[1].replace('.', '').toUpperCase()}. ${parts[2]}`;
+                } else {
+                    formalName = `${parts[0]} ${parts[1].charAt(0).toUpperCase()}. ${parts[2]}`;
+                }
+            }
+        }
+
+        const userInfo = {
+            id: user.id,
+            email: user.email || profile?.email || '',
+            name: formalName || rawName,
+            full_name: formalName || rawName,
+            first_name: firstName,
+            middle_name: middleName,
+            last_name: lastName,
+            role: role || user.user_metadata?.role || profile?.role || 'Faculty',
+            profileCompleted: profile ? Boolean(profile.profile_completed) : Boolean(user.user_metadata?.profile_completed ?? true),
+            mustChangePassword: profile ? Boolean(profile.must_change_password) : Boolean(user.user_metadata?.must_change_password ?? false),
+            department: profile?.department || user.user_metadata?.department || 'BSIT',
+            profilePhotoUrl: profile?.profile_photo_url || user.user_metadata?.profile_photo_url || null,
+            cachedAt: new Date().toISOString()
+        };
+
+        try {
+            const enc = encryptSessionPayload(userInfo);
+            if (enc) {
+                const storagePayload = {
+                    ...userInfo,
+                    __token: enc.token,
+                    __exp: enc.envelope.exp,
+                    __sig: enc.envelope.sig
+                };
+                localStorage.setItem(USER_CACHE_KEY, JSON.stringify(storagePayload));
+            } else {
+                localStorage.setItem(USER_CACHE_KEY, JSON.stringify(userInfo));
+            }
+        } catch (e) {
+            console.warn("CiteFlowAuth: Unable to cache user info to localStorage:", e);
+        }
+        return userInfo;
+    }
+
+    /**
+     * Retrieve cached user info, validating encryption, timestamp expiration, and anti-tampering guards
+     */
+    function getCachedUser() {
+        try {
+            const raw = localStorage.getItem(USER_CACHE_KEY);
+            if (!raw) return null;
+
+            let parsed;
+            try {
+                parsed = JSON.parse(raw);
+            } catch (_) {
+                return null;
+            }
+
+            if (!parsed || typeof parsed !== 'object') return null;
+
+            // 1. If encrypted token envelope is present, verify authenticity & timestamp
+            if (parsed.__token) {
+                const dec = decryptSessionPayload(parsed.__token);
+                if (!dec) {
+                    console.warn("CiteFlowAuth: Stored session is invalid or expired. Purging cache.");
+                    clearUserCache();
+                    return null;
+                }
+
+                // 2. Anti-tampering check: verify mirrored localStorage values match encrypted token payload
+                const tokenData = dec.data;
+                const isTampered =
+                    String(parsed.id) !== String(tokenData.id) ||
+                    String(parsed.role) !== String(tokenData.role) ||
+                    Boolean(parsed.profileCompleted) !== Boolean(tokenData.profileCompleted) ||
+                    Boolean(parsed.mustChangePassword) !== Boolean(tokenData.mustChangePassword);
+
+                if (isTampered) {
+                    console.warn("CiteFlowAuth: Critical security alert: Session cache tampering detected. Rejecting session.");
+                    clearUserCache();
+                    return null;
+                }
+
+                return tokenData;
+            }
+
+            // 2. Legacy fallback: auto-upgrade unencrypted session cache to encrypted token
+            if (parsed.id) {
+                const upgraded = cacheUserInfo(
+                    { id: parsed.id, email: parsed.email, user_metadata: parsed },
+                    parsed.role,
+                    parsed
+                );
+                return upgraded || parsed;
+            }
+
+            return null;
+        } catch (e) {
+            console.warn("CiteFlowAuth: Error retrieving cached user:", e);
+            return null;
+        }
+    }
+
+    /**
+     * Clears cached user info and session tokens from storage
+     */
+    function clearUserCache() {
+        try {
+            localStorage.removeItem(USER_CACHE_KEY);
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    /**
+     * Verify if the active cached session token is non-expired and untampered
+     */
+    function isSessionValid() {
+        return Boolean(getCachedUser());
+    }
+
+    /**
+     * Guard against session tampering on first-time login / onboarding flow
+     * Returns true if user session is valid and legitimately needs onboarding
+     */
+    async function verifyFirstTimeLoginSession() {
+        const sb = getClient();
+        if (!sb) return { valid: false, reason: 'auth_unavailable' };
+
+        try {
+            const { data: { session }, error } = await sb.auth.getSession();
+            if (error || !session || !session.user) {
+                clearUserCache();
+                return { valid: false, reason: 'no_server_session' };
+            }
+
+            const cached = getCachedUser();
+            if (cached && String(cached.id) !== String(session.user.id)) {
+                console.warn("CiteFlowAuth: Cached user mismatch with server session. Resetting cache.");
+                clearUserCache();
+            }
+
+            const { data: facultyRecord } = await sb
+                .from('faculty')
+                .select('id, auth_user_id, email, employee_id, profile_completed, must_change_password, first_login_completed_at, role, position')
+                .or(`auth_user_id.eq.${session.user.id},email.ilike.${session.user.email}`)
+                .maybeSingle();
+
+            const onboardingNeeded = needsOnboarding(facultyRecord, session.user);
+
+            // Re-cache encrypted state to lock in validated values
+            cacheUserInfo(session.user, facultyRecord?.role || 'Faculty', facultyRecord);
+
+            return {
+                valid: true,
+                user: session.user,
+                facultyRecord: facultyRecord,
+                needsOnboarding: onboardingNeeded
+            };
+        } catch (e) {
+            console.warn("CiteFlowAuth: Error verifying first-time session:", e);
+            return { valid: false, reason: e.message };
+        }
+    }
+
+    /**
+     * Whether this faculty user must complete first-time onboarding (once only).
+     * Faculty table is the primary source of truth; auth metadata is fallback.
+     */
+    function needsOnboarding(facultyProfile, user) {
+        const meta = user?.user_metadata || {};
+
+        // Onboarding is a one-time flow — once marked complete, never show again.
+        if (facultyProfile?.first_login_completed_at) {
+            return false;
+        }
+        if (facultyProfile?.profile_completed === true) {
+            return false;
+        }
+        if (meta.onboarding_completed_at || meta.first_login_completed_at) {
+            return false;
+        }
+        if (meta.profile_completed === true) {
+            return false;
+        }
+
+        if (facultyProfile) {
+            if (facultyProfile.must_change_password === true) {
+                return true;
+            }
+            if (facultyProfile.profile_completed === false) {
+                return true;
+            }
+            if (facultyProfile.auth_user_id && facultyProfile.profile_completed == null) {
+                return true;
+            }
+        }
+
+        if (meta.must_change_password === true) {
+            return true;
+        }
+        if (meta.profile_completed === false) {
+            return true;
+        }
+
+        return false;
+    }
+
+    function isOnboardingComplete(facultyProfile, user) {
+        return !needsOnboarding(facultyProfile, user);
+    }
+
+    function isFacultyPortalRole(role, facultyProfile) {
+        // A linked public.faculty row is enough for the faculty portal.
+        if (facultyProfile && facultyProfile.id != null) return true;
+        const r = String(role || facultyProfile?.role || facultyProfile?.position || '').toLowerCase();
+        return !r
+            || r === 'faculty'
+            || r.includes('chair')
+            || r === 'dean'
+            || r.includes('secretary')
+            || r === 'admin'
+            || r === 'administrator';
+    }
+
+    function isAdminPortalRole(role, facultyProfile) {
+        const r = String(role || '').toLowerCase();
+        const profileRole = String(facultyProfile?.role || facultyProfile?.position || '').toLowerCase();
+        if (r === 'admin' || r === 'administrator' || profileRole === 'admin' || profileRole === 'administrator') {
+            return true;
+        }
+        if (profileRole === 'dean' || profileRole.includes('secretary')) {
+            return true;
+        }
+        if (profileRole.includes('chair') && facultyProfile?.admin_access === true) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Authenticate user with Email & Password and resolve the correct destination
+     * @param {string} email 
+     * @param {string} password 
+     * @returns {Promise<{ user: object, role: string, destination: string }>}
+     */
+    async function login(email, password, options = {}) {
+        const sb = getClient();
+        if (!sb) throw new Error("Authentication service is unavailable. Please try again later.");
+
+        const cleanEmail = email.trim();
+        const { data: authData, error: authError } = await sb.auth.signInWithPassword({
+            email: cleanEmail,
+            password: password
+        });
+
+        if (authError) throw authError;
+
+        let user = authData?.user;
+        let session = authData?.session || null;
+        if (!user) throw new Error("No user account returned from authentication.");
+
+        // Confirm persisted session before any redirect.
+        if (!session?.user) {
+            const confirmed = await waitForSession({ timeoutMs: 5000 });
+            session = confirmed;
+            user = confirmed?.user || user;
+        }
+        if (!session?.user) {
+            throw new Error("Login succeeded but the session could not be confirmed. Please try again.");
+        }
+
+        console.info('[AUTH TRACE] LOGIN SUCCESS', {
+            hasSession: !!session,
+            hasUser: !!session.user,
+            authUserId: session.user.id || null,
+            expiresAt: session.expires_at || null
+        });
+
+        // Check user role in metadata
+        let role = String(user.user_metadata?.role || '').trim().toLowerCase();
+
+        // Check if user is in admin_profiles
+        let adminProfile = null;
+        try {
+            const adminLookup = await sb
+                .from('admin_profiles')
+                .select('id, role, department')
+                .eq('id', user.id)
+                .maybeSingle();
+            if (!adminLookup.error && adminLookup.data) {
+                adminProfile = adminLookup.data;
+                const admRole = String(adminProfile.role || '').trim().toLowerCase();
+                if (admRole) role = admRole;
+            }
+        } catch (_) {}
+
+        // Prefer auth_user_id match; avoid maybeSingle crash on duplicate emails.
+        let facultyProfile = null;
+        const byAuth = await sb
+            .from('faculty')
+            .select('*')
+            .eq('auth_user_id', user.id)
+            .order('id', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+        if (!byAuth.error && byAuth.data) {
+            facultyProfile = byAuth.data;
+        } else {
+            const byEmail = await sb
+                .from('faculty')
+                .select('*')
+                .or(`email.ilike.${cleanEmail},existing_email.ilike.${cleanEmail}`)
+                .order('id', { ascending: true })
+                .limit(5);
+            if (byEmail.error && byEmail.error.code !== 'PGRST116') {
+                console.warn("CiteFlowAuth: Warning fetching faculty profile:", byEmail.error.message);
+            }
+            const rows = byEmail.data || [];
+            facultyProfile = rows.find((row) => String(row.auth_user_id || '') === String(user.id))
+                || rows.find((row) => !row.auth_user_id)
+                || rows[0]
+                || null;
+        }
+
+        // Helper to resolve relative file paths for both Live Server & Express
+        const isInsideSubfolder = window.location.pathname.toLowerCase().includes('/admin/') || window.location.pathname.toLowerCase().includes('/faculty/');
+        const prefix = isInsideSubfolder ? '../' : '';
+
+        // Determine effective role & destination
+        let destination = `${prefix}admin/dashboard.html`;
+
+        const isUserAdmin = Boolean(adminProfile)
+            || role === 'admin'
+            || role === 'administrator'
+            || isAdminPortalRole(role, facultyProfile);
+
+        const portalRole = isUserAdmin ? 'Admin' : (role || String(facultyProfile?.role || 'Faculty'));
+
+        if (isUserAdmin) {
+            cacheUserInfo(user, 'Admin', facultyProfile);
+            destination = `${prefix}admin/dashboard.html`;
+            try {
+                const meta = user.user_metadata || {};
+                let firstName = meta.first_name || '';
+                let lastName = meta.last_name || '';
+                if (!firstName && !lastName) {
+                    const rawName = meta.full_name || meta.name || user.email?.split('@')[0] || 'Administrator';
+                    const parts = String(rawName).trim().split(/\s+/);
+                    firstName = parts[0] || 'Administrator';
+                    lastName = parts.slice(1).join(' ') || '';
+                }
+                // Self-heals an administrator whose row was never created at
+                // registration. Without it wf_is_final_approver() stays false.
+                const { error: adminProfileError } = await sb.from('admin_profiles').upsert({
+                    id: user.id,
+                    email: user.email,
+                    first_name: firstName,
+                    last_name: lastName,
+                    role: 'Administrator',
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+                if (adminProfileError) {
+                    console.error(
+                        'CiteFlowAuth: could not sync the admin_profiles record on login. Workflow writes '
+                        + '(Grant Access, final approval) will be refused by RLS until it exists.',
+                        adminProfileError
+                    );
+                }
+            } catch (e) {
+                console.error('CiteFlowAuth: admin_profiles sync failed on login:', e);
+            }
+        } else if (facultyProfile || isFacultyPortalRole(role, facultyProfile)) {
+            const facultyRole = facultyProfile?.role || portalRole || 'Faculty';
+            cacheUserInfo(user, facultyRole, facultyProfile);
+
+            if (needsOnboarding(facultyProfile, user)) {
+                destination = `${prefix}onboarding.html`;
+            } else {
+                destination = `${prefix}faculty/dashboard.html`;
+            }
+        } else {
+            cacheUserInfo(user, portalRole || 'User', facultyProfile);
+            destination = `${prefix}faculty/dashboard.html`;
+        }
+
+        destination = resolvePostLoginDestination(destination, options.next || null);
+
+        return {
+            user,
+            session,
+            role: role || (facultyProfile ? 'Faculty' : 'User'),
+            facultyProfile,
+            destination
+        };
+    }
+
+    /**
+     * Institutional Admin Registration Passcode
+     */
+    const VALID_ADMIN_PASSCODES = ['CITE-ADMIN-2026', 'CITEADMIN2026', 'CTU-CITE-ADMIN'];
+
+    /**
+     * Register a new Administrator with institutional authorization check
+     * @param {object} params
+     * @param {string} params.firstName
+     * @param {string} params.lastName
+     * @param {string} params.email
+     * @param {string} params.employeeId
+     * @param {string} params.adminPasscode
+     * @param {string} params.password
+     */
+    async function registerAdmin({ firstName, lastName, email, employeeId, adminPasscode, password }) {
+        const sb = getClient();
+        if (!sb) throw new Error("Authentication service is unavailable. Please try again later.");
+
+        // 1. Verify Admin Passcode
+        const cleanPasscode = (adminPasscode || '').trim().toUpperCase();
+        if (!VALID_ADMIN_PASSCODES.includes(cleanPasscode)) {
+            throw new Error("Invalid Admin Authorization Passcode. Registration is restricted to designated administrators.");
+        }
+
+        const cleanEmail = email.trim();
+        const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+
+        // 2. Sign up user as Admin in Supabase Auth
+        const { data: authData, error: authError } = await sb.auth.signUp({
+            email: cleanEmail,
+            password: password,
+            options: {
+                data: {
+                    first_name: firstName.trim(),
+                    last_name: lastName.trim(),
+                    full_name: fullName,
+                    employee_id: employeeId.trim(),
+                    role: 'Admin',
+                    department: 'CITE Administration',
+                    profile_completed: true,
+                    must_change_password: false
+                }
+            }
+        });
+
+        if (authError) throw authError;
+
+        // 3. Immediately insert newly registered administrator into public.admin_profiles table
+        if (authData?.user?.id) {
+            try {
+                // This row is what wf_is_final_approver() reads, so losing it
+                // silently leaves an administrator unable to grant workflow
+                // access or approve anything. Report the failure loudly.
+                const { error: adminProfileError } = await sb.from('admin_profiles').upsert({
+                    id: authData.user.id,
+                    first_name: firstName.trim(),
+                    last_name: lastName.trim(),
+                    email: cleanEmail,
+                    role: 'Administrator',
+                    department: 'CITE Administration',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+                if (adminProfileError) {
+                    console.error(
+                        'CiteFlowAuth: could not create the admin_profiles record. This account will not be '
+                        + 'recognised as an administrator until it exists (see admin/018_fix_admin_final_approver.sql).',
+                        adminProfileError
+                    );
+                }
+            } catch (e) {
+                console.error("CiteFlowAuth: failed creating admin_profiles record during registration:", e);
+            }
+        }
+
+        return authData;
+    }
+
+    /**
+     * Register a new user (general)
+     */
+    async function register({ firstName, lastName, email, employeeId, department, password }) {
+        const sb = getClient();
+        if (!sb) throw new Error("Authentication service is unavailable. Please try again later.");
+
+        const cleanEmail = email.trim();
+        const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+
+        const { data: authData, error: authError } = await sb.auth.signUp({
+            email: cleanEmail,
+            password: password,
+            options: {
+                data: {
+                    first_name: firstName.trim(),
+                    last_name: lastName.trim(),
+                    full_name: fullName,
+                    employee_id: employeeId.trim(),
+                    department: department || 'BSIT',
+                    role: 'Faculty',
+                    profile_completed: false,
+                    must_change_password: false
+                }
+            }
+        });
+
+        if (authError) throw authError;
+        return authData;
+    }
+
+    /**
+     * Faculty IDs are not a single institutional format. Accept a trimmed
+     * alphanumeric value with common separators, and keep the entered text.
+     */
+    const FACULTY_EMPLOYEE_ID_MAX_LENGTH = 64;
+    const FACULTY_EMPLOYEE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 \-_.\/]*$/;
+    const FACULTY_ID_REQUIRED_MESSAGE = 'Please enter your Faculty ID Number.';
+
+    function normalizeFacultyEmployeeId(value) {
+        return String(value || '').trim();
+    }
+
+    function validateFacultyEmployeeId(value) {
+        const employeeId = normalizeFacultyEmployeeId(value);
+        if (!employeeId || employeeId.length > FACULTY_EMPLOYEE_ID_MAX_LENGTH || !FACULTY_EMPLOYEE_ID_PATTERN.test(employeeId)) {
+            return { valid: false, message: FACULTY_ID_REQUIRED_MESSAGE };
+        }
+        return { valid: true, employeeId };
+    }
+
+    /**
+     * Profile saves may keep an already-stored Faculty ID unchanged.
+     * A new or edited value must be a non-empty, reasonable identifier.
+     */
+    function resolveFacultyEmployeeIdForSave(enteredValue, currentValue) {
+        const employeeId = normalizeFacultyEmployeeId(enteredValue);
+        const current = normalizeFacultyEmployeeId(currentValue);
+        if (!employeeId) {
+            return { valid: false, message: FACULTY_ID_REQUIRED_MESSAGE };
+        }
+        const format = validateFacultyEmployeeId(employeeId);
+        if (format.valid) return format;
+        if (current && employeeId === current) {
+            return { valid: true, employeeId: current };
+        }
+        return format;
+    }
+
+    function facultyEmployeeIdConflictMessage(error) {
+        if (!error) return '';
+        const code = String(error.code || '');
+        const text = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase();
+        const uniqueViolation = code === '23505'
+            || text.includes('duplicate key')
+            || text.includes('unique constraint')
+            || text.includes('already exists');
+        if (!uniqueViolation) return '';
+        if (text.includes('email') && !text.includes('employee_id')) return '';
+        return 'This Faculty ID Number is already assigned to another faculty member.';
+    }
+
+    async function assertFacultyEmployeeIdAvailable(employeeId, facultyRowId) {
+        const sb = getClient();
+        const normalized = normalizeFacultyEmployeeId(employeeId);
+        if (!sb || !normalized) return;
+
+        const likePattern = normalized.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const { data, error } = await sb
+            .from('faculty')
+            .select('id')
+            .ilike('employee_id', likePattern)
+            .limit(5);
+
+        if (error) {
+            console.warn('CiteFlowAuth: faculty ID availability check skipped:', error.message);
+            return;
+        }
+
+        const conflict = (data || []).some((row) => String(row.id) !== String(facultyRowId ?? ''));
+        if (conflict) {
+            throw new Error('This Faculty ID Number is already assigned to another faculty member.');
+        }
+    }
+
+    function facultyRowBelongsToUser(row, user) {
+        if (!row) return false;
+        if (!row.auth_user_id) return true;
+        return String(row.auth_user_id) === String(user?.id || '');
+    }
+
+    async function findExistingFacultyForOnboarding(sb, user, facultyRecordId) {
+        if (facultyRecordId != null && String(facultyRecordId).trim() !== '') {
+            const byId = await sb
+                .from('faculty')
+                .select('id, auth_user_id')
+                .eq('id', facultyRecordId)
+                .maybeSingle();
+            if (!byId.error && byId.data && facultyRowBelongsToUser(byId.data, user)) {
+                return byId.data;
+            }
+        }
+
+        const byAuth = await sb
+            .from('faculty')
+            .select('id, auth_user_id')
+            .eq('auth_user_id', user.id)
+            .order('id', { ascending: true })
+            .limit(1);
+        if (!byAuth.error && byAuth.data && byAuth.data[0]) {
+            return byAuth.data[0];
+        }
+
+        if (user.email) {
+            const byEmail = await sb
+                .from('faculty')
+                .select('id, auth_user_id, email')
+                .ilike('email', user.email)
+                .order('id', { ascending: true })
+                .limit(5);
+            const match = (byEmail.data || []).find((row) => facultyRowBelongsToUser(row, user));
+            if (match) return match;
+        }
+
+        return null;
+    }
+
+    /**
+     * Complete the first-time onboarding flow (password change + profile details + photo upload)
+     * @param {object} params
+     * @param {string} params.newPassword
+     * @param {string} params.fullName
+     * @param {string} params.employeeId
+     * @param {string} params.department
+     * @param {string} params.phone
+     * @param {string} params.birthdate
+     * @param {string} params.sex
+     * @param {string} params.position
+     * @param {File|null} params.photoFile
+     * @param {string|number|null} params.facultyRecordId Existing faculty row to update
+     */
+    async function completeOnboarding({
+        newPassword,
+        firstName,
+        middleName,
+        lastName,
+        suffix,
+        fullName,
+        employeeId,
+        department,
+        phone,
+        birthdate,
+        sex,
+        academicRank,
+        role,
+        position,
+        photoFile,
+        facultyRecordId
+    }) {
+        const sb = getClient();
+        if (!sb) throw new Error("Authentication service is unavailable.");
+
+        const { data: { session }, error: sessionError } = await sb.auth.getSession();
+        if (sessionError || !session?.user) {
+            throw new Error("No active session found. Please log in again.");
+        }
+
+        const user = session.user;
+        const nowIso = new Date().toISOString();
+        let photoUrl = null;
+
+        // --- MIDDLE INITIAL CONVERSION LOGIC ---
+        let cleanMiddle = (middleName || '').trim();
+        if (cleanMiddle.length > 0) {
+            cleanMiddle = cleanMiddle.charAt(0).toUpperCase() + '.';
+        }
+
+        const fn = (firstName || '').trim();
+        const ln = (lastName || '').trim();
+        const sx = (suffix || '').trim();
+
+        const formattedFullName = `${fn} ${cleanMiddle ? cleanMiddle + ' ' : ''}${ln}${sx ? ' ' + sx : ''}`.trim();
+
+        // 1. Upload photo if provided
+        if (photoFile && photoFile.size > 0) {
+            const fileExt = photoFile.name.split('.').pop() || 'jpg';
+            const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+
+            const { error: uploadError } = await sb.storage
+                .from('faculty-profile-photos')
+                .upload(filePath, photoFile, {
+                    cacheControl: '3600',
+                    upsert: true
+                });
+
+            if (!uploadError) {
+                const { data: publicUrlData } = sb.storage
+                    .from('faculty-profile-photos')
+                    .getPublicUrl(filePath);
+                photoUrl = publicUrlData?.publicUrl || null;
+            } else {
+                console.warn("Photo upload notice:", uploadError.message);
+                throw new Error("Photo upload failed: " + uploadError.message);
+            }
+        }
+
+        // Resolve clean academic rank & role without scrambling
+        const targetRank = academicRank || (position && !['faculty', 'chairperson', 'admin', 'administrator'].includes(position.toLowerCase()) ? position : 'Instructor I');
+        const rawRole = String(role || (position && ['faculty', 'chairperson', 'admin', 'administrator'].includes(position.toLowerCase()) ? position : 'Faculty')).toLowerCase();
+        let targetRole = 'Faculty';
+        if (rawRole.includes('admin')) targetRole = 'Admin';
+        else if (rawRole.includes('chair')) targetRole = 'Chairperson';
+        else targetRole = 'Faculty';
+
+        const isAdmin = targetRole === 'Admin';
+
+        // 2. Update Supabase Auth User (Password & Metadata)
+        const updateAuthPayload = {
+            data: {
+                role: targetRole,
+                academic_rank: targetRank,
+                position: targetRank,
+                first_name: fn,
+                middle_name: cleanMiddle,
+                last_name: ln,
+                suffix: sx,
+                full_name: formattedFullName,
+                employee_id: employeeId,
+                department: department,
+                phone: phone,
+                profile_photo_url: photoUrl,
+                profile_completed: true,
+                must_change_password: false,
+                onboarding_completed_at: nowIso
+            }
+        };
+
+        if (newPassword && newPassword.trim().length >= 8) {
+            updateAuthPayload.password = newPassword;
+        }
+
+        const { error: updateAuthError } = await sb.auth.updateUser(updateAuthPayload);
+        if (updateAuthError) throw updateAuthError;
+
+        // Refresh session so updated metadata is available on the next page load
+        await sb.auth.refreshSession();
+
+        // 3. Upsert / Update public.faculty profile
+        const profilePayload = {
+            auth_user_id: user.id,
+            name: formattedFullName,
+            full_name: formattedFullName,
+            first_name: fn || null,
+            middle_name: cleanMiddle || null,
+            last_name: ln || null,
+            suffix: sx || null,
+            employee_id: employeeId,
+            department: department,
+            phone: phone || null,
+            birthdate: birthdate || null,
+            sex: sex || null,
+            academic_rank: targetRank,
+            position: targetRank,
+            role: targetRole,
+            admin_access: isAdmin,
+            email: user.email,
+            status: 'Active',
+            profile_completed: true,
+            must_change_password: false,
+            first_login_completed_at: nowIso,
+            updated_at: nowIso
+        };
+
+        if (photoUrl) {
+            profilePayload.profile_photo_url = photoUrl;
+        }
+
+        // Update the linked faculty row in place. Do not insert a second row,
+        // and do not replace an auth_user_id that is already set.
+        const existingFaculty = await findExistingFacultyForOnboarding(sb, user, facultyRecordId);
+        let profileError = null;
+
+        if (existingFaculty?.id != null) {
+            const updatePayload = { ...profilePayload };
+            if (existingFaculty.auth_user_id) {
+                delete updatePayload.auth_user_id;
+            }
+            const updated = await sb
+                .from('faculty')
+                .update(updatePayload)
+                .eq('id', existingFaculty.id);
+            profileError = updated.error;
+        } else {
+            const upserted = await sb
+                .from('faculty')
+                .upsert(profilePayload, { onConflict: 'auth_user_id' });
+            profileError = upserted.error;
+
+            if (profileError) {
+                console.warn("CiteFlowAuth: Upsert failed (likely no UNIQUE on auth_user_id):", profileError.message, "— trying update fallback.");
+                const { error: updateErr1 } = await sb
+                    .from('faculty')
+                    .update(profilePayload)
+                    .eq('auth_user_id', user.id);
+
+                if (updateErr1) {
+                    console.warn("CiteFlowAuth: Update by auth_user_id failed:", updateErr1.message, "— trying by email.");
+                    const emailPayload = { ...profilePayload };
+                    delete emailPayload.auth_user_id;
+                    const { error: updateErr2 } = await sb
+                        .from('faculty')
+                        .update(emailPayload)
+                        .eq('email', user.email);
+                    profileError = updateErr2;
+                } else {
+                    profileError = null;
+                }
+            }
+        }
+
+        if (profileError) {
+            const duplicateMessage = facultyEmployeeIdConflictMessage(profileError);
+            if (duplicateMessage) throw new Error(duplicateMessage);
+            console.error("CiteFlowAuth: Faculty profile update failed:", profileError.message);
+            throw new Error("Profile record save failed: " + profileError.message);
+        }
+
+        // If Admin role, sync to admin_profiles
+        if (isAdmin) {
+            try {
+                await sb.from('admin_profiles').upsert({
+                    id: user.id,
+                    email: user.email,
+                    first_name: fn,
+                    last_name: ln,
+                    role: 'Administrator',
+                    department: department,
+                    updated_at: nowIso
+                });
+            } catch (err) {
+                console.warn("CiteFlowAuth: admin_profiles sync notice on onboarding:", err?.message || err);
+            }
+        }
+
+        // 4. Also update public.profiles for messenger name resolution
+        try {
+            await sb.from('profiles').upsert({
+                id: user.id,
+                email: user.email,
+                first_name: fn,
+                last_name: ln,
+                role: targetRole
+            }, { onConflict: 'id' });
+        } catch (_) {
+            // Non-critical — profiles is a secondary source
+        }
+
+        // Cache updated info so login routing uses completed state immediately
+        cacheUserInfo(user, targetRole, profilePayload);
+
+        return { success: true };
+    }
+
+    /**
+     * Sign out the active user and redirect to login
+     */
+    async function logout() {
+        const sb = getClient();
+        console.warn('[AUTH TRACE] SIGN OUT requested', {
+            path: window.location.pathname,
+            userId: (await currentStoredSession(sb))?.user?.id || null
+        });
+        clearUserCache();
+        if (sb) {
+            try {
+                await sb.auth.signOut();
+            } catch (e) {
+                console.error('[AUTH TRACE] SIGN OUT failed', e);
+            }
+        }
+        const isSub = window.location.pathname.toLowerCase().includes('/admin/') || window.location.pathname.toLowerCase().includes('/faculty/');
+        window.location.href = isSub ? '../login.html' : 'login.html';
+    }
+
+    /**
+     * Look up the complete persisted Supabase session JSON directly from localStorage.
+     */
+    function getPersistedSupabaseSession() {
+        try {
+            const keys = Object.keys(localStorage);
+            const sbKey = keys.find((k) => (k.startsWith('sb-') && k.endsWith('-auth-token')) || k.includes('auth-token') || k === 'supabase.auth.token');
+            if (!sbKey) return null;
+            let raw = localStorage.getItem(sbKey);
+            if (!raw) return null;
+            if (typeof raw === 'string' && raw.startsWith('cf_enc_v2::') && window.CiteFlowStorageCipher?.decrypt) {
+                raw = window.CiteFlowStorageCipher.decrypt(raw);
+            }
+            let parsed = null;
+            try {
+                parsed = JSON.parse(raw);
+            } catch (_) {
+                return null;
+            }
+            if (parsed && typeof parsed === 'object') {
+                if (parsed.access_token && parsed.refresh_token) {
+                    return parsed;
+                }
+                if (parsed.currentSession?.access_token && parsed.currentSession?.refresh_token) {
+                    return parsed.currentSession;
+                }
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    /**
+     * Safe session getter using the shared Supabase client.
+     */
+    async function rehydrateClientSession(sb) {
+        const client = sb || getClient();
+        if (!client?.auth) return null;
+        return currentStoredSession(client);
+    }
+
+    /**
+     * Wait until Supabase has restored (or confirmed absence of) a session.
+     * Distinguishes AUTH_INITIALIZING from AUTH_UNAUTHENTICATED.
+     */
+    async function waitForSessionInternal(options = {}) {
+        const sb = options.client || getClient();
+        if (!sb?.auth) return null;
+        const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 6000;
+
+        try {
+            const first = await currentStoredSession(sb);
+            if (first?.user && first?.access_token) {
+                return first;
+            }
+        } catch (_) {}
+
+        return new Promise((resolve) => {
+            let settled = false;
+            let subscription = null;
+            let pollTimer = null;
+
+            const finish = (session) => {
+                if (settled) return;
+                settled = true;
+                if (pollTimer) clearInterval(pollTimer);
+                try { subscription?.unsubscribe?.(); } catch (_) {}
+                if (session?.user && session?.access_token) {
+                    lastKnownSession = session;
+                }
+                resolve(session || null);
+            };
+
+            try {
+                const result = sb.auth.onAuthStateChange((event, session) => {
+                    if (session?.user && session?.access_token) {
+                        finish(session);
+                        return;
+                    }
+                    if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                        currentStoredSession(sb).then((stored) => {
+                            if (stored?.user && stored?.access_token) finish(stored);
+                        }).catch(() => {});
+                    }
+                });
+                subscription = result?.data?.subscription || null;
+            } catch (_) {
+                finish(null);
+                return;
+            }
+
+            // Fast periodic check in case onAuthStateChange fired before listener was attached
+            let pollCount = 0;
+            pollTimer = setInterval(() => {
+                pollCount += 1;
+                currentStoredSession(sb).then((stored) => {
+                    if (stored?.user && stored?.access_token) {
+                        finish(stored);
+                    } else if (pollCount > 30) {
+                        if (pollTimer) clearInterval(pollTimer);
+                    }
+                }).catch(() => {});
+            }, 100);
+
+            setTimeout(() => {
+                currentStoredSession(sb).then((stored) => {
+                    finish(stored || null);
+                }).catch(() => finish(null));
+            }, timeoutMs);
+        });
+    }
+
+    async function waitForSession(options = {}) {
+        const client = options.client || getClient();
+        if (!client) return null;
+        if (client._citeFlowWaitForSessionInFlight) {
+            return client._citeFlowWaitForSessionInFlight;
+        }
+        const pending = waitForSessionInternal(options)
+            .finally(() => { client._citeFlowWaitForSessionInFlight = null; });
+        client._citeFlowWaitForSessionInFlight = pending;
+        return pending;
+    }
+
+    /**
+     * Token refresh is shared across the whole page.
+     *
+     * Priority:
+     * 1. Valid existing session -> use immediately
+     * 2. Missing/expired session with refresh token -> single-flight refresh
+     * 3. Refresh already in progress -> await existing promise
+     * 4. 429 -> backoff without recursive refresh loops (60s cooldown)
+     */
+    const REFRESH_COOLDOWN_MS = 60000;
+    let refreshInFlight = null;
+    let refreshBlockedUntil = 0;
+    let refreshState = 'NONE'; // 'NONE' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+    let sessionWaitInFlight = null;
+    let lastKnownSession = null;
+
+    function isRateLimited(error) {
+        const status = Number(error?.status || error?.statusCode || 0);
+        const message = String(error?.message || '').toLowerCase();
+        return status === 429
+            || message.includes('rate limit')
+            || message.includes('too many requests');
+    }
+
+    function getRefreshState() {
+        return refreshState;
+    }
+
+    function getLastKnownSession() {
+        return lastKnownSession;
+    }
+
+    function readOriginalSession(client) {
+        const read = client?._citeFlowOriginalGetSession || client?.auth?.getSession?.bind(client.auth);
+        return read ? read() : Promise.resolve({ data: { session: null } });
+    }
+
+    function tokenExpiry(session) {
+        let expiresAt = Number(session?.expires_at || 0);
+        if (!expiresAt && session?.access_token) {
+            try {
+                const parts = session.access_token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                    if (payload?.exp) expiresAt = Number(payload.exp);
+                }
+            } catch (_) {}
+        }
+        return expiresAt;
+    }
+
+    function oversizedMetadataKeys(session) {
+        const meta = session?.user?.user_metadata || {};
+        const clear = {};
+        Object.keys(meta).forEach((key) => {
+            const value = meta[key];
+            if (typeof value === 'string' && value.startsWith('data:') && value.length > 512) {
+                clear[key] = null;
+            }
+        });
+        return clear;
+    }
+
+    /**
+     * A data-URL stored in user_metadata is copied into every access token.
+     * Supabase then sends that token as Authorization, and the storage gateway
+     * rejects the oversized header. Refresh with the refresh token only, clear
+     * those fields, then refresh once more so the client holds a normal token.
+     */
+    async function recoverOversizedSession(client) {
+        const sb = client || getClient();
+        if (!sb?.auth || sb._citeFlowRecoverInFlight) return sb?._citeFlowRecoverInFlight || null;
+        sb._citeFlowRecoverInFlight = (async () => {
+            sb._citeFlowGuardBusy = true;
+            const { data } = await readOriginalSession(sb);
+            const existing = data?.session || null;
+            if (!existing?.refresh_token) return existing;
+            const oversized = (existing.access_token || '').length > 8000 || Object.keys(oversizedMetadataKeys(existing)).length > 0;
+            if (!oversized) return existing;
+
+            if (Date.now() < (window.__citeflowRefreshCooldownUntil || 0)) return existing;
+            try {
+                const lock = JSON.parse(localStorage.getItem('citeflow_auth_refresh_lock') || 'null');
+                if (lock && Number(lock.until) > Date.now()) return existing;
+            } catch (_) {}
+            const recoverOwner = `recover-${Date.now()}`;
+            try {
+                localStorage.setItem('citeflow_auth_refresh_lock', JSON.stringify({
+                    owner: recoverOwner,
+                    until: Date.now() + 8000
+                }));
+            } catch (_) {}
+            let response;
+            try {
+                response = await fetch(`${window.__SUPABASE_URL__}/auth/v1/token?grant_type=refresh_token`, {
+                    method: 'POST',
+                    headers: {
+                        apikey: window.__SUPABASE_ANON__,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ refresh_token: existing.refresh_token })
+                });
+                const body = await response.json().catch(() => null);
+                if (!response.ok || !body?.access_token || !body?.refresh_token) return existing;
+
+                const applied = await sb.auth.setSession({
+                    access_token: body.access_token,
+                    refresh_token: body.refresh_token
+                });
+                let session = applied?.data?.session || null;
+                const clear = oversizedMetadataKeys(session);
+                if (Object.keys(clear).length) {
+                    const updated = await sb.auth.updateUser({ data: clear });
+                    if (!updated?.error && body.refresh_token) {
+                        const again = await fetch(`${window.__SUPABASE_URL__}/auth/v1/token?grant_type=refresh_token`, {
+                            method: 'POST',
+                            headers: {
+                                apikey: window.__SUPABASE_ANON__,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ refresh_token: body.refresh_token })
+                        });
+                        const next = await again.json().catch(() => null);
+                        if (again.ok && next?.access_token && next?.refresh_token) {
+                            const replaced = await sb.auth.setSession({
+                                access_token: next.access_token,
+                                refresh_token: next.refresh_token
+                            });
+                            session = replaced?.data?.session || session;
+                        }
+                    }
+                }
+                if (session?.user?.id && session?.access_token) lastKnownSession = session;
+                return session;
+            } finally {
+                try {
+                    const current = JSON.parse(localStorage.getItem('citeflow_auth_refresh_lock') || 'null');
+                    if (!current || current.owner === recoverOwner) localStorage.removeItem('citeflow_auth_refresh_lock');
+                } catch (_) {}
+            }
+        })().finally(() => {
+            sb._citeFlowGuardBusy = false;
+            sb._citeFlowRecoverInFlight = null;
+        });
+        return sb._citeFlowRecoverInFlight;
+    }
+
+    function installSessionGuard(client) {
+        if (!client?.auth?.getSession || client._citeFlowOriginalGetSession) return;
+        const original = client.auth.getSession.bind(client.auth);
+        client._citeFlowOriginalGetSession = original;
+        client.auth.getSession = async () => {
+            if (client._citeFlowGuardBusy) return original();
+            client._citeFlowGuardBusy = true;
+            try {
+                let first;
+                try {
+                    first = await original();
+                } catch (error) {
+                    first = { data: { session: null }, error };
+                }
+                let session = first?.data?.session;
+                if (!session?.access_token) {
+                    // GoTrue can answer getSession() with an empty session while
+                    // localStorage still holds the access token the auth guard
+                    // already accepted. Requests must use that token. Do not
+                    // refresh it and do not call setSession().
+                    const persisted = getPersistedSupabaseSession();
+                    const exp = tokenExpiry(persisted);
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    if (persisted?.user?.id && persisted?.access_token && (!exp || exp > nowSec)) {
+                        return { data: { session: persisted }, error: null };
+                    }
+                    return first;
+                }
+                const needsRecovery = session.access_token.length > 8000
+                    || Object.keys(oversizedMetadataKeys(session)).length > 0;
+                if (!needsRecovery) return first;
+                const recovered = await recoverOversizedSession(client);
+                if (recovered?.access_token) {
+                    return { data: { session: recovered }, error: null };
+                }
+                return first;
+            } finally {
+                client._citeFlowGuardBusy = false;
+            }
+        };
+    }
+
+    async function currentStoredSession(client) {
+        const sb = client || getClient();
+        if (!sb?.auth) return null;
+        if (sb._citeFlowSessionReadInFlight) return sb._citeFlowSessionReadInFlight;
+        sb._citeFlowSessionReadInFlight = (async () => {
+            try {
+                const { data } = await readOriginalSession(sb);
+                const session = data?.session || null;
+                if (session?.user?.id && session?.access_token) {
+                    lastKnownSession = session;
+                    return session;
+                }
+                return null;
+            } catch (_) {
+                return null;
+            } finally {
+                sb._citeFlowSessionReadInFlight = null;
+            }
+        })();
+        try {
+            return await sb._citeFlowSessionReadInFlight;
+        } catch (_) { return null; }
+    }
+
+    let freshSessionInFlight = null;
+
+    /**
+     * Refresh the session at most once at a time. Returns the best session
+     * available, which may be the existing one when a refresh is not possible.
+     */
+    async function refreshSessionShared(sb, force = false) {
+        const client = sb || getClient();
+        if (!client?.auth?.refreshSession) return null;
+
+        // Inspect client session first. If client has no refresh token, do NOT call refreshSession()!
+        const existing = (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
+        if ((existing?.access_token || '').length > 8000 || Object.keys(oversizedMetadataKeys(existing)).length) {
+            return recoverOversizedSession(client);
+        }
+        if (!existing?.refresh_token && !force) {
+            console.warn('[AUTH TRACE] refreshSessionShared skipped: No refresh token on client.');
+            return (existing?.access_token && existing?.user) ? existing : null;
+        }
+
+        // If session is still valid for > 30 seconds and not forced, reuse it without hitting auth endpoint
+        const nowSec = Math.floor(Date.now() / 1000);
+        let expiresAt = Number(existing?.expires_at || 0);
+        if (!expiresAt && existing?.access_token) {
+            try {
+                const parts = existing.access_token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                    if (payload?.exp) expiresAt = Number(payload.exp);
+                }
+            } catch (_) {}
+        }
+        if (!force && expiresAt && expiresAt > nowSec + 30) {
+            return existing;
+        }
+
+        // If a refresh is already in flight, await that exact promise
+        if (refreshInFlight) return refreshInFlight;
+
+        // 429 cooldown: do not hammer endpoint if recently rate-limited
+        if (Date.now() < refreshBlockedUntil) {
+            refreshState = 'FAILED';
+            return (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
+        }
+
+        refreshInFlight = (async () => {
+            refreshState = 'IN_PROGRESS';
+            try {
+                console.info('[AUTH TRACE] refresh started', { path: window.location.pathname });
+                const { data, error } = await client.auth.refreshSession();
+                if (error) {
+                    refreshState = 'FAILED';
+                    if (isRateLimited(error)) {
+                        refreshBlockedUntil = Date.now() + REFRESH_COOLDOWN_MS;
+                        console.warn('CiteFlowAuth: token refresh is rate limited. Continuing with the session already held.');
+                    } else {
+                        console.warn('[AUTH TRACE] SESSION REFRESH failed', error);
+                    }
+                    return (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
+                }
+                refreshState = 'COMPLETED';
+                const session = data?.session || null;
+                if (session?.user?.id && session?.access_token) {
+                    lastKnownSession = session;
+                }
+                console.info('[AUTH TRACE] refresh finished', {
+                    userId: session?.user?.id || null,
+                    expiresAt: session?.expires_at || null
+                });
+                return session || lastKnownSession || window.CiteFlowAuthGuard?.session;
+            } catch (error) {
+                refreshState = 'FAILED';
+                if (isRateLimited(error)) {
+                    refreshBlockedUntil = Date.now() + REFRESH_COOLDOWN_MS;
+                    console.warn('CiteFlowAuth: token refresh is rate limited (threw). Continuing with existing session.');
+                } else {
+                    console.warn('[AUTH TRACE] SESSION REFRESH threw', error);
+                }
+                return (await currentStoredSession(client)) || lastKnownSession || window.CiteFlowAuthGuard?.session;
+            } finally {
+                refreshInFlight = null;
+            }
+        })();
+
+        return refreshInFlight;
+    }
+
+    /**
+     * Return only a session confirmed by the shared Supabase client.
+     * Cached guard state is not sufficient because it cannot authenticate RPCs.
+     */
+    async function adoptSession(client, session) {
+        const stored = await currentStoredSession(client);
+        return stored?.user ? stored : null;
+    }
+
+    /**
+     * Ensure the shared Supabase client has an active, valid session ready for requests.
+     * Priority:
+     * 1. If client already holds a valid unexpired session, reuse it immediately.
+     * 2. If client is restoring session on page load/refresh, await waitForSession.
+     * 3. If valid session is near expiry (< 15s) and has refresh token, trigger single-flight refreshSessionShared.
+     */
+    async function ensureActiveSession(sb) {
+        const client = sb || getClient();
+        if (!client) return null;
+
+        if (freshSessionInFlight) return freshSessionInFlight;
+
+        freshSessionInFlight = (async () => {
+            const nowSec = Math.floor(Date.now() / 1000);
+            // A page change must reuse the session already in storage.
+            // getSession() asks GoTrue to refresh whenever the access token is
+            // inside its expiry margin, which rotates the refresh token and
+            // can wipe the session on the next page.
+            const persisted = getPersistedSupabaseSession();
+            const persistedExp = tokenExpiry(persisted);
+            if (persisted?.user?.id && persisted?.access_token && (!persistedExp || persistedExp > nowSec)) {
+                lastKnownSession = persisted;
+                console.info('[AUTH TRACE] session exists', {
+                    path: window.location.pathname,
+                    userId: persisted.user.id,
+                    source: 'storage'
+                });
+                return persisted;
+            }
+            const before = await currentStoredSession(client);
+            const recovered = await recoverOversizedSession(client);
+            if ((before?.access_token || '').length > 8000 && recovered?.user?.id && recovered?.access_token && recovered.access_token.length <= 8000) {
+                lastKnownSession = recovered;
+                return recovered;
+            }
+
+            // 1. Check if client already holds a live, unexpired session in its internal state
+            const stored = await currentStoredSession(client);
+            if (stored?.user?.id && stored?.access_token) {
+                let expiresAt = Number(stored.expires_at || 0);
+                if (!expiresAt) {
+                    try {
+                        const parts = stored.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) expiresAt = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
+                if (!expiresAt || expiresAt > nowSec + 15) {
+                    lastKnownSession = stored;
+                    return stored;
+                }
+            }
+
+            // 2. Await the client's session restoration (handles page load / storage rehydration)
+            if (!sessionWaitInFlight) {
+                sessionWaitInFlight = waitForSession({ timeoutMs: 8000, client })
+                    .finally(() => { sessionWaitInFlight = null; });
+            }
+            const waited = await sessionWaitInFlight;
+            if (waited?.user?.id && waited?.access_token) {
+                let expiresAt = Number(waited.expires_at || 0);
+                if (!expiresAt) {
+                    try {
+                        const parts = waited.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) expiresAt = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
+                if (!expiresAt || expiresAt > nowSec + 15) {
+                    lastKnownSession = waited;
+                    return waited;
+                }
+            }
+
+            // 3. Only refresh if the session is EXPIRED or within 15s of expiry AND has a refresh token
+            const candidate = waited || stored || lastKnownSession || window.CiteFlowAuthGuard?.session;
+            if (candidate?.refresh_token && candidate?.user) {
+                let expiresAt = Number(candidate.expires_at || 0);
+                if (!expiresAt && candidate.access_token) {
+                    try {
+                        const parts = candidate.access_token.split('.');
+                        if (parts.length === 3) {
+                            const p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (p?.exp) expiresAt = Number(p.exp);
+                        }
+                    } catch (_) {}
+                }
+                const isNearExpiry = Boolean(expiresAt && expiresAt <= nowSec + 15);
+                if (isNearExpiry) {
+                    const refreshed = await refreshSessionShared(client);
+                    if (refreshed?.user?.id && refreshed?.access_token) {
+                        lastKnownSession = refreshed;
+                        return refreshed;
+                    }
+                }
+            }
+
+            // 4. Return valid session if held
+            if (waited?.user?.id && waited?.access_token) return waited;
+            if (stored?.user?.id && stored?.access_token) return stored;
+            if (candidate?.user?.id && candidate?.access_token) return candidate;
+
+            return null;
+        })();
+
+        try {
+            return await freshSessionInFlight;
+        } finally {
+            freshSessionInFlight = null;
+        }
+    }
+
+    async function getFreshSession(sb) {
+        const client = sb || getClient();
+        if (!client) return null;
+        return ensureActiveSession(client);
+    }
+
+    function getDiagnosticSummary(sb) {
+        const client = sb || getClient();
+        const guard = window.CiteFlowAuthGuard;
+        const authGuardState = (guard?.state === 'AUTHENTICATED' || guard?.user?.id)
+            ? 'AUTHENTICATED'
+            : (guard?.state || 'NOT_AUTHENTICATED');
+
+        let clientSession = null;
+        try {
+            const { data } = client.auth ? client.auth.getSession() : { data: null };
+            clientSession = data?.session || null;
+        } catch (_) {}
+
+        return {
+            'AUTH GUARD': authGuardState,
+            'SUPABASE SESSION': clientSession ? 'PRESENT' : 'MISSING',
+            'ACCESS TOKEN': clientSession?.access_token ? 'PRESENT' : 'MISSING',
+            'REFRESH': refreshState
+        };
+    }
+
+    function isSafeInternalNext(nextPath) {
+        if (!nextPath || typeof nextPath !== 'string') return false;
+        const value = nextPath.trim();
+        if (!value.startsWith('/') && !value.startsWith('./') && !/^[a-z0-9_./?#&=%-]+$/i.test(value)) {
+            return false;
+        }
+        if (value.includes('://') || value.startsWith('//') || value.toLowerCase().includes('javascript:')) {
+            return false;
+        }
+        if (/login\.html|register\.html|forgot\.html/i.test(value)) return false;
+        return true;
+    }
+
+    function resolvePostLoginDestination(defaultDestination, nextPath) {
+        if (isSafeInternalNext(nextPath)) return nextPath;
+        return defaultDestination;
+    }
+
+    /**
+     * Get current session and user safely
+     */
+    async function getSession() {
+        return waitForSession({ timeoutMs: 8000 });
+    }
+
+    return {
+        login,
+        register,
+        registerAdmin,
+        completeOnboarding,
+        logout,
+        getSession,
+        waitForSession,
+        getFreshSession,
+        ensureActiveSession,
+        rehydrateClientSession,
+        getPersistedSupabaseSession,
+        adoptSession,
+        refreshSessionShared,
+        recoverOversizedSession,
+        getRefreshState,
+        getLastKnownSession,
+        getDiagnosticSummary,
+        ensureSharedClient,
+        resolvePostLoginDestination,
+        isSafeInternalNext,
+        cacheUserInfo,
+        getCachedUser,
+        getUser: getCachedUser,
+        clearUserCache,
+        isSessionValid,
+        verifyFirstTimeLoginSession,
+        validateFacultyEmployeeId,
+        resolveFacultyEmployeeIdForSave,
+        assertFacultyEmployeeIdAvailable,
+        facultyEmployeeIdConflictMessage,
+        encryptSessionPayload,
+        decryptSessionPayload,
+        getClient,
+        needsOnboarding,
+        isOnboardingComplete,
+        isFacultyPortalRole,
+        isAdminPortalRole,
+        AUTH_CLIENT_OPTIONS
+    };
+})();

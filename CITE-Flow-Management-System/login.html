@@ -1,503 +1,724 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>CTU – Login</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CiteFlow – Portal Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
+    
+    <!-- Supabase JS Client & Centralized Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="shared/supabase-config.js?v=auth-session-4"></script>
+    <script src="shared/auth.js?v=auth-nav-2"></script>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #9c2f1f;
+            --primary-dark: #621708;
+            --primary-light: #bc3926;
+            --primary-subtle: rgba(156, 47, 31, 0.08);
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --bg-body: #f8fafc;
+            --border-color: #e2e8f0;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --shadow-subtle: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+            --shadow-card: 0 20px 40px -15px rgba(98, 23, 8, 0.12);
+        }
 
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" 
-        integrity="sha512-x..." crossorigin="anonymous" referrerpolicy="no-referrer" />
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-  <!-- Supabase JS CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+        body {
+            font-family: 'Plus Jakarta Sans', 'Poppins', sans-serif;
+            min-height: 100vh;
+            background: var(--bg-body);
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+        .auth-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #ffffff;
+        }
 
-    body {
-      font-family: 'Poppins', sans-serif;
-      background: white;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      margin: 0;
-      position: relative;
-    }
+        /* LEFT SIDE - VISUAL BRANDING HERO */
+        .hero-side {
+            flex: 1.15;
+            position: relative;
+            background: url('assets/bldg1.jpg') center/cover no-repeat;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 48px;
+            overflow: hidden;
+        }
 
-    /* Faculty Icon - Top Right Corner */
-    .faculty-icon {
-      position: fixed;
-      top: 25px;
-      right: 30px;
-      width: 48px;
-      height: 48px;
-      background: #1e40af;
-      color: white;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.35rem;
-      cursor: pointer;
-      box-shadow: 0 4px 15px rgba(30, 64, 175, 0.25);
-      transition: all 0.3s ease;
-      z-index: 1000;
-    }
+        .hero-side::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(98, 23, 8, 0.85) 0%, rgba(156, 47, 31, 0.72) 100%);
+            z-index: 1;
+        }
 
-    .faculty-icon:hover {
-      background: #1e3a8a;
-      transform: scale(1.08);
-    }
+        .hero-header {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
 
-    .faculty-icon i {
-      transition: transform 0.3s ease;
-    }
+        .hero-logo {
+            width: 62px;
+            height: 62px;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3));
+        }
 
-    .faculty-icon:hover i {
-      transform: rotate(12deg);
-    }
+        .hero-brand {
+            color: #ffffff;
+        }
 
-    .layout {
-      width: 90%;
-      max-width: 1400px;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      gap: clamp(30px, 4vw, 80px);
-      padding: 40px 0;
-    }
+        .hero-brand h2 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
 
-    .form-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      text-align: center;
-    }
+        .hero-brand span {
+            font-size: 0.82rem;
+            opacity: 0.85;
+            font-weight: 500;
+        }
 
-    .logo {
-      width: clamp(4rem, 5.5vw, 5.125rem);
-      height: clamp(4rem, 5.5vw, 5.125rem);
-      border-radius: 50%;
-      object-fit: contain;
-      background: #efefef;
-      margin: 0 auto clamp(1rem, 2.2vw, 1.75rem);
-      box-shadow: 0 3px 12px rgba(0,0,0,0.07);
-    }
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 520px;
+            color: #ffffff;
+        }
 
-    h1 {
-      font-size: clamp(1.5rem, 2.2vw, 2rem);
-      font-weight: 700;
-      color: #000;
-      margin-bottom: 6px;
-    }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 30px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
 
-    .subtitle {
-      font-size: clamp(0.8125rem, 1vw, 0.875rem);
-      color: #666;
-      margin-bottom: clamp(1.5rem, 3vw, 2.625rem);
-    }
+        .hero-title {
+            font-size: clamp(2rem, 3.2vw, 2.75rem);
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -0.03em;
+            margin-bottom: 16px;
+        }
 
-    .image-area {
-      flex: 1.2;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
+        .hero-desc {
+            font-size: 1.02rem;
+            line-height: 1.6;
+            opacity: 0.9;
+            font-weight: 400;
+        }
 
-    .image-wrapper {
-      width: 100%;
-      max-width: 100%;
-      aspect-ratio: 4 / 4;
-      position: relative;
-      border-radius: 3.5rem;
-      overflow: hidden;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.1);
-    }
+        .hero-footer {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            padding-top: 24px;
+        }
 
-    .image-area img {
-      width: 105%;
-      height: 100%;
-      object-fit: cover;
-      object-position: center;
-      display: block;
-      clip-path: url(#roundedSlant);
-    }
+        .dept-badges {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
 
-    .field {
-      margin-bottom: clamp(1.125rem, 2vw, 1.5rem);
-      text-align: left;
-    }
+        .dept-logo {
+            width: 53px;
+            height: 53px;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-    label {
-      display: block;
-      font-size: 0.8125rem;
-      color: #333;
-      margin-bottom: 6px;
-      font-weight: 500;
-    }
+        .dept-badges > .dept-logo:hover,
+        .dept-logo-bit:hover {
+            transform: translateY(-4px) scale(1.08);
+        }
 
-    .input-box {
-      height: clamp(3rem, 3vw, 3.25rem);
-      background: #ffffff;
-      border: 1px solid #bbb;
-      border-radius: 0.875rem;
-      display: flex;
-      align-items: center;
-      padding: 0 15px;
-      gap: 12px;
-      transition: border-color 0.2s;
-      position: relative;
-    }
+        .dept-logo-bit {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 0;
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-    .input-box:focus-within {
-      border-color: #9c2f1f;
-      outline: 3px solid rgba(156,47,31,0.1);
-      outline-offset: 1px;
-    }
+        .dept-logo-bit::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 74%;
+            height: 74%;
+            transform: translate(-50%, -50%);
+            background: #ffffff;
+            border-radius: 50%;
+        }
 
-    .icon-square {
-      width: clamp(2.125rem, 2.5vw, 2.375rem);
-      height: clamp(2.125rem, 2.5vw, 2.375rem);
-      background: transparent;
-      color: #9c2f1f;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: clamp(0.9375rem, 1.1vw, 1rem);
-      flex-shrink: 0;
-    }
+        .dept-logo-bit .dept-logo {
+            position: relative;
+            z-index: 1;
+        }
 
-    input {
-      flex: 1;
-      border: none;
-      outline: none;
-      background: transparent;
-      font-size: 0.875rem;
-      font-family: inherit;
-      color: #111;
-    }
+        .hero-copyright {
+            font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.75);
+            font-weight: 500;
+        }
 
-    input::placeholder {
-      color: #9a9a9a;
-    }
+        /* RIGHT SIDE - FORM CONTAINER */
+        .form-side {
+            flex: 0.95;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px clamp(24px, 5vw, 64px);
+            background: #ffffff;
+            overflow-y: auto;
+        }
 
-    .password-wrapper {
-      position: relative;
-    }
+        .form-card {
+            width: 100%;
+            max-width: 440px;
+        }
 
-    .eye-btn {
-      background: none;
-      border: none;
-      font-size: 1.1rem;
-      color: #555;
-      cursor: pointer;
-      padding: 0 4px;
-      width: 28px;
-      flex-shrink: 0;
-      position: absolute;
-      right: 12px;
-    }
+        .form-header {
+            margin-bottom: 32px;
+        }
 
-    .options-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.8125rem;
-      color: #333;
-      margin-top: 10px;
-    }
+        .mobile-brand {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
 
-    .remember-box {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+        .mobile-brand img {
+            width: 53px;
+            height: 53px;
+            object-fit: contain;
+        }
 
-    .forgot-link {
-      color: #333;
-      text-decoration: none;
-    }
+        .form-title {
+            font-size: 1.85rem;
+            font-weight: 800;
+            color: var(--text-main);
+            letter-spacing: -0.02em;
+            margin-bottom: 6px;
+        }
 
-    .forgot-link:hover {
-      text-decoration: underline;
-    }
+        .form-subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
 
-    .login-btn {
-      width: 100%;
-      height: clamp(2.8125rem, 3vw, 3.125rem);
-      margin-top: clamp(1.125rem, 2vw, 1.5rem);
-      background: #9c2f1f;
-      color: white;
-      border: none;
-      border-radius: 0.75rem;
-      font-size: 0.9375rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s ease;
-    }
+        /* ALERTS / NOTICES */
+        .alert-banner {
+            display: none;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            margin-bottom: 22px;
+            line-height: 1.45;
+            animation: fadeIn 0.25s ease forwards;
+        }
 
-    .login-btn:hover {
-      background: #84261a;
-    }
+        .alert-banner.error {
+            display: flex;
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
 
-    .login-btn:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
+        .alert-banner.success {
+            display: flex;
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
 
-    /* Register Text */
-    .register-text {
-      text-align: center;
-      margin-top: 1rem;
-      font-size: 0.8125rem;
-      color: #555;
-    }
+        .alert-icon {
+            font-size: 1.1rem;
+            margin-top: 1px;
+            flex-shrink: 0;
+        }
 
-    .register-text a {
-      color: #000;
-      font-weight: 600;
-      text-decoration: none;
-    }
+        /* INPUT GROUPS */
+        .input-group {
+            margin-bottom: 20px;
+        }
 
-    .register-text a:hover {
-      text-decoration: underline;
-    }
+        .input-label {
+            display: block;
+            font-size: 0.86rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 8px;
+        }
 
-    .department-logos {
-      display: flex;
-      justify-content: center;
-      gap: 1rem;
-      margin-top: 1.5rem;
-    }
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
 
-    .dept-logo {
-      width: 50px;
-      height: 50px;
-      object-fit: contain;
-    }
+        .input-icon {
+            position: absolute;
+            left: 16px;
+            color: #94a3b8;
+            font-size: 1.05rem;
+            pointer-events: none;
+            transition: color 0.2s ease;
+        }
 
-    .message {
-      margin-top: 12px;
-      font-size: 0.85rem;
-      padding: 12px;
-      border-radius: 8px;
-      text-align: center;
-    }
-    .success { background: #d4edda; color: #155724; }
-    .error { background: #f8d7da; color: #721c24; }
+        .form-control {
+            width: 100%;
+            height: 50px;
+            padding: 0 16px 0 46px;
+            background: #ffffff;
+            border: 1.5px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 0.94rem;
+            font-family: inherit;
+            color: var(--text-main);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-    @media (max-width: 1024px) {
-      .faculty-icon {
-        top: 20px;
-        right: 20px;
-        width: 44px;
-        height: 44px;
-        font-size: 1.25rem;
-      }
-    }
+        .form-control:hover {
+            border-color: #cbd5e1;
+        }
 
-    @media (max-width: 640px) {
-      .layout {
-        width: 92%;
-        padding: 30px 0;
-      }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--primary-subtle);
+        }
 
-      .logo {
-        width: 70px;
-        height: 70px;
-      }
+        .form-control:focus + .input-icon,
+        .input-wrapper:focus-within .input-icon {
+            color: var(--primary);
+        }
 
-      h1 {
-        font-size: 26px;
-      }
+        .toggle-password {
+            position: absolute;
+            right: 14px;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 8px;
+            font-size: 1rem;
+            transition: color 0.2s ease;
+        }
 
-      .subtitle {
-        margin-bottom: 28px;
-      }
+        .toggle-password:hover {
+            color: var(--text-main);
+        }
 
-      .image-wrapper {
-        max-height: 45vh;
-      }
-    }
-  </style>
+        /* FORM OPTIONS */
+        .form-options {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 6px 0 26px;
+            font-size: 0.88rem;
+        }
+
+        .remember-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #475569;
+            font-weight: 500;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .remember-wrapper input[type="checkbox"] {
+            width: 17px;
+            height: 17px;
+            accent-color: var(--primary);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .forgot-link {
+            color: var(--primary);
+            font-weight: 600;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .forgot-link:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+
+        /* SUBMIT BUTTON */
+        .submit-btn {
+            width: 100%;
+            height: 52px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 10px 22px -6px rgba(156, 47, 31, 0.45);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 26px -6px rgba(156, 47, 31, 0.55);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.75;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2.5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #ffffff;
+            animation: spin 0.7s linear infinite;
+        }
+
+        /* FOOTER PROMPT */
+        .auth-footer {
+            margin-top: 32px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            font-size: 0.92rem;
+            color: var(--text-muted);
+        }
+
+        .auth-footer a {
+            color: var(--primary);
+            font-weight: 700;
+            text-decoration: none;
+            margin-left: 4px;
+            transition: color 0.2s ease;
+        }
+
+        .auth-footer a:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* RESPONSIVENESS */
+        @media (max-width: 960px) {
+            .hero-side {
+                display: none;
+            }
+
+            .mobile-brand {
+                display: flex;
+            }
+
+            .form-side {
+                flex: 1;
+                padding: 32px 24px;
+            }
+        }
+    </style>
 </head>
 <body>
 
-  <!-- SVG CLIP PATH -->
-  <svg width="0" height="0" style="position:absolute">
-    <defs>
-      <clipPath id="roundedSlant" clipPathUnits="objectBoundingBox">
-        <path d="M 0.00 0.10 Q 0.00 0.00 0.10 0.00 L 0.86 0.00 Q 0.96 0.00 0.93 0.14 L 0.78 0.92 Q 0.76 1.00 0.66 1.00 L 0.10 1.00 Q 0.00 1.00 0.00 0.90 Z"/>
-      </clipPath>
-    </defs>
-  </svg>
+    <div class="auth-container">
+        <!-- LEFT HERO SECTION -->
+        <section class="hero-side">
+            <div class="hero-header">
+                <img src="assets/ctu-logo.png" alt="CTU Logo" class="hero-logo">
+                <div class="hero-brand">
+                    <h2>CiteFlow</h2>
+                    <span>Faculty & Academic Management Portal</span>
+                </div>
+            </div>
 
-  <!-- Faculty Icon (Top Right) -->
-  <div class="faculty-icon" id="facultyIcon" title="Switch to Faculty Login">
-    <i class="fas fa-chalkboard-teacher"></i>
-  </div>
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <i class="fas fa-shield-alt"></i> Secure Institutional Access
+                </div>
+                <h1 class="hero-title">Streamline Your Academic Workflows.</h1>
+                <p class="hero-desc">
+                    Centralized platform for workload tracking, research records, document vault, and faculty portfolio management across COTE departments.
 
-  <div class="layout">
+                    
+                </p>
+            </div>
 
-    <div class="image-area">
-      <div class="image-wrapper">
-        <img src="bldg1.jpg" alt="University campus building">
-      </div>
+            <div class="hero-footer">
+                <div class="dept-badges">
+                    <span class="dept-logo-bit"><img src="assets/bit_logo.png" alt="BIT" title="Bachelor of Industrial Technology" class="dept-logo"></span>
+                    <img src="assets/bsit_logo.png" alt="BSIT" title="Bachelor of Science in Information Technology" class="dept-logo">
+                    <img src="assets/bsie_logo.png" alt="BSIE" title="Bachelor of Science in Industrial Engineering" class="dept-logo">
+                </div>
+                <div class="hero-copyright">
+                    © 2026 Cebu Technological University
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT LOGIN FORM SECTION -->
+        <section class="form-side">
+            <div class="form-card">
+                <div class="mobile-brand">
+                    <img src="assets/ctu-logo.png" alt="CTU Logo">
+                    <div>
+                        <h2 style="font-size: 1.25rem; font-weight: 800; color: #1e293b;">CiteFlow</h2>
+                        <span style="font-size: 0.8rem; color: #64748b;">Academic Management System</span>
+                    </div>
+                </div>
+
+                <div class="form-header">
+                    <h1 class="form-title">Welcome Back</h1>
+                    <p class="form-subtitle">Log in with your university credentials to continue</p>
+                </div>
+
+                <div id="alertBanner" class="alert-banner">
+                    <i id="alertIcon" class="fas fa-exclamation-circle alert-icon"></i>
+                    <span id="alertMessage"></span>
+                </div>
+
+                <form id="loginForm" autocomplete="on">
+                    <div class="input-group">
+                        <label class="input-label" for="email">Institutional Email</label>
+                        <div class="input-wrapper">
+                            <input 
+                                type="email" 
+                                id="email" 
+                                class="form-control" 
+                                placeholder="name@ctu.edu.ph" 
+                                required 
+                                autocomplete="email"
+                            >
+                            <i class="fas fa-envelope input-icon"></i>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label" for="password">Password</label>
+                        <div class="input-wrapper">
+                            <input 
+                                type="password" 
+                                id="password" 
+                                class="form-control" 
+                                placeholder="Enter your password" 
+                                required 
+                                autocomplete="current-password"
+                            >
+                            <i class="fas fa-lock input-icon"></i>
+                            <button type="button" class="toggle-password" id="togglePasswordBtn" aria-label="Toggle password visibility">
+                                <i class="fas fa-eye" id="toggleIcon"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-options">
+                        <label class="remember-wrapper">
+                            <input type="checkbox" id="rememberMe">
+                            <span>Remember this device</span>
+                        </label>
+                        <a href="forgot.html" class="forgot-link">Forgot Password?</a>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="submit-btn">
+                        <span class="btn-spinner" id="btnSpinner"></span>
+                        <span id="btnText">Sign In</span>
+                        <i class="fas fa-arrow-right" id="btnArrow"></i>
+                    </button>
+                </form>
+
+                <div class="auth-footer">
+                    <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 6px;">
+                        New faculty member? Initial accounts are issued by the College Administration.
+                    </p>
+                    <span style="font-size: 0.82rem;">Authorized College Admin? <a href="register.html">Admin Registration</a></span>
+                </div>
+            </div>
+        </section>
     </div>
 
-    <div class="form-area">
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('loginForm');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const rememberMeCheckbox = document.getElementById('rememberMe');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const btnSpinner = document.getElementById('btnSpinner');
+            const btnArrow = document.getElementById('btnArrow');
+            const alertBanner = document.getElementById('alertBanner');
+            const alertMessage = document.getElementById('alertMessage');
+            const alertIcon = document.getElementById('alertIcon');
+            const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+            const toggleIcon = document.getElementById('toggleIcon');
 
-      <img src="ctu-logo.png" alt="CTU logo" class="logo">
+            // Remember email only — users must sign in each visit (no auto-skip of login form).
+            const savedEmail = localStorage.getItem('citeflow_saved_email');
+            if (savedEmail) {
+                emailInput.value = savedEmail;
+                rememberMeCheckbox.checked = true;
+            }
 
-      <h1>Welcome Back!</h1>
-      <div class="subtitle">Access your CiteFlow account</div>
+            // Password Toggle
+            togglePasswordBtn.addEventListener('click', () => {
+                const isPassword = passwordInput.type === 'password';
+                passwordInput.type = isPassword ? 'text' : 'password';
+                toggleIcon.classList.toggle('fa-eye', !isPassword);
+                toggleIcon.classList.toggle('fa-eye-slash', isPassword);
+            });
 
-      <form id="loginForm">
-        <div class="field">
-          <label>Email</label>
-          <div class="input-box">
-            <div class="icon-square"><i class="far fa-envelope"></i></div>
-            <input type="email" id="email" placeholder="name@citeflow.edu.ph" required autocomplete="email">
-          </div>
-        </div>
+            // Show feedback alert
+            function showAlert(message, type = 'error') {
+                alertBanner.className = `alert-banner ${type}`;
+                alertMessage.textContent = message;
+                alertIcon.className = type === 'error' ? 'fas fa-exclamation-circle alert-icon' : 'fas fa-check-circle alert-icon';
+                alertBanner.style.display = 'flex';
+            }
 
-        <div class="field">
-          <label>Password</label>
-          <div class="input-box password-wrapper">
-            <div class="icon-square"><i class="fas fa-lock"></i></div>
-            <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
-            <button type="button" class="eye-btn" aria-label="Toggle password visibility">
-              <i class="far fa-eye-slash"></i>
-            </button>
-          </div>
-        </div>
+            function hideAlert() {
+                alertBanner.style.display = 'none';
+            }
 
-        <div class="options-bar">
-          <label class="remember-box">
-            <input type="checkbox">
-            Remember me
-          </label>
-          <a href="forgot.html" class="forgot-link">Forgot password?</a>
-        </div>
+            // Form Submit Handler
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideAlert();
 
-        <button type="submit" id="loginBtn" class="login-btn">Login</button>
+                const email = emailInput.value.trim();
+                const password = passwordInput.value;
 
-        <div id="message" class="message" style="display:none;"></div>
-      </form>
+                if (!email || !password) {
+                    showAlert('Please enter both email and password.');
+                    return;
+                }
 
-      <!-- Register Text - Brought Back -->
-      <div class="register-text">
-        Don't have an account? <a href="register.html">Register</a>
-      </div>
+                // UI loading state
+                submitBtn.disabled = true;
+                btnText.textContent = 'Signing in...';
+                btnSpinner.style.display = 'inline-block';
+                btnArrow.style.display = 'none';
 
-      <div class="department-logos">
-        <img src="bit_logo.png" alt="BIT Logo" class="dept-logo">
-        <img src="bsit_logo.png" alt="BSIT Logo" class="dept-logo">
-        <img src="bsie_logo.png" alt="BSIE Logo" class="dept-logo">
-      </div>
+                try {
+                    // Remember email handling
+                    if (rememberMeCheckbox.checked) {
+                        localStorage.setItem('citeflow_saved_email', email);
+                    } else {
+                        localStorage.removeItem('citeflow_saved_email');
+                    }
 
-    </div>
+                    // Authenticate using Centralized Auth Engine
+                    const nextParam = new URLSearchParams(window.location.search).get('next');
+                    const result = await CiteFlowAuth.login(email, password, { next: nextParam });
 
-  </div>
+                    if (!result?.session?.user) {
+                        throw new Error('Login succeeded but the session could not be confirmed. Please try again.');
+                    }
 
-  <script>
-    // ================== SUPABASE CONFIG ==================
-    const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
-    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+                    showAlert('Login successful! Redirecting...', 'success');
 
-    const { createClient } = supabase;
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+                    // Route only after session is confirmed.
+                    console.info('[AUTH TRACE] BEFORE REDIRECT', {
+                        hasSession: !!result.session,
+                        hasUser: !!result.session?.user,
+                        authUserId: result.session?.user?.id || null,
+                        expiresAt: result.session?.expires_at || null,
+                        destination: result.destination
+                    });
+                    window.location.replace(result.destination);
 
-    // Password visibility toggle
-    document.addEventListener('DOMContentLoaded', function() {
-      const eyeBtns = document.querySelectorAll('.eye-btn');
-      eyeBtns.forEach(btn => {
-        const input = btn.parentElement.querySelector('input');
-        const icon = btn.querySelector('i');
+                } catch (err) {
+                    console.error('Login error:', err);
+                    let msg = 'Invalid email or password. Please verify your credentials.';
 
-        btn.addEventListener('click', function() {
-          if (input.type === 'password') {
-            input.type = 'text';
-            icon.classList.remove('fa-eye-slash');
-            icon.classList.add('fa-eye');
-          } else {
-            input.type = 'password';
-            icon.classList.remove('fa-eye');
-            icon.classList.add('fa-eye-slash');
-          }
+                    if (err.message && err.message.includes('Invalid login credentials')) {
+                        msg = 'Incorrect email or password. Please try again.';
+                    } else if (err.message && err.message.includes('Email not confirmed')) {
+                        msg = 'Your email has not been confirmed yet. Please check your inbox.';
+                    } else if (err.message && err.message.includes('Failed to fetch')) {
+                        msg = 'Network connection failed. Please check your internet.';
+                    } else if (err.message) {
+                        msg = err.message;
+                    }
+
+                    showAlert(msg, 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    btnText.textContent = 'Sign In';
+                    btnSpinner.style.display = 'none';
+                    btnArrow.style.display = 'inline-block';
+                }
+            });
         });
-      });
-
-      // Faculty Icon Click
-      const facultyIcon = document.getElementById('facultyIcon');
-      facultyIcon.addEventListener('click', function() {
-        window.location.href = 'faculty-login.html';
-      });
-    });
-
-    // Login Form Handler
-    const loginForm = document.getElementById('loginForm');
-    const loginBtn = document.getElementById('loginBtn');
-    const messageDiv = document.getElementById('message');
-
-    loginForm.addEventListener('submit', async function(e) {
-      e.preventDefault();
-      messageDiv.style.display = 'none';
-
-      loginBtn.disabled = true;
-      loginBtn.textContent = 'Logging in...';
-
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
-
-      try {
-        const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
-          email: email,
-          password: password
-        });
-
-        if (authError) throw authError;
-
-        window.location.href = 'admin/faculty-profiles.html';
-
-      } catch (err) {
-        console.error('Login Error:', err);
-        let msg = 'Invalid email or password. Please try again.';
-
-        if (err.message.includes('Invalid login credentials')) {
-          msg = 'Incorrect email or password.';
-        } else if (err.message.includes('Email not confirmed')) {
-          msg = 'Please confirm your email before logging in.';
-        } else if (err.message.includes('Failed to fetch')) {
-          msg = 'Network error. Please check your internet connection.';
-        }
-
-        showMessage(msg, 'error');
-      } finally {
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Login';
-      }
-    });
-
-    function showMessage(text, type) {
-      messageDiv.textContent = text;
-      messageDiv.className = `message ${type}`;
-      messageDiv.style.display = 'block';
-    }
-  </script>
-
+    </script>
 </body>
 </html>

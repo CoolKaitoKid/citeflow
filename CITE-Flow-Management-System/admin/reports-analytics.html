@@ -3,252 +3,2331 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reports and Analytics - CITE-Flow</title>
+    <title>Reports &amp; Analytics - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
+        body {
+            background: color-mix(in srgb, var(--cite-theme) 5%, white);
+            color: color-mix(in srgb, var(--cite-theme) 72%, black);
         }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
+        .cite-title { color: color-mix(in srgb, var(--cite-theme) 58%, black); }
+        .cite-ink { color: color-mix(in srgb, var(--cite-theme) 46%, black); }
+        .cite-muted { color: color-mix(in srgb, var(--cite-theme) 32%, black); }
+        .cite-faint { color: color-mix(in srgb, var(--cite-theme) 50%, black); }
+        .cite-line { border-color: color-mix(in srgb, var(--cite-theme) 14%, white); }
+        .cite-accent { border-top: 4px solid var(--cite-theme); }
+        .panel {
+            background: white;
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
+            box-shadow: 0 10px 28px color-mix(in srgb, var(--cite-theme) 8%, transparent);
         }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
+        .chart-card {
+            box-shadow: 0 18px 40px color-mix(in srgb, var(--cite-theme) 10%, transparent);
+            transition: box-shadow 180ms ease, border-color 180ms ease;
         }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
+        .chart-card:hover {
+            border-color: color-mix(in srgb, var(--cite-theme) 32%, white);
+            box-shadow: 0 22px 48px color-mix(in srgb, var(--cite-theme) 16%, transparent);
         }
-
-        .section-header {
-            font-size: 11px;
+        .chart-plot, .chart-plot-trend {
+            position: relative;
+            height: 340px;
+            background: color-mix(in srgb, var(--cite-theme) 4%, white);
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 12%, white);
+            border-radius: 14px;
+        }
+        .chart-plot-trend { height: 380px; }
+        @media (min-width: 1280px) {
+            .chart-plot { height: 360px; }
+            .chart-plot-trend { height: 420px; }
+        }
+        .field {
+            width: 100%;
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 22%, white);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 13px;
+            line-height: 1.3;
+            outline: none;
+            background-color: white;
+            color: color-mix(in srgb, var(--cite-theme) 70%, black);
+            min-width: 0;
+        }
+        select.field {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: none;
+            padding-right: 36px;
+        }
+        select.field::-ms-expand { display: none; }
+        .field:focus {
+            border-color: var(--cite-theme);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--cite-theme) 18%, transparent);
+        }
+        .btn-primary {
+            background: var(--cite-theme);
+            color: var(--cite-theme-text);
+            border: 1px solid var(--cite-theme-border);
+            border-radius: 10px;
+            padding: 9px 14px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cite-theme-hover); }
+        .btn-secondary {
+            background: white;
+            color: color-mix(in srgb, var(--cite-theme) 70%, black);
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 22%, white);
+            border-radius: 10px;
+            padding: 9px 14px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .btn-secondary:hover { background: color-mix(in srgb, var(--cite-theme) 8%, white); }
+        .btn-primary:disabled, .btn-secondary:disabled { opacity: .6; cursor: wait; }
+        .details-clamp {
+            max-width: 420px;
+            color: color-mix(in srgb, var(--cite-theme) 50%, black);
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .cite-select-wrap { position: relative; display: block; width: 100%; min-width: 0; }
+        .cite-select-wrap::after {
+            content: "";
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            width: 0;
+            height: 0;
+            margin-top: -2px;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 6px solid var(--cite-theme);
+            pointer-events: none;
+        }
+        #activity-table tr:hover { background: color-mix(in srgb, var(--cite-theme) 6%, white); }
+        .cite-table-head {
+            background: color-mix(in srgb, var(--cite-theme) 6%, white);
+            color: color-mix(in srgb, var(--cite-theme) 40%, black);
+        }
+        #activity-table tr { border-bottom: 1px solid color-mix(in srgb, var(--cite-theme) 12%, white); }
+        .export-menu { position: relative; }
+        .export-panel {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            z-index: 40;
+            min-width: 180px;
+            background: white;
+            border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
+            border-radius: 10px;
+            box-shadow: 0 12px 30px color-mix(in srgb, var(--cite-theme) 12%, transparent);
+            padding: 6px;
+        }
+        .export-panel button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 13px;
             font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
+            color: color-mix(in srgb, var(--cite-theme) 70%, black);
+            background: transparent;
         }
-
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
+        .export-panel button:hover {
+            background: color-mix(in srgb, var(--cite-theme) 8%, white);
+            color: var(--cite-theme);
         }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
-        }
-
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
-        }
-
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
+        #activity-table td { vertical-align: top; }
+        .compact-select { position: relative; display: block; width: 100%; min-width: 0; }
+        .compact-select-trigger, .compact-select-panel { display: none; }
+        @media (max-width: 767px) {
+            .chart-plot, .chart-plot-trend { height: 320px; }
+            .cite-select-wrap::after { display: none; }
+            .compact-select-native {
+                position: absolute !important;
+                width: 1px !important;
+                height: 1px !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                overflow: hidden !important;
+            }
+            .compact-select-trigger {
+                display: flex;
+                align-items: center;
+                width: 100%;
+                text-align: left;
+                cursor: pointer;
+                position: relative;
+                padding-right: 36px !important;
+                background: white !important;
+                color: color-mix(in srgb, var(--cite-theme) 70%, black) !important;
+            }
+            .compact-select-trigger span {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                color: color-mix(in srgb, var(--cite-theme) 70%, black);
+            }
+            .compact-select-trigger::after {
+                content: "";
+                position: absolute;
+                right: 14px;
+                top: 50%;
+                width: 0;
+                height: 0;
+                margin-top: -2px;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid var(--cite-theme);
+            }
+            .compact-select-panel {
+                display: none;
+                position: fixed;
+                z-index: 100050;
+                max-height: 240px;
+                overflow-y: auto;
+                background: white;
+                border: 1px solid color-mix(in srgb, var(--cite-theme) 16%, white);
+                border-radius: 10px;
+                box-shadow: 0 12px 30px color-mix(in srgb, var(--cite-theme) 14%, transparent);
+            }
+            .compact-select-panel.open { display: block; }
+            .compact-select-option {
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 10px 14px;
+                font-size: 13px;
+                color: color-mix(in srgb, var(--cite-theme) 70%, black);
+                background: white;
+                border: 0;
+            }
+            .compact-select-option.active {
+                background: var(--cite-theme);
+                color: var(--cite-theme-text);
+            }
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="overflow-x-hidden min-h-screen">
+<div class="flex min-h-screen">
+    <div id="sidebar-container"></div>
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] w-full min-w-0 overflow-x-hidden">
+        <div id="navbar-container"></div>
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+                <div class="min-w-0">
+                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight cite-title">Reports &amp; Analytics</h1>
+                    <p class="text-sm cite-muted mt-1">System-wide activity and administrative reporting.</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <div class="export-menu" id="export-menu">
+                        <button type="button" id="export-toggle" onclick="toggleExportMenu(event)" class="btn-primary inline-flex items-center gap-2">
+                            <i class="fas fa-download text-xs"></i> Export
+                        </button>
+                        <div id="export-panel" class="export-panel hidden">
+                            <button type="button" onclick="exportReport('pdf')">PDF</button>
+                            <button type="button" onclick="exportReport('excel')">Excel</button>
+                            <button type="button" onclick="exportReport('csv')">CSV</button>
+                        </div>
+                    </div>
+                </div>
+            </header>
 
-<div class="flex h-screen overflow-hidden">
-    <!-- IMPROVED SIDEBAR -->
-    <div class="sidebar text-white flex flex-col h-full">
-        <!-- Logo -->
-        <div onclick="window.location.href='dashboard.html'" 
-             class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <div class="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-3">
-                <span class="text-[#621708] text-4xl font-bold">CTU</span>
-            </div>
-            <div class="text-center">
-                <div class="font-semibold text-base leading-tight">CITE-Flow</div>
-                <div class="font-semibold text-base leading-tight">College of Technology</div>
-                <div class="font-semibold text-base leading-tight">and Engineering</div>
-            </div>
+            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
+                <article class="panel rounded-xl p-4">
+                    <div class="text-sm cite-muted font-medium">Total Activities</div>
+                    <div id="card-total" class="text-3xl font-bold cite-title mt-1"><div class="skeleton-text xl" style="width:60px"></div></div>
+                    <p class="text-xs cite-faint mt-2">Activities matching the current filters</p>
+                </article>
+                <article class="panel rounded-xl p-4">
+                    <div class="text-sm cite-muted font-medium">Today's Activity</div>
+                    <div id="card-today" class="text-3xl font-bold cite-title mt-1"><div class="skeleton-text xl" style="width:60px"></div></div>
+                    <p class="text-xs cite-faint mt-2">Matching activities dated today, Philippine time</p>
+                </article>
+                <article class="panel rounded-xl p-4">
+                    <div class="text-sm cite-muted font-medium">Active Modules</div>
+                    <div id="card-modules" class="text-3xl font-bold cite-title mt-1"><div class="skeleton-text xl" style="width:60px"></div></div>
+                    <p class="text-xs cite-faint mt-2">Modules with at least one matching activity</p>
+                </article>
+                <article class="panel rounded-xl p-4">
+                    <div class="text-sm cite-muted font-medium">Approvals &amp; Reviews</div>
+                    <div id="card-approvals" class="text-3xl font-bold cite-title mt-1"><div class="skeleton-text xl" style="width:60px"></div></div>
+                    <p class="text-xs cite-faint mt-2">Workflow approval, revision, and rejection decisions in the current results</p>
+                </article>
+            </section>
+
+            <section class="panel rounded-xl p-4 sm:p-5 mb-5">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div class="min-w-0">
+                        <label for="module-filter" class="text-[11px] font-bold cite-muted uppercase">Module</label>
+                        <div class="cite-select-wrap mt-1.5">
+                            <select id="module-filter" onchange="applyFilters()" class="field"><option value="">All Modules</option></select>
+                        </div>
+                    </div>
+                    <div class="min-w-0">
+                        <label for="department-filter" class="text-[11px] font-bold cite-muted uppercase">Department</label>
+                        <div class="cite-select-wrap mt-1.5">
+                            <select id="department-filter" onchange="applyFilters()" class="field">
+                                <option value="">All Departments</option>
+                                <option value="BSIT">BSIT</option>
+                                <option value="BIT">BIT</option>
+                                <option value="BSIE">BSIE</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="min-w-0">
+                        <label for="status-filter" class="text-[11px] font-bold cite-muted uppercase">Workflow Status</label>
+                        <div class="cite-select-wrap mt-1.5">
+                            <select id="status-filter" onchange="applyFilters()" class="field"><option value="">All Statuses</option></select>
+                        </div>
+                    </div>
+                    <div class="min-w-0">
+                        <label for="from-date" class="text-[11px] font-bold cite-muted uppercase">From</label>
+                        <input id="from-date" type="date" onchange="applyFilters()" class="field mt-1.5">
+                    </div>
+                    <div class="min-w-0">
+                        <label for="to-date" class="text-[11px] font-bold cite-muted uppercase">To</label>
+                        <input id="to-date" type="date" onchange="applyFilters()" class="field mt-1.5">
+                    </div>
+                    <div class="min-w-0">
+                        <label for="search-reports" class="text-[11px] font-bold cite-muted uppercase">Search</label>
+                        <input id="search-reports" type="search" oninput="applyFilters()" placeholder="User, role, department, module, action, details" class="field mt-1.5">
+                    </div>
+                </div>
+                <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p id="result-summary" class="text-sm cite-muted min-w-0">Showing 0 activities</p>
+                    <button type="button" onclick="resetFilters()" class="btn-secondary shrink-0">Reset</button>
+                </div>
+            </section>
+
+            <section class="mb-5">
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Activity Trend</h2>
+                    <p class="text-sm cite-muted mt-1">Activity counts by Philippine date.</p>
+                    <div id="trend-wrap" class="chart-plot-trend mt-4">
+                        <p id="trend-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Activity by Module</h2>
+                    <p class="text-sm cite-muted mt-1">Modules that have matching activity.</p>
+                    <div id="module-wrap" class="chart-plot mt-4">
+                        <p id="module-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="moduleChart"></canvas>
+                    </div>
+                </div>
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Activity by Department</h2>
+                    <p class="text-sm cite-muted mt-1">BSIT, BIT, and BSIE in the current results.</p>
+                    <div id="department-wrap" class="chart-plot mt-4">
+                        <p id="department-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="departmentChart"></canvas>
+                    </div>
+                </div>
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Workflow Activity</h2>
+                    <p class="text-sm cite-muted mt-1">Workflow Approval submissions and decisions.</p>
+                    <div id="workflow-wrap" class="chart-plot mt-4">
+                        <p id="workflow-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="workflowChart"></canvas>
+                    </div>
+                </div>
+                <div class="panel chart-card cite-accent rounded-2xl p-5 min-w-0">
+                    <h2 class="text-lg font-bold cite-title">Activity by Action</h2>
+                    <p class="text-sm cite-muted mt-1">Most common actions in the current results.</p>
+                    <div id="action-wrap" class="chart-plot mt-4">
+                        <p id="action-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm cite-muted text-center px-6">No activity data available</p>
+                        <canvas id="actionChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel rounded-xl overflow-hidden">
+                <div class="px-4 py-4 sm:px-5 border-b cite-line flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 class="text-base font-bold cite-title">System Activity</h2>
+                        <p class="text-xs cite-muted mt-0.5">Newest activity first.</p>
+                    </div>
+                    <p id="log-count-label" class="text-xs font-semibold cite-muted">0 records</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm min-w-[880px]">
+                        <thead class="cite-table-head border-b cite-line text-[11px] uppercase tracking-wide font-bold">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Date &amp; Time</th>
+                                <th class="px-4 py-3 text-left">User</th>
+                                <th class="px-4 py-3 text-left">Department</th>
+                                <th class="px-4 py-3 text-left">Module</th>
+                                <th class="px-4 py-3 text-left">Action</th>
+                                <th class="px-4 py-3 text-left">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activity-table" class="divide-y cite-line bg-white"></tbody>
+                    </table>
+                </div>
+                <div id="empty-state" class="hidden px-6 py-14 text-center">
+                    <h3 class="font-bold cite-title">No activity found</h3>
+                    <p class="text-sm cite-muted mt-1">No activity matches the current filters.</p>
+                </div>
+                <div id="pager" class="hidden px-4 py-3 border-t cite-line flex items-center justify-between gap-3">
+                    <p id="pager-label" class="text-xs cite-muted"></p>
+                    <div class="flex gap-2">
+                        <button type="button" id="pager-prev" onclick="changePage(-1)" class="btn-secondary">Previous</button>
+                        <button type="button" id="pager-next" onclick="changePage(1)" class="btn-secondary">Next</button>
+                    </div>
+                </div>
+            </section>
         </div>
-
-        <!-- Navigation -->
-        <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
-            <div>
-                <div class="section-header text-white/70">FACULTIES & PROFILES</div>
-                <div onclick="window.location.href='faculty-profiles.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Faculty Profiles
-                </div>
-                <div onclick="window.location.href='workload-tracker.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Workload Tracker
-                </div>
-                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                    Engagement Logs
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Workflow Approval
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">ADMINISTRATION</div>
-                <div onclick="window.location.href='reports-analytics.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
-                    Reports and Analytics
-                </div>
-                <div onclick="window.location.href='feedback-summary.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
-                    Seminar Feedback Summary
-                </div>
-                <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-                <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    User Management
-                </div>
-            </div>
-        </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Dean & Administrator</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MAIN CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8">
-        <h1 class="text-3xl font-semibold mb-2">Reports and Analytics</h1>
-        <p class="text-gray-500 mb-8">View system activity and performance reports</p>
-
-        <div class="flex justify-between items-center mb-8">
-            <select id="module-filter" onchange="filterReports()" class="bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-[#621708]">
-                <option value="">All Modules</option>
-                <option value="workload">Workload Tracker</option>
-                <option value="document">Document Vault</option>
-                <option value="capstone">Capstone</option>
-                <option value="engagement">Engagement Logs</option>
-            </select>
-            <input type="text" id="search-reports" placeholder="Search User Details..." 
-                   class="bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm w-80 focus:outline-none focus:border-[#621708]">
-        </div>
-
-        <div class="bg-white rounded-3xl overflow-hidden card-shadow mb-10">
-            <div class="bg-[#621708] text-white px-6 py-4 font-medium">Recent Activity Log</div>
-            <table class="w-full">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="py-4 px-6 text-left text-sm">Date and Time</th>
-                        <th class="py-4 px-6 text-left text-sm">User</th>
-                        <th class="py-4 px-6 text-left text-sm">Module</th>
-                        <th class="py-4 px-6 text-left text-sm">Action</th>
-                    </tr>
-                </thead>
-                <tbody class="text-sm divide-y">
-                    <tr>
-                        <td class="py-4 px-6">2026-02-24 10:15</td>
-                        <td class="py-4 px-6">Prof. Maria Santos</td>
-                        <td class="py-4 px-6">Workload Tracker</td>
-                        <td class="py-4 px-6 text-emerald-600 font-medium">Approved<br><span class="text-xs text-gray-500">Adjusted teaching load from 18 → 20 units</span></td>
-                    </tr>
-                    <tr>
-                        <td class="py-4 px-6">2026-02-23 14:30</td>
-                        <td class="py-4 px-6">Prof. John Dela Cruz</td>
-                        <td class="py-4 px-6">Document Vault</td>
-                        <td class="py-4 px-6 text-amber-600 font-medium">Requested Edit<br><span class="text-xs text-gray-500">Uploaded Capstone Proposal (needs revision)</span></td>
-                    </tr>
-                    <tr>
-                        <td class="py-4 px-6">2026-02-22 09:45</td>
-                        <td class="py-4 px-6">Prof. Ana Lopez</td>
-                        <td class="py-4 px-6">Capstone</td>
-                        <td class="py-4 px-6 text-red-600 font-medium">Rejected<br><span class="text-xs text-gray-500">Capstone Final Report rejected - missing sections</span></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="grid grid-cols-2 gap-6">
-            <div class="bg-white rounded-3xl p-6 card-shadow">
-                <h3 class="font-semibold mb-4">Action Distribution</h3>
-                <canvas id="actionChart" height="180"></canvas>
-            </div>
-            <div class="bg-white rounded-3xl p-6 card-shadow">
-                <h3 class="font-semibold mb-4">Modules Activity</h3>
-                <canvas id="moduleChart" height="180"></canvas>
-            </div>
-        </div>
-    </div>
+    </main>
 </div>
 
 <script>
-    let actionChart, moduleChart;
+const supabaseClient = window.supabaseClient;
+const MANILA = 'Asia/Manila';
+const PAGE_SIZE = 50;
+const FETCH_LIMIT = 1000;
+const STATUS_OPTIONS = [
+    ['submitted', 'Submitted'],
+    ['late', 'Late'],
+    ['underreview', 'Under Review'],
+    ['approved', 'Approved'],
+    ['revision', 'Revision'],
+    ['rejected', 'Rejected']
+];
+const MANUAL_ENGAGEMENT_TYPES = new Set([
+    'workshop', 'seminar', 'training', 'download', 'extension', 'community service',
+    'research', 'meeting', 'feedback summary', 'profile update', 'document action', 'system event'
+]);
 
-    function initCharts() {
-        const actionCtx = document.getElementById('actionChart');
-        actionChart = new Chart(actionCtx, {
-            type: 'pie',
-            data: {
-                labels: ['Approved', 'Requested Edit', 'Rejected'],
-                datasets: [{
-                    data: [45, 30, 25],
-                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444']
-                }]
-            },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+let currentUser = null;
+let currentProfile = null;
+let allLogs = [];
+let filteredLogs = [];
+let sourceErrors = [];
+let sourceCapped = false;
+let tablePage = 1;
+let trendChart = null;
+let moduleChart = null;
+let departmentChart = null;
+let workflowChart = null;
+let actionChart = null;
+let chartSignature = '';
+let loadInFlight = false;
+let loadQueued = false;
+let realtimeTimer = null;
+let reportsChannel = null;
+
+function esc(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[c]));
+}
+function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+function isNumericId(value) {
+    return /^\d+$/.test(String(value || '').trim());
+}
+function cleanText(value) {
+    return String(value ?? '')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/CITEFLOW_[A-Z0-9_:%]+/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+function clipText(value, max) {
+    const text = cleanText(value);
+    if (text.length <= max) return text;
+    return text.slice(0, max - 1).trim() + '…';
+}
+function displayText(value) {
+    const text = cleanText(value);
+    return text || '—';
+}
+function manilaDateKeyFromDate(date) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: MANILA, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(date);
+    const bag = {};
+    parts.forEach((part) => { bag[part.type] = part.value; });
+    return `${bag.year}-${bag.month}-${bag.day}`;
+}
+function manilaTodayKey() {
+    return manilaDateKeyFromDate(new Date());
+}
+function normalizeActivityAt(value) {
+    if (value == null || value === '') return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T12:00:00+08:00`;
+    const time = Date.parse(raw);
+    if (!Number.isFinite(time)) return '';
+    return new Date(time).toISOString();
+}
+function dateKeyOf(activityAt) {
+    if (!activityAt) return '';
+    const time = Date.parse(activityAt);
+    if (!Number.isFinite(time)) return '';
+    return manilaDateKeyFromDate(new Date(time));
+}
+function formatWhen(activityAt) {
+    if (!activityAt) return '—';
+    const time = Date.parse(activityAt);
+    if (!Number.isFinite(time)) return '—';
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: MANILA,
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    }).format(new Date(time));
+}
+function formatGeneratedAt() {
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: MANILA,
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit'
+    }).format(new Date());
+}
+function formatFilterDate(dateKey) {
+    if (!dateKey) return '';
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric'
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+function formatDayLabel(dateKey) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'UTC', month: 'short', day: 'numeric'
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+function formatMonthLabel(monthKey) {
+    const [year, month] = monthKey.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'UTC', month: 'short', year: 'numeric'
+    }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+function daysBetween(start, end) {
+    const [ay, am, ad] = start.split('-').map(Number);
+    const [by, bm, bd] = end.split('-').map(Number);
+    return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+}
+function eachDate(start, end) {
+    const out = [];
+    let [year, month, day] = start.split('-').map(Number);
+    for (let guard = 0; guard < 800; guard += 1) {
+        const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        out.push(key);
+        if (key >= end) break;
+        const next = new Date(Date.UTC(year, month - 1, day + 1));
+        year = next.getUTCFullYear();
+        month = next.getUTCMonth() + 1;
+        day = next.getUTCDate();
+    }
+    return out;
+}
+function eachMonth(start, end) {
+    const out = [];
+    let year = Number(start.slice(0, 4));
+    let month = Number(start.slice(5, 7));
+    const last = end.slice(0, 7);
+    for (let guard = 0; guard < 240; guard += 1) {
+        const key = `${year}-${String(month).padStart(2, '0')}`;
+        out.push(key);
+        if (key >= last) break;
+        month += 1;
+        if (month > 12) { month = 1; year += 1; }
+    }
+    return out;
+}
+
+function notifyUser(message, type, title) {
+    if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+        window.CiteFlowUI.alert(message, type || 'info', title || 'Reports & Analytics');
+        return;
+    }
+    console.warn(message);
+}
+
+async function fetchRows(table, attempts) {
+    let lastError = 'Request failed';
+    for (const attempt of attempts) {
+        try {
+            let query = supabaseClient.from(table).select(attempt.columns).limit(FETCH_LIMIT);
+            if (attempt.order) query = query.order(attempt.order, { ascending: false });
+            const { data, error } = await query;
+            if (!error) {
+                const rows = data || [];
+                return { rows, error: null, capped: rows.length >= FETCH_LIMIT };
+            }
+            lastError = error.message || lastError;
+            if (!/column|schema cache|does not exist/i.test(lastError)) break;
+        } catch (error) {
+            lastError = error.message || lastError;
+            break;
+        }
+    }
+    console.error(`Reports source failed: ${table}`, lastError);
+    return { rows: null, error: lastError, capped: false };
+}
+
+function personName(person) {
+    if (!person) return '';
+    return cleanText(person.full_name || [person.first_name, person.last_name].filter(Boolean).join(' ') || person.email || person.name || '');
+}
+function personRole(person, fallback) {
+    return cleanText(person?.position || person?.role || fallback || '');
+}
+function buildDirectories(facultyRows, adminRows) {
+    const facultyById = new Map();
+    const facultyByAuth = new Map();
+    const facultyByEmail = new Map();
+    (facultyRows || []).forEach((row) => {
+        if (row.id != null && row.id !== '') facultyById.set(String(row.id), row);
+        if (isUuid(row.auth_user_id)) facultyByAuth.set(String(row.auth_user_id).toLowerCase(), row);
+        if (row.email) facultyByEmail.set(String(row.email).trim().toLowerCase(), row);
+    });
+    const adminById = new Map();
+    const adminByEmail = new Map();
+    (adminRows || []).forEach((row) => {
+        if (isUuid(row.id)) adminById.set(String(row.id).toLowerCase(), row);
+        if (row.email) adminByEmail.set(String(row.email).trim().toLowerCase(), row);
+    });
+    function facultyIdentity(person) {
+        if (!person || person.id == null || person.id === '') return null;
+        if (!facultyById.has(String(person.id))) return null;
+        const facultyName = personName(person);
+        if (!facultyName) return null;
+        return { facultyKey: `id:${person.id}`, facultyName };
+    }
+    function facultyFromStoredId(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return null;
+        if (isUuid(raw)) return facultyByAuth.get(raw.toLowerCase()) || null;
+        if (isNumericId(raw)) return facultyById.get(raw) || null;
+        return null;
+    }
+    function personFromAuthId(value) {
+        const raw = String(value || '').trim();
+        if (!isUuid(raw)) return null;
+        const key = raw.toLowerCase();
+        return facultyByAuth.get(key) || adminById.get(key) || null;
+    }
+    function personFromUploader(value) {
+        const raw = cleanText(value);
+        if (!raw) return { name: '', role: '', department: '' };
+        if (isUuid(raw)) {
+            const person = personFromAuthId(raw);
+            const identity = facultyIdentity(person);
+            return {
+                name: personName(person),
+                role: personRole(person),
+                department: cleanText(person?.department || ''),
+                facultyKey: identity ? identity.facultyKey : '',
+                facultyName: identity ? identity.facultyName : ''
+            };
+        }
+        if (raw.includes('@')) {
+            const person = facultyByEmail.get(raw.toLowerCase()) || adminByEmail.get(raw.toLowerCase()) || null;
+            return {
+                name: personName(person) || raw,
+                role: personRole(person),
+                department: cleanText(person?.department || ''),
+                facultyKey: '',
+                facultyName: ''
+            };
+        }
+        return { name: raw, role: '', department: '', facultyKey: '', facultyName: '' };
+    }
+    return { facultyFromStoredId, personFromAuthId, personFromUploader, facultyIdentity };
+}
+
+function detailMap(details) {
+    let value = details;
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return {};
+        try { value = JSON.parse(trimmed); } catch (_) { return { details: trimmed }; }
+    }
+    const map = {};
+    if (Array.isArray(value)) {
+        value.forEach((item) => {
+            if (!item || item.label == null) return;
+            map[String(item.label).trim().toLowerCase()] = item.value;
         });
-
-        const moduleCtx = document.getElementById('moduleChart');
-        moduleChart = new Chart(moduleCtx, {
-            type: 'bar',
-            data: {
-                labels: ['Workload', 'Document', 'Capstone', 'Engagement'],
-                datasets: [{
-                    label: 'Activities',
-                    data: [28, 15, 22, 12],
-                    backgroundColor: '#621708'
-                }]
-            },
-            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        return map;
+    }
+    if (value && typeof value === 'object') {
+        Object.entries(value).forEach(([key, item]) => {
+            map[String(key).trim().toLowerCase()] = item;
         });
     }
-
-    function filterReports() {
-        alert("🔍 Filtering reports... (Demo)");
+    return map;
+}
+function exactTitle(value) {
+    return cleanText(value).toLowerCase();
+}
+function linkedTitle(row) {
+    const map = detailMap(row.details);
+    const fromDetails = map.title || map['activity title'] || map.file || map.event;
+    if (cleanText(fromDetails)) return cleanText(fromDetails);
+    const title = cleanText(row.activity_title);
+    const prefixed = title.match(/^(?:added|updated|uploaded|recorded|created|submitted)\b[^:]{0,40}:\s*(.+)$/i);
+    return prefixed ? cleanText(prefixed[1]) : title;
+}
+function sourceIdFromDetails(details) {
+    const map = detailMap(details);
+    const keys = ['source_id', 'source id', 'record_id', 'record id', 'document_id', 'research_id', 'accomplishment_id', 'extension_id', 'project_id', 'leave_id', 'event_id', 'submission_id', 'vault_id'];
+    for (const key of keys) {
+        const value = cleanText(map[key]);
+        if (value) return value;
     }
-
-    window.onload = () => {
-        initCharts();
+    return '';
+}
+function sourceTableFromDetails(details) {
+    const map = detailMap(details);
+    return cleanText(map.source_table || map['source table']).toLowerCase();
+}
+function isMirrorCreate(row) {
+    const blob = `${row.activity_title || ''} ${row.status || ''} ${row.description || ''}`.toLowerCase();
+    if (/\bdownload/.test(blob)) return false;
+    if (/\b(updated|update|edited|edit)\b/.test(blob)) return false;
+    return true;
+}
+function normalizeModuleLabel(value) {
+    const key = cleanText(value).toLowerCase();
+    const aliases = {
+        'faculty profile': 'Faculty Profiles',
+        'faculty profiles': 'Faculty Profiles',
+        'research': 'Research',
+        'extension': 'Extension',
+        'community service': 'Extension',
+        'accomplishments': 'Accomplishments',
+        'accomplishment': 'Accomplishments',
+        'documents': 'Documents',
+        'document': 'Documents',
+        'faculty documents': 'Documents',
+        'document vault': 'Document Vault',
+        'workflow': 'Workflow Approval',
+        'workflow approval': 'Workflow Approval',
+        'calendar': 'Calendar & Events',
+        'calendar & events': 'Calendar & Events',
+        'seminar feedback': 'Calendar & Events',
+        'leave': 'Leave Records',
+        'leave records': 'Leave Records',
+        'faculty leaves': 'Leave Records',
+        'engagement logs': 'Engagement Logs',
+        'engagement log': 'Engagement Logs'
     };
+    return aliases[key] || cleanText(value);
+}
+function engagementModule(row) {
+    const type = cleanText(row.activity_type).toLowerCase();
+    const source = cleanText(row.source_module).toLowerCase();
+    if (type === 'research' || type.includes('research document')) return 'Research';
+    if (type === 'extension' || type === 'community service' || type.includes('extension document')) return 'Extension';
+    if (source.includes('document vault') || (type === 'download' && source.includes('vault'))) return 'Document Vault';
+    if (type === 'download') return 'Document Vault';
+    if (type === 'document action' || type.includes('document')) return 'Documents';
+    if (type === 'profile update') return 'Faculty Profiles';
+    if (source === 'calendar' || source.includes('seminar') || source.includes('feedback') || type === 'feedback summary') return 'Calendar & Events';
+    if (type.includes('leave')) return 'Leave Records';
+    if ((source === 'faculty profile' || source === 'faculty profiles') && !MANUAL_ENGAGEMENT_TYPES.has(type)) return 'Accomplishments';
+    if (source.includes('workflow')) return 'Workflow Approval';
+    if (source.includes('notification') || type.includes('notification')) return '';
+    if (source === 'engagement logs' || source === 'engagement log') return 'Engagement Logs';
+    return normalizeModuleLabel(row.source_module) || 'Engagement Logs';
+}
+function documentModule(row) {
+    const type = `${row.document_type || ''} ${row.sub_category || ''}`.toLowerCase();
+    if (type.includes('extension')) return 'Extension';
+    if (type.includes('research')) return 'Research';
+    return 'Documents';
+}
+function normalizeWorkflowStatus(value, actionText) {
+    const action = String(actionText || '').toLowerCase();
+    if (/\bcomment\b/.test(action)) return '';
+    const raw = String(value || '').toLowerCase().replace(/[\s-]+/g, '');
+    if (!raw || raw === 'notsubmitted' || raw === 'pending' || raw === 'created' || raw === 'system') return '';
+    if (raw.includes('approv')) return 'approved';
+    if (raw.includes('revision') || raw.includes('returned')) return 'revision';
+    if (raw.includes('reject') || raw.includes('declin')) return 'rejected';
+    if (raw.includes('underreview')) return 'underreview';
+    if (raw === 'late' || raw.includes('submittedlate')) return 'late';
+    if (raw.includes('submit')) return 'submitted';
+    return '';
+}
+function isApprovalDecision(action, logType) {
+    const blob = `${action || ''} ${logType || ''}`.toLowerCase();
+    if (/comment|task created|task updated|task deleted|recurring|access granted|notification/.test(blob)) return false;
+    if (/\b(submit|submitted)\b/.test(blob) && !/approv|revision|reject|declin/.test(blob)) return false;
+    return /(approved|approval|revision|rejected|rejection|declined)/.test(blob);
+}
+function actionLabel(action, logType) {
+    const raw = cleanText(action || logType);
+    const key = raw.toLowerCase();
+    const known = {
+        approved: 'Approved',
+        chairperson_approved: 'Chairperson Approved',
+        final_approved: 'Final Approved',
+        revision: 'Requested Revision',
+        chairperson_revision: 'Requested Revision',
+        final_revision: 'Requested Revision',
+        rejected: 'Rejected',
+        declined: 'Declined',
+        submitted: 'Submitted',
+        late: 'Submitted Late',
+        underreview: 'Under Review',
+        created: 'Created',
+        uploaded: 'Uploaded',
+        verified: 'Verified',
+        notification: 'Notification',
+        'task created': 'Task Created',
+        'task updated': 'Task Updated',
+        'task deleted': 'Task Deleted',
+        'comment added': 'Comment Added'
+    };
+    if (known[key]) return known[key];
+    if (!raw) return 'Recorded';
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+function actionClass(action) {
+    const value = String(action || '').toLowerCase();
+    if (value.includes('approv')) return 'action-approved';
+    if (value.includes('revision') || value.includes('request')) return 'action-requested-edit';
+    if (value.includes('reject') || value.includes('declin')) return 'action-rejected';
+    if (value.includes('submit') || value.includes('creat') || value.includes('upload') || value.includes('add')) return 'action-created';
+    if (value.includes('updat') || value.includes('edit') || value.includes('verif')) return 'action-updated';
+    if (value.includes('export') || value.includes('download')) return 'action-download';
+    if (value.includes('notif')) return 'action-notification';
+    return 'action-other';
+}
+function isNotificationActivity(moduleName, action) {
+    const blob = `${moduleName || ''} ${action || ''}`.toLowerCase();
+    return blob.includes('notification');
+}
+function isExportAudit(row) {
+    const moduleName = cleanText(row.module).toLowerCase();
+    const action = cleanText(row.action).toLowerCase();
+    const details = cleanText(row.details_text || row.details).toLowerCase();
+    const reportsModule = moduleName.includes('report');
+    const exportAction = action === 'exported' || action.includes('export') || details.startsWith('exported ');
+    return reportsModule && exportAction;
+}
+function facultyKeyOf(person) {
+    if (!person || person.id == null || person.id === '') return '';
+    return `id:${person.id}`;
+}
+function blankActivity(partial) {
+    const activityAt = normalizeActivityAt(partial.activityAt);
+    return {
+        dedupeKey: partial.dedupeKey,
+        activityAt,
+        dateKey: dateKeyOf(activityAt),
+        userName: cleanText(partial.userName),
+        userRole: cleanText(partial.userRole),
+        department: cleanText(partial.department),
+        module: partial.module,
+        action: partial.action || 'Recorded',
+        details: clipText(partial.details, 4000),
+        workflowStatus: partial.workflowStatus || '',
+        reviewEvent: partial.reviewEvent === true,
+        facultyKey: partial.facultyKey && partial.facultyName ? String(partial.facultyKey) : '',
+        facultyName: partial.facultyKey && partial.facultyName ? cleanText(partial.facultyName) : ''
+    };
+}
+
+function buildCanonical(data, directories) {
+    const logs = [];
+    const sourceIds = new Set();
+    const titleBuckets = new Map();
+    const { facultyFromStoredId, personFromAuthId, personFromUploader, facultyIdentity } = directories;
+
+    function rememberSource(table, id) {
+        if (id == null || id === '') return;
+        sourceIds.add(`${String(table).toLowerCase()}:${String(id)}`);
+    }
+    function rememberTitle(moduleName, facultyKey, title, activityAt) {
+        const titleKey = exactTitle(title);
+        const day = dateKeyOf(normalizeActivityAt(activityAt));
+        if (!moduleName || !facultyKey || !titleKey || !day) return;
+        const key = `${moduleName}|${facultyKey}|${titleKey}`;
+        const list = titleBuckets.get(key) || [];
+        list.push(day);
+        titleBuckets.set(key, list);
+    }
+    function pushActivity(partial) {
+        if (!partial || !partial.dedupeKey) return;
+        logs.push(blankActivity(partial));
+    }
+    function describeFaculty(storedId, storedName, storedDepartment, storedRole) {
+        const person = facultyFromStoredId(storedId);
+        return {
+            name: personName(person) || cleanText(storedName),
+            role: personRole(person, storedRole),
+            department: cleanText(person?.department || storedDepartment || ''),
+            facultyKey: person ? facultyKeyOf(person) : '',
+            facultyName: person ? personName(person) : ''
+        };
+    }
+    function facultyLink(identity) {
+        if (!identity || !identity.facultyKey || !identity.facultyName) return {};
+        return { facultyKey: identity.facultyKey, facultyName: identity.facultyName };
+    }
+
+    (data.research || []).forEach((row) => {
+        rememberSource('faculty_research_projects', row.id);
+        const who = describeFaculty(row.faculty_id);
+        const title = cleanText(row.title) || 'Untitled research';
+        const when = row.created_at;
+        rememberTitle('Research', who.facultyKey, title, when);
+        pushActivity({
+            dedupeKey: `src:faculty_research_projects:${row.id}`,
+            activityAt: when,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Research',
+            action: 'Created',
+            details: `Research project “${title}”${row.status ? ` (${cleanText(row.status)})` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    (data.extension || []).forEach((row) => {
+        rememberSource('extension_projects', row.id);
+        const who = describeFaculty(row.faculty_id);
+        const title = cleanText(row.project_title) || 'Untitled extension project';
+        const when = row.created_at;
+        rememberTitle('Extension', who.facultyKey, title, when);
+        const partner = cleanText(row.partner_organization);
+        pushActivity({
+            dedupeKey: `src:extension_projects:${row.id}`,
+            activityAt: when,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Extension',
+            action: 'Created',
+            details: `Extension project “${title}”${partner ? ` with ${partner}` : ''}${row.status ? ` (${cleanText(row.status)})` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    (data.accomplishments || []).forEach((row) => {
+        rememberSource('faculty_accomplishments', row.id);
+        const who = describeFaculty(row.faculty_id);
+        const title = cleanText(row.title) || 'Untitled accomplishment';
+        const when = row.created_at;
+        rememberTitle('Accomplishments', who.facultyKey, title, when);
+        pushActivity({
+            dedupeKey: `src:faculty_accomplishments:${row.id}`,
+            activityAt: when,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Accomplishments',
+            action: 'Created',
+            details: `Accomplishment “${title}”${row.accomplishment_type ? ` (${cleanText(row.accomplishment_type)})` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    (data.documents || []).forEach((row) => {
+        rememberSource('faculty_documents', row.id);
+        const who = describeFaculty(row.faculty_id);
+        const moduleName = documentModule(row);
+        const title = cleanText(row.title || row.document_name) || 'Untitled document';
+        const when = row.uploaded_at || row.created_at;
+        const adminUpload = row.status === 'Uploaded by Admin' || row.status === 'Admin Upload';
+        const uploader = adminUpload ? personFromUploader(row.verified_by_name) : null;
+        rememberTitle(moduleName, who.facultyKey, title, when);
+        pushActivity({
+            dedupeKey: `src:faculty_documents:${row.id}`,
+            activityAt: when,
+            userName: adminUpload ? (uploader?.name || cleanText(row.verified_by_name)) : who.name,
+            userRole: adminUpload ? (uploader?.role || '') : who.role,
+            department: adminUpload ? (uploader?.department || who.department) : who.department,
+            module: moduleName,
+            action: adminUpload ? 'Admin Upload' : 'Uploaded',
+            details: `${adminUpload ? `Uploaded document${who.name ? ` for ${who.name}` : ''}` : 'Uploaded document'} “${title}”${row.document_type ? ` (${cleanText(row.document_type)})` : ''}`,
+            ...(adminUpload ? {} : facultyLink(who))
+        });
+        const verification = cleanText(row.verification_status).toLowerCase();
+        if (verification && verification !== 'pending' && row.verified_at) {
+            const verifier = personFromUploader(row.verified_by_name);
+            const declined = /reject|declin/.test(verification);
+            pushActivity({
+                dedupeKey: `src:faculty_documents:${row.id}:verification`,
+                activityAt: row.verified_at,
+                userName: verifier.name || cleanText(row.verified_by_name),
+                userRole: verifier.role,
+                department: verifier.department || who.department,
+                module: moduleName,
+                action: declined ? 'Verification declined' : 'Verified',
+                details: `${declined ? 'Declined verification for' : 'Verified'} “${title}”${who.name ? ` (${who.name})` : ''}`,
+                reviewEvent: false,
+                ...facultyLink(verifier)
+            });
+        }
+    });
+
+    (data.vault || []).forEach((row) => {
+        rememberSource('documents', row.id);
+        const uploader = personFromUploader(row.uploaded_by);
+        const folder = data.folderMap.get(String(row.folder_id || ''));
+        const title = cleanText(row.name) || 'Untitled file';
+        const when = row.uploaded_at || row.created_at;
+        const faculty = isUuid(row.uploaded_by) ? facultyFromStoredId(row.uploaded_by) : null;
+        rememberTitle('Document Vault', facultyKeyOf(faculty), title, when);
+        pushActivity({
+            dedupeKey: `src:documents:${row.id}`,
+            activityAt: when,
+            userName: uploader.name,
+            userRole: uploader.role,
+            department: uploader.department,
+            module: 'Document Vault',
+            action: 'Uploaded',
+            details: `Vault file “${title}”${folder ? ` in ${cleanText(folder)}` : ''}`,
+            ...facultyLink(uploader)
+        });
+    });
+
+    (data.leaves || []).forEach((row) => {
+        rememberSource('faculty_leaves', row.id);
+        const who = describeFaculty(row.faculty_id || row.auth_user_id, [row.first_name, row.last_name].filter(Boolean).join(' ') || row.faculty_name);
+        const leaveType = cleanText(row.leave_type) || 'Leave';
+        const span = row.start_date ? ` from ${row.start_date} to ${row.end_date || row.start_date}` : '';
+        pushActivity({
+            dedupeKey: `src:faculty_leaves:${row.id}`,
+            activityAt: row.created_at || row.date_of_filing,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Leave Records',
+            action: 'Submitted',
+            details: `Leave record: ${leaveType}${span}${row.status ? ` (${cleanText(row.status)})` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    const eventMap = new Map((data.events || []).map((row) => [String(row.id), row]));
+    (data.events || []).forEach((row) => {
+        rememberSource('calendar_events', row.id);
+        const creator = personFromAuthId(row.created_by);
+        const named = personFromUploader(row.created_by_name);
+        pushActivity({
+            dedupeKey: `src:calendar_events:${row.id}`,
+            activityAt: row.created_at || row.start_at,
+            userName: personName(creator) || named.name,
+            userRole: personRole(creator, named.role),
+            department: cleanText(creator?.department || named.department || ''),
+            module: 'Calendar & Events',
+            action: 'Scheduled',
+            details: `Calendar event “${cleanText(row.title) || 'Untitled event'}”${row.event_type ? ` (${cleanText(row.event_type)})` : ''}${row.location ? ` at ${cleanText(row.location)}` : ''}`,
+            ...(row.created_by ? facultyLink(facultyIdentity(creator)) : {})
+        });
+    });
+
+    (data.feedback || []).forEach((row) => {
+        rememberSource('calendar_event_feedback', row.id);
+        const who = describeFaculty(row.faculty_id, row.faculty_name);
+        const event = eventMap.get(String(row.event_id || ''));
+        const eventTitle = cleanText(event?.title);
+        pushActivity({
+            dedupeKey: `src:calendar_event_feedback:${row.id}`,
+            activityAt: row.submitted_at,
+            userName: who.name,
+            userRole: who.role,
+            department: who.department,
+            module: 'Calendar & Events',
+            action: 'Submitted',
+            details: `Event feedback${eventTitle ? ` for “${eventTitle}”` : ''}${row.overall_rating ? ` (rating ${row.overall_rating}/5)` : ''}${row.feedback_summary ? `: ${cleanText(row.feedback_summary)}` : ''}`,
+            ...facultyLink(who)
+        });
+    });
+
+    (data.submissions || []).forEach((row) => rememberSource('wf_submissions', row.id));
+    (data.workflow || []).forEach((row) => {
+        if (row.submission_id) rememberSource('wf_submissions', row.submission_id);
+    });
+
+    (data.engagement || []).forEach((row) => {
+        const moduleName = engagementModule(row);
+        if (!moduleName || isNotificationActivity(moduleName, row.activity_type)) return;
+        const who = describeFaculty(row.faculty_id, row.faculty_name, row.department);
+        const sourceId = sourceIdFromDetails(row.details);
+        const sourceTable = sourceTableFromDetails(row.details);
+        let covered = false;
+        if (isMirrorCreate(row) && sourceId) {
+            if (sourceTable && sourceIds.has(`${sourceTable}:${sourceId}`)) covered = true;
+            else {
+                const hits = [...sourceIds].filter((key) => key.endsWith(`:${sourceId}`));
+                covered = hits.length === 1;
+            }
+        }
+        if (!covered && isMirrorCreate(row) && who.facultyKey) {
+            const titleKey = `${moduleName}|${who.facultyKey}|${exactTitle(linkedTitle(row))}`;
+            const day = dateKeyOf(normalizeActivityAt(row.activity_at || row.created_at));
+            const matches = (titleBuckets.get(titleKey) || []).filter((item) => item === day);
+            covered = matches.length === 1;
+        }
+        if (covered) return;
+        const actor = personFromAuthId(row.created_by);
+        const linkedFaculty = who.facultyKey
+            ? facultyLink(who)
+            : (cleanText(row.faculty_id) ? {} : facultyLink(facultyIdentity(actor)));
+        pushActivity({
+            dedupeKey: `eng:${row.id}`,
+            activityAt: row.activity_at || row.created_at,
+            userName: who.name || personName(actor) || cleanText(row.created_by_name),
+            userRole: who.role || personRole(actor),
+            department: who.department,
+            module: moduleName,
+            action: actionLabel(row.activity_type || row.status),
+            details: cleanText(row.description) || cleanText(row.activity_title) || 'Engagement log',
+            workflowStatus: moduleName === 'Workflow Approval' ? normalizeWorkflowStatus(row.status, row.activity_type) : '',
+            ...linkedFaculty
+        });
+    });
+
+    const taskMap = new Map((data.tasks || []).map((row) => [String(row.id), cleanText(row.title)]));
+    const submissions = data.submissions || [];
+    const submissionsByTask = new Map();
+    submissions.forEach((row) => {
+        const key = String(row.task_id || '');
+        const list = submissionsByTask.get(key) || [];
+        list.push(row);
+        submissionsByTask.set(key, list);
+    });
+    const reviewCovered = new Set();
+    const submitCovered = new Set();
+    (data.workflow || []).forEach((row) => {
+        let submissionId = row.submission_id ? String(row.submission_id) : '';
+        if (!submissionId && row.task_id) {
+            const related = submissionsByTask.get(String(row.task_id)) || [];
+            if (related.length === 1) submissionId = String(related[0].id);
+        }
+        const review = isApprovalDecision(row.action, row.log_type);
+        const submit = /\bsubmit/.test(`${row.action || ''} ${row.log_type || ''}`.toLowerCase()) && !review;
+        if (submissionId && review) reviewCovered.add(submissionId);
+        if (submissionId && submit) submitCovered.add(submissionId);
+        const actor = personFromUploader(row.actor_name);
+        pushActivity({
+            dedupeKey: `wf:${row.id}`,
+            activityAt: row.created_at,
+            userName: actor.name,
+            userRole: actor.role,
+            department: actor.department,
+            module: 'Workflow Approval',
+            action: actionLabel(row.action, row.log_type),
+            details: cleanText(row.target) || actionLabel(row.action, row.log_type),
+            workflowStatus: /task deleted|task created|task updated|comment|recurring|access/i.test(`${row.action || ''} ${row.log_type || ''}`)
+                ? ''
+                : normalizeWorkflowStatus(row.log_type || row.action, row.action),
+            reviewEvent: review,
+            ...facultyLink(actor)
+        });
+    });
+
+    submissions.forEach((row) => {
+        const submissionId = String(row.id);
+        const who = describeFaculty(row.faculty_id);
+        const taskTitle = taskMap.get(String(row.task_id || '')) || 'Workflow submission';
+        if (row.submitted_at && !submitCovered.has(submissionId)) {
+            pushActivity({
+                dedupeKey: `wfsub:${submissionId}:submit`,
+                activityAt: row.submitted_at,
+                userName: who.name,
+                userRole: who.role,
+                department: who.department,
+                module: 'Workflow Approval',
+                action: String(row.status || '').toLowerCase() === 'late' ? 'Submitted Late' : 'Submitted',
+                details: `Submitted “${taskTitle}”`,
+                workflowStatus: normalizeWorkflowStatus(row.status) === 'late' ? 'late' : 'submitted',
+                reviewEvent: false,
+                ...facultyLink(who)
+            });
+        }
+        const reviewStatus = normalizeWorkflowStatus(row.status);
+        const decision = reviewStatus === 'approved' || reviewStatus === 'revision' || reviewStatus === 'rejected';
+        if (row.reviewed_at && decision && !reviewCovered.has(submissionId)) {
+            const reviewer = personFromUploader(row.reviewed_by_name);
+            pushActivity({
+                dedupeKey: `wfsub:${submissionId}:review`,
+                activityAt: row.reviewed_at,
+                userName: reviewer.name,
+                userRole: reviewer.role,
+                department: reviewer.department,
+                module: 'Workflow Approval',
+                action: actionLabel(row.status),
+                details: `Reviewed “${taskTitle}”${who.name ? ` for ${who.name}` : ''}${row.review_remarks ? `: ${cleanText(row.review_remarks)}` : ''}`,
+                workflowStatus: reviewStatus,
+                reviewEvent: true,
+                ...facultyLink(reviewer)
+            });
+        }
+    });
+
+    (data.system || []).forEach((row) => {
+        if (isExportAudit(row) || isNotificationActivity(row.module, row.action)) return;
+        const person = personFromAuthId(row.user_id);
+        const moduleName = normalizeModuleLabel(row.module) || 'System';
+        if (isNotificationActivity(moduleName, row.action)) return;
+        pushActivity({
+            dedupeKey: `syslog:${row.id}`,
+            activityAt: row.created_at,
+            userName: cleanText(row.user_name) || personName(person),
+            userRole: cleanText(row.user_role) || personRole(person),
+            department: cleanText(person?.department || ''),
+            module: moduleName,
+            action: actionLabel(row.action),
+            details: cleanText(row.details_text || row.details) || 'System activity',
+            workflowStatus: moduleName === 'Workflow Approval' ? normalizeWorkflowStatus(row.action, row.action) : '',
+            reviewEvent: moduleName === 'Workflow Approval' && isApprovalDecision(row.action, row.action),
+            ...(row.user_id ? facultyLink(facultyIdentity(person)) : {})
+        });
+    });
+
+    (data.facultyRows || []).forEach((row) => {
+        const who = describeFaculty(row.id, '', row.department);
+        const name = who.name || cleanText(row.email);
+        const email = cleanText(row.email).toLowerCase();
+        const person = name.toLowerCase();
+        function mentionsPerson(item) {
+            const blob = `${item.userName} ${item.details} ${item.action}`.toLowerCase();
+            return (person && blob.includes(person)) || (email && blob.includes(email));
+        }
+        if (row.created_at) {
+            const day = dateKeyOf(normalizeActivityAt(row.created_at));
+            const already = logs.some((item) => {
+                if (item.dateKey !== day) return false;
+                const blob = `${item.action} ${item.details}`.toLowerCase();
+                return /account/.test(blob) && /creat/.test(blob) && mentionsPerson(item);
+            });
+            if (!already) {
+                pushActivity({
+                    dedupeKey: `faculty:${row.id}:account`,
+                    activityAt: row.created_at,
+                    userName: who.name,
+                    userRole: who.role,
+                    department: who.department,
+                    module: 'Faculty Profiles',
+                    action: 'Account Created',
+                    details: name ? `Faculty account created for ${name}` : 'Faculty account created',
+                    ...facultyLink(who)
+                });
+            }
+        }
+        if (row.first_login_completed_at) {
+            const day = dateKeyOf(normalizeActivityAt(row.first_login_completed_at));
+            const already = logs.some((item) => item.dateKey === day && /first login|profile setup/.test(`${item.action} ${item.details}`.toLowerCase()) && mentionsPerson(item));
+            if (!already) {
+                const setupNote = row.profile_completed === true ? ' Profile setup was completed.' : '';
+                pushActivity({
+                    dedupeKey: `faculty:${row.id}:first-login`,
+                    activityAt: row.first_login_completed_at,
+                    userName: who.name,
+                    userRole: who.role,
+                    department: who.department,
+                    module: 'Faculty Profiles',
+                    action: 'First Login',
+                    details: `${name ? `${name} completed first login.` : 'Faculty first login completed.'}${setupNote}`,
+                    ...facultyLink(who)
+                });
+            }
+        }
+    });
+
+    const seen = new Set();
+    return logs.filter((row) => {
+        if (!row.module || isNotificationActivity(row.module, row.action)) return false;
+        if (seen.has(row.dedupeKey)) return false;
+        seen.add(row.dedupeKey);
+        return true;
+    }).sort((a, b) => {
+        const left = Date.parse(a.activityAt);
+        const right = Date.parse(b.activityAt);
+        const leftValue = Number.isFinite(left) ? left : Number.NEGATIVE_INFINITY;
+        const rightValue = Number.isFinite(right) ? right : Number.NEGATIVE_INFINITY;
+        return rightValue - leftValue;
+    });
+}
+
+async function loadReports() {
+    if (!supabaseClient) {
+        sourceErrors = ['The database connection is not available.'];
+        allLogs = [];
+        applyFilters();
+        return;
+    }
+    if (loadInFlight) {
+        loadQueued = true;
+        return;
+    }
+    loadInFlight = true;
+    try {
+        const specs = [
+            ['system', 'System activity', () => fetchRows('system_activity_logs', [
+                { columns: 'id, created_at, user_id, user_name, user_role, module, action, details_text', order: 'created_at' },
+                { columns: 'id, created_at, user_name, user_role, module, action, details_text', order: 'created_at' }
+            ])],
+            ['workflow', 'Workflow activity', () => fetchRows('wf_activity_log', [
+                { columns: 'id, action, actor_name, target, log_type, created_at, task_id, submission_id', order: 'created_at' },
+                { columns: 'id, action, actor_name, target, log_type, created_at', order: 'created_at' }
+            ])],
+            ['engagement', 'Engagement logs', () => fetchRows('engagement_logs', [
+                { columns: 'id, faculty_id, faculty_name, department, activity_type, activity_title, description, source_module, activity_at, status, details, created_by, created_by_name, created_at', order: 'activity_at' },
+                { columns: 'id, faculty_id, faculty_name, department, activity_type, activity_title, description, source_module, activity_at, status, details, created_by, created_by_name, created_at', order: 'created_at' }
+            ])],
+            ['faculty', 'Faculty directory', () => fetchRows('faculty', [
+                { columns: 'id, auth_user_id, full_name, first_name, last_name, email, department, role, position, created_at, first_login_completed_at, profile_completed' },
+                { columns: 'id, auth_user_id, full_name, first_name, last_name, email, department, role, position, created_at' },
+                { columns: 'id, auth_user_id, full_name, first_name, last_name, email, department, role, position' }
+            ])],
+            ['admins', 'Administrator directory', () => fetchRows('admin_profiles', [
+                { columns: 'id, first_name, last_name, email, role' }
+            ])],
+            ['tasks', 'Workflow tasks', () => fetchRows('wf_tasks', [
+                { columns: 'id, title, created_by_name, created_at', order: 'created_at' }
+            ])],
+            ['submissions', 'Workflow submissions', () => fetchRows('wf_submissions', [
+                { columns: 'id, task_id, faculty_id, status, submitted_at, reviewed_at, reviewed_by_name, review_remarks', order: 'submitted_at' }
+            ])],
+            ['profileDocs', 'Documents', () => fetchRows('faculty_documents', [
+                { columns: 'id, faculty_id, title, document_name, document_type, sub_category, status, verification_status, verified_by_name, verified_at, created_at, uploaded_at', order: 'created_at' },
+                { columns: 'id, faculty_id, title, document_name, document_type, sub_category, status, verification_status, verified_by_name, verified_at, created_at', order: 'created_at' }
+            ])],
+            ['research', 'Research', () => fetchRows('faculty_research_projects', [
+                { columns: 'id, faculty_id, title, description, status, start_date, created_at', order: 'created_at' }
+            ])],
+            ['accomplishments', 'Accomplishments', () => fetchRows('faculty_accomplishments', [
+                { columns: 'id, faculty_id, title, accomplishment_type, description, date_achieved, created_at', order: 'created_at' }
+            ])],
+            ['extension', 'Extension', () => fetchRows('extension_projects', [
+                { columns: 'id, faculty_id, project_title, partner_organization, status, start_date, created_at', order: 'created_at' }
+            ])],
+            ['vault', 'Document Vault', () => fetchRows('documents', [
+                { columns: 'id, name, folder_id, uploaded_at, uploaded_by, created_at', order: 'uploaded_at' },
+                { columns: 'id, name, folder_id, uploaded_at, uploaded_by', order: 'uploaded_at' }
+            ])],
+            ['folders', 'Document folders', () => fetchRows('folders', [
+                { columns: 'id, name' }
+            ])],
+            ['leaves', 'Leave records', () => fetchRows('faculty_leaves', [
+                { columns: 'id, faculty_id, auth_user_id, faculty_name, first_name, last_name, leave_type, start_date, end_date, status, date_of_filing, created_at', order: 'created_at' },
+                { columns: 'id, faculty_id, faculty_name, first_name, last_name, leave_type, start_date, end_date, status, date_of_filing, created_at', order: 'created_at' }
+            ])],
+            ['feedback', 'Calendar feedback', () => fetchRows('calendar_event_feedback', [
+                { columns: 'id, event_id, faculty_id, faculty_name, overall_rating, feedback_summary, submitted_at', order: 'submitted_at' }
+            ])],
+            ['events', 'Calendar events', () => fetchRows('calendar_events', [
+                { columns: 'id, title, event_type, location, start_at, end_at, created_at, created_by, created_by_name', order: 'start_at' },
+                { columns: 'id, title, event_type, location, start_at, created_at, created_by', order: 'start_at' },
+                { columns: 'id, title, event_type, location, start_at', order: 'start_at' }
+            ])]
+        ];
+
+        const loaded = {};
+        const errors = [];
+        let capped = false;
+        await Promise.all(specs.map(async ([key, label, run]) => {
+            const result = await run();
+            loaded[key] = result.rows;
+            if (result.error) errors.push(label);
+            if (result.capped) capped = true;
+        }));
+
+        sourceErrors = errors;
+        sourceCapped = capped;
+        const directories = buildDirectories(loaded.faculty || [], loaded.admins || []);
+        const folderMap = new Map((loaded.folders || []).map((row) => [String(row.id), row.name]));
+        allLogs = buildCanonical({
+            system: loaded.system || [],
+            workflow: loaded.workflow || [],
+            engagement: loaded.engagement || [],
+            tasks: loaded.tasks || [],
+            submissions: loaded.submissions || [],
+            documents: loaded.profileDocs || [],
+            research: loaded.research || [],
+            accomplishments: loaded.accomplishments || [],
+            extension: loaded.extension || [],
+            vault: loaded.vault || [],
+            folderMap,
+            leaves: loaded.leaves || [],
+            feedback: loaded.feedback || [],
+            events: loaded.events || [],
+            facultyRows: loaded.faculty || []
+        }, directories);
+        populateFilters();
+        applyFilters({ keepPage: true });
+    } catch (error) {
+        console.error('Reports could not be assembled:', error);
+        sourceErrors = ['The activity report could not be assembled.'];
+        allLogs = [];
+        applyFilters({ keepPage: true });
+    } finally {
+        loadInFlight = false;
+        if (loadQueued) {
+            loadQueued = false;
+            loadReports();
+        }
+    }
+}
+
+function refreshReports() {
+    loadReports();
+}
+function scheduleReload() {
+    clearTimeout(realtimeTimer);
+    realtimeTimer = setTimeout(() => loadReports(), 800);
+}
+
+function fillSelect(select, placeholder, options, current) {
+    if (!select) return;
+    const value = current != null ? current : select.value;
+    select.innerHTML = `<option value="">${esc(placeholder)}</option>` + options.map((option) => {
+        const item = typeof option === 'string' ? { value: option, label: option } : option;
+        return `<option value="${esc(item.value)}">${esc(item.label)}</option>`;
+    }).join('');
+    const values = [...select.options].map((option) => option.value);
+    select.value = values.includes(value) ? value : '';
+    if (typeof refreshCompactSelect === 'function') refreshCompactSelect(select);
+}
+function populateFilters() {
+    const modules = [...new Set(allLogs.map((row) => row.module).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const statuses = new Map(STATUS_OPTIONS);
+    allLogs.forEach((row) => {
+        if (row.workflowStatus && !statuses.has(row.workflowStatus)) {
+            statuses.set(row.workflowStatus, row.workflowStatus.charAt(0).toUpperCase() + row.workflowStatus.slice(1));
+        }
+    });
+    fillSelect(document.getElementById('module-filter'), 'All Modules', modules);
+    fillSelect(document.getElementById('status-filter'), 'All Statuses', [...statuses].map(([value, label]) => ({ value, label })));
+}
+
+function selectedLabel(id, fallback) {
+    const select = document.getElementById(id);
+    if (!select || !select.value) return fallback;
+    return select.selectedOptions[0] ? select.selectedOptions[0].textContent : fallback;
+}
+function dateRangeLabel() {
+    const from = document.getElementById('from-date').value;
+    const to = document.getElementById('to-date').value;
+    if (from && to) return `${formatFilterDate(from)}–${formatFilterDate(to)}`;
+    if (from) return `From ${formatFilterDate(from)}`;
+    if (to) return `Through ${formatFilterDate(to)}`;
+    return 'All dates';
+}
+function activeFilterText() {
+    const status = document.getElementById('status-filter').value
+        ? selectedLabel('status-filter', 'All Statuses')
+        : '';
+    return [
+        selectedLabel('module-filter', 'All Modules'),
+        selectedLabel('department-filter', 'All Departments'),
+        status,
+        dateRangeLabel()
+    ].filter(Boolean).join(' · ');
+}
+function summaryText() {
+    const count = filteredLogs.length;
+    return `Showing ${count} ${count === 1 ? 'activity' : 'activities'} · ${activeFilterText()}`;
+}
+
+function applyFilters(options) {
+    if (!options || !options.keepPage) tablePage = 1;
+    const moduleName = document.getElementById('module-filter').value;
+    const department = document.getElementById('department-filter').value;
+    const status = document.getElementById('status-filter').value;
+    const from = document.getElementById('from-date').value;
+    const to = document.getElementById('to-date').value;
+    const query = document.getElementById('search-reports').value.toLowerCase().trim();
+    filteredLogs = allLogs.filter((row) => {
+        if (moduleName && row.module !== moduleName) return false;
+        if (department && String(row.department || '').trim().toUpperCase() !== department.toUpperCase()) return false;
+        if (status && row.workflowStatus !== status) return false;
+        if ((from || to) && !row.dateKey) return false;
+        if (from && row.dateKey < from) return false;
+        if (to && row.dateKey > to) return false;
+        if (!query) return true;
+        const haystack = [row.userName, row.userRole, row.department, row.module, row.action, row.details].join(' ').toLowerCase();
+        return haystack.includes(query);
+    });
+    const maxPage = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+    if (tablePage > maxPage) tablePage = 1;
+    renderAll();
+}
+function resetFilters() {
+    document.getElementById('module-filter').value = '';
+    document.getElementById('department-filter').value = '';
+    document.getElementById('status-filter').value = '';
+    document.getElementById('from-date').value = '';
+    document.getElementById('to-date').value = '';
+    document.getElementById('search-reports').value = '';
+    tablePage = 1;
+    ['module-filter', 'department-filter', 'status-filter'].forEach((id) => {
+        if (typeof refreshCompactSelect === 'function') refreshCompactSelect(document.getElementById(id));
+    });
+    applyFilters();
+}
+function changePage(step) {
+    const maxPage = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+    tablePage = Math.min(maxPage, Math.max(1, tablePage + step));
+    renderTable();
+}
+
+function renderAll() {
+    renderSummary();
+    renderTable();
+    renderCharts();
+}
+function renderSummary() {
+    const today = filteredLogs.filter((row) => row.dateKey === manilaTodayKey()).length;
+    const modules = new Set(filteredLogs.map((row) => row.module).filter(Boolean)).size;
+    const approvals = filteredLogs.filter((row) => row.reviewEvent).length;
+    document.getElementById('card-total').textContent = String(filteredLogs.length);
+    document.getElementById('card-today').textContent = String(today);
+    document.getElementById('card-modules').textContent = String(modules);
+    document.getElementById('card-approvals').textContent = String(approvals);
+    document.getElementById('result-summary').textContent = summaryText();
+}
+function renderTable() {
+    const body = document.getElementById('activity-table');
+    const empty = document.getElementById('empty-state');
+    const countLabel = document.getElementById('log-count-label');
+    const pager = document.getElementById('pager');
+    const total = filteredLogs.length;
+    countLabel.textContent = `${total} record${total === 1 ? '' : 's'}`;
+    if (!total) {
+        body.innerHTML = '';
+        empty.classList.remove('hidden');
+        pager.classList.add('hidden');
+        return;
+    }
+    empty.classList.add('hidden');
+    const start = (tablePage - 1) * PAGE_SIZE;
+    const pageRows = filteredLogs.slice(start, start + PAGE_SIZE);
+    body.innerHTML = pageRows.map((row) => `
+        <tr>
+            <td class="px-4 py-3 whitespace-nowrap cite-muted">${esc(formatWhen(row.activityAt))}</td>
+            <td class="px-4 py-3">
+                <div class="font-semibold cite-title">${esc(displayText(row.userName))}</div>
+                ${row.userRole ? `<div class="text-[11px] cite-faint">${esc(row.userRole)}</div>` : ''}
+            </td>
+            <td class="px-4 py-3 cite-ink">${esc(displayText(row.department))}</td>
+            <td class="px-4 py-3 cite-ink">${esc(row.module)}</td>
+            <td class="px-4 py-3 cite-ink">${esc(row.action)}</td>
+            <td class="px-4 py-3"><div class="details-clamp" title="${esc(row.details)}">${esc(displayText(row.details))}</div></td>
+        </tr>
+    `).join('');
+    const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    pager.classList.toggle('hidden', total <= PAGE_SIZE);
+    document.getElementById('pager-label').textContent = `Showing ${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total}`;
+    document.getElementById('pager-prev').disabled = tablePage <= 1;
+    document.getElementById('pager-next').disabled = tablePage >= maxPage;
+}
+
+function themePaint(expression) {
+    const probe = document.createElement('span');
+    probe.style.color = expression;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+}
+function themePalette() {
+    return {
+        theme: themePaint('var(--cite-theme)'),
+        hover: themePaint('var(--cite-theme-hover)'),
+        onTheme: themePaint('var(--cite-theme-text)'),
+        ink: themePaint('color-mix(in srgb, var(--cite-theme) 55%, black)'),
+        grid: themePaint('color-mix(in srgb, var(--cite-theme) 12%, white)'),
+        wash: themePaint('color-mix(in srgb, var(--cite-theme) 14%, white)')
+    };
+}
+function chartShades(count) {
+    const fills = [
+        'var(--cite-theme)',
+        'color-mix(in srgb, var(--cite-theme) 74%, black)',
+        'color-mix(in srgb, var(--cite-theme) 82%, white)',
+        'color-mix(in srgb, var(--cite-theme) 56%, black)',
+        'color-mix(in srgb, var(--cite-theme) 70%, white)',
+        'color-mix(in srgb, var(--cite-theme) 40%, black)',
+        'color-mix(in srgb, var(--cite-theme) 64%, white)',
+        'color-mix(in srgb, var(--cite-theme) 28%, black)'
+    ];
+    const hovers = [
+        'var(--cite-theme-hover)',
+        'color-mix(in srgb, var(--cite-theme) 62%, black)',
+        'color-mix(in srgb, var(--cite-theme) 72%, white)',
+        'color-mix(in srgb, var(--cite-theme) 46%, black)',
+        'color-mix(in srgb, var(--cite-theme) 60%, white)',
+        'color-mix(in srgb, var(--cite-theme) 32%, black)',
+        'color-mix(in srgb, var(--cite-theme) 54%, white)',
+        'color-mix(in srgb, var(--cite-theme) 22%, black)'
+    ];
+    const total = Math.max(1, count);
+    return {
+        fill: Array.from({ length: total }, (_, index) => themePaint(fills[index % fills.length])),
+        hover: Array.from({ length: total }, (_, index) => themePaint(hovers[index % hovers.length]))
+    };
+}
+function rgbTuple(color) {
+    const match = String(color || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : [98, 23, 8];
+}
+function renderCharts() {
+    const palette = themePalette();
+    const series = {
+        trend: buildTrend(filteredLogs),
+        module: countModules(filteredLogs),
+        department: countDepartments(filteredLogs),
+        workflow: countWorkflow(filteredLogs),
+        action: countActions(filteredLogs)
+    };
+    const signature = JSON.stringify({ series, theme: palette.theme });
+    if (signature === chartSignature) return;
+    chartSignature = signature;
+    trendChart = drawAnalyticsChart('trend', series.trend, trendChart, palette, false);
+    moduleChart = drawAnalyticsChart('module', series.module, moduleChart, palette, true);
+    departmentChart = drawAnalyticsChart('department', series.department, departmentChart, palette, false);
+    workflowChart = drawAnalyticsChart('workflow', series.workflow, workflowChart, palette, true);
+    actionChart = drawAnalyticsChart('action', series.action, actionChart, palette, true);
+}
+function drawAnalyticsChart(id, series, existing, palette, horizontal) {
+    const canvas = document.getElementById(`${id}Chart`);
+    const empty = document.getElementById(`${id}-empty`);
+    const ready = series.labels.length > 0 && series.values.some((value) => value > 0);
+    if (!ready) {
+        if (existing) existing.destroy();
+        if (canvas) canvas.classList.add('hidden');
+        if (empty) {
+            empty.textContent = 'No activity data available';
+            empty.classList.remove('hidden');
+        }
+        return null;
+    }
+    if (empty) empty.classList.add('hidden');
+    if (canvas) canvas.classList.remove('hidden');
+    if (existing) existing.destroy();
+    const shades = chartShades(series.labels.length);
+    const dataset = id === 'trend'
+        ? {
+            label: 'Activities',
+            data: series.values,
+            borderColor: palette.theme,
+            backgroundColor: palette.wash,
+            pointBackgroundColor: palette.theme,
+            pointBorderColor: palette.onTheme,
+            pointBorderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            borderWidth: 2.5,
+            tension: 0.35,
+            fill: true
+        }
+        : {
+            label: 'Activities',
+            data: series.values,
+            backgroundColor: shades.fill,
+            hoverBackgroundColor: shades.hover,
+            borderRadius: 6,
+            maxBarThickness: horizontal ? 22 : 42
+        };
+    return new Chart(canvas, {
+        type: id === 'trend' ? 'line' : 'bar',
+        data: { labels: series.labels, datasets: [dataset] },
+        options: chartOptions(horizontal, series.full, palette, id !== 'trend'),
+        plugins: id === 'trend' ? [] : [barValuePlugin]
+    });
+}
+const barValuePlugin = {
+    id: 'barValues',
+    afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        const meta = chart.getDatasetMeta(0);
+        const horizontal = chart.options.indexAxis === 'y';
+        const color = horizontal ? chart.options.scales.x.ticks.color : chart.options.scales.y.ticks.color;
+        if (!color) return;
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.font = '600 11px Inter, sans-serif';
+        meta.data.forEach((bar, index) => {
+            const value = chart.data.datasets[0].data[index];
+            if (horizontal) {
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(String(value), bar.x + 6, bar.y);
+            } else {
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(String(value), bar.x, bar.y - 4);
+            }
+        });
+        ctx.restore();
+    }
+};
+function chartOptions(horizontal, fullLabels, palette, showValues) {
+    const colors = palette || themePalette();
+    return {
+        indexAxis: horizontal ? 'y' : 'x',
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 380 },
+        layout: { padding: { right: horizontal ? 36 : 8, top: showValues && !horizontal ? 18 : 8, bottom: 4, left: 4 } },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: colors.theme,
+                titleColor: colors.onTheme,
+                bodyColor: colors.onTheme,
+                titleFont: { size: 13, weight: '600' },
+                bodyFont: { size: 13 },
+                padding: 12,
+                cornerRadius: 8,
+                displayColors: false,
+                callbacks: {
+                    title(items) {
+                        const item = items[0];
+                        const index = item ? item.dataIndex : 0;
+                        if (!horizontal && fullLabels && fullLabels[index]) return fullLabels[index];
+                        const stored = item && item.chart && item.chart.data.labels ? item.chart.data.labels[index] : '';
+                        return stored || (item ? item.label : '');
+                    },
+                    label(item) {
+                        const count = horizontal ? item.parsed.x : item.parsed.y;
+                        return `${count} ${count === 1 ? 'activity' : 'activities'}`;
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                beginAtZero: true,
+                ticks: {
+                    precision: 0,
+                    color: colors.ink,
+                    font: { size: 12, weight: '600' },
+                    maxRotation: 0,
+                    autoSkip: true,
+                    maxTicksLimit: horizontal ? 8 : 10
+                },
+                grid: { display: !horizontal, color: colors.grid }
+            },
+            y: {
+                beginAtZero: !horizontal,
+                ticks: {
+                    precision: 0,
+                    color: colors.ink,
+                    font: { size: horizontal ? 12 : 13, weight: '600' },
+                    autoSkip: false,
+                    callback(value) {
+                        if (!horizontal) return value;
+                        const label = String(this.getLabelForValue(value) || '');
+                        return label.length > 32 ? `${label.slice(0, 31)}…` : label;
+                    }
+                },
+                grid: { display: horizontal, color: colors.grid }
+            }
+        }
+    };
+}
+function buildTrend(logs) {
+    const dated = logs.filter((row) => row.dateKey);
+    if (!dated.length) return { labels: [], values: [] };
+    const keys = dated.map((row) => row.dateKey).sort();
+    const from = document.getElementById('from-date').value || keys[0];
+    const to = document.getElementById('to-date').value || keys[keys.length - 1];
+    const start = from <= to ? from : to;
+    const end = from <= to ? to : from;
+    if (daysBetween(start, end) <= 45) {
+        const counts = {};
+        dated.forEach((row) => { counts[row.dateKey] = (counts[row.dateKey] || 0) + 1; });
+        const days = eachDate(start, end);
+        return {
+            labels: days.map(formatDayLabel),
+            full: days.map(formatFilterDate),
+            values: days.map((day) => counts[day] || 0)
+        };
+    }
+    const counts = {};
+    dated.forEach((row) => {
+        const month = row.dateKey.slice(0, 7);
+        counts[month] = (counts[month] || 0) + 1;
+    });
+    const months = eachMonth(start, end);
+    return {
+        labels: months.map(formatMonthLabel),
+        full: months.map(formatMonthLabel),
+        values: months.map((month) => counts[month] || 0)
+    };
+}
+function countModules(logs) {
+    const counts = new Map();
+    logs.forEach((row) => {
+        if (!row.module) return;
+        counts.set(row.module, (counts.get(row.module) || 0) + 1);
+    });
+    const entries = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return { labels: entries.map((entry) => entry[0]), values: entries.map((entry) => entry[1]) };
+}
+const REPORT_DEPARTMENTS = ['BSIT', 'BIT', 'BSIE'];
+function countDepartments(logs) {
+    const counts = { BSIT: 0, BIT: 0, BSIE: 0 };
+    logs.forEach((row) => {
+        const code = String(row.department || '').trim().toUpperCase();
+        if (Object.prototype.hasOwnProperty.call(counts, code)) counts[code] += 1;
+    });
+    const selected = String(document.getElementById('department-filter').value || '').trim().toUpperCase();
+    const labels = REPORT_DEPARTMENTS.includes(selected)
+        ? [selected]
+        : REPORT_DEPARTMENTS.slice();
+    return { labels, values: labels.map((code) => counts[code]) };
+}
+function workflowChartAction(row) {
+    if (!row || row.module !== 'Workflow Approval') return '';
+    if (isNotificationActivity(row.module, row.action)) return '';
+    const action = String(row.action || '').toLowerCase();
+    if (/\b(submit|submitted)\b/.test(action)) return 'Submitted';
+    if (action.includes('approv')) return 'Approved';
+    if (action.includes('revision')) return 'Requested Revision';
+    if (action.includes('reject')) return 'Rejected';
+    if (action.includes('declin')) return 'Declined';
+    return '';
+}
+function countWorkflow(logs) {
+    const labels = ['Submitted', 'Approved', 'Requested Revision', 'Rejected', 'Declined'];
+    const counts = Object.fromEntries(labels.map((label) => [label, 0]));
+    logs.forEach((row) => {
+        const label = workflowChartAction(row);
+        if (label) counts[label] += 1;
+    });
+    return { labels, values: labels.map((label) => counts[label]) };
+}
+function countActions(logs) {
+    const counts = new Map();
+    logs.forEach((row) => {
+        const action = actionChartLabel(row.action);
+        if (!action || isNotificationActivity(row.module, row.action)) return;
+        counts.set(action, (counts.get(action) || 0) + 1);
+    });
+    const entries = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, 8);
+    return { labels: entries.map((entry) => entry[0]), values: entries.map((entry) => entry[1]) };
+}
+function actionChartLabel(action) {
+    const value = cleanText(action);
+    const key = value.toLowerCase();
+    if (!value || key.includes('notification')) return '';
+    if (key.includes('approv')) return 'Approved';
+    if (key.includes('revision')) return 'Requested Revision';
+    if (/\b(submit|submitted)\b/.test(key)) return 'Submitted';
+    if (key === 'uploaded' || key === 'admin upload') return 'Uploaded';
+    return value;
+}
+
+function exportRecords() {
+    return filteredLogs.map((row) => ({
+        'Date and Time': formatWhen(row.activityAt),
+        'User': row.userName || '',
+        'Role': row.userRole || '',
+        'Department': row.department || '',
+        'Module': row.module || '',
+        'Action': row.action || '',
+        'Details': row.details || ''
+    }));
+}
+function csvCell(value) {
+    const text = String(value ?? '');
+    if (/[",\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+    return text;
+}
+function downloadBlob(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+function toggleExportMenu(event) {
+    if (event) event.stopPropagation();
+    document.getElementById('export-panel').classList.toggle('hidden');
+}
+function closeExportMenu() {
+    document.getElementById('export-panel').classList.add('hidden');
+}
+
+async function recordExport(format, count) {
+    try {
+        const name = currentProfile
+            ? formatFullName(currentProfile.first_name, currentProfile.last_name, currentUser?.email)
+            : '';
+        await supabaseClient.from('system_activity_logs').insert({
+            user_name: name || cleanText(currentUser?.email) || 'Administrator',
+            user_role: 'Administrator',
+            module: 'Reports and Analytics',
+            action: 'Exported',
+            details_text: `Exported ${count} filtered report record(s) as ${String(format).toUpperCase()}.`,
+            metadata: { format, count, source: 'reports-analytics' }
+        });
+    } catch (error) {
+        console.warn('Export audit was not recorded:', error.message);
+    }
+}
+
+function pdfImageKind(data) {
+    return String(data || '').indexOf('image/jpeg') >= 0 ? 'JPEG' : 'PNG';
+}
+function pdfBannerSize(doc, data, maxW, maxH) {
+    if (!data) return { w: 0, h: 0 };
+    try {
+        const props = doc.getImageProperties(data);
+        let width = maxW;
+        let height = width * (props.height / props.width);
+        if (height > maxH) {
+            height = maxH;
+            width = height * (props.width / props.height);
+        }
+        return { w: width, h: height };
+    } catch (_) {
+        return { w: 0, h: 0 };
+    }
+}
+async function loadPdfBanners() {
+    if (window.__citeReportPdfBanners) return window.__citeReportPdfBanners;
+    const files = { seal: 'ctu-seal.png', bagong: 'bagong-pilipinas.png', footer: 'ctu-rankings-banner.png' };
+    const bases = ['../assets/', 'assets/'];
+    const toData = (response) => response.blob().then((blob) => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+    }));
+    const loadOne = async (file) => {
+        for (const base of bases) {
+            try {
+                const response = await fetch(base + file, { cache: 'force-cache' });
+                if (response && response.ok) {
+                    const data = await toData(response);
+                    if (data) return data;
+                }
+            } catch (_) {}
+        }
+        return '';
+    };
+    const [seal, bagong, footer] = await Promise.all([
+        loadOne(files.seal), loadOne(files.bagong), loadOne(files.footer)
+    ]);
+    window.__citeReportPdfBanners = { seal, bagong, footer };
+    return window.__citeReportPdfBanners;
+}
+function drawPdfLetterhead(doc, banners, themeRgb) {
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 12;
+    const accent = themeRgb || rgbTuple(themePaint('var(--cite-theme)'));
+    const rows = [
+        { font: ['times', 'normal'], size: 9, text: 'Republic of the Philippines' },
+        { font: ['helvetica', 'bold'], size: 12, text: 'CEBU TECHNOLOGICAL UNIVERSITY' },
+        { font: ['helvetica', 'bold'], size: 10.5, text: 'ARGAO CAMPUS' },
+        { font: ['helvetica', 'normal'], size: 8, text: 'Ed Kintanar Street, Lamacan, Argao, Cebu' },
+        { font: ['helvetica', 'normal'], size: 8, color: [29, 78, 216], text: 'Website: http://www.argao.ctu.edu.ph' },
+        { font: ['helvetica', 'normal'], size: 8, color: [29, 78, 216], text: 'E-mail: cdargao@ctu.edu.ph' },
+        { font: ['helvetica', 'normal'], size: 8, text: 'Phone No.: (032) 401-0737 local 1700' },
+        { font: ['times', 'bold'], size: 11, text: 'REPORTS & ANALYTICS' }
+    ];
+    let textW = 0;
+    rows.forEach((row) => {
+        doc.setFont(row.font[0], row.font[1]);
+        doc.setFontSize(row.size);
+        textW = Math.max(textW, doc.getTextWidth(row.text));
+    });
+    const seal = banners && banners.seal ? pdfBannerSize(doc, banners.seal, 18, 18) : { w: 0, h: 0 };
+    const bagong = banners && banners.bagong ? pdfBannerSize(doc, banners.bagong, 18, 18) : { w: 0, h: 0 };
+    const gap = 3;
+    const blockW = seal.w + (seal.w ? gap : 0) + textW + (bagong.w ? gap : 0) + bagong.w;
+    const x0 = Math.max(margin, (pageW - blockW) / 2);
+    const center = x0 + seal.w + (seal.w ? gap : 0) + textW / 2;
+    let y = 8;
+    rows.forEach((row) => {
+        doc.setFont(row.font[0], row.font[1]);
+        doc.setFontSize(row.size);
+        const color = row.color || [17, 17, 17];
+        doc.setTextColor(color[0], color[1], color[2]);
+        doc.text(row.text, center, y, { align: 'center' });
+        y += 4.2;
+    });
+    const logoH = Math.max(seal.h, bagong.h);
+    const logoY = 6;
+    try {
+        if (seal.w && banners.seal) doc.addImage(banners.seal, pdfImageKind(banners.seal), x0, logoY, seal.w, seal.h, undefined, 'FAST');
+    } catch (_) {}
+    try {
+        if (bagong.w && banners.bagong) doc.addImage(banners.bagong, pdfImageKind(banners.bagong), x0 + seal.w + (seal.w ? gap : 0) + textW + gap, logoY, bagong.w, bagong.h, undefined, 'FAST');
+    } catch (_) {}
+    const after = Math.max(y, logoY + logoH) + 1.5;
+    doc.setDrawColor(accent[0], accent[1], accent[2]);
+    doc.setLineWidth(0.3);
+    doc.line(margin, after, pageW - margin, after);
+    return after + 5;
+}
+
+async function exportPdf(rows) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        notifyUser('PDF export is unavailable in this browser.', 'error', 'Export');
+        return false;
+    }
+    const { jsPDF } = window.jspdf;
+    const banners = await loadPdfBanners();
+    const palette = themePalette();
+    const themeRgb = rgbTuple(palette.theme);
+    const onThemeRgb = rgbTuple(palette.onTheme);
+    const inkRgb = rgbTuple(themePaint('color-mix(in srgb, var(--cite-theme) 55%, black)'));
+    const mutedRgb = rgbTuple(themePaint('color-mix(in srgb, var(--cite-theme) 32%, black)'));
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+    const margin = 12;
+    const pageW = doc.internal.pageSize.getWidth();
+    let y = drawPdfLetterhead(doc, banners, themeRgb);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(mutedRgb[0], mutedRgb[1], mutedRgb[2]);
+    doc.text(`Generated: ${formatGeneratedAt()} (Philippine time)`, margin, y);
+    y += 4;
+    const filterLines = doc.splitTextToSize(`Filters: ${activeFilterText()}`, pageW - margin * 2);
+    doc.text(filterLines, margin, y);
+    y += filterLines.length * 3.6;
+    doc.text(`Results: ${rows.length} ${rows.length === 1 ? 'activity' : 'activities'}`, margin, y);
+    y += 4;
+    doc.autoTable({
+        startY: y,
+        margin: { top: 18, bottom: 32, left: margin, right: margin },
+        showHead: 'everyPage',
+        head: [['Date & Time', 'User', 'Department', 'Module', 'Action', 'Details']],
+        body: rows.length
+            ? rows.map((row) => [row['Date and Time'], row.User, row.Department, row.Module, row.Action, row.Details])
+            : [['—', '—', '—', '—', '—', 'No activity in the current filters']],
+        styles: { fontSize: 8, cellPadding: 1.8, overflow: 'linebreak', valign: 'top', textColor: inkRgb },
+        headStyles: { fillColor: themeRgb, textColor: onThemeRgb, fontStyle: 'bold', fontSize: 8 },
+        columnStyles: {
+            0: { cellWidth: 32 },
+            1: { cellWidth: 32 },
+            2: { cellWidth: 28 },
+            3: { cellWidth: 32 },
+            4: { cellWidth: 28 },
+            5: { cellWidth: 112 }
+        },
+        didDrawPage(data) {
+            if (data.pageNumber === 1) return;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(themeRgb[0], themeRgb[1], themeRgb[2]);
+            doc.text('CEBU TECHNOLOGICAL UNIVERSITY', margin, 8);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(mutedRgb[0], mutedRgb[1], mutedRgb[2]);
+            doc.text('Reports & Analytics', margin, 12);
+        }
+    });
+    const pages = doc.getNumberOfPages();
+    for (let page = 1; page <= pages; page += 1) {
+        doc.setPage(page);
+        const pageH = doc.internal.pageSize.getHeight();
+        const footerTop = pageH - 22;
+        doc.setDrawColor(themeRgb[0], themeRgb[1], themeRgb[2]);
+        doc.setLineWidth(0.3);
+        doc.line(margin, footerTop, pageW - margin, footerTop);
+        let drewBanner = false;
+        if (banners && banners.footer) {
+            try {
+                const size = pdfBannerSize(doc, banners.footer, 120, 10);
+                if (size.w) {
+                    doc.addImage(banners.footer, pdfImageKind(banners.footer), (pageW - size.w) / 2, footerTop + 2, size.w, size.h, undefined, 'FAST');
+                    drewBanner = true;
+                }
+            } catch (_) {}
+        }
+        if (!drewBanner) {
+            doc.setFont('times', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(17, 17, 17);
+            doc.text('CEBU TECHNOLOGICAL UNIVERSITY', pageW / 2, footerTop + 6, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.text('ARGAO CAMPUS', pageW / 2, footerTop + 10, { align: 'center' });
+        }
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Page ${page} of ${pages}`, pageW - margin, pageH - 4, { align: 'right' });
+    }
+    doc.save(`CITE-Flow-Reports-Analytics-${manilaTodayKey()}.pdf`);
+    return true;
+}
+
+function exportExcel(rows) {
+    if (!window.XLSX) {
+        notifyUser('Excel export is unavailable in this browser.', 'error', 'Export');
+        return false;
+    }
+    const header = ['Date and Time', 'User', 'Role', 'Department', 'Module', 'Action', 'Details'];
+    const preamble = [
+        ['Republic of the Philippines'],
+        ['CEBU TECHNOLOGICAL UNIVERSITY'],
+        ['ARGAO CAMPUS'],
+        ['Ed Kintanar Street, Lamacan, Argao, Cebu'],
+        ['Website: http://www.argao.ctu.edu.ph    E-mail: cdargao@ctu.edu.ph    Phone No.: (032) 401-0737 local 1700'],
+        ['REPORTS & ANALYTICS'],
+        [`Generated: ${formatGeneratedAt()} (Philippine time)`],
+        [`Filters: ${activeFilterText()}`],
+        [`Results: ${rows.length} ${rows.length === 1 ? 'activity' : 'activities'}`],
+        [],
+        header
+    ];
+    const body = rows.map((row) => header.map((key) => row[key]));
+    const sheet = XLSX.utils.aoa_to_sheet(preamble.concat(body));
+    sheet['!cols'] = [
+        { wch: 24 }, { wch: 24 }, { wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 72 }
+    ];
+    const headerIndex = preamble.length - 1;
+    const lastExcelRow = headerIndex + body.length + 1;
+    sheet['!autofilter'] = { ref: `A${headerIndex + 1}:G${lastExcelRow}` };
+    sheet['!pageSetup'] = {
+        orientation: 'landscape',
+        paperSize: 9,
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0
+    };
+    sheet['!margins'] = { left: 0.5, right: 0.5, top: 0.6, bottom: 0.6, header: 0.2, footer: 0.2 };
+    header.forEach((_, index) => {
+        const cell = sheet[XLSX.utils.encode_cell({ r: headerIndex, c: index })];
+        if (cell) cell.s = { font: { bold: true }, alignment: { vertical: 'center', wrapText: true } };
+    });
+    body.forEach((record, rowIndex) => {
+        record.forEach((_, colIndex) => {
+            const cell = sheet[XLSX.utils.encode_cell({ r: headerIndex + 1 + rowIndex, c: colIndex })];
+            if (cell) cell.s = { alignment: { vertical: 'top', wrapText: colIndex === 6 } };
+        });
+    });
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, 'Activity');
+    XLSX.writeFile(book, `CITE-Flow-Reports-Analytics-${manilaTodayKey()}.xlsx`);
+    return true;
+}
+
+function exportCsv(rows) {
+    const header = ['Date and Time', 'User', 'Role', 'Department', 'Module', 'Action', 'Details'];
+    const lines = [
+        csvCell('Cebu Technological University — Reports & Analytics'),
+        csvCell(`Generated: ${formatGeneratedAt()} (Philippine time)`),
+        csvCell(`Filters: ${activeFilterText()}`),
+        csvCell(`Results: ${rows.length} ${rows.length === 1 ? 'activity' : 'activities'}`),
+        '',
+        header.map(csvCell).join(','),
+        ...rows.map((row) => header.map((key) => csvCell(row[key])).join(','))
+    ];
+    downloadBlob('\ufeff' + lines.join('\r\n'), `CITE-Flow-Reports-Analytics-${manilaTodayKey()}.csv`, 'text/csv;charset=utf-8');
+    return true;
+}
+
+async function exportReport(format) {
+    closeExportMenu();
+    const rows = exportRecords();
+    if (!rows.length) {
+        notifyUser('No filtered activity is available to export.', 'warning', 'Nothing to export');
+        return;
+    }
+    try {
+        let saved = false;
+        if (format === 'pdf') saved = await exportPdf(rows);
+        else if (format === 'excel') saved = exportExcel(rows);
+        else if (format === 'csv') saved = exportCsv(rows);
+        if (saved) await recordExport(format, rows.length);
+    } catch (error) {
+        console.error('Report export failed:', error);
+        notifyUser('The export could not be completed.', 'error', 'Export');
+    }
+}
+
+function subscribeReports() {
+    if (!supabaseClient || reportsChannel) return;
+    const tables = [
+        'system_activity_logs', 'wf_activity_log', 'wf_submissions', 'engagement_logs',
+        'faculty_documents', 'faculty_research_projects', 'faculty_accomplishments',
+        'extension_projects', 'documents', 'faculty_leaves', 'calendar_event_feedback',
+        'calendar_events', 'faculty'
+    ];
+    reportsChannel = supabaseClient.channel('reports-analytics-realtime');
+    tables.forEach((table) => {
+        reportsChannel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleReload);
+    });
+    reportsChannel.subscribe();
+}
+
+function formatFullName(firstName, lastName, fallback) {
+    return [firstName, lastName].filter(Boolean).join(' ').trim() || fallback || '';
+}
+function renderProfile(profile, user) {
+    const nameEl = document.getElementById('profileName');
+    const roleEl = document.getElementById('profileRole');
+    if (nameEl) nameEl.textContent = formatFullName(profile.first_name, profile.last_name, user?.email);
+    if (roleEl) roleEl.textContent = profile.role || 'Administrator';
+}
+async function loadAdminProfile() {
+    try {
+        const { data: authData } = await supabaseClient.auth.getUser();
+        if (!authData?.user) return;
+        currentUser = authData.user;
+        const meta = currentUser.user_metadata || {};
+        let profile = {
+            first_name: meta.first_name || '',
+            last_name: meta.last_name || '',
+            email: currentUser.email || '',
+            role: meta.role || 'Administrator'
+        };
+        const { data: dbProfile } = await supabaseClient.from('admin_profiles').select('id, first_name, last_name, email, role').eq('id', currentUser.id).maybeSingle();
+        if (dbProfile) profile = { ...profile, ...dbProfile };
+        currentProfile = profile;
+        renderProfile(profile, currentUser);
+    } catch (error) {
+        console.warn('Administrator profile was not loaded:', error.message);
+    }
+}
+
+function closeAllCompactSelects(exceptPanel) {
+    document.querySelectorAll('.compact-select-panel').forEach((panel) => {
+        if (panel === exceptPanel) return;
+        panel.classList.remove('open');
+    });
+}
+function positionCompactPanel(panel, wrap) {
+    const rect = wrap.getBoundingClientRect();
+    const openUp = rect.bottom + 240 > window.innerHeight && rect.top > 240;
+    panel.style.position = 'fixed';
+    panel.style.left = `${Math.max(12, rect.left)}px`;
+    panel.style.width = `${Math.max(rect.width, 180)}px`;
+    panel.style.zIndex = '100050';
+    if (openUp) {
+        panel.style.top = 'auto';
+        panel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+    } else {
+        panel.style.top = `${rect.bottom + 6}px`;
+        panel.style.bottom = 'auto';
+    }
+}
+function refreshCompactSelect(select) {
+    if (!select) return;
+    const wrap = select.closest('.compact-select');
+    if (!wrap) return;
+    const triggerLabel = wrap.querySelector('.compact-select-trigger span');
+    const panel = wrap.querySelector('.compact-select-panel');
+    const selected = select.selectedOptions[0];
+    if (triggerLabel) triggerLabel.textContent = selected ? selected.textContent : '';
+    if (!panel) return;
+    panel.innerHTML = [...select.options].map((option) => `
+        <button type="button" class="compact-select-option ${option.selected ? 'active' : ''}" data-value="${esc(option.value)}">${esc(option.textContent)}</button>
+    `).join('');
+}
+function initCompactSelects() {
+    document.querySelectorAll('select:not([multiple])').forEach((select) => {
+        if (select.dataset.compact === 'true') {
+            refreshCompactSelect(select);
+            return;
+        }
+        select.dataset.compact = 'true';
+        const wrap = document.createElement('div');
+        wrap.className = 'compact-select';
+        select.parentNode.insertBefore(wrap, select);
+        wrap.appendChild(select);
+        select.classList.add('compact-select-native');
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'compact-select-trigger field';
+        trigger.innerHTML = '<span></span>';
+        const panel = document.createElement('div');
+        panel.className = 'compact-select-panel';
+        wrap.appendChild(trigger);
+        wrap.appendChild(panel);
+        trigger.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const willOpen = !panel.classList.contains('open');
+            closeAllCompactSelects();
+            if (!willOpen) return;
+            positionCompactPanel(panel, wrap);
+            panel.classList.add('open');
+        });
+        panel.addEventListener('click', (event) => {
+            const option = event.target.closest('.compact-select-option');
+            if (!option) return;
+            select.value = option.dataset.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            refreshCompactSelect(select);
+            closeAllCompactSelects();
+        });
+        refreshCompactSelect(select);
+    });
+}
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('#export-menu')) closeExportMenu();
+    if (event.target.closest('.compact-select-option, .compact-select-trigger')) return;
+    closeAllCompactSelects();
+});
+document.addEventListener('scroll', () => {
+    const openPanel = document.querySelector('.compact-select-panel.open');
+    if (!openPanel) return;
+    const wrap = openPanel.closest('.compact-select');
+    if (wrap) positionCompactPanel(openPanel, wrap);
+}, true);
+window.addEventListener('resize', () => closeAllCompactSelects());
+
+window.addEventListener('load', async () => {
+    if (typeof loadSidebar === 'function') await loadSidebar();
+    initCompactSelects();
+    await loadAdminProfile();
+    await loadReports();
+    subscribeReports();
+});
 </script>
+<script src="../shared/system-ui.js"></script>
+<div id="message-container"></div>
+<script src="../nav.js?v=admin-hook-1"></script>
 </body>
 </html>

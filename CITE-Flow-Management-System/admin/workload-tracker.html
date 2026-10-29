@@ -4,228 +4,1509 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workload Tracker - CITE-Flow</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
+    <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
-        }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
-        }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
+        body { background: #f1f5f9; }
+
+        .card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 24px;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.04);
         }
 
-        .section-header {
+        .field {
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 16px;
+            padding: 10px 14px;
+            font-size: 14px;
+            outline: none;
+            background: #ffffff;
+            box-sizing: border-box;
+        }
+        .field:focus {
+            border-color: var(--cite-theme, #621708);
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--cite-theme, #621708) 8%, transparent);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 10px;
+            border-radius: 999px;
             font-size: 11px;
+            font-weight: 700;
+        }
+
+        .avatar {
+            background: #f1f5f9;
+            color: #334155;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
             font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
         }
 
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
+        .export-btn {
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            background: #ffffff;
+            color: #334155;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
+        .export-btn:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
         }
 
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        .table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
+        /* Field-name slide guide: mobile only. Desktop table stays unchanged. */
+        .column-guide-wrap {
+            display: none;
+        }
+
+        @media (max-width: 767px) {
+            .column-guide-wrap {
+                display: block;
+                position: sticky;
+                top: 3.5rem;
+                z-index: 30;
+                background: #eef2f6;
+            }
+
+            .column-guide {
+                display: flex;
+                align-items: stretch;
+                overflow-x: auto;
+                scrollbar-width: none;
+                -webkit-overflow-scrolling: touch;
+            }
+            .column-guide::-webkit-scrollbar { display: none; }
+
+            .guide-tab {
+                flex: 0 0 auto;
+                border: 0;
+                background: transparent;
+                color: #5f7d96;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.16em;
+                text-transform: uppercase;
+                white-space: nowrap;
+                padding: 14px 22px 12px;
+                cursor: pointer;
+            }
+            .guide-tab.active {
+                color: #3e5a70;
+            }
+
+            .guide-slider-track {
+                height: 4px;
+                background: #d5dee7;
+            }
+            .guide-slider-thumb {
+                height: 4px;
+                width: 28%;
+                background: #9aa8b4;
+            }
+
+            .workload-table thead {
+                display: none;
+            }
+            .workload-table th:first-child,
+            .workload-table td:first-child {
+                position: sticky;
+                left: 0;
+                z-index: 2;
+                background: #ffffff;
+                box-shadow: 8px 0 12px -10px rgba(15, 23, 42, 0.25);
+            }
+        }
+
+        .compact-select {
+            position: relative;
+            width: 100%;
+        }
+        .compact-select-trigger,
+        .compact-select-panel {
+            display: none;
+        }
+
+        @media (max-width: 767px) {
+            .compact-select-native {
+                position: absolute !important;
+                width: 1px !important;
+                height: 1px !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                overflow: hidden !important;
+                border: 0 !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .compact-select-trigger {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                width: 100%;
+                text-align: left;
+                cursor: pointer;
+            }
+            .compact-select-trigger span {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .compact-select-panel {
+                display: none;
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: calc(100% + 6px);
+                z-index: 80;
+                max-height: 168px;
+                overflow-y: auto;
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 14px;
+                box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+            }
+            .compact-select-panel.open {
+                display: block;
+            }
+            .compact-select-panel.open-up {
+                top: auto;
+                bottom: calc(100% + 6px);
+            }
+            .compact-select-option {
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 8px 12px;
+                font-size: 13px;
+                line-height: 1.3;
+                color: #334155;
+                background: #ffffff;
+                border: 0;
+            }
+            .compact-select-option.active {
+                background: var(--cite-theme, #621708);
+                color: #ffffff;
+            }
+        }
+
+        .import-table input.field,
+        .import-table select.field {
+            min-width: 108px;
+            border-radius: 12px;
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+        .import-note {
+            min-width: 180px;
+            max-width: 260px;
+            white-space: normal;
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-slate-50 overflow-x-hidden min-h-screen">
 
-<div class="flex h-screen overflow-hidden">
-    <!-- SIDEBAR -->
-    <div class="sidebar text-white flex flex-col h-full">
-        
-        <!-- CTU Logo Section -->
-        <div onclick="window.location.href='dashboard.html'" 
-            class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" 
-                alt="CTU Logo" 
-                class="h-16 w-auto mb-3">
-            <div class="text-center">
-                <div class="font-semibold text-base leading-tight">College of Technology</div>
-                <div class="font-semibold text-base leading-tight">and Engineering</div>
+<div class="flex min-h-screen">
+    <div id="sidebar-container"></div>
+
+    <main class="flex-1 min-h-screen bg-slate-100 ml-0 md:ml-[220px] w-full overflow-x-hidden transition-all duration-300">
+        <div id="navbar-container"></div>
+
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <header class="mb-6 sm:mb-8">
+                <p class="text-[11px] sm:text-xs font-semibold tracking-widest text-[#621708] uppercase">Faculties & Profiles</p>
+                <h1 class="text-2xl sm:text-3xl font-semibold text-slate-950 mt-1">Workload Tracker</h1>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1">Realtime summary of faculty teaching workload entries.</p>
+            </header>
+
+            <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-6 sm:mb-8">
+                <div class="card p-5 sm:p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Faculty Listed</p>
+                            <p id="statFaculty" class="text-2xl sm:text-4xl font-bold text-slate-950 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                        </div>
+                        <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                            <i class="fas fa-users"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card p-5 sm:p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Total Teaching Load</p>
+                            <p id="statTeaching" class="text-2xl sm:text-4xl font-bold text-slate-950 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                        </div>
+                        <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                            <i class="fas fa-book"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card p-5 sm:p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Normal Load</p>
+                            <p id="statNormal" class="text-2xl sm:text-4xl font-bold text-emerald-600 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                        </div>
+                        <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="card p-5 sm:p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Overload</p>
+                            <p id="statOverload" class="text-2xl sm:text-4xl font-bold text-red-600 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                        </div>
+                        <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="card p-4 sm:p-6 mb-6 sm:mb-8">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_200px_200px] gap-3 sm:gap-4">
+                    <input id="searchInput" oninput="applyFilters()"
+                        class="field sm:col-span-2 lg:col-span-1"
+                        placeholder="Search faculty, department, subject, or section...">
+                    <select id="departmentFilter" onchange="applyFilters()" class="field">
+                        <option value="">All Departments</option>
+                    </select>
+                    <select id="semesterFilter" onchange="applyFilters()" class="field">
+                        <option value="">All Semesters</option>
+                        <option value="1st Semester">1st Semester</option>
+                        <option value="2nd Semester">2nd Semester</option>
+                        <option value="Summer">Summer</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card overflow-hidden">
+                <div class="px-5 py-4 sm:px-6 sm:py-5 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-semibold text-slate-900">Faculty Workload Table</h2>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Teaching preparations, units, hours, and student count</p>
+                    </div>
+                    <div class="flex items-center justify-between sm:justify-end gap-2">
+                        <span id="resultCount" class="text-xs sm:text-sm text-slate-500 font-medium">0 records</span>
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="importWorkloadBtn" onclick="openWorkloadImport()" class="export-btn">
+                                <i class="fas fa-file-import"></i> Import
+                            </button>
+                            <button type="button" onclick="toggleExportMenu()" class="export-btn">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column-guide-wrap">
+                    <div id="columnGuide" class="column-guide" aria-label="Workload table field names">
+                        <button type="button" class="guide-tab active" data-col="0">Faculty</button>
+                        <button type="button" class="guide-tab" data-col="1">Department</button>
+                        <button type="button" class="guide-tab" data-col="2">Preparations</button>
+                        <button type="button" class="guide-tab" data-col="3">Units</button>
+                        <button type="button" class="guide-tab" data-col="4">Hours/Week</button>
+                        <button type="button" class="guide-tab" data-col="5">Sections</button>
+                        <button type="button" class="guide-tab" data-col="6">Students</button>
+                        <button type="button" class="guide-tab" data-col="7">Action</button>
+                    </div>
+                    <div class="guide-slider-track">
+                        <div id="scrollThumb" class="guide-slider-thumb"></div>
+                    </div>
+                </div>
+
+                <div id="tableScroll" class="table-scroll">
+                    <table class="workload-table w-full min-w-[950px] text-xs sm:text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase tracking-wider text-[11px] font-bold">
+                            <tr>
+                                <th class="py-3.5 px-4 sm:px-6 text-left">Faculty</th>
+                                <th class="py-3.5 px-4 sm:px-6 text-left">Department</th>
+                                <th class="py-3.5 px-3 text-center">Preparations</th>
+                                <th class="py-3.5 px-3 text-center">Units</th>
+                                <th class="py-3.5 px-3 text-center">Hours/Week</th>
+                                <th class="py-3.5 px-4 sm:px-6 text-left">Sections</th>
+                                <th class="py-3.5 px-3 text-center">Students</th>
+                                <th class="py-3.5 px-4 sm:px-6 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workloadTable" class="divide-y divide-slate-100">
+                            <tr>
+                                <td colspan="8">
+                                    <div class="skeleton-row">
+                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                                        <div class="skeleton-text" style="width:80px"></div>
+                                        <div class="skeleton-text" style="width:60px"></div>
+                                    </div>
+                                    <div class="skeleton-row">
+                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                                        <div class="skeleton-text" style="width:80px"></div>
+                                        <div class="skeleton-text" style="width:60px"></div>
+                                    </div>
+                                    <div class="skeleton-row">
+                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                                        <div class="skeleton-text" style="width:80px"></div>
+                                        <div class="skeleton-text" style="width:60px"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="workloadLoadError" class="hidden mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+                <div id="emptyState" class="hidden py-16 text-center">
+                    <div class="w-14 h-14 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
+                        <i class="fas fa-folder-open text-2xl text-slate-400"></i>
+                    </div>
+                    <h3 class="font-semibold text-slate-900 text-sm sm:text-base">No workload records found</h3>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">Try adjusting your filters.</p>
+                </div>
             </div>
         </div>
+    </main>
+</div>
 
-        <!-- Navigation -->
-        <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
-            <div>
-                <div class="section-header text-white/70">FACULTIES & PROFILES</div>
-                <div onclick="window.location.href='faculty-profiles.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Faculty Profiles
-                </div>
-                <div onclick="window.location.href='workload-tracker.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Workload Tracker
-                </div>
-                <div onclick="window.location.href='engagement-logs.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                    Engagement Logs
-                </div>
+<div id="detailsModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[2500] flex items-center justify-center p-3 sm:p-5 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
+        <div class="px-6 py-4 sm:px-8 sm:py-6 border-b flex justify-between items-start bg-slate-50/50">
+            <div class="min-w-0 pr-4">
+                <p class="text-[10px] sm:text-xs font-semibold tracking-widest text-[#621708] uppercase">WORKLOAD DETAILS</p>
+                <h2 id="detailName" class="text-lg sm:text-2xl font-bold mt-0.5 text-slate-900 truncate"></h2>
+                <p id="detailMeta" class="text-xs sm:text-sm text-slate-500 truncate mt-0.5"></p>
             </div>
-
-            <div>
-                <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='workflow-approval.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Workflow Approval
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">ADMINISTRATION</div>
-                <div onclick="window.location.href='reports-analytics.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
-                    Reports and Analytics
-                </div>
-                
-                <!-- Seminar Feedback Summary added here -->
-                <div onclick="window.location.href='feedback-summary.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
-                    Seminar Feedback Summary
-                </div>
-
-                <div onclick="window.location.href='system-settings.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-                <div onclick="window.location.href='user-management.html'" class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    User Management
-                </div>
-            </div>
+            <button onclick="closeDetails()" class="w-8 h-8 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center text-2xl leading-none">&times;</button>
         </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Dean & Administrator</div>
-            </div>
-        </div>
+        <div class="p-5 sm:p-8 overflow-y-auto flex-1" id="detailTeaching"></div>
     </div>
+</div>
 
-    <!-- MAIN CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8">
-        <h1 class="text-3xl font-semibold mb-6">Workload Tracker</h1>
-
-        <div class="flex gap-4 mb-6">
-            <select class="bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-[#621708]">
-                <option>All Departments</option>
-                <option>BSIT</option>
-                <option>BSIE</option>
-                <option>BIT</option>
-            </select>
-            <select class="bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-[#621708]">
-                <option>1st Semester</option>
-                <option>2nd Semester</option>
-            </select>
-            <input type="text" placeholder="Search Faculty..." 
-                   class="flex-1 bg-white border border-gray-200 rounded-2xl px-5 py-3 text-sm focus:outline-none">
+<div id="importModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[2600] flex items-center justify-center p-3 sm:p-5 overflow-y-auto min-h-screen">
+    <div class="bg-white rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col my-auto">
+        <div class="px-6 py-4 sm:px-8 sm:py-6 border-b flex justify-between items-start bg-slate-50/50">
+            <div class="min-w-0 pr-4">
+                <p class="text-[10px] sm:text-xs font-semibold tracking-widest text-[#621708] uppercase">Workload</p>
+                <h2 class="text-lg sm:text-2xl font-bold mt-0.5 text-slate-900">Import Workload</h2>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1">Review every row before anything is saved. Unmatched faculty are never imported.</p>
+            </div>
+            <button type="button" onclick="closeWorkloadImport()" class="w-8 h-8 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center text-2xl leading-none">&times;</button>
         </div>
-
-        <div class="bg-white rounded-3xl overflow-hidden card-shadow">
-            <table class="w-full">
-                <thead class="bg-[#621708] text-white">
-                    <tr>
-                        <th class="py-4 px-6 text-left">Faculty Name</th>
-                        <th class="py-4 px-6 text-center">Dept</th>
-                        <th class="py-4 px-6 text-center">Teaching</th>
-                        <th class="py-4 px-6 text-center">Advisory</th>
-                        <th class="py-4 px-6 text-center">Admin Role</th>
-                        <th class="py-4 px-6 text-center">Total Load</th>
-                        <th class="py-4 px-6 text-center">Status</th>
-                        <th class="py-4 px-6 text-center">Details</th>
-                    </tr>
-                </thead>
-                <tbody class="text-sm divide-y">
-                    <tr>
-                        <td class="py-4 px-6 font-medium">Engr. Maria Santos</td>
-                        <td class="py-4 px-6 text-center">BSIT</td>
-                        <td class="py-4 px-6 text-center">18</td>
-                        <td class="py-4 px-6 text-center">3</td>
-                        <td class="py-4 px-6 text-center">3</td>
-                        <td class="py-4 px-6 text-center font-semibold">24</td>
-                        <td class="py-4 px-6 text-center text-blue-600 font-medium">Load</td>
-                        <td class="py-4 px-6 text-center"><button class="bg-[#621708] text-white px-5 py-2 rounded-2xl text-xs">View</button></td>
-                    </tr>
-                    <tr class="bg-gray-50">
-                        <td class="py-4 px-6 font-medium">Prof. John Dela Cruz</td>
-                        <td class="py-4 px-6 text-center">BIT</td>
-                        <td class="py-4 px-6 text-center">21</td>
-                        <td class="py-4 px-6 text-center">4</td>
-                        <td class="py-4 px-6 text-center">4</td>
-                        <td class="py-4 px-6 text-center font-semibold">29</td>
-                        <td class="py-4 px-6 text-center text-red-600 font-medium">Overload</td>
-                        <td class="py-4 px-6 text-center"><button class="bg-[#621708] text-white px-5 py-2 rounded-2xl text-xs">View</button></td>
-                    </tr>
-                    <tr>
-                        <td class="py-4 px-6 font-medium">Prof. Anna Rodriguez</td>
-                        <td class="py-4 px-6 text-center">BIT</td>
-                        <td class="py-4 px-6 text-center">23</td>
-                        <td class="py-4 px-6 text-center">3</td>
-                        <td class="py-4 px-6 text-center">4</td>
-                        <td class="py-4 px-6 text-center font-semibold">30</td>
-                        <td class="py-4 px-6 text-center text-red-600 font-medium">Overload</td>
-                        <td class="py-4 px-6 text-center"><button class="bg-[#621708] text-white px-5 py-2 rounded-2xl text-xs">View</button></td>
-                    </tr>
-                    <tr class="bg-gray-50">
-                        <td class="py-4 px-6 font-medium">Prof. Carlos Mendoza</td>
-                        <td class="py-4 px-6 text-center">BSIT</td>
-                        <td class="py-4 px-6 text-center">21</td>
-                        <td class="py-4 px-6 text-center">4</td>
-                        <td class="py-4 px-6 text-center">4</td>
-                        <td class="py-4 px-6 text-center font-semibold">29</td>
-                        <td class="py-4 px-6 text-center text-blue-600 font-medium">Load</td>
-                        <td class="py-4 px-6 text-center"><button class="bg-[#621708] text-white px-5 py-2 rounded-2xl text-xs">View</button></td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="p-5 sm:p-6 overflow-y-auto flex-1">
+            <div id="importSetup" class="mb-4">
+                <label for="importFile" class="block text-xs font-semibold text-slate-600 mb-2">PDF or Excel file</label>
+                <input id="importFile" type="file" accept=".pdf,.xlsx,.xls,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="block w-full text-sm text-slate-600" onchange="onWorkloadFile(event)">
+                <p class="text-xs text-slate-500 mt-2">Accepts .pdf, .xlsx, and .xls up to 8 MB. The file stays in this browser until you close the review. Scanned PDFs cannot be read because OCR is not available.</p>
+            </div>
+            <p id="importError" class="hidden mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></p>
+            <p id="importProgress" class="hidden mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"></p>
+            <div id="importReview" class="hidden"></div>
         </div>
     </div>
 </div>
+
+<script src="../shared/workload-import.js"></script>
+<script>
+    const supabaseClient = window.supabaseClient || (typeof supabase !== 'undefined' && window.__SUPABASE_URL__
+        ? supabase.createClient(window.__SUPABASE_URL__, window.__SUPABASE_ANON__)
+        : null);
+    if (supabaseClient) window.supabaseClient = supabaseClient;
+
+    let faculties = [], teachingLoads = [], workloadSummaries = [], currentFilteredRows = [];
+    let facultyLoadError = '';
+    let importUi = emptyImportState();
+    let importEventsBound = false;
+
+    function emptyImportState() {
+        return {
+            busy: false,
+            fileName: '',
+            fileType: '',
+            records: [],
+            warnings: [],
+            unmapped: [],
+            mappedColumns: [],
+            ignoredColumns: [],
+            missingTargets: [],
+            detailColumn: null,
+            existing: [],
+            result: null,
+            error: '',
+            progress: ''
+        };
+    }
+
+    function esc(v) { return String(v || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+    function initials(name) {
+        return String(name || 'F').split(/\s+/).filter(Boolean).slice(0,2).map(x => x[0].toUpperCase()).join('') || 'F';
+    }
+
+    function closeAllCompactSelects(exceptPanel) {
+        document.querySelectorAll('.compact-select-panel').forEach((panel) => {
+            if (panel !== exceptPanel) panel.classList.remove('open', 'open-up');
+        });
+    }
+
+    function refreshCompactSelect(select) {
+        const wrap = select.closest('.compact-select');
+        if (!wrap) return;
+        const triggerLabel = wrap.querySelector('.compact-select-trigger span');
+        const panel = wrap.querySelector('.compact-select-panel');
+        const selected = select.selectedOptions[0];
+        if (triggerLabel) triggerLabel.textContent = selected ? selected.textContent : '';
+        if (!panel) return;
+        panel.innerHTML = [...select.options].map((option) => `
+            <button type="button" class="compact-select-option ${option.selected ? 'active' : ''}" data-value="${esc(option.value)}">${esc(option.textContent)}</button>
+        `).join('');
+    }
+
+    function refreshCompactSelects() {
+        document.querySelectorAll('select.field').forEach(refreshCompactSelect);
+    }
+
+    function initCompactSelects() {
+        document.querySelectorAll('select.field').forEach((select) => {
+            if (select.dataset.compact === 'true') {
+                refreshCompactSelect(select);
+                return;
+            }
+            select.dataset.compact = 'true';
+            const wrap = document.createElement('div');
+            wrap.className = 'compact-select';
+            select.parentNode.insertBefore(wrap, select);
+            wrap.appendChild(select);
+            select.classList.add('compact-select-native');
+
+            const trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'compact-select-trigger field text-xs sm:text-sm py-2.5';
+            trigger.innerHTML = '<span></span><i class="fas fa-chevron-down text-slate-400 text-[10px]"></i>';
+
+            const panel = document.createElement('div');
+            panel.className = 'compact-select-panel';
+
+            wrap.appendChild(trigger);
+            wrap.appendChild(panel);
+
+            trigger.addEventListener('click', (event) => {
+                event.preventDefault();
+                const willOpen = !panel.classList.contains('open');
+                closeAllCompactSelects();
+                if (!willOpen) return;
+                const rect = wrap.getBoundingClientRect();
+                panel.classList.toggle('open-up', rect.bottom + 180 > window.innerHeight && rect.top > 180);
+                panel.classList.add('open');
+            });
+
+            panel.addEventListener('click', (event) => {
+                const option = event.target.closest('.compact-select-option');
+                if (!option) return;
+                select.value = option.dataset.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                refreshCompactSelect(select);
+                closeAllCompactSelects();
+            });
+
+            refreshCompactSelect(select);
+        });
+    }
+
+    document.addEventListener('click', (event) => {
+        if (!event.target.closest('.compact-select')) closeAllCompactSelects();
+    });
+
+    function sumUnits(items) {
+        return items.reduce((sum, item) => sum + (Number(item.units) || 0), 0);
+    }
+
+    function getScheduleEntries(item) {
+        if (Array.isArray(item.schedule_entries)) return item.schedule_entries;
+        if (typeof item.schedule_entries === 'string') {
+            try { return JSON.parse(item.schedule_entries); } catch { return []; }
+        }
+        return [];
+    }
+
+    function formatSchedule(item) {
+        const schedules = getScheduleEntries(item);
+        if (schedules.length) {
+            return schedules.map(s => `${s.day || ''} ${s.start_time || ''}-${s.end_time || ''}`).join(' / ');
+        }
+        return `${item.schedule_day || ''} ${item.start_time || ''}-${item.end_time || ''}`.trim();
+    }
+
+    function getTeachingMetrics(teaching) {
+        const preparations = new Set(teaching.map(t => t.subject_code || t.subject_title)).size;
+        const sections = [...new Set(teaching.map(t => t.section).filter(Boolean))];
+        return {
+            preparations,
+            sections,
+            totalStudents: teaching.reduce((sum, t) => sum + (Number(t.total_students) || 0), 0),
+            hours: teaching.reduce((sum, t) => sum + (Number(t.hours_per_week) || Number(t.units) || 0), 0)
+        };
+    }
+
+    let guideSyncing = false;
+
+    function getTableScroll() {
+        return document.getElementById('tableScroll');
+    }
+
+    function isMobileGuide() {
+        return window.matchMedia('(max-width: 767px)').matches;
+    }
+
+    function updateGuideThumb(ratio, visible) {
+        const thumb = document.getElementById('scrollThumb');
+        if (!thumb) return;
+        const width = Math.min(100, Math.max(18, visible * 100));
+        thumb.style.width = `${width}%`;
+        thumb.style.marginLeft = `${ratio * (100 - width)}%`;
+    }
+
+    function getColumnEls() {
+        const scroller = getTableScroll();
+        if (!scroller) return [];
+        const cells = scroller.querySelectorAll('#workloadTable tr:first-child td');
+        if (cells.length && cells[0].offsetWidth) return cells;
+        return scroller.querySelectorAll('thead th');
+    }
+
+    function syncColumnGuide(fromGuide) {
+        if (!isMobileGuide() || guideSyncing) return;
+        const scroller = getTableScroll();
+        const guide = document.getElementById('columnGuide');
+        if (!scroller || !guide) return;
+
+        guideSyncing = true;
+        const source = fromGuide ? guide : scroller;
+        const target = fromGuide ? scroller : guide;
+        const sourceMax = source.scrollWidth - source.clientWidth;
+        const targetMax = target.scrollWidth - target.clientWidth;
+        const ratio = sourceMax > 0 ? source.scrollLeft / sourceMax : 0;
+        if (targetMax > 0) target.scrollLeft = ratio * targetMax;
+
+        const visible = source.scrollWidth > 0 ? source.clientWidth / source.scrollWidth : 1;
+        updateGuideThumb(ratio, visible);
+
+        const columns = getColumnEls();
+        let active = 0;
+        columns.forEach((col, index) => {
+            const left = col.offsetLeft - scroller.scrollLeft;
+            if (left < scroller.clientWidth * 0.45) active = index;
+        });
+        guide.querySelectorAll('.guide-tab').forEach((tab, index) => {
+            tab.classList.toggle('active', index === active);
+        });
+        guideSyncing = false;
+    }
+
+    function scrollToColumn(index) {
+        const scroller = getTableScroll();
+        const column = getColumnEls()[index];
+        if (!scroller || !column) return;
+        scroller.scrollTo({
+            left: Math.max(0, column.offsetLeft - 16),
+            behavior: 'smooth'
+        });
+    }
+
+    function bindColumnGuide() {
+        const scroller = getTableScroll();
+        const guide = document.getElementById('columnGuide');
+        if (!scroller || !guide || scroller.dataset.guideBound) return;
+        scroller.dataset.guideBound = 'true';
+        scroller.addEventListener('scroll', () => syncColumnGuide(false), { passive: true });
+        guide.addEventListener('scroll', () => syncColumnGuide(true), { passive: true });
+        window.addEventListener('resize', () => syncColumnGuide(false));
+        guide.querySelectorAll('.guide-tab').forEach((tab) => {
+            tab.addEventListener('click', () => scrollToColumn(Number(tab.dataset.col)));
+        });
+        syncColumnGuide(false);
+    }
+
+    async function loadAllWorkloads() {
+        const tbody = document.getElementById('workloadTable');
+        const empty = document.getElementById('emptyState');
+        const loadError = document.getElementById('workloadLoadError');
+        const showLoadError = (message) => {
+            facultyLoadError = message || 'Workload records could not be loaded.';
+            if (loadError) {
+                loadError.textContent = facultyLoadError;
+                loadError.classList.remove('hidden');
+            }
+            if (!faculties.length && tbody) tbody.innerHTML = '';
+            if (!faculties.length && empty) {
+                empty.classList.remove('hidden');
+                const title = empty.querySelector('h3');
+                const copy = empty.querySelector('p');
+                if (title) title.textContent = 'Workload records could not be loaded';
+                if (copy) copy.textContent = 'The tracker is empty until the database request succeeds. Sample rows are not shown.';
+            }
+        };
+        if (!supabaseClient) {
+            showLoadError('The database client is not available.');
+            buildWorkloadSummaries();
+            applyFilters();
+            return;
+        }
+        try {
+            const [facRes, teachRes] = await Promise.all([
+                supabaseClient.from('faculty').select('*').order('full_name'),
+                supabaseClient.from('faculty_teaching_loads').select('*').neq('status', 'Archived')
+            ]);
+            if (facRes.error || teachRes.error) {
+                showLoadError((facRes.error && facRes.error.message) || (teachRes.error && teachRes.error.message) || 'Workload records could not be loaded.');
+                return;
+            }
+            faculties = facRes.data || [];
+            teachingLoads = teachRes.data || [];
+            facultyLoadError = '';
+            if (loadError) loadError.classList.add('hidden');
+            if (empty) {
+                const title = empty.querySelector('h3');
+                const copy = empty.querySelector('p');
+                if (title) title.textContent = 'No workload records found';
+                if (copy) copy.textContent = 'Try adjusting your filters.';
+            }
+            buildWorkloadSummaries();
+            populateDepartmentFilter();
+            applyFilters();
+            bindColumnGuide();
+            requestAnimationFrame(syncColumnGuide);
+        } catch (err) {
+            showLoadError(err && err.message ? err.message : 'Workload records could not be loaded.');
+        }
+    }
+
+    function buildWorkloadSummaries() {
+        workloadSummaries = faculties.map(f => {
+            const teaching = teachingLoads.filter(t => String(t.faculty_id) === String(f.id));
+            const metrics = getTeachingMetrics(teaching);
+
+            return {
+                facultyId: f.id,
+                facultyName: f.full_name || f.name || 'Unknown',
+                position: f.position || f.academic_rank || 'Faculty',
+                department: f.department || 'N/A',
+                photoUrl: f.profile_photo_url || '',
+                teaching,
+                teachingTotal: sumUnits(teaching),
+                preparations: metrics.preparations,
+                sections: metrics.sections,
+                totalStudents: metrics.totalStudents,
+                hoursPerWeek: metrics.hours
+            };
+        });
+    }
+
+    function populateDepartmentFilter() {
+        const depts = [...new Set(workloadSummaries.map(s => s.department).filter(Boolean))].sort();
+        const select = document.getElementById('departmentFilter');
+        select.innerHTML = `<option value="">All Departments</option>` +
+            depts.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+        refreshCompactSelects();
+    }
+
+    function applyFilters() {
+        const query = document.getElementById('searchInput').value.toLowerCase().trim();
+        const dept = document.getElementById('departmentFilter').value;
+        const semester = document.getElementById('semesterFilter').value;
+
+        const filtered = workloadSummaries.map((summary) => {
+            const teaching = semester
+                ? summary.teaching.filter((item) => String(item.semester || item.term || '') === semester)
+                : summary.teaching;
+            const metrics = getTeachingMetrics(teaching);
+            return {
+                ...summary,
+                teaching,
+                teachingTotal: sumUnits(teaching),
+                preparations: metrics.preparations,
+                sections: metrics.sections,
+                totalStudents: metrics.totalStudents,
+                hoursPerWeek: metrics.hours
+            };
+        }).filter((summary) => {
+            if (semester && !summary.teaching.length) return false;
+
+            const haystack = [summary.facultyName, summary.department, ...summary.teaching.map((t) =>
+                `${t.subject_code} ${t.subject_title} ${t.section}`)].join(' ').toLowerCase();
+
+            const matchesSearch = !query || haystack.includes(query);
+            const matchesDept = !dept || summary.department === dept;
+            const matchesSemester = !semester || summary.teaching.some(t => t.semester === semester || t.term === semester);
+            return matchesSearch && matchesDept && matchesSemester;
+        });
+
+        currentFilteredRows = filtered;
+        renderStats(filtered);
+        renderTable(filtered);
+        requestAnimationFrame(syncColumnGuide);
+    }
+
+    function renderStats(rows) {
+        document.getElementById('statFaculty').textContent = rows.length;
+        document.getElementById('statTeaching').textContent = rows.reduce((sum, r) => sum + r.teachingTotal, 0);
+        document.getElementById('statNormal').textContent = rows.filter(r => r.teachingTotal <= 27).length;
+        document.getElementById('statOverload').textContent = rows.filter(r => r.teachingTotal > 27).length;
+        document.getElementById('resultCount').textContent = `${rows.length} record${rows.length !== 1 ? 's' : ''}`;
+    }
+
+    function renderTable(rows) {
+        const tbody = document.getElementById('workloadTable');
+        const empty = document.getElementById('emptyState');
+
+        if (!rows.length) {
+            tbody.innerHTML = '';
+            empty.classList.remove('hidden');
+            return;
+        }
+
+        empty.classList.add('hidden');
+
+        tbody.innerHTML = rows.map(row => `
+            <tr class="hover:bg-slate-50/80 transition-colors">
+                <td class="py-3.5 px-4 sm:px-6">
+                    <div class="flex items-center gap-3">
+                        <div class="avatar w-9 h-9 sm:w-10 sm:h-10 rounded-2xl text-sm sm:text-base font-bold shrink-0">
+                            ${row.photoUrl ?
+                                `<img src="${esc(row.photoUrl)}" alt="${esc(row.facultyName)}" class="w-full h-full object-cover">` :
+                                initials(row.facultyName)}
+                        </div>
+                        <div class="min-w-0">
+                            <div class="font-semibold text-slate-900 truncate">${esc(row.facultyName)}</div>
+                            <div class="text-[11px] sm:text-xs text-slate-500 truncate">${esc(row.position)}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="py-3.5 px-4 sm:px-6 text-slate-600 font-medium">${esc(row.department)}</td>
+                <td class="py-3.5 px-3 text-center font-semibold text-slate-800">${row.preparations}</td>
+                <td class="py-3.5 px-3 text-center font-semibold text-slate-800">${row.teachingTotal}</td>
+                <td class="py-3.5 px-3 text-center font-semibold text-slate-800">${row.hoursPerWeek}</td>
+                <td class="py-3.5 px-4 sm:px-6 text-slate-600">${row.sections.length ? esc(row.sections.join(', ')) : '—'}</td>
+                <td class="py-3.5 px-3 text-center font-semibold text-[#621708]">${row.totalStudents}</td>
+                <td class="py-3.5 px-4 sm:px-6 text-right">
+                    <button onclick="showDetails('${row.facultyId}')"
+                            class="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-[#621708] hover:bg-[#8c2a10] text-white text-xs sm:text-sm font-semibold rounded-xl transition-all shadow-sm">
+                        View Details
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function showDetails(facultyId) {
+        const summary = currentFilteredRows.find(s => String(s.facultyId) === String(facultyId))
+            || workloadSummaries.find(s => String(s.facultyId) === String(facultyId));
+        if (!summary) return alert("Faculty not found.");
+
+        document.getElementById('detailName').textContent = summary.facultyName;
+        document.getElementById('detailMeta').textContent = `${summary.position} • ${summary.department}`;
+        document.getElementById('detailTeaching').innerHTML = `<p class="text-xs sm:text-sm text-slate-500">Loading details...</p>`;
+        document.getElementById('detailsModal').classList.remove('hidden');
+
+        const { data, error } = await supabaseClient
+            .from('faculty_teaching_loads')
+            .select('*')
+            .eq('faculty_id', facultyId)
+            .neq('status', 'Archived')
+            .order('created_at', { ascending: false });
+
+        if (error || !data) {
+            document.getElementById('detailTeaching').innerHTML = `<p class="text-xs sm:text-sm text-red-600">Failed to load workload details.</p>`;
+            return;
+        }
+
+        const semester = document.getElementById('semesterFilter')?.value || '';
+        const rows = semester ? data.filter((item) => String(item.semester || item.term || '') === semester) : data;
+
+        const html = rows.length ? rows.map(item => `
+            <div class="border border-slate-200 rounded-2xl p-4 sm:p-5 mb-3 sm:mb-4 bg-slate-50/50">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                        <div class="font-bold text-sm sm:text-base text-slate-900">${esc(item.subject_code)} - ${esc(item.subject_title)}</div>
+                        <div class="text-xs sm:text-sm text-slate-500 mt-0.5">${esc(item.section || 'No Section')} • ${esc(formatSchedule(item))}</div>
+                    </div>
+                    <div class="text-left sm:text-right mt-2 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                        <div class="text-[#621708] font-bold text-sm sm:text-base">${Number(item.units)} units</div>
+                        <div class="text-[11px] sm:text-xs text-slate-500">${Number(item.hours_per_week || item.units)} hrs/week</div>
+                    </div>
+                </div>
+            </div>
+        `).join('') : `<p class="text-xs sm:text-sm text-slate-500">No teaching load records found.</p>`;
+
+        document.getElementById('detailTeaching').innerHTML = html;
+    }
+
+    function closeDetails() {
+        document.getElementById('detailsModal').classList.add('hidden');
+    }
+
+    function toggleExportMenu() {
+        if (!window.XLSX) {
+            alert("XLSX library not loaded");
+            return;
+        }
+
+        const exportData = currentFilteredRows.map(row => ({
+            "Faculty Name": row.facultyName,
+            "Department": row.department,
+            "Position": row.position,
+            "Total Preparations": row.preparations,
+            "Total Units": row.teachingTotal,
+            "Hours per Week": row.hoursPerWeek,
+            "Sections": row.sections.join(', '),
+            "Total Students": row.totalStudents
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Workload Data");
+        XLSX.writeFile(wb, "workload_tracker.xlsx");
+    }
+
+    const PDFJS_SRC = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js';
+    const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+
+    function loadScriptOnce(src) {
+        const existing = document.querySelector(`script[data-cite-src="${src}"]`);
+        if (existing && existing.dataset.loaded === 'true') return Promise.resolve();
+        if (existing) {
+            return new Promise((resolve, reject) => {
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => reject(new Error('The PDF reader could not be loaded.')), { once: true });
+            });
+        }
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.dataset.citeSrc = src;
+            script.onload = () => {
+                script.dataset.loaded = 'true';
+                resolve();
+            };
+            script.onerror = () => reject(new Error('The PDF reader could not be loaded. Check the network connection and try again.'));
+            document.head.appendChild(script);
+        });
+    }
+
+    function readFileBuffer(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('The file could not be read.'));
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    async function readPdfPages(buffer, fileName) {
+        await loadScriptOnce(PDFJS_SRC);
+        const pdfjsLib = window.pdfjsLib;
+        if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
+            throw new Error('The PDF reader did not start. Nothing was imported.');
+        }
+        pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+        const bytes = new Uint8Array(buffer);
+        let doc;
+        try {
+            doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+        } catch (err) {
+            const message = String(err && err.message || '');
+            if (/password/i.test(message)) throw new Error('The PDF is password-protected and cannot be read.');
+            if (!/worker/i.test(message)) throw new Error('The PDF could not be read. It may be damaged or password-protected.');
+            try {
+                doc = await pdfjsLib.getDocument({ data: bytes.slice(0), disableWorker: true }).promise;
+            } catch (retryErr) {
+                throw new Error('The PDF could not be read. It may be damaged or password-protected.');
+            }
+        }
+        const pages = [];
+        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+            const page = await doc.getPage(pageNumber);
+            const content = await page.getTextContent();
+            pages.push({
+                pageNumber,
+                items: (content.items || []).map((item) => ({
+                    str: item.str || '',
+                    x: item.transform ? item.transform[4] : 0,
+                    y: item.transform ? item.transform[5] : 0,
+                    width: item.width || 0
+                }))
+            });
+        }
+        return window.CiteFlowWorkloadImport.parsePdfPages(pages, { fileName });
+    }
+
+    async function readExcelSheets(buffer, fileName) {
+        if (!window.XLSX || !window.XLSX.utils) throw new Error('The Excel parser is not loaded.');
+        let workbook;
+        try {
+            workbook = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        } catch (err) {
+            throw new Error('The Excel file could not be read. It may be damaged or password-protected.');
+        }
+        const sheets = window.CiteFlowWorkloadImport.sheetsFromWorkbook(workbook, window.XLSX.utils);
+        return window.CiteFlowWorkloadImport.parseSheetRows(sheets, { fileName });
+    }
+
+    async function fetchExistingLoads() {
+        if (!supabaseClient) throw new Error('The database client is not available.');
+        const { data, error } = await supabaseClient.from('faculty_teaching_loads').select('*');
+        if (error) throw new Error(`Existing workload records could not be loaded. ${error.message}`);
+        return data || [];
+    }
+
+    function importPlans() {
+        return window.CiteFlowWorkloadImport.planBatch(importUi.records, importUi.existing, faculties);
+    }
+
+    function setImportChrome() {
+        const error = document.getElementById('importError');
+        const progress = document.getElementById('importProgress');
+        const file = document.getElementById('importFile');
+        const review = document.getElementById('importReview');
+        if (error) {
+            error.textContent = importUi.error || '';
+            error.classList.toggle('hidden', !importUi.error);
+        }
+        if (progress) {
+            progress.textContent = importUi.progress || '';
+            progress.classList.toggle('hidden', !importUi.progress);
+        }
+        if (file) file.disabled = Boolean(importUi.busy);
+        if (review) review.classList.toggle('hidden', !importUi.records.length && !importUi.result);
+    }
+
+    function importStatusClass(label) {
+        if (label === 'New' || label === 'Update') return 'bg-emerald-50 text-emerald-700';
+        if (label === 'Unchanged' || label === 'Duplicate' || label === 'Excluded') return 'bg-slate-100 text-slate-600';
+        if (label === 'Suggested match' || label === 'Conflict' || label === 'Conflict in file') return 'bg-amber-50 text-amber-800';
+        return 'bg-red-50 text-red-700';
+    }
+
+    function importField(record, field) {
+        const labels = {
+            facultyName: 'Extracted faculty name',
+            employeeId: 'Extracted employee ID',
+            email: 'Email',
+            department: 'Department',
+            subject_code: 'Subject code',
+            subject_title: 'Subject title',
+            section: 'Section',
+            units: 'Units',
+            hours_per_week: 'Hours per week',
+            semester: 'Semester',
+            academic_year: 'Academic year',
+            total_students: 'Students',
+            room: 'Room',
+            scheduleText: 'Schedule'
+        };
+        return window.CiteFlowWorkloadImport.renderPreviewInput(record, field, labels[field] || field);
+    }
+
+    function registeredFacultySelect(record, plan) {
+        const suggested = new Set((plan.match.candidates || []).map((item) => String(item.id)));
+        const rows = faculties.slice().sort((a, b) => String(a.full_name || a.name || '').localeCompare(String(b.full_name || b.name || '')));
+        const ordered = rows.filter((row) => suggested.has(String(row.id))).concat(rows.filter((row) => !suggested.has(String(row.id))));
+        const selected = window.CiteFlowWorkloadImport.selectedFacultyId(record, plan.match);
+        const options = ['<option value="">Choose registered faculty</option>'].concat(ordered.map((row) => {
+            const label = window.CiteFlowWorkloadImport.facultyLabel({
+                full_name: row.full_name || row.name || 'Faculty',
+                employee_id: row.employee_id || '',
+                department: row.department || ''
+            });
+            return `<option value="${esc(row.id)}" ${String(selected) === String(row.id) ? 'selected' : ''}>${esc(label)}</option>`;
+        }));
+        let extra = '';
+        if (plan.match.status === 'suggested' && plan.match.faculty) {
+            extra = `<button type="button" data-action="accept-suggestion" data-local-id="${esc(record.localId)}" class="mt-1 text-xs font-semibold text-[#621708]">Use ${esc(plan.match.faculty.full_name)}</button>`;
+        }
+        const confirmedMatch = ['matched_id', 'matched_email', 'matched_name', 'confirmed_suggestion', 'manual'].indexOf(plan.match.status) !== -1;
+        const detail = confirmedMatch && plan.faculty ? `<div class="mt-1 text-[11px] text-slate-500">${esc(window.CiteFlowWorkloadImport.facultyLabel(plan.faculty))}</div>` : '';
+        return `<select data-field="facultyOverrideId" class="field">${options.join('')}</select>${detail}${extra}`;
+    }
+
+    function buildImportReview() {
+        const helper = window.CiteFlowWorkloadImport;
+        const plans = importPlans();
+        const summary = helper.summarizePlans(plans);
+        const unresolved = plans.filter((plan) => helper.unresolved(plan));
+        const fileLine = importUi.fileName
+            ? `${esc(importUi.fileName)} · ${esc(String(importUi.fileType || '').toUpperCase())} · ${summary.total} extracted`
+            : '';
+        const warnings = importUi.warnings.slice();
+        if ((importUi.missingTargets || []).length) {
+            warnings.unshift(`These assignment fields were not in the file, so their preview inputs were left blank: ${importUi.missingTargets.map((item) => item.label).join(', ')}. Fields extracted from the file are already filled.`);
+        }
+        const mappedLine = (importUi.mappedColumns || []).map((item) => `${item.source} → ${item.targetLabel}`).join(', ');
+        const detailLine = importUi.detailColumn
+            ? `<p class="text-xs text-slate-700 mt-2">Column 8 is <span class="font-semibold">${esc(importUi.detailColumn.label)}</span>. ${importUi.detailColumn.target === 'section' ? 'Its values were placed in Section. Entries separated by commas were split into separate rows. Subject code, title, units, hours, students, semester, and academic year were left blank because this column does not contain them.' : 'Each readable assignment in that column was placed in its own preview row. Values that were not in the file were left blank.'}</p>`
+            : '';
+        const departmentNote = (importUi.mappedColumns || []).some((item) => item.target === 'department')
+            ? '<p class="text-xs text-slate-600 mt-1">Department is filled from the file for review. The tracker shows each registered faculty member\'s department, and this import does not change faculty profiles.</p>'
+            : '';
+        const ignoredDetails = (importUi.ignoredColumns || []).length ? `
+            <details class="mt-3 rounded-2xl border border-slate-200 px-4 py-3">
+                <summary class="cursor-pointer text-xs font-semibold text-slate-700">Columns not imported (${importUi.ignoredColumns.length})</summary>
+                <ul class="mt-2 text-xs text-slate-600">
+                    ${importUi.ignoredColumns.map((item) => `<li class="mt-1"><span class="font-semibold">${esc(item.source)}</span> — ${esc(item.reason)}</li>`).join('')}
+                </ul>
+            </details>
+        ` : '';
+        const unmatched = unresolved.length ? unresolved.map((plan) => `
+            <li class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2 border-b border-slate-100">
+                <div class="min-w-0">
+                    <div class="font-semibold text-slate-800">${esc(plan.extractedName || 'No name extracted')}</div>
+                    <div class="text-xs text-slate-500">${esc(plan.label)} · ${esc(helper.sourceLabel(plan.source))} · ${esc(plan.reason || '')}</div>
+                </div>
+                <button type="button" data-action="jump" data-jump="${esc(plan.localId)}" class="text-xs font-semibold text-[#621708]">Review</button>
+            </li>
+        `).join('') : '<li class="py-2 text-sm text-slate-500">No unmatched records.</li>';
+        const result = importUi.result ? `
+            <div class="mb-4 rounded-2xl border ${importUi.result.partial ? 'border-amber-200 bg-amber-50' : (importUi.result.ok ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50')} px-4 py-3 text-sm text-slate-800">
+                <p class="font-semibold">${importUi.result.partial ? 'Import finished with some failures.' : (importUi.result.ok ? 'Import finished.' : 'Import did not save new changes.')}</p>
+                <p class="mt-1">${importUi.result.summary.inserted} inserted · ${importUi.result.summary.updated} updated · ${importUi.result.summary.skipped} skipped · ${importUi.result.summary.excluded} excluded · ${importUi.result.summary.failed.length} failed</p>
+                ${importUi.result.summary.failed.map((item) => `<p class="mt-1 text-red-700">${esc(item.label || 'Assignment')} · ${esc(helper.sourceLabel(item.source))}: ${esc(item.message)}</p>`).join('')}
+                ${(importUi.result.summary.skippedRows || []).map((item) => `<p class="mt-1 text-amber-800">${esc(item.extractedName || item.label || 'Assignment')}: ${esc(item.message)}</p>`).join('')}
+                ${importUi.result.partial || importUi.result.summary.failed.length ? `<p class="mt-2 text-xs text-slate-600">${esc(importUi.result.summary.notice)}</p>` : ''}
+            </div>
+        ` : '';
+        const rows = plans.map((plan) => {
+            const record = importUi.records.find((item) => item.localId === plan.localId);
+            if (!record) return '';
+            const checked = record.include === true;
+            const detailNote = record.detailSource ? `Column 8: ${record.detailSource}` : '';
+            const ignoredLine = Object.keys(record.ignoredValues || {}).map((label) => `${label}: ${record.ignoredValues[label]}`).join(', ');
+            const notes = []
+                .concat((plan.issues || []).map((item) => item.message))
+                .concat((plan.match.warnings || []))
+                .concat(plan.blocked && plan.reason ? [plan.reason] : [])
+                .concat(ignoredLine ? [`Not imported — ${ignoredLine}`] : [])
+                .concat(detailNote ? [detailNote] : [])
+                .concat(record.detailAmbiguous ? ['Column 8 could not be split into an assignment. The original text is kept above and was not turned into a subject.'] : []);
+            const conflicts = (plan.conflicts || []).map((item) => `${item.label}: saved ${item.existing || 'blank'} / imported ${item.incoming}`).join(' ');
+            const choice = plan.conflicts && plan.conflicts.length ? `
+                <select data-field="conflictChoice" class="field mt-2">
+                    <option value="">Choose resolution</option>
+                    <option value="imported" ${record.conflictChoice === 'imported' ? 'selected' : ''}>Use imported values</option>
+                    <option value="existing" ${record.conflictChoice === 'existing' ? 'selected' : ''}>Keep saved values</option>
+                </select>
+                <div class="mt-1 text-[11px] text-amber-800">${esc(conflicts)}</div>
+            ` : '';
+            return `
+                <tr id="import-row-${esc(record.localId)}" data-local-id="${esc(record.localId)}" class="align-top">
+                    <td class="py-2 px-2"><input data-field="include" type="checkbox" ${checked ? 'checked' : ''} ${importUi.busy ? 'disabled' : ''}></td>
+                    <td class="py-2 px-2"><span class="badge ${importStatusClass(plan.statusLabel)}">${esc(plan.statusLabel)}</span></td>
+                    <td class="py-2 px-2">${importField(record, 'facultyName')}<div class="mt-1">${importField(record, 'department')}</div><div class="mt-1">${importField(record, 'employeeId')}</div><div class="mt-1">${importField(record, 'email')}</div></td>
+                    <td class="py-2 px-2">${registeredFacultySelect(record, plan)}</td>
+                    <td class="py-2 px-2">${importField(record, 'subject_code')}</td>
+                    <td class="py-2 px-2">${importField(record, 'subject_title')}</td>
+                    <td class="py-2 px-2">${importField(record, 'section')}</td>
+                    <td class="py-2 px-2">${importField(record, 'units')}</td>
+                    <td class="py-2 px-2">${importField(record, 'hours_per_week')}</td>
+                    <td class="py-2 px-2">${importField(record, 'semester')}</td>
+                    <td class="py-2 px-2">${importField(record, 'academic_year')}</td>
+                    <td class="py-2 px-2">${importField(record, 'total_students')}</td>
+                    <td class="py-2 px-2 text-xs text-slate-500 whitespace-nowrap">${esc(helper.sourceLabel(plan.source))}</td>
+                    <td class="py-2 px-2 import-note text-xs text-slate-600">
+                        ${notes.map((note) => `<div class="mb-1">${esc(note)}</div>`).join('')}
+                        <div class="text-[11px] text-slate-500 mt-1">Room</div>
+                        ${importField(record, 'room')}
+                        <div class="text-[11px] text-slate-500 mt-1">Schedule</div>
+                        ${importField(record, 'scheduleText')}
+                        ${choice}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        const confirmDisabled = importUi.busy || summary.willWrite === 0;
+        const checkedPlans = plans.filter((plan) => plan.selected);
+        const blockedChecked = checkedPlans.filter((plan) => !plan.willWrite);
+        const selectionNote = summary.willWrite === 0
+            ? `<p class="text-xs text-amber-800 mt-2">${blockedChecked.length
+                ? `Nothing will be saved yet. ${blockedChecked.map((plan) => `${esc(plan.extractedName || plan.label)}: ${esc(plan.reason || 'This row is not ready.')}`).join(' ')}`
+                : 'All rows start unchecked. Check a row after its faculty match and required fields are complete.'}</p>`
+            : (blockedChecked.length ? `<p class="text-xs text-amber-800 mt-2">Checked rows that are not ready will be skipped. ${blockedChecked.map((plan) => `${esc(plan.extractedName || plan.label)}: ${esc(plan.reason || 'This row is not ready.')}`).join(' ')}</p>` : '');
+        return `
+            ${result}
+            <div class="mb-4">
+                <p class="text-sm font-semibold text-slate-900">${fileLine}</p>
+                <p class="text-xs text-slate-500 mt-1">${summary.matched} matched · ${summary.suggested} suggested · ${summary.ambiguous} ambiguous · ${summary.unmatched} unmatched · ${summary.invalid} with missing or invalid details</p>
+                <p class="text-sm text-slate-700 mt-2">${summary.inserts} new to insert · ${summary.updates} existing to update · ${summary.skipped} unchanged or duplicate to skip · ${summary.excluded} excluded</p>
+                ${mappedLine ? `<p class="text-xs text-slate-600 mt-2">Mapped columns: ${esc(mappedLine)}</p>` : ''}
+                ${detailLine}
+                ${departmentNote}
+                ${warnings.map((warning) => `<p class="text-xs text-amber-800 mt-1">${esc(warning)}</p>`).join('')}
+                ${ignoredDetails}
+                ${selectionNote}
+                <p class="text-xs text-slate-500 mt-2">${esc(helper.PARTIAL_NOTICE)}</p>
+            </div>
+            <section class="mb-4 rounded-2xl border border-slate-200 p-4">
+                <h3 class="text-sm font-semibold text-slate-900">Unmatched Records</h3>
+                <p class="text-xs text-slate-500 mt-1">These names are not confirmed registered faculty. They will not be written to the workload table.</p>
+                <ul class="mt-2">${unmatched}</ul>
+            </section>
+            <div data-import-scroll class="table-scroll border border-slate-200 rounded-2xl">
+                <table class="import-table w-full min-w-[1500px] text-xs">
+                    <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] font-bold">
+                        <tr>
+                            <th class="py-3 px-2 text-left"><input data-field="include-all" type="checkbox" aria-label="Select all rows" ${importUi.records.length && importUi.records.every((item) => item.include === true) ? 'checked' : ''} ${importUi.busy ? 'disabled' : ''}></th>
+                            <th class="py-3 px-2 text-left">Status</th>
+                            <th class="py-3 px-2 text-left">Extracted faculty</th>
+                            <th class="py-3 px-2 text-left">Registered faculty</th>
+                            <th class="py-3 px-2 text-left">Code</th>
+                            <th class="py-3 px-2 text-left">Title</th>
+                            <th class="py-3 px-2 text-left">Section</th>
+                            <th class="py-3 px-2 text-left">Units</th>
+                            <th class="py-3 px-2 text-left">Hours</th>
+                            <th class="py-3 px-2 text-left">Semester</th>
+                            <th class="py-3 px-2 text-left">Year</th>
+                            <th class="py-3 px-2 text-left">Students</th>
+                            <th class="py-3 px-2 text-left">Source</th>
+                            <th class="py-3 px-2 text-left">Review</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">${rows}</tbody>
+                </table>
+            </div>
+            <div class="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <button type="button" onclick="closeWorkloadImport()" class="export-btn justify-center">Cancel</button>
+                <button type="button" id="importConfirmBtn" data-action="confirm-import" class="px-4 py-2 bg-[#621708] text-white text-sm font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed" ${confirmDisabled ? 'disabled' : ''}>Import ${summary.willWrite} assignment${summary.willWrite === 1 ? '' : 's'}</button>
+            </div>
+        `;
+    }
+
+    function renderImport(focusState) {
+        setImportChrome();
+        const review = document.getElementById('importReview');
+        if (!review || (review.classList.contains('hidden') && !importUi.records.length && !importUi.result)) return;
+        const scroll = review.querySelector('[data-import-scroll]');
+        const top = scroll ? scroll.scrollTop : 0;
+        const left = scroll ? scroll.scrollLeft : 0;
+        review.innerHTML = buildImportReview();
+        const activeId = focusState && focusState.localId;
+        const activeField = focusState && focusState.field;
+        if (activeId && activeField) {
+            const nextField = review.querySelector(`[data-local-id="${activeId}"] [data-field="${activeField}"]`);
+            if (nextField && typeof nextField.focus === 'function') {
+                nextField.focus();
+                if (typeof nextField.setSelectionRange === 'function' && focusState.start != null) {
+                    try { nextField.setSelectionRange(focusState.start, focusState.end); } catch (_) {}
+                }
+            }
+        }
+        review.querySelectorAll('[data-field="include-all"]').forEach((box) => {
+            const records = importUi.records || [];
+            const selected = records.filter((item) => item.include === true).length;
+            box.indeterminate = selected > 0 && selected < records.length;
+        });
+        const next = review.querySelector('[data-import-scroll]');
+        if (next) {
+            next.scrollTop = top;
+            next.scrollLeft = left;
+        }
+    }
+
+    function bindImportEvents() {
+        if (importEventsBound) return;
+        importEventsBound = true;
+        const review = document.getElementById('importReview');
+        review.addEventListener('mousedown', (event) => {
+            if (event.target.closest('[data-action="confirm-import"]')) event.preventDefault();
+        });
+        review.addEventListener('input', onImportTextInput);
+        review.addEventListener('change', onImportFieldChange);
+        review.addEventListener('click', onImportReviewClick);
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            const modal = document.getElementById('importModal');
+            if (modal && !modal.classList.contains('hidden')) closeWorkloadImport();
+        });
+    }
+
+    function flushActiveImportField() {
+        const active = document.activeElement;
+        if (!active || !active.dataset || !active.dataset.field) return;
+        if (active.dataset.field === 'include' || active.dataset.field === 'include-all') return;
+        const row = active.closest && active.closest('[data-local-id]');
+        if (!row) return;
+        const record = importUi.records.find((item) => item.localId === row.dataset.localId);
+        if (!record) return;
+        window.CiteFlowWorkloadImport.applyPreviewEdit(record, active.dataset.field, active.value);
+    }
+
+    function onImportTextInput(event) {
+        if (importUi.busy) return;
+        const field = event.target.dataset.field;
+        if (!field || field === 'include' || field === 'include-all' || event.target.tagName === 'SELECT') return;
+        const row = event.target.closest('[data-local-id]');
+        if (!row) return;
+        const record = importUi.records.find((item) => item.localId === row.dataset.localId);
+        if (!record) return;
+        window.CiteFlowWorkloadImport.applyPreviewEdit(record, field, event.target.value);
+        renderImport({
+            localId: record.localId,
+            field,
+            start: event.target.selectionStart,
+            end: event.target.selectionEnd
+        });
+    }
+
+    function onImportFieldChange(event) {
+        if (importUi.busy) return;
+        if (event.target.dataset.field === 'include-all') {
+            const include = event.target.checked;
+            importUi.records.forEach((item) => window.CiteFlowWorkloadImport.applyPreviewEdit(item, 'include', include));
+            renderImport();
+            return;
+        }
+        const row = event.target.closest('[data-local-id]');
+        if (!row) return;
+        const record = importUi.records.find((item) => item.localId === row.dataset.localId);
+        if (!record) return;
+        const field = event.target.dataset.field;
+        if (!field) return;
+        const value = field === 'include' ? event.target.checked : event.target.value;
+        window.CiteFlowWorkloadImport.applyPreviewEdit(record, field, value);
+        renderImport();
+    }
+
+    function onImportReviewClick(event) {
+        const action = event.target.closest('[data-action]');
+        if (!action) return;
+        if (action.dataset.action === 'jump') {
+            const target = document.getElementById(`import-row-${action.dataset.jump}`);
+            if (target) target.scrollIntoView({ block: 'center' });
+            return;
+        }
+        if (importUi.busy) return;
+        if (action.dataset.action === 'confirm-import') {
+            confirmWorkloadImport();
+            return;
+        }
+        const record = importUi.records.find((item) => item.localId === action.dataset.localId);
+        if (action.dataset.action === 'accept-suggestion' && record) {
+            record.acceptSuggestion = true;
+            record.facultyOverrideId = '';
+            renderImport();
+        }
+    }
+
+    function openWorkloadImport() {
+        if (importUi.busy) return;
+        const modal = document.getElementById('importModal');
+        const alreadyOpen = modal && !modal.classList.contains('hidden');
+        if (!alreadyOpen) {
+            importUi = emptyImportState();
+            if (facultyLoadError) importUi.error = `Registered faculty could not be loaded. ${facultyLoadError}`;
+            const file = document.getElementById('importFile');
+            if (file) file.value = '';
+        }
+        modal.classList.remove('hidden');
+        bindImportEvents();
+        renderImport();
+    }
+
+    function closeWorkloadImport() {
+        if (importUi.busy) return;
+        document.getElementById('importModal').classList.add('hidden');
+    }
+
+    async function onWorkloadFile(event) {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = '';
+        if (!file || importUi.busy) return;
+        const helper = window.CiteFlowWorkloadImport;
+        if (!helper) {
+            importUi.error = 'The import tools did not load. Refresh the page and try again.';
+            renderImport();
+            return;
+        }
+        const check = helper.validateWorkloadFile(file);
+        if (!check.ok) {
+            importUi.error = check.message;
+            importUi.records = [];
+            importUi.result = null;
+            renderImport();
+            return;
+        }
+        importUi.busy = true;
+        importUi.error = '';
+        importUi.result = null;
+        importUi.records = [];
+        importUi.progress = 'Reading file…';
+        importUi.fileName = file.name;
+        importUi.fileType = check.extension;
+        renderImport();
+        try {
+            const buffer = await readFileBuffer(file);
+            importUi.progress = 'Extracting workload rows…';
+            renderImport();
+            const parsed = check.kind === 'pdf'
+                ? await readPdfPages(buffer, file.name)
+                : await readExcelSheets(buffer, file.name);
+            if (!parsed.ok) {
+                importUi.error = parsed.message;
+                importUi.records = parsed.records || [];
+                importUi.warnings = parsed.warnings || [];
+                importUi.unmapped = parsed.unmappedColumns || [];
+                importUi.mappedColumns = parsed.mappedColumns || [];
+                importUi.ignoredColumns = parsed.ignoredColumns || [];
+                importUi.missingTargets = parsed.missingTargets || [];
+                importUi.detailColumn = parsed.detailColumn || null;
+                return;
+            }
+            importUi.progress = 'Matching registered faculty…';
+            renderImport();
+            const warnings = (parsed.warnings || []).slice();
+            let existing = [];
+            try {
+                existing = await fetchExistingLoads();
+            } catch (loadErr) {
+                warnings.push(`Existing assignments could not be compared yet. ${loadErr && loadErr.message ? loadErr.message : ''} The preview is still filled from the file. Nothing has been saved.`.replace(/\s+/g, ' ').trim());
+            }
+            importUi.existing = existing;
+            importUi.records = parsed.records;
+            importUi.warnings = warnings;
+            importUi.unmapped = parsed.unmappedColumns || [];
+            importUi.mappedColumns = parsed.mappedColumns || [];
+            importUi.ignoredColumns = parsed.ignoredColumns || [];
+            importUi.missingTargets = parsed.missingTargets || [];
+            importUi.detailColumn = parsed.detailColumn || null;
+        } catch (err) {
+            importUi.error = err && err.message ? err.message : 'The file could not be read.';
+            importUi.records = [];
+        } finally {
+            importUi.busy = false;
+            importUi.progress = '';
+            renderImport();
+        }
+    }
+
+    async function confirmWorkloadImport() {
+        if (importUi.busy) return;
+        const helper = window.CiteFlowWorkloadImport;
+        flushActiveImportField();
+        const before = importPlans();
+        if (!helper.summarizePlans(before).willWrite) {
+            const skipped = before.filter((plan) => plan.selected && !plan.willWrite);
+            importUi.error = skipped.length
+                ? skipped.map((plan) => `${plan.extractedName || plan.label}: ${plan.reason || 'This row is not ready.'}`).join(' ')
+                : 'Check at least one completed row before importing. Nothing was saved.';
+            renderImport();
+            return;
+        }
+        importUi.busy = true;
+        importUi.error = '';
+        importUi.progress = 'Checking the latest workload records…';
+        renderImport();
+        try {
+            if (!supabaseClient) throw new Error('The database client is not available.');
+            const { data, error } = await supabaseClient.auth.getSession();
+            if (error || !data || !data.session) throw new Error('Sign in with an account that can manage workload before importing.');
+            const allowed = helper.assertImportAllowed(data.session, window.CiteFlowAuthGuard && window.CiteFlowAuthGuard.faculty);
+            if (!allowed.ok) throw new Error(allowed.message);
+            const latest = await fetchExistingLoads();
+            const again = helper.planBatch(importUi.records, latest, faculties);
+            if (helper.planSignature(before) !== helper.planSignature(again)) {
+                importUi.existing = latest;
+                importUi.error = 'Workload records changed. Review the updated preview before confirming.';
+                return;
+            }
+            importUi.progress = 'Saving confirmed assignments…';
+            renderImport();
+            const result = await helper.commitImport({
+                plans: again,
+                session: data.session,
+                facultyRecord: window.CiteFlowAuthGuard && window.CiteFlowAuthGuard.faculty,
+                client: supabaseClient
+            });
+            importUi.result = result;
+            if (result.aborted && result.message) importUi.error = result.message;
+            try { importUi.existing = await fetchExistingLoads(); } catch (_) {}
+            if (result.summary && (result.summary.inserted || result.summary.updated)) {
+                try {
+                    await loadAllWorkloads();
+                } catch (loadErr) {
+                    importUi.error = `The saved rows could not be refreshed in the table. ${loadErr && loadErr.message ? loadErr.message : ''}`.trim();
+                }
+            }
+        } catch (err) {
+            importUi.error = err && err.message ? err.message : 'The import could not be completed.';
+        } finally {
+            importUi.busy = false;
+            importUi.progress = '';
+            renderImport();
+        }
+    }
+
+    async function applyDefaultSemesterFilter() {
+        const select = document.getElementById('semesterFilter');
+        if (!select || !window.CiteFlowSettings) return;
+        try {
+            const period = await window.CiteFlowSettings.getAcademicPeriod();
+            const mapped = window.CiteFlowSettings.mapToTeachingSemester(period.semester);
+            if ([...select.options].some((option) => option.value === mapped)) {
+                select.value = mapped;
+            }
+            refreshCompactSelects();
+        } catch (_) {
+            /* keep All Semesters if the academic period cannot be loaded */
+        }
+    }
+
+    window.onload = async () => {
+        if (typeof loadSidebar === 'function') {
+            await loadSidebar();
+        }
+        initCompactSelects();
+        await applyDefaultSemesterFilter();
+        await loadAllWorkloads();
+        bindColumnGuide();
+    };
+</script>
+
+<script src="../nav.js?v=admin-hook-1" defer></script>
+<script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
+<div id="message-container"></div>
 </body>
 </html>

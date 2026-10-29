@@ -1,0 +1,312 @@
+/*
+  engagement-logger.js
+  Add this file to every CITE-Flow page after Supabase is initialized.
+  Required before this file:
+  window.supabaseClient = supabase.createClient(supabaseUrl, supabaseAnonKey);
+*/
+
+(function () {
+    const DEFAULT_TYPES = {
+        download: 'Download',
+        feedback: 'Feedback Summary',
+        profile: 'Profile Update',
+        document: 'Document Action',
+        system: 'System Event',
+        research: 'Research',
+        extension: 'Extension',
+        workshop: 'Workshop',
+        seminar: 'Seminar',
+        meeting: 'Meeting'
+    };
+
+    function getClient() {
+        if (window.supabaseClient) return window.supabaseClient;
+        console.warn('EngagementLogger: Supabase client is not available.');
+        return null;
+    }
+
+    function pageName() {
+        const file = (window.location.pathname.split('/').pop() || 'Page').replace('.html', '');
+        return file
+            .split('-')
+            .filter(Boolean)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+
+    async function getCurrentActor(client) {
+        try {
+            const read = client._citeFlowOriginalGetSession || client.auth.getSession.bind(client.auth);
+            const { data } = await read();
+            const user = data?.session?.user || data?.user || null;
+
+            if (!user) return { id: null, name: 'System' };
+
+            const meta = user.user_metadata || {};
+            const name =
+                [meta.first_name, meta.last_name].filter(Boolean).join(' ').trim() ||
+                user.email ||
+                'System';
+
+            return { id: user.id, name };
+        } catch (error) {
+            return { id: null, name: 'System' };
+        }
+    }
+
+    function asDetails(details) {
+        if (!details) return [];
+
+        if (Array.isArray(details)) return details;
+
+        if (typeof details === 'object') {
+            return Object.entries(details).map(([label, value]) => ({
+                label,
+                value
+            }));
+        }
+
+        return [{ label: 'Details', value: String(details) }];
+    }
+
+    // Helper to strip any embedded HTML comments / metadata before saving
+    function sanitizeDescription(text) {
+        if (!text || typeof text !== 'string') return '';
+        return text
+            .replace(/<!--\s*CITEFLOW_[A-Z_]+:[\s\S]*?(-->|$)/gi, '')
+            .replace(/CITEFLOW_[A-Z_]+:%7B[\s\S]*?(%7D|$)/gi, '')
+            .replace(/-->/g, '')
+            .trim();
+    }
+
+    async function logActivity(payload) {
+        const client = getClient();
+
+        if (!client) {
+            return { error: 'Supabase client is not available.' };
+        }
+
+        const actor = await getCurrentActor(client);
+
+        // Sanitize incoming description so no comment junk is ever saved
+        const cleanDesc = sanitizeDescription(payload.description);
+        const fallbackDesc = payload.activityTitle 
+            ? `Recorded ${payload.activityType || 'activity'}: ${payload.activityTitle}` 
+            : 'Activity recorded from ' + pageName() + '.';
+
+        const record = {
+            faculty_id: payload.facultyId || payload.faculty_id || null,
+            faculty_name:
+                payload.facultyName ||
+                payload.faculty_name ||
+                payload.faculty ||
+                actor.name ||
+                'Unknown Faculty',
+            department: payload.department || null,
+            activity_type:
+                payload.activityType ||
+                payload.activity_type ||
+                DEFAULT_TYPES.system,
+            activity_title:
+                payload.activityTitle ||
+                payload.activity_title ||
+                'Recorded activity',
+            description: cleanDesc || fallbackDesc,
+            source_module:
+                payload.sourceModule ||
+                payload.source_module ||
+                pageName(),
+            activity_at:
+                payload.activityAt ||
+                payload.activity_at ||
+                new Date().toISOString(),
+            status: payload.status || 'Completed',
+            details: asDetails(payload.details),
+            created_by: payload.createdBy || payload.created_by || actor.id,
+            created_by_name:
+                payload.createdByName ||
+                payload.created_by_name ||
+                actor.name
+        };
+
+        const { data, error } = await client
+            .from('engagement_logs')
+            .insert(record)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('EngagementLogger: failed to create log entry.', error);
+            return { error };
+        }
+
+        return { data };
+    }
+
+    function logDownload({
+        facultyName,
+        department,
+        fileName,
+        sourceModule = 'Document Vault',
+        description,
+        details
+    }) {
+        return logActivity({
+            facultyName,
+            department,
+            activityType: DEFAULT_TYPES.download,
+            activityTitle: fileName ? 'Downloaded ' + fileName : 'Downloaded a document',
+            description:
+                description ||
+                (fileName
+                    ? 'Downloaded ' + fileName + ' from ' + sourceModule + '.'
+                    : 'Downloaded a document from ' + sourceModule + '.'),
+            sourceModule,
+            details: details || {
+                File: fileName || 'Not specified'
+            }
+        });
+    }
+
+    function logFeedbackSummary({
+        facultyName,
+        department,
+        eventName,
+        averageRating,
+        sourceModule = 'Seminar Feedback Summary',
+        description,
+        details
+    }) {
+        return logActivity({
+            facultyName,
+            department,
+            activityType: DEFAULT_TYPES.feedback,
+            activityTitle: 'Submitted feedback summary',
+            description:
+                description ||
+                'Submitted consolidated feedback summary' +
+                    (eventName ? ' for ' + eventName : '') +
+                    '.',
+            sourceModule,
+            status: 'For Review',
+            details:
+                details || {
+                    Event: eventName || 'Not specified',
+                    'Average Rating': averageRating || 'Not specified'
+                }
+        });
+    }
+
+    function logProfileUpdate({
+        facultyName,
+        department,
+        fieldsUpdated,
+        sourceModule = 'Faculty Profiles',
+        description,
+        details
+    }) {
+        const fields = Array.isArray(fieldsUpdated)
+            ? fieldsUpdated.join(', ')
+            : fieldsUpdated;
+
+        return logActivity({
+            facultyName,
+            department,
+            activityType: DEFAULT_TYPES.profile,
+            activityTitle: 'Updated faculty profile information',
+            description:
+                description ||
+                'Updated faculty profile information' +
+                    (fields ? ': ' + fields : '') +
+                    '.',
+            sourceModule,
+            details:
+                details || {
+                    'Fields Updated': fields || 'Not specified'
+                }
+        });
+    }
+
+    function readDatasetLog(element) {
+        return {
+            facultyName: element.dataset.facultyName,
+            department: element.dataset.department,
+            activityType: element.dataset.activityType,
+            activityTitle: element.dataset.activityTitle,
+            description: element.dataset.description,
+            sourceModule: element.dataset.sourceModule,
+            status: element.dataset.status,
+            details: element.dataset.details
+                ? { Details: element.dataset.details }
+                : undefined
+        };
+    }
+
+    document.addEventListener('click', function (event) {
+        const target = event.target.closest('[data-engagement-log]');
+        if (!target) return;
+
+        const payload = readDatasetLog(target);
+
+        if (!payload.activityTitle && !payload.description) return;
+
+        logActivity(payload);
+    });
+
+    function logExtension({
+        facultyName,
+        facultyId,
+        department,
+        title,
+        sourceModule = 'Faculty Profile',
+        description,
+        details
+    }) {
+        return logActivity({
+            facultyId,
+            facultyName,
+            department,
+            activityType: DEFAULT_TYPES.extension,
+            activityTitle: title || 'Recorded an extension activity',
+            description:
+                description ||
+                (title ? 'Recorded extension activity: ' + title + '.' : 'Recorded an extension activity.'),
+            sourceModule,
+            details: details || { Title: title || 'Not specified' }
+        });
+    }
+
+    function logResearch({
+        facultyName,
+        facultyId,
+        department,
+        title,
+        status,
+        sourceModule = 'Faculty Profile',
+        description,
+        details
+    }) {
+        return logActivity({
+            facultyId,
+            facultyName,
+            department,
+            activityType: DEFAULT_TYPES.research,
+            activityTitle: title ? 'Added research: ' + title : 'Recorded a research activity',
+            description:
+                description ||
+                (title ? 'Recorded research project "' + title + '"' + (status ? ' with status: ' + status : '') + '.' : 'Recorded a research activity.'),
+            sourceModule,
+            status: status || 'Completed',
+            details: details || { Title: title || 'Not specified', Status: status || 'Completed' }
+        });
+    }
+
+    window.EngagementLogger = {
+        logActivity,
+        logDownload,
+        logFeedbackSummary,
+        logProfileUpdate,
+        logExtension,
+        logResearch
+    };
+})();

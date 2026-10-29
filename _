@@ -1,0 +1,36 @@
+$key='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0'
+$h=@{apikey=$key; Authorization="Bearer $key"}
+$base='https://uforealazougjckepggc.supabase.co/rest/v1/'
+
+function Post($path, $body) {
+  try {
+    $resp = Invoke-WebRequest -Uri ($base+$path) -Headers $h -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
+    return @{ code=[int]$resp.StatusCode; body=$resp.Content }
+  } catch {
+    $b=''
+    try { $sr = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream()); $b=$sr.ReadToEnd() } catch { $b='<unreadable>' }
+    return @{ code=[int]$_.Exception.Response.StatusCode; body=$b }
+  }
+}
+
+$out = New-Object System.Collections.Generic.List[string]
+
+$exact = '{"p_faculty_id":58,"p_task_id":null,"p_report_config_id":null,"p_department":"BSIE","p_reporting_year":2026,"p_quarter":3,"p_period_start":"2026-07-01","p_period_end":"2026-09-30","p_period_label":"3rd Quarter","p_academic_year":null,"p_semester":null,"p_submission_id":null}'
+$r1 = Post 'rpc/mfo_ensure_faculty_packet' $exact
+$out.Add('EXACT 12-param call (as mfo-report.js sends): ' + $r1.code + ' ' + ($r1.body -replace '\s+',' '))
+
+$short = '{"p_faculty_id":58}'
+$r2 = Post 'rpc/mfo_ensure_faculty_packet' $short
+$out.Add('SHORT 1-param call: ' + $r2.code + ' ' + ($r2.body -replace '\s+',' '))
+
+$bogus = '{"p_not_a_real_param":1}'
+$r3 = Post 'rpc/mfo_ensure_faculty_packet' $bogus
+$out.Add('BOGUS param call (control): ' + $r3.code + ' ' + ($r3.body -replace '\s+',' '))
+
+$out.Add('')
+$out.Add('--- control: nonexistent rpc ---')
+$r4 = Post 'rpc/definitely_not_a_function_xyz' '{}'
+$out.Add('nonexistent rpc: ' + $r4.code + ' ' + ($r4.body -replace '\s+',' '))
+
+$out -join "`n" | Out-File -Encoding utf8 C:\Users\ADMIN\citeflow\_probe14_out.txt
+Write-Output ('wrote=' + $out.Count)

@@ -5,283 +5,2053 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document Vault - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
+    <script src="../shared/workflow.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
-        }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
-        }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
-        }
-
-        .section-header {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
-
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
-        }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
-        }
-
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
-        }
-
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
-        }
-
-        .doc-name {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            line-clamp: 2;
+        body { background: #f8fafc; }
+        .folder-card, .doc-card { transition: all 0.2s ease; }
+        .folder-card:hover, .doc-card:hover { transform: translateY(-3px); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
+        .view-btn.active { background-color: var(--cite-theme, #621708); color: white; }
+        .soft-shadow { box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06); }
+        .drive-list {
+            background: #fff;
+            border: 1px solid #e8eaed;
+            border-radius: 8px;
             overflow: hidden;
-            text-overflow: ellipsis;
-            word-break: break-all;
         }
+        .drive-list-head,
+        .drive-row {
+            display: grid;
+            grid-template-columns: minmax(160px, 1.5fr) 140px 130px 90px 44px;
+            align-items: center;
+            gap: 8px;
+            min-height: 48px;
+            padding: 0 12px 0 16px;
+        }
+        .drive-list-head {
+            color: #5f6368;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 1px solid #e8eaed;
+        }
+        .drive-list-head button {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: inherit;
+            font: inherit;
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+        }
+        .drive-list-head button:hover { color: #202124; }
+        .drive-row {
+            position: relative;
+            border-bottom: 1px solid #e8eaed;
+            cursor: pointer;
+            color: #202124;
+            font-size: 14px;
+        }
+        .drive-row:last-child { border-bottom: none; }
+        .drive-row:hover { background: #f8f9fa; }
+        .drive-name {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+            font-weight: 500;
+        }
+        .drive-name i { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; }
+        .drive-owner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #5f6368;
+            font-size: 13px;
+        }
+        .drive-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #f9ab00;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .drive-muted { color: #5f6368; font-size: 13px; }
+        .drive-sort { justify-self: end; color: #5f6368; font-size: 13px; }
+        .drive-kebab {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            color: #5f6368;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .drive-kebab:hover { background: #e8eaed; color: #202124; }
+        .drive-row .context-menu { right: 8px; top: 42px; }
+        @media (max-width: 768px) {
+            .drive-list-head, .drive-row {
+                grid-template-columns: minmax(0, 1fr) 44px;
+            }
+            .drive-col-owner, .drive-col-date, .drive-col-size, .drive-sort { display: none; }
+        }
+        .modal-panel { animation: modalIn 0.18s ease-out; }
+        @keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .document-modal-backdrop { background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); }
+        .document-modal-panel { box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35); animation: modalIn 0.2s ease-out; }
+        .document-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; border-radius: 1rem; font-size: 0.875rem; font-weight: 700; transition: all 0.18s ease; }
+        .document-primary-btn { background: var(--cite-theme, #621708); color: #fff; }
+        .document-primary-btn:hover:not(:disabled) { background: var(--cite-theme-hover, #8c2a10); }
+        .document-secondary-btn { background: #fff; color: #334155; border: 1px solid #e2e8f0; }
+        .document-secondary-btn:hover:not(:disabled) { border-color: #cbd5e1; background: #f8fafc; }
+        /* Same toast as shared/messenger.css .citeflow-toast / CiteFlowModal.toast */
+        .citeflow-toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #1e293b;
+            color: #ffffff;
+            padding: 11px 22px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+            z-index: 100001;
+            opacity: 0;
+            transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .citeflow-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .context-menu { position: absolute; right: 12px; top: 48px; min-width: 180px; z-index: 30; }
+        .color-choice.active { outline: 3px solid color-mix(in srgb, var(--cite-theme, #621708) 22%, transparent); outline-offset: 3px; }
+        .drop-zone { border: 2px dashed #cbd5e1; background: #f8fafc; transition: all 0.2s ease; cursor: pointer; }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--cite-theme, #621708); background: color-mix(in srgb, var(--cite-theme, #621708) 4%, transparent); transform: scale(1.005); }
+        .upload-file-item { transition: all 0.15s ease; }
+        .upload-file-item:hover { background: #f8fafc; }
+        .color-chip { width: 32px; height: 32px; border-radius: 9999px; transition: transform 0.15s ease, box-shadow 0.15s ease; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border: 2px solid transparent; }
+        .color-chip:hover { transform: scale(1.12); }
+        .color-chip.active { border-color: #ffffff; box-shadow: 0 0 0 3px var(--cite-theme, #621708); transform: scale(1.12); }
+        .icon-chip { width: 44px; height: 44px; border-radius: 12px; background: #f1f5f9; color: #475569; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer; transition: all 0.15s ease; border: 1.5px solid transparent; }
+        .icon-chip:hover { background: #e2e8f0; color: #1e293b; transform: translateY(-1px); }
+        .icon-chip.active { background: color-mix(in srgb, var(--cite-theme, #621708) 8%, transparent); color: var(--cite-theme-ink, #621708); border-color: var(--cite-theme, #621708); font-weight: bold; }
+        .badge-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+
+        /* Compact layout refinements */
+        main { font-size: 14px; }
+        .view-btn { width: 40px; height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 0.85rem; }
+        .compact-action-bar { width: fit-content; max-width: 100%; margin-left: auto; padding: 0.55rem 0.65rem 0.55rem 0.9rem; border-radius: 1rem; }
+        .compact-doc-button { min-height: 36px; }
+        .doc-card { border-radius: 1.25rem; }
+        .doc-checkbox { width: 18px; height: 18px; accent-color: var(--cite-theme, #621708); }
+        @media (max-width: 768px) {
+            .compact-action-bar { width: 100%; margin-left: 0; }
+        }
+
+        select:not([multiple]) {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1h10L6 7z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 12px 8px;
+            padding-right: 2.25rem;
+        }
+        .compact-select { position: relative; }
+        .compact-select-trigger,
+        .compact-select-panel { display: none; }
+        @media (max-width: 767px) {
+            .compact-select { width: 100%; max-width: 100%; }
+            .compact-select-native {
+                position: absolute !important;
+                width: 1px !important;
+                height: 1px !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                overflow: hidden !important;
+                border: 0 !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .compact-select-trigger {
+                display: flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 8px;
+                width: 100%;
+                text-align: left;
+                cursor: pointer;
+                position: relative;
+                padding-right: 40px !important;
+            }
+            .compact-select-trigger::after {
+                content: "";
+                position: absolute;
+                right: 14px;
+                top: 50%;
+                width: 12px;
+                height: 8px;
+                margin-top: -4px;
+                pointer-events: none;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1h10L6 7z'/%3E%3C/svg%3E");
+                background-repeat: no-repeat;
+                background-size: 12px 8px;
+            }
+            .compact-select-trigger i { display: none !important; }
+            .compact-select-trigger span {
+                min-width: 0;
+                flex: 1;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .compact-select-panel {
+                display: none;
+                position: fixed;
+                z-index: 10050;
+                max-height: 168px;
+                overflow-y: auto;
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 14px;
+                box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+            }
+            .compact-select-panel.open { display: block; }
+            .compact-select-option {
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 8px 12px;
+                font-size: 13px;
+                line-height: 1.3;
+                color: #334155;
+                background: #ffffff;
+                border: 0;
+            }
+            .compact-select-option.active {
+                background: var(--cite-theme, #621708);
+                color: #ffffff;
+            }
+        }
+
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="overflow-x-hidden min-h-screen">
+<div class="flex min-h-screen">
+    <div id="sidebar-container"></div>
 
-<div class="flex h-screen overflow-hidden">
+    <main class="flex-1 min-h-screen ml-0 md:ml-[220px] w-full overflow-x-hidden transition-all duration-300">
+        <div id="navbar-container"></div>
 
-    <!-- UPDATED SIDEBAR (New Navigation) -->
-    <div class="sidebar text-white flex flex-col h-full">
-        
-        <!-- CTU Logo -->
-        <div onclick="window.location.href='dashboard.html'" 
-             class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" alt="CTU Logo" class="h-16 w-auto mb-3">
-            <div class="text-center">
-                <div class="font-semibold text-base leading-tight">College of Technology</div>
-                <div class="font-semibold text-base leading-tight">and Engineering</div>
-            </div>
-        </div>
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 mt-14 sm:mt-16">
+            <section id="main-view" class="max-w-7xl mx-auto">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+                    <div>
+                        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">Document Vault</h1>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Organize, preview, download, and maintain academic documents.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                        <button onclick="openFolderEditor()" class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-white border border-slate-200 hover:border-[#621708] hover:text-[#621708] text-slate-700 px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl text-xs sm:text-sm font-bold transition-colors shadow-sm">
+                            <i class="fa-solid fa-folder-plus"></i> New Folder
+                        </button>
+                        <button onclick="showMainUploadModal()" class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl text-xs sm:text-sm font-bold transition-colors shadow-sm">
+                            <i class="fa-solid fa-upload"></i> Upload
+                        </button>
+                    </div>
+                </div>
 
-        <!-- Navigation -->
-        <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
+                <p class="text-xs sm:text-sm text-slate-500 mb-4">
+                    <span id="stat-folders">0</span> folders ·
+                    <span id="stat-documents">0</span> documents
+                </p>
 
-            <div>
-                <div class="section-header text-white/70">FACULTIES & PROFILES</div>
-                <div onclick="window.location.href='faculty-profiles.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Faculty Profiles
+                <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                    <h2 class="text-sm font-semibold text-slate-800">Folders</h2>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="search" id="vault-folder-search" placeholder="Search folders..." oninput="renderFolders()" class="border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs sm:text-sm bg-white w-44 sm:w-56 focus:outline-none focus:border-[#621708]">
+                        </div>
+                        <select id="vault-category-filter" onchange="renderFolders()" class="border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm bg-white focus:outline-none focus:border-[#621708]">
+                            <option value="">All Categories</option>
+                            <option value="DTR">DTR</option>
+                            <option value="LDP">LDP</option>
+                            <option value="Syllabus">Syllabus</option>
+                            <option value="IPCR">IPCR</option>
+                            <option value="TOS">Table of Specifications (TOS)</option>
+                        </select>
+                        <button onclick="refreshVault()" class="text-xs sm:text-sm font-bold text-slate-500 hover:text-[#621708]">
+                            <i class="fa-solid fa-rotate-right mr-1.5"></i>Refresh
+                        </button>
+                    </div>
                 </div>
-                <div onclick="window.location.href='workload-tracker.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Workload Tracker
+                <div id="folders-grid">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div onclick="window.location.href='engagement-logs.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                    Engagement Logs
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='workflow-approval.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Workflow Approval
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
-            </div>
-
-            <div>
-                <div class="section-header text-white/70">ADMINISTRATION</div>
-                <div onclick="window.location.href='reports-analytics.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-6"/></svg>
-                    Reports and Analytics
-                </div>
-                <div onclick="window.location.href='feedback-summary.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2 2 2 0 0 1 2 2v10m-6 0a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.28"/></svg>
-                    Seminar Feedback Summary
-                </div>
-                <div onclick="window.location.href='system-settings.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-                <div onclick="window.location.href='user-management.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    User Management
-                </div>
-            </div>
-
-        </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='admin-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Dean & Administrator</div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- MAIN DOCUMENT VAULT CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
-        <div class="max-w-5xl mx-auto">
-            <div class="flex items-center justify-between mb-8">
-                <div>
-                    <h1 class="text-3xl font-semibold">Document Vault</h1>
-                    <p class="text-gray-500">Store, organize, and access all your academic documents</p>
-                </div>
-                <button onclick="uploadNewDocument()" 
-                        class="flex items-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-6 py-3 rounded-2xl text-sm font-medium">
-                    📤 Upload New Document
+            </section>
+            <section id="folder-view" class="hidden max-w-7xl mx-auto">
+                <button onclick="goBackToMain()" class="inline-flex items-center gap-2 text-slate-500 hover:text-[#621708] mb-4 text-xs sm:text-sm font-semibold">
+                    <i class="fa-solid fa-arrow-left"></i> Back to Document Vault
                 </button>
-            </div>
 
-            <!-- Search & Filter -->
-            <div class="flex gap-4 mb-8">
-                <div class="flex-1 relative">
-                    <input type="text" id="search-input" 
-                           onkeyup="filterDocuments()" 
-                           placeholder="Search documents..." 
-                           class="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 pl-12 focus:outline-none focus:border-[#621708]">
-                    <span class="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                <div class="bg-white rounded-2xl sm:rounded-[1.5rem] border border-slate-100 soft-shadow p-4 sm:p-5 mb-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+                            <div id="folder-icon" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shrink-0"></div>
+                            <div class="min-w-0">
+                                <h1 id="folder-title" class="text-xl sm:text-2xl font-extrabold text-slate-900 truncate leading-tight"></h1>
+                                <p id="folder-desc" class="text-xs sm:text-sm text-slate-500 mt-0.5 hidden"></p>
+                                <p id="folder-count" class="text-xs sm:text-sm text-slate-500 mt-0.5 sm:mt-1"></p>
+                            </div>
+                        </div>
+                        <button onclick="showSimpleUploadModal()" class="inline-flex items-center justify-center gap-2 bg-[#621708] hover:bg-[#8c2a10] text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors w-full sm:w-auto">
+                            <i class="fa-solid fa-plus"></i> Add Document
+                        </button>
+                    </div>
                 </div>
-                <select id="category-filter" onchange="filterDocuments()" 
-                        class="bg-white border border-gray-200 rounded-2xl px-5 py-4 focus:outline-none focus:border-[#621708]">
-                    <option value="">All Categories</option>
-                    <option value="Research">Research</option>
-                    <option value="Syllabus">Syllabus</option>
-                    <option value="Lecture">Lecture Notes</option>
-                    <option value="Report">Reports</option>
-                    <option value="Certificate">Certificates</option>
-                </select>
+
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <div class="relative w-full sm:w-80">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs sm:text-sm"></i>
+                        <input type="search" id="folder-search" placeholder="Search documents..." oninput="filterFolderDocuments()" class="w-full bg-white border border-slate-200 rounded-xl pl-9 sm:pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:border-[#621708] focus:ring-4 focus:ring-[#621708]/5">
+                    </div>
+                    <div class="flex items-center justify-between sm:justify-end gap-2">
+                        <div class="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Layout</div>
+                        <div class="flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                            <button title="Compact cards" onclick="setFolderView('large')" id="folder-btn-large" class="view-btn active"><i class="fa-solid fa-grip"></i></button>
+                            <button title="Tiles" onclick="setFolderView('tiles')" id="folder-btn-tiles" class="view-btn"><i class="fa-solid fa-table-cells-large"></i></button>
+                            <button title="List" onclick="setFolderView('list')" id="folder-btn-list" class="view-btn"><i class="fa-solid fa-list"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="action-bar" class="hidden compact-action-bar bg-white border border-[#621708]/20 flex items-center justify-between gap-3 shadow-sm mb-4">
+                    <div class="text-xs sm:text-sm text-slate-700 whitespace-nowrap"><span id="selected-count" class="font-extrabold text-[#621708]">0</span> selected</div>
+                    <div class="flex gap-2">
+                        <button onclick="moveSelectedDocuments()" class="px-3 py-1.5 sm:py-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-xs sm:text-sm font-bold">Move</button>
+                        <button onclick="deleteSelectedDocuments()" class="px-3 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs sm:text-sm font-bold">Delete</button>
+                    </div>
+                </div>
+                <div id="folder-documents-container">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                <div class="flex-1">
+                                    <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                    <div class="skeleton-text sm" style="width:40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<!-- Folder Editor Modal -->
+<div id="folder-editor-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-lg overflow-hidden max-h-[92vh] flex flex-col my-auto shadow-2xl border border-slate-100">
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div id="folder-editor-header-icon" class="w-10 h-10 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-lg shrink-0">
+                    <i class="fa-solid fa-folder-plus"></i>
+                </div>
+                <div>
+                    <h3 id="folder-editor-title" class="text-lg font-extrabold text-slate-900 leading-snug">New Folder</h3>
+                    <p class="text-xs text-slate-500">Configure folder name, appearance, and description.</p>
+                </div>
+            </div>
+            <button onclick="closeFolderEditor()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-5 overflow-y-auto flex-1 max-h-[calc(90vh-140px)]">
+            <input type="hidden" id="edit-folder-id">
+
+            <!-- Live Preview Card -->
+            <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 flex items-center gap-4">
+                <div id="folder-live-preview-icon" class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0 transition-all duration-200" style="background-color: rgba(107, 33, 168, 0.12); color: #6b21a8;">
+                    <i class="fa-solid fa-folder"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Live Preview</div>
+                    <div id="folder-live-preview-name" class="font-extrabold text-base text-slate-900 truncate">New Folder</div>
+                    <div id="folder-live-preview-desc" class="text-xs text-slate-500 truncate mt-0.5">No description provided</div>
+                </div>
             </div>
 
-            <!-- Documents Grid -->
-            <div id="documents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Populated by JavaScript -->
+            <!-- Folder Name -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Folder Name <span class="text-red-500">*</span></label>
+                <div class="relative">
+                    <input id="edit-folder-name" type="text" oninput="updateFolderLivePreview()" class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#621708] focus:ring-2 focus:ring-[#621708]/10 transition-all" placeholder="e.g. CURRICULUM_MATERIALS">
+                </div>
             </div>
+
+            <!-- Description -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Description <span class="text-slate-400 font-normal lowercase">(optional)</span></label>
+                <textarea id="edit-folder-description" oninput="updateFolderLivePreview()" class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-[#621708] focus:ring-2 focus:ring-[#621708]/10 transition-all" rows="2" placeholder="Brief note about the contents of this folder..."></textarea>
+            </div>
+
+            <!-- Color Palette Selector -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Folder Accent Color</label>
+                <input type="hidden" id="edit-folder-color" value="#6b21a8">
+                <div class="flex flex-wrap gap-2.5 items-center p-3 rounded-2xl bg-slate-50 border border-slate-100" id="folder-color-chips">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Icon Grid Selector -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Folder Icon</label>
+                <input type="hidden" id="edit-folder-icon" value="fa-folder">
+                <div class="grid grid-cols-5 gap-2 p-3 rounded-2xl bg-slate-50 border border-slate-100" id="folder-icon-chips">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
+            <button onclick="closeFolderEditor()" class="px-5 py-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs sm:text-sm font-bold text-slate-600 transition-colors">Cancel</button>
+            <button onclick="saveFolder()" class="px-6 py-2.5 rounded-xl bg-[#621708] hover:bg-[#8c2a10] text-white text-xs sm:text-sm font-bold transition-all shadow-sm flex items-center gap-2">
+                <i class="fa-solid fa-check"></i> Save Folder
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Main Upload Modal -->
+<div id="main-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-xl overflow-hidden max-h-[92vh] flex flex-col my-auto shadow-2xl border border-slate-100">
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-lg shrink-0">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-extrabold text-slate-900 leading-snug">Upload Documents</h3>
+                    <p class="text-xs text-slate-500">Stage files, select destination, and upload securely.</p>
+                </div>
+            </div>
+            <button onclick="hideMainUploadModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-140px)]">
+            <!-- Folder Selector -->
+            <div>
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">Destination Folder <span class="text-red-500">*</span></label>
+                    <button type="button" onclick="openFolderEditor()" class="text-xs font-bold text-[#621708] hover:underline flex items-center gap-1">
+                        <i class="fa-solid fa-plus text-[10px]"></i> New Folder
+                    </button>
+                </div>
+                <select id="doc-folder-select" class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:border-[#621708] focus:ring-2 focus:ring-[#621708]/10 transition-all"></select>
+            </div>
+
+            <!-- Drag & Drop Zone -->
+            <div id="main-drop-zone" onclick="document.getElementById('main-file-input').click()" class="drop-zone rounded-2xl p-7 text-center border-2 border-dashed border-slate-200 bg-slate-50/60 hover:bg-[#621708]/5 hover:border-[#621708] transition-all group cursor-pointer">
+                <div class="w-14 h-14 mx-auto rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-2xl text-[#621708] group-hover:scale-110 transition-transform mb-3">
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                </div>
+                <div class="font-extrabold text-slate-800 text-sm sm:text-base">Drag & drop files here, or <span class="text-[#621708] underline">browse</span></div>
+                <p class="text-xs text-slate-400 mt-1">Supports PDF, DOCX, XLSX, PPTX, JPG, PNG, TXT, ZIP</p>
+                <div class="flex flex-wrap items-center justify-center gap-1.5 mt-3.5">
+                    <span class="badge-pill bg-red-50 text-red-600 border border-red-100"><i class="fa-solid fa-file-pdf text-[10px]"></i> PDF</span>
+                    <span class="badge-pill bg-blue-50 text-blue-600 border border-blue-100"><i class="fa-solid fa-file-word text-[10px]"></i> Word</span>
+                    <span class="badge-pill bg-emerald-50 text-emerald-600 border border-emerald-100"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</span>
+                    <span class="badge-pill bg-amber-50 text-amber-600 border border-amber-100"><i class="fa-solid fa-file-powerpoint text-[10px]"></i> PPT</span>
+                    <span class="badge-pill bg-purple-50 text-purple-600 border border-purple-100"><i class="fa-solid fa-file-image text-[10px]"></i> Images</span>
+                </div>
+                <input type="file" id="main-file-input" multiple onchange="handleMainFilesSelected(this.files)" class="hidden">
+            </div>
+
+            <!-- Staged Files Preview List -->
+            <div id="upload-staged-section" class="hidden space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-check text-[#621708]"></i> Selected Files (<span id="upload-staged-count">0</span>)
+                    </span>
+                    <button type="button" onclick="clearStagedUploadFiles()" class="text-xs text-red-600 hover:text-red-700 font-semibold hover:underline">
+                        Clear all
+                    </button>
+                </div>
+                <div id="upload-staged-list" class="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100 bg-white border border-slate-100 rounded-2xl p-2.5">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Upload Progress State -->
+            <div id="upload-progress-container" class="hidden p-4 rounded-2xl bg-amber-50 border border-amber-200">
+                <div class="flex items-center justify-between text-xs font-bold text-amber-900 mb-2">
+                    <span id="upload-progress-status" class="flex items-center gap-2">
+                        <i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i> Uploading files to bucket...
+                    </span>
+                    <span id="upload-progress-percent">0%</span>
+                </div>
+                <div class="w-full bg-amber-200/70 h-2.5 rounded-full overflow-hidden">
+                    <div id="upload-progress-bar" class="bg-[#621708] h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 flex-shrink-0">
+            <button onclick="hideMainUploadModal()" id="upload-cancel-btn" class="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-600 transition-colors">Cancel</button>
+            <button onclick="uploadMainFiles()" id="upload-submit-btn" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Start Upload
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Upload Modal (Current Folder) -->
+<div id="simple-upload-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-lg overflow-hidden max-h-[92vh] flex flex-col my-auto shadow-2xl border border-slate-100">
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-lg shrink-0">
+                    <i class="fa-solid fa-folder-arrow-up"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-extrabold text-slate-900 leading-snug">Add Documents</h3>
+                    <p id="simple-upload-subtitle" class="text-xs text-slate-500">Upload directly to this folder.</p>
+                </div>
+            </div>
+            <button onclick="hideSimpleUploadModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-140px)]">
+            <div id="simple-drop-zone" onclick="document.getElementById('simple-file-input').click()" class="drop-zone rounded-2xl p-7 text-center border-2 border-dashed border-slate-200 bg-slate-50/60 hover:bg-[#621708]/5 hover:border-[#621708] transition-all group cursor-pointer">
+                <div class="w-14 h-14 mx-auto rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-2xl text-[#621708] group-hover:scale-110 transition-transform mb-3">
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                </div>
+                <div class="font-extrabold text-slate-800 text-sm sm:text-base">Drag & drop files here, or <span class="text-[#621708] underline">browse</span></div>
+                <p class="text-xs text-slate-400 mt-1">Files will be added directly to the active folder</p>
+                <input type="file" id="simple-file-input" multiple onchange="handleSimpleFilesSelected(this.files)" class="hidden">
+            </div>
+
+            <!-- Staged List for Simple Modal -->
+            <div id="simple-staged-section" class="hidden space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-check text-[#621708]"></i> Selected Files (<span id="simple-staged-count">0</span>)
+                    </span>
+                    <button type="button" onclick="clearStagedUploadFiles()" class="text-xs text-red-600 hover:text-red-700 font-semibold hover:underline">
+                        Clear all
+                    </button>
+                </div>
+                <div id="simple-staged-list" class="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100 bg-white border border-slate-100 rounded-2xl p-2.5"></div>
+            </div>
+
+            <!-- Simple Upload Progress -->
+            <div id="simple-progress-container" class="hidden p-4 rounded-2xl bg-amber-50 border border-amber-200">
+                <div class="flex items-center justify-between text-xs font-bold text-amber-900 mb-2">
+                    <span id="simple-progress-status" class="flex items-center gap-2">
+                        <i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i> Uploading files...
+                    </span>
+                    <span id="simple-progress-percent">0%</span>
+                </div>
+                <div class="w-full bg-amber-200/70 h-2.5 rounded-full overflow-hidden">
+                    <div id="simple-progress-bar" class="bg-[#621708] h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 flex-shrink-0">
+            <button onclick="hideSimpleUploadModal()" id="simple-cancel-btn" class="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-600 transition-colors">Cancel</button>
+            <button onclick="uploadToCurrentFolder()" id="simple-submit-btn" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Upload
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="move-docs-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[2500] p-4 overflow-y-auto min-h-screen">
+    <div class="modal-panel bg-white rounded-[2rem] w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col my-auto shadow-2xl border border-slate-100">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0">
+                    <i class="fa-solid fa-folder-tree"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-extrabold text-slate-900">Move Documents</h3>
+                    <p class="text-xs text-slate-500">Choose a destination folder.</p>
+                </div>
+            </div>
+            <button onclick="hideMoveDocsModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="p-6">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Destination Folder</label>
+            <select id="move-target-folder" class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#621708] focus:ring-2 focus:ring-[#621708]/10 transition-all"></select>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+            <button onclick="hideMoveDocsModal()" class="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-600">Cancel</button>
+            <button onclick="confirmMoveDocuments()" class="flex-1 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm">Move</button>
+        </div>
+    </div>
+</div>
+
+<!-- Professional Document Preview Modal -->
+<div id="documentPreviewModal" class="hidden fixed inset-0 document-modal-backdrop items-center justify-center z-[2600] p-3 sm:p-5">
+    <div class="document-modal-panel bg-white rounded-[1.5rem] sm:rounded-[2rem] w-full max-w-6xl h-[92vh] sm:h-[88vh] overflow-hidden flex flex-col">
+        <div class="px-5 py-3.5 sm:px-7 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-white">
+            <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+                <div id="previewFileIcon" class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-[#621708]/10 text-[#621708] flex items-center justify-center text-lg sm:text-xl shrink-0">
+                    <i class="fa-solid fa-file-lines"></i>
+                </div>
+                <div class="min-w-0">
+                    <h3 id="previewDocumentTitle" class="text-sm sm:text-lg font-extrabold text-slate-900 truncate">Document Preview</h3>
+                    <p id="previewDocumentMeta" class="text-[11px] sm:text-sm text-slate-500 truncate">Preparing document...</p>
+                </div>
+            </div>
+            <button onclick="closeDocumentPreviewModal()" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 flex items-center justify-center" aria-label="Close preview"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="flex-1 grid grid-cols-1 lg:grid-cols-[280px_1fr] min-h-0">
+            <aside class="border-b lg:border-b-0 lg:border-r border-slate-100 bg-slate-50/90 p-4 sm:p-6 overflow-y-auto max-h-[160px] lg:max-h-full">
+                <div class="text-[11px] font-extrabold uppercase tracking-wide text-slate-400 mb-2">Document Details</div>
+                <div class="grid grid-cols-2 lg:grid-cols-1 gap-2 sm:gap-3 text-xs">
+                    <div>
+                        <div class="text-[10px] text-slate-400">File Name</div>
+                        <div id="previewSideName" class="font-bold text-slate-800 truncate sm:break-words">-</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400">File Type</div>
+                        <div id="previewSideType" class="font-bold text-slate-800">-</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400">File Size</div>
+                        <div id="previewSideSize" class="font-bold text-slate-800">-</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400">Uploaded</div>
+                        <div id="previewSideDate" class="font-bold text-slate-800">-</div>
+                    </div>
+                </div>
+                <div class="mt-4 flex lg:flex-col gap-2">
+                    <button onclick="downloadCurrentPreviewDocument()" class="document-action-btn document-primary-btn flex-1 py-2 sm:py-2.5 text-xs sm:text-sm"><i class="fa-solid fa-download"></i>Download</button>
+                    <button onclick="openPreviewInNewTab()" class="document-action-btn document-secondary-btn flex-1 py-2 sm:py-2.5 text-xs sm:text-sm"><i class="fa-solid fa-arrow-up-right-from-square"></i>Open Tab</button>
+                </div>
+            </aside>
+            <main class="bg-slate-100 min-h-0 relative flex-1">
+                <div id="previewLoading" class="absolute inset-0 flex items-center justify-center bg-slate-100 z-10">
+                    <div class="bg-white rounded-2xl px-5 py-3 shadow-sm border border-slate-100 flex items-center gap-3">
+                        <i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i>
+                        <span class="text-xs sm:text-sm font-bold text-slate-700">Loading preview...</span>
+                    </div>
+                </div>
+                <iframe id="documentPreviewFrame" title="Document preview" class="w-full h-full bg-white border-0" src="about:blank"></iframe>
+            </main>
         </div>
     </div>
 </div>
 
 <script>
-    const documents = [
-        { id: 1, name: "Research_Paper_ML_Education.pdf", category: "Research", date: "2026-01-15", size: "2.4 MB", type: "PDF" },
-        { id: 2, name: "BSIT_Syllabus_2025-2026.docx", category: "Syllabus", date: "2025-12-20", size: "1.1 MB", type: "DOCX" },
-        { id: 3, name: "Lecture_Notes_Data_Structures.pdf", category: "Lecture", date: "2026-02-10", size: "3.8 MB", type: "PDF" },
-        { id: 4, name: "Annual_Performance_Report_2025.pdf", category: "Report", date: "2026-01-05", size: "890 KB", type: "PDF" },
-        { id: 5, name: "Teaching_Certificate_2024.pdf", category: "Certificate", date: "2025-11-30", size: "450 KB", type: "PDF" }
-    ];
+const STORAGE_BUCKET = 'documents';
+function getVaultClient(){
+    return window.supabaseClient || (typeof supabaseClient !== 'undefined' ? supabaseClient : null);
+}
+let supabaseClient = window.supabaseClient;
+let hasPromptedForApiKey = false;
+let folders = [];
+let documents = [];
+let allDocuments = [];
+let currentFolderId = null;
+let currentFolderView = localStorage.getItem('documentVaultView') || 'list';
+let selectedDocs = new Set();
+let currentPreviewDocument = null;
+let currentPreviewAccess = null;
+let vaultFolderSort = { key: 'name', dir: 'asc' };
+let vaultDocSort = { key: 'date', dir: 'desc' };
+const FOLDERS_CACHE_KEY = 'citeflow_vault_folders_cache_v1';
+const FOLDER_DOCS_CACHE = new Map();
+let isVaultLoading = false;
 
-    function renderDocuments(filteredDocs) {
-        const grid = document.getElementById('documents-grid');
-        grid.innerHTML = '';
+function restoreCachedFolders(){
+    try {
+        const cached = sessionStorage.getItem(FOLDERS_CACHE_KEY);
+        if(!cached) return false;
+        const parsed = JSON.parse(cached);
+        if(Array.isArray(parsed.folders) && parsed.folders.length){
+            folders = parsed.folders;
+            const statFolders = document.getElementById('stat-folders');
+            const statDocs = document.getElementById('stat-documents');
+            if(statFolders) statFolders.textContent = folders.length;
+            if(statDocs) statDocs.textContent = parsed.totalDocs || 0;
+            renderFolders();
+            return true;
+        }
+    } catch(e) {
+        console.warn('Vault cache restoration failed:', e);
+    }
+    return false;
+}
 
-        filteredDocs.forEach(doc => {
-            const card = document.createElement('div');
-            card.className = "bg-white rounded-3xl p-6 card-shadow hover:shadow-lg transition-shadow";
-            card.innerHTML = `
-                <div class="flex justify-between items-start">
-                    <div class="flex-1 min-w-0">
-                        <div class="doc-name font-medium text-base text-gray-900 leading-tight">${doc.name}</div>
-                        <div class="text-xs text-gray-500 mt-1">${doc.category} • ${doc.date}</div>
+function ensureSupabaseReady(){ 
+    if(!supabaseClient && window.supabaseClient){
+        supabaseClient = window.supabaseClient;
+    }
+    const client = getVaultClient();
+    if(!client){ 
+        console.warn('Supabase is not initialized.'); 
+        return false; 
+    } 
+    return true; 
+}
+function isInvalidApiKeyError(error){
+    if(!error) return false;
+    const msg = String(error.message || '').toLowerCase();
+    const details = String(error.details || '').toLowerCase();
+    return msg.includes('invalid api key') || details.includes('invalid api key') || msg.includes('apikey');
+}
+function recreateSupabaseClient(){
+    supabaseConfig = getSupabaseCredentials();
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') return false;
+    supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+    });
+    return true;
+}
+async function recoverFromInvalidApiKey(error){
+    if(hasPromptedForApiKey || !isInvalidApiKeyError(error)) return false;
+    hasPromptedForApiKey = true;
+    const pastedKey = await askVaultInput('Supabase rejected the API key for Document Vault.\nPaste your latest Supabase anon public key to continue:', 'Supabase API key');
+    if(!pastedKey){ hasPromptedForApiKey = false; return false; }
+    saveSupabaseAnonKey(pastedKey);
+    if(!recreateSupabaseClient()){
+        showDocumentToast('Supabase library failed to reinitialize. Please refresh the page.', 'error');
+        hasPromptedForApiKey = false;
+        return false;
+    }
+    hasPromptedForApiKey = false;
+    await refreshVault();
+    return true;
+}
+function normalizeColor(value){ const map = {'text-purple-600':'#6b21a8','text-blue-600':'#2563eb','text-emerald-600':'#059669','text-red-600':'#dc2626','text-rose-600':'#e11d48','text-orange-600':'#ea580c','text-amber-600':'#d97706','text-cyan-600':'#0891b2','text-gray-600':'#475569'}; if(!value) return '#6b21a8'; if(String(value).startsWith('#')) return value; return map[value] || '#6b21a8'; }
+function formatVaultFolderName(name){
+    if (window.CiteFlowWorkflow && typeof CiteFlowWorkflow.resolveDocumentCategory === 'function') {
+        const resolved = CiteFlowWorkflow.resolveDocumentCategory(name);
+        if (resolved) return CiteFlowWorkflow.formatDocumentCategory(resolved);
+    }
+    return name || '';
+}
+function normalizeIcon(value){ return value || 'fa-folder'; }
+function escapeHtml(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+function jsArg(value){ return JSON.stringify(String(value ?? '')); }
+function selectedKey(value){ return String(value ?? ''); }
+function isSelected(id){ return selectedDocs.has(selectedKey(id)); }
+function sanitizeFileName(name){
+    const clean = String(name || 'file')
+        .replace(/[^\w.\-]+/g, '_')
+        .replace(/_{2,}/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return clean || 'document';
+}
+function buildFilePath(folderId, originalName){
+    const safeFolder = String(folderId || 'vault').replace(/[^\w\-]+/g, '_');
+    return `${safeFolder}/${Date.now()}_${sanitizeFileName(originalName)}`;
+}
+function resolveVaultUploadContentType(file){
+    const raw = String(file?.type || '').trim().split(';')[0].trim();
+    if (/^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*$/.test(raw)) return raw;
+    const name = String(file?.name || '').toLowerCase();
+    if (name.endsWith('.pdf')) return 'application/pdf';
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+    if (name.endsWith('.gif')) return 'image/gif';
+    if (name.endsWith('.webp')) return 'image/webp';
+    if (name.endsWith('.doc')) return 'application/msword';
+    if (name.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (name.endsWith('.xls')) return 'application/vnd.ms-excel';
+    if (name.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (name.endsWith('.ppt')) return 'application/vnd.ms-powerpoint';
+    if (name.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (name.endsWith('.txt')) return 'text/plain';
+    if (name.endsWith('.zip')) return 'application/zip';
+    return 'application/octet-stream';
+}
+function formatDriveDate(value){
+    if(!value) return '';
+    const d=new Date(value);
+    if(Number.isNaN(d.getTime())) return '';
+    const opts={ month:'short', day:'numeric' };
+    if(d.getFullYear()!==new Date().getFullYear()) opts.year='numeric';
+    return d.toLocaleDateString('en-US', opts);
+}
+function setVaultFolderSort(key){
+    if(vaultFolderSort.key===key) vaultFolderSort.dir=vaultFolderSort.dir==='asc'?'desc':'asc';
+    else { vaultFolderSort.key=key; vaultFolderSort.dir=key==='name'?'asc':'desc'; }
+    renderFolders();
+}
+function sortArrow(key){
+    if(vaultFolderSort.key!==key) return '';
+    return vaultFolderSort.dir==='asc' ? '<i class="fa-solid fa-arrow-up text-xs text-blue-600"></i>' : '<i class="fa-solid fa-arrow-down text-xs text-blue-600"></i>';
+}
+function setVaultDocSort(key){
+    if(vaultDocSort.key===key) vaultDocSort.dir=vaultDocSort.dir==='asc'?'desc':'asc';
+    else { vaultDocSort.key=key; vaultDocSort.dir=key==='name'?'asc':'desc'; }
+    renderFolderDocuments();
+}
+function sortDocArrow(key){
+    if(vaultDocSort.key!==key) return '';
+    return vaultDocSort.dir==='asc' ? '<i class="fa-solid fa-arrow-up text-xs text-blue-600"></i>' : '<i class="fa-solid fa-arrow-down text-xs text-blue-600"></i>';
+}
+function sortDocuments(list){
+    return list.slice().sort((a,b)=>{
+        const dir=vaultDocSort.dir==='asc'?1:-1;
+        if(vaultDocSort.key==='size') return ((Number(a.size_bytes)||0)-(Number(b.size_bytes)||0))*dir;
+        if(vaultDocSort.key==='date') return (new Date(a.uploaded_at||a.created_at||0)-new Date(b.uploaded_at||b.created_at||0))*dir;
+        return String(a.name||'').localeCompare(String(b.name||''), undefined, {sensitivity:'base'})*dir;
+    });
+}
+function getFileIconColor(filename,mimeType=''){
+    const ext=getFileExtension(filename);
+    const type=String(mimeType||'').toLowerCase();
+    if(ext==='pdf'||type.includes('pdf')) return '#ea4335';
+    if(['doc','docx'].includes(ext)||type.includes('word')) return '#4285f4';
+    if(['xls','xlsx','csv'].includes(ext)||type.includes('spreadsheet')||type.includes('excel')) return '#0f9d58';
+    if(['ppt','pptx'].includes(ext)||type.includes('presentation')||type.includes('powerpoint')) return '#fbbc04';
+    if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return '#a142f4';
+    return '#5f6368';
+}
+function setFolderDescription(folder){
+    const descEl=document.getElementById('folder-desc');
+    if(!descEl) return;
+    const text=String(folder?.description||'').trim();
+    if(text){ descEl.textContent=text; descEl.classList.remove('hidden'); }
+    else { descEl.textContent=''; descEl.classList.add('hidden'); }
+}
+function formatFileSize(bytes){
+    const num = Number(bytes);
+    if (!Number.isFinite(num) || num <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.min(Math.floor(Math.log(num) / Math.log(1024)), units.length - 1);
+    if (i === 0) return `${num} B`;
+    return `${(num / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+function getFileExtension(filename){ return String(filename || '').split('.').pop().toLowerCase(); }
+function getFileTypeLabel(filename,mimeType=''){ const ext=getFileExtension(filename); return ext ? ext.toUpperCase() : (mimeType || 'FILE'); }
+function getFileIconClass(filename,mimeType=''){ const ext=getFileExtension(filename); const type=String(mimeType||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'fa-file-pdf'; if(['doc','docx'].includes(ext)||type.includes('word')) return 'fa-file-word'; if(['xls','xlsx','csv'].includes(ext)||type.includes('spreadsheet')||type.includes('excel')) return 'fa-file-excel'; if(['ppt','pptx'].includes(ext)||type.includes('presentation')||type.includes('powerpoint')) return 'fa-file-powerpoint'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'fa-file-image'; if(['zip','rar','7z'].includes(ext)) return 'fa-file-zipper'; if(['txt','md'].includes(ext)||type.includes('text')) return 'fa-file-lines'; return 'fa-file-lines'; }
+function getFilePreviewKind(doc){ const ext=getFileExtension(doc.name); const type=String(doc.mime_type||'').toLowerCase(); if(ext==='pdf'||type.includes('pdf')) return 'direct'; if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)||type.includes('image')) return 'direct'; if(['txt','md','csv'].includes(ext)||type.includes('text')) return 'direct'; if(['doc','docx','xls','xlsx','ppt','pptx'].includes(ext)) return 'office'; return 'direct'; }
+function vaultToastMark(type){
+    const marks = {
+        success: { icon: 'fa-circle-check', color: '#10b981' },
+        error: { icon: 'fa-circle-xmark', color: '#f87171' },
+        warning: { icon: 'fa-triangle-exclamation', color: '#fbbf24' },
+        info: { icon: 'fa-circle-notch fa-spin', color: '#93c5fd' }
+    };
+    return marks[type] || marks.success;
+}
+function showDocumentToast(message, type = 'success'){
+    const text = String(message ?? '').trim();
+    if (!text) return;
+    const toastType = vaultToastMark(type) && ['success', 'error', 'warning', 'info'].includes(type) ? type : 'success';
+    if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(text, 3000, toastType);
+        return;
+    }
+    const mark = vaultToastMark(toastType);
+    let toast = document.getElementById('citeflowGlobalToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'citeflowGlobalToast';
+        toast.className = 'citeflow-toast';
+        document.body.appendChild(toast);
+    }
+    const safe = document.createElement('div');
+    safe.textContent = text;
+    toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+    toast.classList.add('show');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function waitForCiteFlowModal(timeoutMs = 2500) {
+    if (window.CiteFlowModal && typeof window.CiteFlowModal.prompt === 'function') {
+        return Promise.resolve(window.CiteFlowModal);
+    }
+    return new Promise((resolve) => {
+        const started = Date.now();
+        const timer = window.setInterval(() => {
+            if (window.CiteFlowModal && typeof window.CiteFlowModal.prompt === 'function') {
+                window.clearInterval(timer);
+                resolve(window.CiteFlowModal);
+            } else if (Date.now() - started >= timeoutMs) {
+                window.clearInterval(timer);
+                resolve(null);
+            }
+        }, 50);
+    });
+}
+
+async function confirmVaultAction(message, title) {
+    const heading = title || 'Confirmation';
+    const citeConfirm = window.CiteFlowUI && window.CiteFlowUI.confirm;
+    if (typeof citeConfirm === 'function') {
+        return citeConfirm(message, heading);
+    }
+    const workflowConfirm = window.CiteFlowWorkflow && window.CiteFlowWorkflow.confirmAction;
+    if (typeof workflowConfirm === 'function') {
+        return workflowConfirm(message, heading, { danger: true, confirmText: 'Delete' });
+    }
+    const modal = await waitForCiteFlowModal();
+    const modalConfirm = modal && modal.confirm;
+    if (typeof modalConfirm === 'function') {
+        return modalConfirm(message, heading, { isDanger: true, confirmText: 'Delete' });
+    }
+    showDocumentToast('Unable to confirm that action. Please refresh the page.', 'error');
+    return false;
+}
+
+async function askVaultInput(message, title) {
+    const modal = window.CiteFlowModal && typeof window.CiteFlowModal.prompt === 'function'
+        ? window.CiteFlowModal
+        : await waitForCiteFlowModal();
+    const modalPrompt = modal && modal.prompt;
+    if (typeof modalPrompt === 'function') {
+        return modalPrompt(message, '', title || 'CITE-Flow');
+    }
+    showDocumentToast('Unable to request the API key. Please refresh the page.', 'error');
+    return null;
+}
+
+async function refreshVault(){
+    await loadFolders();
+    renderFolders();
+    if(currentFolderId){
+        await loadDocumentsByFolder(currentFolderId);
+        renderFolderDocuments();
+    }
+}
+
+async function loadFolders(){
+    if(!ensureSupabaseReady()) return;
+    try {
+        // Parallel queries: Folders list + lightweight doc counts (only id, folder_id)
+        const [folderRes, docRes] = await Promise.all([
+            supabaseClient.from('folders').select('id, name, description, icon, color, created_at, updated_at').order('name'),
+            supabaseClient.from('documents').select('id, folder_id')
+        ]);
+
+        if(folderRes.error){
+            if(await recoverFromInvalidApiKey(folderRes.error)) return;
+            console.error('Folders load error:', folderRes.error);
+            showDocumentToast('Error loading folders: ' + folderRes.error.message, 'error');
+            return;
+        }
+
+        const folderData = folderRes.data || [];
+        const docData = docRes.data || [];
+
+        const countMap = docData.reduce((acc, doc) => {
+            acc[doc.folder_id] = (acc[doc.folder_id] || 0) + 1;
+            return acc;
+        }, {});
+
+        folders = folderData.map(folder => ({
+            ...folder,
+            color: normalizeColor(folder.color),
+            icon: normalizeIcon(folder.icon),
+            count: countMap[folder.id] || 0
+        }));
+
+        const statFolders = document.getElementById('stat-folders');
+        const statDocs = document.getElementById('stat-documents');
+        if(statFolders) statFolders.textContent = folders.length;
+        if(statDocs) statDocs.textContent = docData.length;
+
+        // Persist in session cache for 0ms instant render on return visits
+        try {
+            sessionStorage.setItem(FOLDERS_CACHE_KEY, JSON.stringify({
+                folders: folders,
+                totalDocs: docData.length,
+                timestamp: Date.now()
+            }));
+        } catch(e) {}
+    } catch(err) {
+        console.error('Failed to load folders:', err);
+    }
+}
+
+async function loadDocumentsByFolder(folderId){
+    if(!ensureSupabaseReady()) return;
+    const { data, error } = await supabaseClient
+        .from('documents')
+        .select('id, name, folder_id, file_path, mime_type, size_bytes, uploaded_at')
+        .eq('folder_id', folderId)
+        .order('uploaded_at', { ascending: false });
+
+    if(error){
+        console.error('Error loading documents for folder:', error);
+        if(!FOLDER_DOCS_CACHE.has(String(folderId))) documents = [];
+    } else {
+        documents = data || [];
+        FOLDER_DOCS_CACHE.set(String(folderId), documents);
+    }
+}
+
+function renderFolders(){
+    const container=document.getElementById('folders-grid');
+    const categoryFilter=document.getElementById('vault-category-filter')?.value || '';
+    const search=(document.getElementById('vault-folder-search')?.value||'').toLowerCase().trim();
+    const visibleFolders=folders.filter(f=>{
+        if(search){
+            const hay=`${formatVaultFolderName(f.name)} ${f.name||''} ${f.description||''}`.toLowerCase();
+            if(!hay.includes(search)) return false;
+        }
+        if(!categoryFilter) return true;
+        if (window.CiteFlowWorkflow && typeof CiteFlowWorkflow.matchesDocumentCategory === 'function') {
+            return CiteFlowWorkflow.matchesDocumentCategory(f.name, categoryFilter);
+        }
+        return String(f.name||'').toUpperCase()===String(categoryFilter).toUpperCase();
+    }).slice().sort((a,b)=>{
+        const dir=vaultFolderSort.dir==='asc'?1:-1;
+        if(vaultFolderSort.key==='date'){
+            return (new Date(a.updated_at||a.created_at||0) - new Date(b.updated_at||b.created_at||0)) * dir;
+        }
+        return String(formatVaultFolderName(a.name)).localeCompare(String(formatVaultFolderName(b.name))) * dir;
+    });
+    if(!folders.length){
+        container.innerHTML=`<div class="drive-list"><div class="px-6 py-10 text-center"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-folder-open"></i></div><h3 class="text-base font-extrabold text-slate-700">No folders yet</h3><p class="text-sm text-slate-500 mt-1">Create a folder and upload documents to get started.</p></div></div>`;
+        return;
+    }
+    if(!visibleFolders.length){
+        const isSearch=Boolean(search);
+        container.innerHTML=`<div class="drive-list"><div class="px-6 py-10 text-center"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid ${isSearch?'fa-magnifying-glass':'fa-filter'}"></i></div><h3 class="text-base font-extrabold text-slate-700">${isSearch?'No folders match your search':'No folders in this category'}</h3><p class="text-sm text-slate-500 mt-1">${isSearch?'Try a different name or clear the search.':'Switch to All Categories to see every folder.'}</p></div></div>`;
+        return;
+    }
+    container.innerHTML=`<div class="drive-list">
+        <div class="drive-list-head">
+            <button type="button" onclick="setVaultFolderSort('name')">Name ${sortArrow('name')}</button>
+            <div class="drive-col-owner">Owner</div>
+            <button type="button" class="drive-col-date" onclick="setVaultFolderSort('date')">Date modified ${sortArrow('date')}</button>
+            <div class="drive-col-size">File size</div>
+            <div class="drive-sort"><i class="fa-solid fa-arrow-down-short-wide mr-1"></i>Sort</div>
+        </div>
+        ${visibleFolders.map(f=>`
+            <div onclick='openFolder(${jsArg(f.id)})' class="drive-row">
+                <div class="drive-name">
+                    <i class="fa-solid ${f.icon||'fa-folder'}" style="color:${f.color||'#5f6368'}"></i>
+                    <span class="truncate">${escapeHtml(formatVaultFolderName(f.name))}</span>
+                </div>
+                <div class="drive-owner drive-col-owner"><span class="drive-avatar">M</span> me</div>
+                <div class="drive-muted drive-col-date">${escapeHtml(formatDriveDate(f.updated_at||f.created_at))}</div>
+                <div class="drive-muted drive-col-size">—</div>
+                <div onclick="event.stopPropagation()">
+                    <button type="button" class="drive-kebab" onclick='openFolderMenu(${jsArg(f.id)})' title="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                    <div id="folder-menu-${escapeHtml(f.id)}" class="context-menu hidden bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+                        <button onclick='event.stopPropagation(); openFolderEditor(${jsArg(f.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-slate-50"><i class="fa-solid fa-pen-to-square mr-2 text-slate-400"></i>Edit Folder</button>
+                        <button onclick='event.stopPropagation(); deleteFolderById(${jsArg(f.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-red-50 text-red-600"><i class="fa-solid fa-trash-can mr-2"></i>Delete Folder</button>
                     </div>
-                    <span class="ml-3 px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded-xl flex-shrink-0">${doc.type}</span>
                 </div>
-                <div class="mt-6 text-sm text-gray-500">${doc.size}</div>
-                <div class="mt-8 flex gap-3">
-                    <button onclick="viewDocument(${doc.id})" 
-                            class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-2xl text-sm font-medium">
-                        View
-                    </button>
-                    <button onclick="downloadDocument(${doc.id})" 
-                            class="flex-1 bg-[#621708] hover:bg-[#8c2a10] text-white py-3 rounded-2xl text-sm font-medium">
-                        Download
-                    </button>
+            </div>
+        `).join('')}
+    </div>`;
+}
+function openFolderMenu(id){ document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')); document.getElementById(`folder-menu-${id}`)?.classList.toggle('hidden'); }
+function openDocMenu(id){ document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')); document.getElementById(`doc-menu-${id}`)?.classList.toggle('hidden'); }
+document.addEventListener('click',()=>document.querySelectorAll('.context-menu').forEach(m=>m.classList.add('hidden')));
+
+async function openFolder(folderId){
+    currentFolderId=folderId;
+    selectedDocs.clear();
+    updateActionBar();
+    const folder=folders.find(f=>String(f.id)===String(folderId));
+    if(!folder) return;
+    document.getElementById('main-view').classList.add('hidden');
+    document.getElementById('folder-view').classList.remove('hidden');
+    document.getElementById('folder-icon').innerHTML=`<i class="fa-solid ${folder.icon}"></i>`;
+    document.getElementById('folder-icon').style.color=folder.color;
+    document.getElementById('folder-icon').style.backgroundColor=`${folder.color}16`;
+    document.getElementById('folder-title').textContent=formatVaultFolderName(folder.name);
+    setFolderDescription(folder);
+    const searchEl=document.getElementById('folder-search');
+    if(searchEl) searchEl.value='';
+
+    // Instant render if cached
+    if(FOLDER_DOCS_CACHE.has(String(folderId))){
+        documents = FOLDER_DOCS_CACHE.get(String(folderId));
+        document.getElementById('folder-count').textContent=`${documents.length} document${documents.length!==1?'s':''}`;
+        renderFolderDocuments();
+    } else {
+        document.getElementById('folder-documents-container').innerHTML=`
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="skeleton-card"><div class="skeleton-text" style="width:60%"></div></div>
+                <div class="skeleton-card"><div class="skeleton-text" style="width:60%"></div></div>
+                <div class="skeleton-card"><div class="skeleton-text" style="width:60%"></div></div>
+            </div>`;
+    }
+
+    await loadDocumentsByFolder(folderId);
+    document.getElementById('folder-count').textContent=`${documents.length} document${documents.length!==1?'s':''}`;
+    setFolderView(currentFolderView, false);
+    renderFolderDocuments();
+    window.scrollTo({top:0,behavior:'smooth'});
+}
+function goBackToMain(){ document.getElementById('folder-view').classList.add('hidden'); document.getElementById('main-view').classList.remove('hidden'); currentFolderId=null; selectedDocs.clear(); updateActionBar(); }
+function editCurrentFolder(){ if(currentFolderId) openFolderEditor(currentFolderId); }
+async function deleteCurrentFolder(){ if(currentFolderId) await deleteFolderById(currentFolderId); }
+function setFolderView(mode, render=true){ currentFolderView=mode; localStorage.setItem('documentVaultView',mode); document.querySelectorAll('#folder-view .view-btn').forEach(b=>b.classList.remove('active')); document.getElementById(`folder-btn-${mode}`)?.classList.add('active'); if(render) renderFolderDocuments(); }
+function filterFolderDocuments(){ renderFolderDocuments(); }
+function toggleSelect(id){ const key=selectedKey(id); isSelected(key)?selectedDocs.delete(key):selectedDocs.add(key); updateActionBar(); renderFolderDocuments(); }
+function toggleSelectAll(checked){
+    getFilteredDocuments().forEach(doc=>{
+        const key=selectedKey(doc.id);
+        if(checked) selectedDocs.add(key);
+        else selectedDocs.delete(key);
+    });
+    updateActionBar();
+    renderFolderDocuments();
+}
+function updateActionBar(){ const bar=document.getElementById('action-bar'); const count=document.getElementById('selected-count'); if(count) count.textContent=selectedDocs.size; if(bar) bar.classList.toggle('hidden', selectedDocs.size===0); }
+function getFilteredDocuments(){
+    const q=(document.getElementById('folder-search')?.value||'').toLowerCase().trim();
+    return sortDocuments(documents.filter(d=>String(d.folder_id)===String(currentFolderId)).filter(d=>!q||String(d.name||'').toLowerCase().includes(q)));
+}
+
+function renderFolderDocuments(){
+    const q=(document.getElementById('folder-search')?.value||'').toLowerCase().trim();
+    const filtered=getFilteredDocuments();
+    const container=document.getElementById('folder-documents-container');
+    if(!filtered.length){
+        container.innerHTML=`<div class="bg-white rounded-2xl p-8 text-center border border-slate-100"><div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-file-circle-xmark"></i></div><h3 class="text-base font-extrabold text-slate-700">No documents found</h3><p class="text-sm text-slate-500 mt-1">${q?'Try a different search.':'Upload a file to this folder.'}</p></div>`;
+        return;
+    }
+    if(currentFolderView==='list'){
+        const allSelected=filtered.every(doc=>isSelected(doc.id));
+        container.innerHTML=`<div class="drive-list">
+            <div class="drive-list-head">
+                <div class="drive-name">
+                    <input type="checkbox" class="doc-checkbox mr-1" ${allSelected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelectAll(this.checked)" title="Select all">
+                    <button type="button" onclick="setVaultDocSort('name')">Name ${sortDocArrow('name')}</button>
                 </div>
-            `;
-            grid.appendChild(card);
+                <div class="drive-col-owner">Owner</div>
+                <button type="button" class="drive-col-date" onclick="setVaultDocSort('date')">Date modified ${sortDocArrow('date')}</button>
+                <button type="button" class="drive-col-size" onclick="setVaultDocSort('size')">File size ${sortDocArrow('size')}</button>
+                <div class="drive-sort"><i class="fa-solid fa-arrow-down-short-wide mr-1"></i>Sort</div>
+            </div>
+            ${filtered.map(doc=>`
+                <div class="drive-row" onclick='viewDocument(${jsArg(doc.id)})'>
+                    <div class="drive-name">
+                        <input type="checkbox" class="doc-checkbox" ${isSelected(doc.id)?'checked':''} onclick="event.stopPropagation()" onchange='toggleSelect(${jsArg(doc.id)})'>
+                        <i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}" style="color:${getFileIconColor(doc.name,doc.mime_type)}"></i>
+                        <span class="truncate">${escapeHtml(doc.name)}</span>
+                    </div>
+                    <div class="drive-owner drive-col-owner"><span class="drive-avatar">M</span> me</div>
+                    <div class="drive-muted drive-col-date">${escapeHtml(formatDriveDate(doc.uploaded_at||doc.created_at))}</div>
+                    <div class="drive-muted drive-col-size">${formatFileSize(doc.size_bytes)}</div>
+                    <div onclick="event.stopPropagation()">
+                        <button type="button" class="drive-kebab" onclick='openDocMenu(${jsArg(doc.id)})' title="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                        <div id="doc-menu-${escapeHtml(doc.id)}" class="context-menu hidden bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+                            <button onclick='viewDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-slate-50"><i class="fa-solid fa-eye mr-2 text-slate-400"></i>Preview</button>
+                            <button onclick='downloadDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-slate-50"><i class="fa-solid fa-download mr-2 text-slate-400"></i>Download</button>
+                            <button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="w-full px-4 py-3 text-left text-sm font-bold hover:bg-red-50 text-red-600"><i class="fa-solid fa-trash-can mr-2"></i>Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>`;
+        return;
+    }
+    const isTiles=currentFolderView==='tiles';
+    const grid=isTiles?'grid-cols-1 md:grid-cols-2 xl:grid-cols-3':'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
+    container.innerHTML=`<div class="grid ${grid} gap-4">${filtered.map(doc=> isTiles ? renderTileDoc(doc) : renderLargeDoc(doc)).join('')}</div>`;
+}
+function docMeta(doc){ const date=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; return `${getFileTypeLabel(doc.name,doc.mime_type)} • ${formatFileSize(doc.size_bytes)} • ${date}`; }
+function renderLargeDoc(doc){
+    return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow"><input type="checkbox" class="doc-checkbox absolute top-3 right-3" ${isSelected(doc.id)?'checked':''} onchange='toggleSelect(${jsArg(doc.id)})'><div class="h-20 sm:h-24 rounded-2xl mb-3 flex items-center justify-center text-3xl sm:text-4xl bg-slate-100 text-[#621708]"><i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i></div><div class="font-extrabold text-xs sm:text-sm leading-snug line-clamp-2 text-slate-900 min-h-[34px] sm:min-h-[38px]">${escapeHtml(doc.name)}</div><div class="text-[10px] sm:text-[11px] text-slate-500 mt-1 truncate">${docMeta(doc)}</div><div class="grid grid-cols-2 gap-2 mt-3"><button onclick='viewDocument(${jsArg(doc.id)})' class="compact-doc-button text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-xl font-bold text-slate-700 py-1.5"><i class="fa-solid fa-eye mr-1"></i>Preview</button><button onclick='downloadDocument(${jsArg(doc.id)})' class="compact-doc-button text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-xl font-bold py-1.5"><i class="fa-solid fa-download mr-1"></i>Download</button></div><button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="mt-2 w-full py-1 text-xs text-red-600 hover:bg-red-50 rounded-xl font-bold"><i class="fa-solid fa-trash-can mr-1"></i>Delete</button></div>`;
+}
+function renderTileDoc(doc){
+    return `<div class="doc-card bg-white p-4 border border-slate-100 relative soft-shadow flex gap-3 items-start"><input type="checkbox" class="doc-checkbox absolute top-3 right-3" ${isSelected(doc.id)?'checked':''} onchange='toggleSelect(${jsArg(doc.id)})'><div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-slate-100 text-[#621708] flex items-center justify-center text-xl sm:text-2xl shrink-0"><i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i></div><div class="flex-1 min-w-0 pr-6"><div class="font-extrabold text-xs sm:text-sm text-slate-900 truncate">${escapeHtml(doc.name)}</div><div class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 truncate">${docMeta(doc)}</div><div class="flex flex-wrap gap-1.5 sm:gap-2 mt-2.5 sm:mt-3"><button onclick='viewDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-lg font-bold text-slate-700"><i class="fa-solid fa-eye mr-1"></i>Preview</button><button onclick='downloadDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs bg-[#621708] hover:bg-[#8c2a10] text-white rounded-lg font-bold"><i class="fa-solid fa-download mr-1"></i>Download</button><button onclick='deleteSingleDocument(${jsArg(doc.id)})' class="px-2.5 py-1.5 text-xs border border-red-200 hover:bg-red-50 text-red-600 rounded-lg font-bold"><i class="fa-solid fa-trash-can"></i></button></div></div></div>`;
+}
+
+// Folder Appearance Configurations
+const FOLDER_COLORS = [
+    { value: '#6b21a8', label: 'Purple' },
+    { value: '#2563eb', label: 'Blue' },
+    { value: '#059669', label: 'Emerald' },
+    { value: '#dc2626', label: 'Crimson' },
+    { value: '#d97706', label: 'Amber' },
+    { value: '#0891b2', label: 'Cyan' },
+    { value: '#475569', label: 'Slate' },
+    { value: '#e11d48', label: 'Rose' }
+];
+
+const FOLDER_ICONS = [
+    { value: 'fa-folder', label: 'Folder' },
+    { value: 'fa-folder-open', label: 'Open Folder' },
+    { value: 'fa-file-lines', label: 'Documents' },
+    { value: 'fa-graduation-cap', label: 'Academic' },
+    { value: 'fa-book', label: 'Book' },
+    { value: 'fa-clipboard-list', label: 'Checklist' },
+    { value: 'fa-landmark', label: 'Official' },
+    { value: 'fa-box-archive', label: 'Archive' },
+    { value: 'fa-shield-halved', label: 'Security' },
+    { value: 'fa-award', label: 'Awards' }
+];
+
+let stagedUploadFiles = [];
+
+function initFolderEditorPickers(){
+    const colorContainer = document.getElementById('folder-color-chips');
+    const iconContainer = document.getElementById('folder-icon-chips');
+    if(colorContainer){
+        colorContainer.innerHTML = FOLDER_COLORS.map(c => `
+            <button type="button" class="color-chip" data-color="${c.value}" style="background-color: ${c.value};" onclick="selectFolderColor('${c.value}')" title="${c.label}"></button>
+        `).join('');
+    }
+    if(iconContainer){
+        iconContainer.innerHTML = FOLDER_ICONS.map(i => `
+            <button type="button" class="icon-chip" data-icon="${i.value}" onclick="selectFolderIcon('${i.value}')" title="${i.label}">
+                <i class="fa-solid ${i.value}"></i>
+            </button>
+        `).join('');
+    }
+}
+
+function selectFolderColor(color){
+    document.getElementById('edit-folder-color').value = color;
+    document.querySelectorAll('.color-chip').forEach(el => {
+        el.classList.toggle('active', el.dataset.color === color);
+    });
+    updateFolderLivePreview();
+}
+
+function selectFolderIcon(icon){
+    document.getElementById('edit-folder-icon').value = icon;
+    document.querySelectorAll('.icon-chip').forEach(el => {
+        el.classList.toggle('active', el.dataset.icon === icon);
+    });
+    updateFolderLivePreview();
+}
+
+function updateFolderLivePreview(){
+    const name = document.getElementById('edit-folder-name')?.value.trim() || 'New Folder';
+    const desc = document.getElementById('edit-folder-description')?.value.trim() || 'No description provided';
+    const color = document.getElementById('edit-folder-color')?.value || '#6b21a8';
+    const icon = document.getElementById('edit-folder-icon')?.value || 'fa-folder';
+
+    const iconEl = document.getElementById('folder-live-preview-icon');
+    const nameEl = document.getElementById('folder-live-preview-name');
+    const descEl = document.getElementById('folder-live-preview-desc');
+
+    if(iconEl){
+        iconEl.innerHTML = `<i class="fa-solid ${icon}"></i>`;
+        iconEl.style.backgroundColor = `${color}20`;
+        iconEl.style.color = color;
+    }
+    if(nameEl) nameEl.textContent = formatVaultFolderName(name);
+    if(descEl) descEl.textContent = desc;
+}
+
+function openFolderEditor(folderId=null){
+    initFolderEditorPickers();
+    const folder = folderId ? folders.find(f => String(f.id) === String(folderId)) : null;
+    document.getElementById('folder-editor-title').textContent = folder ? 'Edit Folder' : 'New Folder';
+    document.getElementById('edit-folder-id').value = folder?.id || '';
+    document.getElementById('edit-folder-name').value = folder?.name || '';
+    document.getElementById('edit-folder-description').value = folder?.description || '';
+    
+    const color = folder?.color || '#6b21a8';
+    const icon = folder?.icon || 'fa-folder';
+    selectFolderColor(color);
+    selectFolderIcon(icon);
+
+    document.getElementById('folder-editor-modal').classList.remove('hidden');
+    document.getElementById('folder-editor-modal').classList.add('flex');
+}
+
+function closeFolderEditor(){
+    document.getElementById('folder-editor-modal').classList.add('hidden');
+    document.getElementById('folder-editor-modal').classList.remove('flex');
+}
+
+async function saveFolder(){
+    if(!ensureSupabaseReady()) return;
+    const id = document.getElementById('edit-folder-id').value;
+    const payload = {
+        name: document.getElementById('edit-folder-name').value.trim().toUpperCase(),
+        description: document.getElementById('edit-folder-description').value.trim(),
+        icon: document.getElementById('edit-folder-icon').value || 'fa-folder',
+        color: document.getElementById('edit-folder-color').value || '#6b21a8'
+    };
+    if(!payload.name){
+        showDocumentToast('Please enter a folder name.', 'warning');
+        return;
+    }
+    const existing = folders.find(f => f.name.toUpperCase() === payload.name && String(f.id) !== String(id));
+    if(existing){
+        showDocumentToast('A folder with this name already exists.', 'warning');
+        return;
+    }
+    const result = id 
+        ? await supabaseClient.from('folders').update(payload).eq('id', id)
+        : await supabaseClient.from('folders').insert(payload);
+
+    if(result.error){
+        console.error(result.error);
+        showDocumentToast('Unable to save folder: ' + result.error.message, 'error');
+        return;
+    }
+    closeFolderEditor();
+    await loadFolders();
+    renderFolders();
+    if(currentFolderId && String(currentFolderId) === String(id)){
+        await openFolder(currentFolderId);
+    }
+    showDocumentToast('Folder saved.', 'success');
+}
+
+async function deleteFolderById(folderId){
+    if(!ensureSupabaseReady()) return;
+    const folder = folders.find(f => String(f.id) === String(folderId));
+    if(!folder) return;
+    
+    // Fetch only documents belonging to this specific folder for storage cleanup
+    const { data: docsInFolder } = await supabaseClient.from('documents').select('id, file_path, name').eq('folder_id', folderId);
+    const docs = docsInFolder || [];
+    const message = docs.length 
+        ? `Delete folder "${folder.name}" and its ${docs.length} document(s)? This cannot be undone.`
+        : `Delete folder "${folder.name}"?`;
+    if(!(await confirmVaultAction(message, 'Delete folder'))) return;
+    for(const doc of docs){
+        await removeStorageObject(doc);
+    }
+    const { error: docErr } = await supabaseClient.from('documents').delete().eq('folder_id', folderId);
+    if(docErr){
+        console.error(docErr);
+        showDocumentToast('Unable to delete folder documents: ' + docErr.message, 'error');
+        return;
+    }
+    const { error } = await supabaseClient.from('folders').delete().eq('id', folderId);
+    if(error){
+        console.error(error);
+        showDocumentToast('Unable to delete folder: ' + error.message, 'error');
+        return;
+    }
+    FOLDER_DOCS_CACHE.delete(String(folderId));
+    if(String(currentFolderId) === String(folderId)) goBackToMain();
+    await loadFolders();
+    renderFolders();
+    showDocumentToast('Folder deleted.', 'success');
+}
+
+// Staged File Handling for Uploads
+function handleMainFilesSelected(fileList){
+    if(!fileList || !fileList.length) return;
+    addFilesToStaged(fileList, 'main');
+}
+
+function handleSimpleFilesSelected(fileList){
+    if(!fileList || !fileList.length) return;
+    addFilesToStaged(fileList, 'simple');
+}
+
+function addFilesToStaged(fileList, modalType){
+    for(let i = 0; i < fileList.length; i++){
+        const f = fileList[i];
+        // Prevent exact duplicates in queue
+        const exists = stagedUploadFiles.some(existing => existing.name === f.name && existing.size === f.size);
+        if(!exists) stagedUploadFiles.push(f);
+    }
+    renderStagedUploadFiles(modalType);
+}
+
+function removeStagedFile(index, modalType){
+    stagedUploadFiles.splice(index, 1);
+    renderStagedUploadFiles(modalType);
+}
+
+function clearStagedUploadFiles(){
+    stagedUploadFiles = [];
+    const mainInput = document.getElementById('main-file-input');
+    const simpleInput = document.getElementById('simple-file-input');
+    if(mainInput) mainInput.value = '';
+    if(simpleInput) simpleInput.value = '';
+    renderStagedUploadFiles('main');
+    renderStagedUploadFiles('simple');
+}
+
+function renderStagedUploadFiles(modalType='main'){
+    const prefix = modalType === 'simple' ? 'simple' : 'upload';
+    const section = document.getElementById(`${prefix}-staged-section`);
+    const countEl = document.getElementById(`${prefix}-staged-count`);
+    const listEl = document.getElementById(`${prefix}-staged-list`);
+
+    if(!section || !countEl || !listEl) return;
+
+    if(!stagedUploadFiles.length){
+        section.classList.add('hidden');
+        listEl.innerHTML = '';
+        countEl.textContent = '0';
+        return;
+    }
+
+    section.classList.remove('hidden');
+    countEl.textContent = stagedUploadFiles.length;
+    listEl.innerHTML = stagedUploadFiles.map((file, idx) => `
+        <div class="upload-file-item flex items-center justify-between py-2 px-2.5 rounded-xl">
+            <div class="flex items-center gap-3 min-w-0 flex-1 mr-2">
+                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-sm shrink-0" style="color: ${getFileIconColor(file.name, file.type)};">
+                    <i class="fa-solid ${getFileIconClass(file.name, file.type)}"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs font-bold text-slate-800 truncate">${escapeHtml(file.name)}</div>
+                    <div class="text-[10px] text-slate-400 font-medium">${formatFileSize(file.size)}</div>
+                </div>
+            </div>
+            <button type="button" onclick="removeStagedFile(${idx}, '${modalType}')" class="w-7 h-7 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors text-xs" title="Remove file">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function showMainUploadModal(){
+    const select = document.getElementById('doc-folder-select');
+    select.innerHTML = '<option value="">Choose folder</option>' + folders.map(f => 
+        `<option value="${f.id}" ${String(f.id) === String(currentFolderId) ? 'selected' : ''}>${escapeHtml(formatVaultFolderName(f.name))}</option>`
+    ).join('');
+    clearStagedUploadFiles();
+    hideUploadProgress('main');
+    document.getElementById('main-upload-modal').classList.remove('hidden');
+    document.getElementById('main-upload-modal').classList.add('flex');
+    refreshCompactSelect(select);
+}
+
+function hideMainUploadModal(){
+    document.getElementById('main-upload-modal').classList.add('hidden');
+    document.getElementById('main-upload-modal').classList.remove('flex');
+    clearStagedUploadFiles();
+    hideUploadProgress('main');
+}
+
+function showSimpleUploadModal(){
+    const activeFolder = folders.find(f => String(f.id) === String(currentFolderId));
+    const subtitle = document.getElementById('simple-upload-subtitle');
+    if(subtitle && activeFolder) {
+        subtitle.textContent = `Upload to folder: ${formatVaultFolderName(activeFolder.name)}`;
+    }
+    clearStagedUploadFiles();
+    hideUploadProgress('simple');
+    document.getElementById('simple-upload-modal').classList.remove('hidden');
+    document.getElementById('simple-upload-modal').classList.add('flex');
+}
+
+function hideSimpleUploadModal(){
+    document.getElementById('simple-upload-modal').classList.add('hidden');
+    document.getElementById('simple-upload-modal').classList.remove('flex');
+    clearStagedUploadFiles();
+    hideUploadProgress('simple');
+}
+
+function setUploadProgress(modalType, current, total, fileName=''){
+    const prefix = modalType === 'simple' ? 'simple' : 'upload';
+    const container = document.getElementById(`${prefix}-progress-container`);
+    const statusEl = document.getElementById(`${prefix}-progress-status`);
+    const percentEl = document.getElementById(`${prefix}-progress-percent`);
+    const barEl = document.getElementById(`${prefix}-progress-bar`);
+    const submitBtn = document.getElementById(modalType === 'simple' ? 'simple-submit-btn' : 'upload-submit-btn');
+    const cancelBtn = document.getElementById(modalType === 'simple' ? 'simple-cancel-btn' : 'upload-cancel-btn');
+
+    if(container) container.classList.remove('hidden');
+    if(submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+    if(cancelBtn) {
+        cancelBtn.disabled = true;
+        cancelBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    if(statusEl) statusEl.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i> Uploading file ${current} of ${total}: ${escapeHtml(fileName)}`;
+    if(percentEl) percentEl.textContent = `${pct}%`;
+    if(barEl) barEl.style.width = `${pct}%`;
+}
+
+function hideUploadProgress(modalType){
+    const prefix = modalType === 'simple' ? 'simple' : 'upload';
+    const container = document.getElementById(`${prefix}-progress-container`);
+    const submitBtn = document.getElementById(modalType === 'simple' ? 'simple-submit-btn' : 'upload-submit-btn');
+    const cancelBtn = document.getElementById(modalType === 'simple' ? 'simple-cancel-btn' : 'upload-cancel-btn');
+
+    if(container) container.classList.add('hidden');
+    if(submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+    if(cancelBtn) {
+        cancelBtn.disabled = false;
+        cancelBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+}
+
+async function vaultStorageRequest(action, { path, file, contentType } = {}){
+    const client = window.supabaseClient || getVaultClient();
+    if(!client?.auth?.getSession) throw new Error('Supabase client is not available. Please refresh the page.');
+    if (window.CiteFlowAuthGuard?.ready) await window.CiteFlowAuthGuard.ready;
+
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if(sessionError || !accessToken) throw new Error('Your session expired. Please sign in again.');
+
+    const anonKey = window.__SUPABASE_ANON__ || supabaseConfig?.anonKey;
+    if(!anonKey) throw new Error('Supabase client is not available. Please refresh the page.');
+
+    const headers = {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey
+    };
+    let body;
+    if(action === 'upload'){
+        const form = new FormData();
+        form.append('action', 'upload');
+        form.append('path', path);
+        form.append('contentType', contentType || file?.type || 'application/octet-stream');
+        form.append('file', file, file?.name || 'upload');
+        body = form;
+    } else {
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({ action, path });
+    }
+
+    const response = await fetch('https://uforealazougjckepggc.supabase.co/functions/v1/document-vault', {
+        method: 'POST',
+        headers,
+        body
+    });
+    if(!response.ok){
+        let message = 'Document Vault storage failed.';
+        try {
+            const payload = await response.json();
+            if(payload?.error) message = payload.error;
+        } catch(_) {}
+        throw new Error(message);
+    }
+    if(action === 'download'){
+        const blob = await response.blob();
+        if(blob instanceof Blob) return { blob };
+        throw new Error('Document Vault download failed.');
+    }
+    const data = await response.json();
+    if(data?.error) throw new Error(data.error);
+    return data;
+}
+async function uploadFilesToFolder(files, folderId, modalType='main'){
+    if(!ensureSupabaseReady()) return;
+    const client = getVaultClient();
+    if(!client){
+        showDocumentToast('Supabase client is not available. Please refresh the page.', 'error');
+        return;
+    }
+    if(!files || !files.length){
+        showDocumentToast('Please select or drop at least one file.', 'warning');
+        return;
+    }
+    if(!folderId){
+        showDocumentToast('Please choose a destination folder.', 'warning');
+        return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for(let i = 0; i < files.length; i++){
+        const file = files[i];
+        setUploadProgress(modalType, i + 1, files.length, file.name);
+
+        const filePath = buildFilePath(folderId, file.name);
+        const contentType = resolveVaultUploadContentType(file);
+
+        try {
+            await vaultStorageRequest('upload', { path: filePath, file, contentType });
+        } catch(uploadError) {
+            console.error('Document Vault upload error:', uploadError);
+            showDocumentToast(`Failed to upload "${file.name}":\n\n${uploadError.message || 'Upload failed'}`, 'error');
+            failCount++;
+            continue;
+        }
+
+        // 2. Insert record into database table
+        const { error: insertError } = await client.from('documents').insert({
+            name: file.name,
+            folder_id: folderId,
+            file_path: filePath,
+            mime_type: contentType,
+            size_bytes: file.size
+        });
+
+        if(insertError){
+            console.error('Database insert error:', insertError);
+            showDocumentToast(`Uploaded file to storage, but failed to save database record for "${file.name}":\n${insertError.message}`, 'error');
+            failCount++;
+        } else {
+            successCount++;
+        }
+    }
+
+    hideUploadProgress(modalType);
+
+    if(modalType === 'simple') hideSimpleUploadModal();
+    else hideMainUploadModal();
+
+    if(successCount > 0){
+        showDocumentToast(`Uploaded ${successCount} document${successCount !== 1 ? 's' : ''}.`, 'success');
+        await refreshVault();
+    }
+}
+
+async function uploadMainFiles(){
+    const folderSelect = document.getElementById('doc-folder-select');
+    const folderId = folderSelect?.value || null;
+    const files = stagedUploadFiles.length ? stagedUploadFiles : document.getElementById('main-file-input')?.files;
+    await uploadFilesToFolder(files, folderId, 'main');
+}
+
+async function uploadToCurrentFolder(){
+    const files = stagedUploadFiles.length ? stagedUploadFiles : document.getElementById('simple-file-input')?.files;
+    await uploadFilesToFolder(files, currentFolderId, 'simple');
+}
+
+async function removeStorageObject(doc){ const paths=getCandidatePaths(doc.file_path, doc); for(const path of paths){ try { await vaultStorageRequest('delete', { path }); return; } catch(err) { console.warn('Document Vault delete attempt failed:', path, err); } } }
+async function deleteSingleDocument(id){ const doc=documents.find(d=>String(d.id)===String(id)); if(!doc) return; if(!(await confirmVaultAction(`Delete "${doc.name}"?`, 'Delete document'))) return; await removeStorageObject(doc); const {error}=await supabaseClient.from('documents').delete().eq('id',id); if(error){ showDocumentToast('Unable to delete document: '+error.message, 'error'); return; } await refreshVault(); showDocumentToast('Document deleted.', 'success'); }
+async function deleteSelectedDocuments(){
+    if(!selectedDocs.size) return;
+    const selectedList=documents.filter(doc=>isSelected(doc.id));
+    if(!selectedList.length) return;
+    if(!(await confirmVaultAction(`Delete ${selectedList.length} selected document(s)?`, 'Delete documents'))) return;
+    for(const doc of selectedList){
+        await removeStorageObject(doc);
+        await supabaseClient.from('documents').delete().eq('id',doc.id);
+    }
+    selectedDocs.clear();
+    updateActionBar();
+    await refreshVault();
+    showDocumentToast('Selected documents deleted.', 'success');
+}
+function hideMoveDocsModal(){
+    const modal=document.getElementById('move-docs-modal');
+    if(!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+function moveSelectedDocuments(){
+    if(!selectedDocs.size) return;
+    const selectedList=documents.filter(doc=>isSelected(doc.id));
+    if(!selectedList.length) return;
+    const select=document.getElementById('move-target-folder');
+    const options=folders.filter(f=>String(f.id)!==String(currentFolderId));
+    if(!options.length){ showDocumentToast('Create another folder before moving documents.', 'warning'); return; }
+    select.innerHTML=options.map(f=>`<option value="${escapeHtml(f.id)}">${escapeHtml(formatVaultFolderName(f.name))}</option>`).join('');
+    const modal=document.getElementById('move-docs-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    refreshCompactSelect(select);
+}
+async function confirmMoveDocuments(){
+    const selectedList=documents.filter(doc=>isSelected(doc.id));
+    if(!selectedList.length) return;
+    const targetId=document.getElementById('move-target-folder')?.value;
+    const target=folders.find(f=>String(f.id)===String(targetId));
+    if(!target){ showDocumentToast('Please choose a destination folder.', 'warning'); return; }
+    const ids=selectedList.map(doc=>doc.id);
+    const {error}=await supabaseClient.from('documents').update({folder_id:target.id}).in('id',ids);
+    if(error){ showDocumentToast('Unable to move documents: '+error.message, 'error'); return; }
+    selectedDocs.clear();
+    updateActionBar();
+    hideMoveDocsModal();
+    await refreshVault();
+    showDocumentToast('Documents moved.', 'success');
+}
+
+function isExternalUrl(value){ return /^https?:\/\//i.test(String(value||'')); }
+function getCandidatePaths(originalPath, doc={}){
+    const raw=String(originalPath||'').trim();
+    if(!raw || isExternalUrl(raw)) return raw ? [raw] : [];
+    const filename=raw.split('/').pop() || doc.name || '';
+    const candidates=[];
+    candidates.push(raw);
+    if(raw.startsWith(`${STORAGE_BUCKET}/`)) candidates.push(raw.replace(new RegExp(`^${STORAGE_BUCKET}/`),''));
+    if(raw.startsWith('documents/')) candidates.push(raw.replace(/^documents\//,''));
+    const parts=raw.split('/').filter(Boolean);
+    if(parts.length>=2) candidates.push(parts.slice(-2).join('/'));
+    const folderId=doc.folder_id||currentFolderId;
+    if(filename&&folderId){ candidates.push(`${folderId}/${filename}`); }
+    return [...new Set(candidates.filter(Boolean))];
+}
+async function resolveDocumentAccessUrl(doc, expiresInSeconds=3600, download=false){
+    if(!doc?.file_path) return null;
+    if(isExternalUrl(doc.file_path)) return {url:doc.file_path,path:doc.file_path,revoke:null};
+    const paths=getCandidatePaths(doc.file_path, doc);
+    let lastError=null;
+    for(const path of paths){
+        try {
+            const result=await vaultStorageRequest('download', { path });
+            if(result?.blob){
+                const url=URL.createObjectURL(result.blob);
+                return {url,path,revoke:()=>URL.revokeObjectURL(url)};
+            }
+        } catch(err) {
+            lastError=err;
+        }
+    }
+    console.error('Document access failed:', {doc,paths,lastError});
+    return null;
+}
+async function resolveDocumentBlob(doc){
+    if(!doc?.file_path) return null;
+    if(isExternalUrl(doc.file_path)){
+        const response=await fetch(doc.file_path);
+        if(response.ok) return await response.blob();
+        return null;
+    }
+    const paths=getCandidatePaths(doc.file_path, doc);
+    for(const path of paths){
+        try {
+            const result=await vaultStorageRequest('download', { path });
+            if(result?.blob) return result.blob;
+        } catch(err) {
+            console.warn('Document Vault download attempt failed:', path, err);
+        }
+    }
+    return null;
+}
+function saveBlobAsFile(blob, filename){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=filename||'document';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+function makePreviewUrl(doc, access){
+    const kind=getFilePreviewKind(doc);
+    if(kind==='office' && access?.url && !access.url.startsWith('blob:')) return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(access.url)}`;
+    return access.url;
+}
+function openDocumentPreviewModal(doc,access){ currentPreviewDocument=doc; currentPreviewAccess=access; const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); const loader=document.getElementById('previewLoading'); const fileSize=formatFileSize(doc.size_bytes); const fileType=getFileTypeLabel(doc.name,doc.mime_type); const uploadedDate=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; document.getElementById('previewFileIcon').innerHTML=`<i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i>`; document.getElementById('previewDocumentTitle').textContent=doc.name||'Document Preview'; document.getElementById('previewDocumentMeta').textContent=`${fileType} • ${fileSize} • Uploaded ${uploadedDate}`; document.getElementById('previewSideName').textContent=doc.name||'-'; document.getElementById('previewSideType').textContent=fileType; document.getElementById('previewSideSize').textContent=fileSize; document.getElementById('previewSideDate').textContent=uploadedDate; loader.style.display='flex'; frame.src='about:blank'; modal.classList.remove('hidden'); modal.classList.add('flex'); setTimeout(()=>{ frame.src=makePreviewUrl(doc,access); },80); frame.onload=()=>{ loader.style.display='none'; }; setTimeout(()=>{ loader.style.display='none'; },4000); }
+function closeDocumentPreviewModal(){ const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); modal.classList.add('hidden'); modal.classList.remove('flex'); frame.src='about:blank'; if(currentPreviewAccess&&typeof currentPreviewAccess.revoke==='function') currentPreviewAccess.revoke(); currentPreviewDocument=null; currentPreviewAccess=null; }
+function openPreviewInNewTab(){ if(!currentPreviewDocument||!currentPreviewAccess?.url) return; window.open(makePreviewUrl(currentPreviewDocument,currentPreviewAccess),'_blank'); }
+async function viewDocument(id){
+    const doc=documents.find(d=>String(d.id)===String(id));
+    if(!doc){ showDocumentToast('Document not found.', 'error'); return; }
+    try{
+        showDocumentToast('Preparing preview...', 'info');
+        const access=await resolveDocumentAccessUrl(doc,3600,false);
+        if(!access?.url){ showDocumentToast('Unable to preview this document. Check bucket name, file path, and storage policy.', 'error'); return; }
+        openDocumentPreviewModal(doc,access);
+    }catch(err){
+        console.error(err);
+        showDocumentToast('Unable to preview this document.', 'error');
+    }
+}
+async function downloadDocument(id){
+    const doc=documents.find(d=>String(d.id)===String(id));
+    if(!doc){ showDocumentToast('Document not found.', 'error'); return; }
+    try{
+        showDocumentToast('Preparing download...', 'info');
+        const blob=await resolveDocumentBlob(doc);
+        if(blob){
+            saveBlobAsFile(blob,doc.name||'document');
+            showDocumentToast('Download started.', 'success');
+            if (window.EngagementLogger?.logDownload) {
+                window.EngagementLogger.logDownload({
+                    fileName: doc.name,
+                    sourceModule: 'Document Vault',
+                    description: 'Downloaded ' + (doc.name || 'a document') + ' from the Document Vault.'
+                });
+            }
+            return;
+        }
+        const access=await resolveDocumentAccessUrl(doc,300,true);
+        if(!access?.url){ showDocumentToast('Unable to download this document. Check bucket name, file path, and storage policy.', 'error'); return; }
+        const response=await fetch(access.url);
+        if(response.ok){
+            saveBlobAsFile(await response.blob(),doc.name||'document');
+        }else{
+            window.open(access.url,'_blank');
+        }
+        showDocumentToast('Download started.', 'success');
+        if (window.EngagementLogger?.logDownload) {
+            window.EngagementLogger.logDownload({
+                fileName: doc.name,
+                sourceModule: 'Document Vault',
+                description: 'Downloaded ' + (doc.name || 'a document') + ' from the Document Vault.'
+            });
+        }
+    }catch(err){
+        console.error(err);
+        showDocumentToast('Unable to download this document.', 'error');
+    }
+}
+async function downloadCurrentPreviewDocument(){ if(currentPreviewDocument) await downloadDocument(currentPreviewDocument.id); }
+
+function setupDropZone(){
+    const mainDz = document.getElementById('main-drop-zone');
+    if(mainDz){
+        ['dragenter','dragover'].forEach(evt => mainDz.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            mainDz.classList.add('drag-over');
+        }));
+        ['dragleave','drop'].forEach(evt => mainDz.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            mainDz.classList.remove('drag-over');
+        }));
+        mainDz.addEventListener('drop', e => {
+            if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+                handleMainFilesSelected(e.dataTransfer.files);
+            }
         });
     }
 
-    function filterDocuments() {
-        const searchTerm = document.getElementById('search-input').value.toLowerCase();
-        const category = document.getElementById('category-filter').value;
+    const simpleDz = document.getElementById('simple-drop-zone');
+    if(simpleDz){
+        ['dragenter','dragover'].forEach(evt => simpleDz.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            simpleDz.classList.add('drag-over');
+        }));
+        ['dragleave','drop'].forEach(evt => simpleDz.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            simpleDz.classList.remove('drag-over');
+        }));
+        simpleDz.addEventListener('drop', e => {
+            if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+                handleSimpleFilesSelected(e.dataTransfer.files);
+            }
+        });
+    }
+}
 
-        let filtered = documents;
-
-        if (searchTerm) {
-            filtered = filtered.filter(doc => 
-                doc.name.toLowerCase().includes(searchTerm)
-            );
+function closeAllCompactSelects(exceptPanel) {
+    document.querySelectorAll('.compact-select-panel').forEach((panel) => {
+        if (panel === exceptPanel) return;
+        panel.classList.remove('open', 'open-up');
+        panel.style.position = '';
+        panel.style.left = '';
+        panel.style.width = '';
+        panel.style.top = '';
+        panel.style.bottom = '';
+        panel.style.zIndex = '';
+    });
+}
+function positionCompactPanel(panel, wrap) {
+    const rect = wrap.getBoundingClientRect();
+    const openUp = rect.bottom + 180 > window.innerHeight && rect.top > 180;
+    panel.classList.toggle('open-up', openUp);
+    panel.style.position = 'fixed';
+    panel.style.left = `${rect.left}px`;
+    panel.style.width = `${Math.max(rect.width, 160)}px`;
+    panel.style.zIndex = '10050';
+    if (openUp) {
+        panel.style.top = 'auto';
+        panel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+    } else {
+        panel.style.top = `${rect.bottom + 6}px`;
+        panel.style.bottom = 'auto';
+    }
+}
+function refreshCompactSelect(select) {
+    if (!select) return;
+    const wrap = select.closest('.compact-select');
+    if (!wrap) return;
+    const trigger = wrap.querySelector('.compact-select-trigger');
+    const triggerLabel = wrap.querySelector('.compact-select-trigger span');
+    const panel = wrap.querySelector('.compact-select-panel');
+    const selected = select.selectedOptions[0];
+    if (trigger) {
+        const copied = [...select.classList].filter((c) =>
+            c !== 'compact-select-native' && c !== 'appearance-none'
+        );
+        trigger.className = ['compact-select-trigger', ...copied].join(' ');
+    }
+    if (triggerLabel) triggerLabel.textContent = selected ? selected.textContent : '';
+    if (!panel) return;
+    panel.innerHTML = [...select.options].filter((option) => !option.hidden).map((option) => `
+        <button type="button" class="compact-select-option ${option.selected ? 'active' : ''}" data-value="${escapeHtml(option.value)}">${escapeHtml(option.textContent)}</button>
+    `).join('');
+}
+function refreshCompactSelects() {
+    document.querySelectorAll('select:not([multiple])').forEach(refreshCompactSelect);
+}
+function initCompactSelects() {
+    document.querySelectorAll('select:not([multiple])').forEach((select) => {
+        if (select.dataset.compact === 'true') {
+            refreshCompactSelect(select);
+            return;
         }
+        select.dataset.compact = 'true';
+        const wrap = document.createElement('div');
+        wrap.className = ['compact-select', ...[...select.classList].filter((c) =>
+            c === 'w-full' || c === 'sm:w-auto' || c.startsWith('min-w')
+        )].join(' ');
+        select.parentNode.insertBefore(wrap, select);
+        wrap.appendChild(select);
+        select.classList.add('compact-select-native');
 
-        if (category) {
-            filtered = filtered.filter(doc => doc.category === category);
-        }
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'compact-select-trigger';
+        trigger.innerHTML = '<span></span>';
 
-        renderDocuments(filtered);
+        const panel = document.createElement('div');
+        panel.className = 'compact-select-panel';
+
+        wrap.appendChild(trigger);
+        wrap.appendChild(panel);
+
+        trigger.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const willOpen = !panel.classList.contains('open');
+            closeAllCompactSelects();
+            if (!willOpen) return;
+            positionCompactPanel(panel, wrap);
+            panel.classList.add('open');
+        });
+
+        panel.addEventListener('click', (event) => {
+            const option = event.target.closest('.compact-select-option');
+            if (!option) return;
+            select.value = option.dataset.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            refreshCompactSelect(select);
+            closeAllCompactSelects();
+        });
+
+        refreshCompactSelect(select);
+    });
+}
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('.compact-select')) closeAllCompactSelects();
+});
+document.addEventListener('scroll', () => closeAllCompactSelects(), true);
+
+
+document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape') return;
+    const openPanel=document.querySelector('.compact-select-panel.open');
+    if(openPanel){ closeAllCompactSelects(); return; }
+    const preview=document.getElementById('documentPreviewModal');
+    if(preview && !preview.classList.contains('hidden')){ closeDocumentPreviewModal(); return; }
+    closeFolderEditor();
+    hideMainUploadModal();
+    hideSimpleUploadModal();
+    hideMoveDocsModal();
+});
+async function initVaultApp() {
+    // 1. Instant Cache Render: paint folders and stats immediately (0ms wait for user)
+    restoreCachedFolders();
+    setupDropZone();
+    initCompactSelects();
+    setFolderView(currentFolderView, false);
+
+    // Parallel background tasks: non-blocking sidebar load + fresh vault sync
+    if (typeof loadSidebar === 'function') {
+        loadSidebar().catch(err => console.warn('Sidebar background load error:', err));
     }
 
-    function viewDocument(id) {
-        alert(`📄 Opening document #${id} in preview mode...`);
-    }
+    // 4. Fetch fresh database data in parallel and update UI
+    await refreshVault();
+}
 
-    function downloadDocument(id) {
-        alert(`⬇️ Downloading document #${id}...`);
-    }
-
-    function uploadNewDocument() {
-        alert("📤 Upload new document dialog would open here.\n\nYou can add file upload functionality later.");
-    }
-
-    window.onload = () => {
-        renderDocuments(documents);
-    };
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initVaultApp);
+} else {
+    initVaultApp();
+}
 </script>
+<script src="../shared/system-ui.js"></script>
+<script src="engagement-logger.js"></script>
+<div id="message-container"></div>
+<script src="../nav.js?v=admin-hook-1"></script>
 </body>
 </html>

@@ -5,303 +5,1040 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Status Tracking - CITE-Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/supabase-config.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/auth.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/workflow.js?v=auth-session-2"></script>
+    <script src="../shared/auth-guard.js?v=auth-mfo-keep-1"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <link rel="stylesheet" href="faculty-nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
-        
-        .sidebar { 
-            background-color: #621708; 
-            width: 280px;
+        :root {
+            --brand: var(--cite-theme, #621708);
+            --brand-2: var(--cite-theme-hover, #8c2a10);
+            --cream: #f5e8c7;
+            --ink: #111827;
         }
-        
-        .nav-item { 
-            transition: all 0.3s ease; 
+        body { color: var(--ink); background: #f3f4f7; }
+        .card { background: #fff; border: 1px solid #e8eaef; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05); }
+        .soft-card { background: #fff; border: 1px solid #e8eaef; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px rgba(15,23,42,.05); }
+        .task-row { transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; border-radius: 0; }
+        .task-row:hover { background: #fafafa; }
+        .task-row.active { background: #fffaf8; box-shadow: inset 3px 0 0 var(--cite-theme, #621708); }
+        .preview-frame { width: 100%; height: 420px; border: 0; border-radius: 14px; background: #fff; }
+        .preview-img { max-height: 420px; width: 100%; object-fit: contain; border-radius: 14px; background: #fff; }
+        .status-dot { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 auto; }
+        .indicator-bar { width: 4px; border-radius: 999px; align-self: stretch; flex: 0 0 auto; }
+        .icon { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+        .filter-btn {
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 13px;
+            line-height: 1.2;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
-        .nav-item:hover { 
-            background-color: #8c2a10; 
-        }
-        .nav-item.active { 
-            background-color: #8c2a10; 
-            border-left: 4px solid #f5e8c7; 
-        }
+        .filter-btn.active { background: var(--cite-theme, #621708); color: #fff; border-color: var(--cite-theme, #621708); }
 
-        .section-header {
+        .cite-stat { min-height: 132px; padding-left: 1.35rem; }
+        .cite-stat .cite-icon svg { display: block; }
+
+        #statusList .task-row {
+            box-shadow: none;
+            align-items: stretch;
+        }
+        #statusList .row-tone-idle { background: #fff; }
+        #statusList .row-tone-pending { background: #fffdf8; }
+        #statusList .row-tone-progress { background: #fbfbfe; }
+        #statusList .row-tone-approved { background: #f7fdfb; }
+        #statusList .row-tone-rejected { background: #fff8f8; }
+        #statusList .row-tone-revision { background: #fffbf3; }
+        #statusList .task-row.active {
+            background: #fffaf8;
+            box-shadow: inset 3px 0 0 var(--cite-theme, #621708);
+        }
+        .status-row-main { min-width: 0; flex: 1; }
+        .status-row-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .status-row-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 14px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #64748b;
+        }
+        .status-row-meta > span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+        .status-badge-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            max-width: 11.5rem;
+            padding: 5px 10px;
+            border-radius: 999px;
             font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.8px;
-            opacity: 0.75;
-            padding-left: 20px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
+            font-weight: 700;
+            line-height: 1.25;
+            text-align: center;
+            white-space: normal;
+            flex-shrink: 0;
         }
 
-        .sidebar-scroll::-webkit-scrollbar { 
-            width: 4px; 
+        .status-timeline {
+            padding-top: 8px;
+            overflow-x: hidden;
         }
-        .sidebar-scroll::-webkit-scrollbar-thumb { 
-            background-color: rgba(255,255,255,0.35); 
-            border-radius: 20px; 
+        .status-timeline .cite-stepper {
+            display: flex !important;
+            align-items: flex-start;
+            gap: 0;
+            overflow: visible;
+        }
+        .status-timeline .cite-step {
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 0 8px;
+        }
+        .status-timeline .cite-step:not(:last-child)::after {
+            top: 12px;
+            left: calc(50% + 18px);
+            right: calc(-50% + 18px);
+            height: 2px;
+        }
+        .status-timeline .cite-step-label {
+            min-height: 2.4em;
+            line-height: 1.2;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            word-break: break-word;
+        }
+        .status-timeline .cite-step-date {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .status-timeline .cite-step-note {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #64748b;
+            line-height: 1.35;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            min-height: 2.7em;
         }
 
-        .card-shadow { 
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05); 
+        @media (max-width: 900px) {
+            .status-timeline .cite-stepper {
+                display: flex;
+                flex-direction: column;
+            }
+            .status-timeline .cite-step {
+                flex-direction: row;
+                align-items: flex-start;
+                text-align: left;
+                gap: 12px;
+                padding: 0 0 16px;
+            }
+            .status-timeline .cite-step:not(:last-child)::after {
+                left: 12px;
+                right: auto;
+                top: 26px;
+                bottom: 0;
+                width: 2px;
+                height: auto;
+            }
+            .status-timeline .cite-step-label,
+            .status-timeline .cite-step-note {
+                min-height: 0;
+                -webkit-line-clamp: unset;
+                display: block;
+            }
+            .status-timeline .cite-step-dot { flex-shrink: 0; }
         }
 
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.25;
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
-        .status-card {
-            transition: all 0.2s;
+        @media (max-width: 480px) {
+            .status-row-top {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .status-badge-chip { max-width: 100%; }
         }
-        .status-card:hover {
-            transform: translateY(-2px);
+
+        /* Consistent Calendar/Reports Dropdown Style */
+        .cite-select-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            width: 100%;
+        }
+        .cite-select-wrap > select {
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            background-color: #ffffff !important;
+            background-image: none !important;
+            padding-right: 38px !important;
+            cursor: pointer;
+        }
+        .cite-select-chevron {
+            position: absolute !important;
+            right: 12px !important;
+            top: 50% !important;
+            width: 14px !important;
+            height: 14px !important;
+            margin-top: -7px !important;
+            pointer-events: none !important;
+            color: #475569 !important;
+            z-index: 2 !important;
+            display: block !important;
         }
     </style>
+    <style id="status-cal-compact">
+    /* Mobile-only Scrollable Dropdowns */
+    select:not([multiple]) {
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    .compact-select { position: relative; display: inline-block; width: 100%; max-width: 100%; }
+    .compact-select-trigger { display: none; }
+    .compact-select-panel { display: none; }
+    @media (max-width: 767px) {
+        .cite-select-wrap .cite-select-chevron { display: none !important; }
+        .compact-select { width: 100%; display: block; }
+        .compact-select-native {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            overflow: hidden !important;
+            border: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .compact-select-trigger {
+            display: flex !important;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            position: relative;
+            padding-right: 40px !important;
+            padding-left: 14px !important;
+            background-color: #ffffff;
+            color: #0f172a;
+            border-radius: 14px;
+            border: 1px solid #e8eaef;
+            min-height: 44px;
+            font-size: 14px;
+        }
+        .compact-select-trigger::after {
+            content: "";
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            width: 12px;
+            height: 8px;
+            margin-top: -4px;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1h10L6 7z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-size: 12px 8px;
+        }
+        .compact-select-trigger span {
+            min-width: 0;
+            flex: 1;
+            overflow: hidden;
+            text-align: left;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .compact-select-panel {
+            display: none;
+            position: fixed !important;
+            z-index: 100050 !important;
+            max-height: 220px !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+            pointer-events: auto !important;
+            padding: 4px;
+        }
+        .compact-select-panel.open { display: block !important; }
+        .compact-select-option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 13px;
+            line-height: 1.3;
+            color: #334155;
+            background: #ffffff;
+            border: 0;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 2px;
+        }
+        .compact-select-option:hover,
+        .compact-select-option:active {
+            background: #f1f5f9;
+        }
+        .compact-select-option.active {
+            background: var(--cite-theme, #621708);
+            color: #ffffff;
+        }
+    }
+    </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-50 cite-page">
 
-<div class="flex h-screen overflow-hidden">
+<div class="flex h-screen w-screen overflow-hidden">
+    <div id="sidebar-container"></div>
+    <main class="flex-1 overflow-y-auto ml-0 md:ml-[220px] bg-slate-50 transition-all duration-300">
+        <div id="navbar-container"></div>
 
-    <!-- SIDEBAR - Consistent Navigation -->
-    <div class="sidebar text-white flex flex-col h-full">
-
-        <!-- CTU Logo -->
-        <div onclick="window.location.href='dashboard.html'" 
-             class="px-6 pt-8 pb-6 cursor-pointer hover:bg-white/10 transition-colors flex flex-col items-center border-b border-white/10">
-            <img src="ctu-logo.png" 
-                 alt="CTU Logo" 
-                 class="h-16 w-auto mb-3">
-            <div class="text-center">
-                <div class="font-semibold text-base leading-tight">College of Technology</div>
-                <div class="font-semibold text-base leading-tight">and Engineering</div>
-            </div>
-        </div>
-
-        <!-- Navigation -->
-        <div class="flex-1 sidebar-scroll overflow-y-auto py-8 px-4 space-y-8">
-
-            <!-- DOCUMENT MANAGEMENT -->
-            <div>
-                <div class="section-header text-white/70">DOCUMENT MANAGEMENT</div>
-                <div onclick="window.location.href='document-vault.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                    Document Vault
-                </div>
-                <div onclick="window.location.href='submissions.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M4 8l8-5 8 5"/><path d="M4 16l8 5 8-5"/></svg>
-                    Submissions
-                </div>
-                <div onclick="window.location.href='status-tracking.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer active">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9-6-18-3 9H2"/></svg>
-                    Submission Status
-                </div>
-            </div>
-
-            <!-- EVENTS -->
-            <div>
-                <div class="section-header text-white/70">EVENTS</div>
-                <div onclick="window.location.href='calendar.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Calendar
-                </div>
-            </div>
-
-            <!-- SYSTEM -->
-            <div>
-                <div class="section-header text-white/70">SYSTEM</div>
-                <div onclick="window.location.href='system-settings.html'" 
-                     class="nav-item flex items-center gap-x-3 px-5 py-3 rounded-2xl text-sm font-medium cursor-pointer">
-                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    System Settings
-                </div>
-            </div>
-
-        </div>
-
-        <!-- Bottom Profile -->
-        <div onclick="window.location.href='faculty-profile.html'" 
-             class="mx-4 mb-6 bg-white/10 rounded-3xl p-4 flex items-center gap-x-3 hover:bg-white/20 transition-colors cursor-pointer">
-            <div class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#621708] text-xl">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="font-semibold text-sm truncate">Maria Santos</div>
-                <div class="text-xs text-white/70">Faculty Member</div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- MAIN CONTENT -->
-    <div class="flex-1 overflow-y-auto p-8 bg-gray-50">
-        <div class="max-w-4xl mx-auto">
-            <!-- Header -->
-            <div class="flex items-center gap-3 mb-8">
-                <button onclick="window.history.back()" class="text-2xl text-gray-600">←</button>
+        <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 mt-14 sm:mt-16">
+            <header class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between mb-7">
                 <div>
-                    <h1 class="text-3xl font-semibold">Status Tracking</h1>
-                    <p class="text-gray-500">Track detailed progress and view remarks</p>
+                    <h1 class="cite-title">Submission Status</h1>
+                    <p class="cite-subtitle">Track each assigned task from submission through chairperson and final review.</p>
                 </div>
-            </div>
+            </header>
 
-            <!-- Status Count Cards -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-red-500 card-shadow">
-                    <div class="text-sm text-gray-500">Pending</div>
-                    <div class="text-5xl font-bold text-gray-900 mt-2">1</div>
+            <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+                <div class="cite-stat cite-stat-pending rounded-[16px] p-5">
+                    <div class="flex items-center justify-between">
+                        <div class="cite-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+                        <span class="text-[11px] font-bold uppercase tracking-wide text-gray-400 whitespace-nowrap">Needs action</span>
+                    </div>
+                    <div id="count-pending" class="text-3xl font-extrabold mt-4 tracking-tight"><div class="skeleton-text xl" style="width: 40px; margin-top: 8px"></div></div>
+                    <div class="text-sm text-gray-500 mt-1">Pending</div>
                 </div>
-                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-blue-500 card-shadow">
-                    <div class="text-sm text-gray-500">Under Review</div>
-                    <div class="text-5xl font-bold text-gray-900 mt-2">1</div>
+                <div class="cite-stat cite-stat-review rounded-[16px] p-5">
+                    <div class="flex items-center justify-between">
+                        <div class="cite-icon" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;"><svg class="icon" viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg></div>
+                        <span class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Processing</span>
+                    </div>
+                    <div id="count-underreview" class="text-3xl font-extrabold mt-4 tracking-tight"><div class="skeleton-text xl" style="width: 40px; margin-top: 8px"></div></div>
+                    <div class="text-sm text-gray-500 mt-1">Under Review</div>
                 </div>
-                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-green-500 card-shadow">
-                    <div class="text-sm text-gray-500">Approved</div>
-                    <div class="text-5xl font-bold text-gray-900 mt-2">1</div>
+                <div class="cite-stat cite-stat-approved rounded-[16px] p-5">
+                    <div class="flex items-center justify-between">
+                        <div class="cite-icon" style="background:#ecfdf5;border-color:#bbf7d0;color:#047857;"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <span class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Completed</span>
+                    </div>
+                    <div id="count-approved" class="text-3xl font-extrabold mt-4 tracking-tight"><div class="skeleton-text xl" style="width: 40px; margin-top: 8px"></div></div>
+                    <div class="text-sm text-gray-500 mt-1">Approved</div>
                 </div>
-                <div class="status-card bg-white rounded-3xl p-6 border-l-4 border-red-600 card-shadow">
-                    <div class="text-sm text-gray-500">Rejected</div>
-                    <div class="text-5xl font-bold text-gray-900 mt-2">0</div>
+                <div class="cite-stat cite-stat-revision rounded-[16px] p-5">
+                    <div class="flex items-center justify-between">
+                        <div class="cite-icon" style="background:#fff1f2;border-color:#fecdd3;color:#be123c;"><svg class="icon" viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></div>
+                        <span class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Attention</span>
+                    </div>
+                    <div id="count-rejected" class="text-3xl font-extrabold mt-4 tracking-tight"><div class="skeleton-text xl" style="width: 40px; margin-top: 8px"></div></div>
+                    <div class="text-sm text-gray-500 mt-1">Rejected</div>
                 </div>
-            </div>
+            </section>
 
-            <!-- All Submissions -->
-            <div class="bg-white rounded-3xl p-6 card-shadow">
-                <div class="flex justify-between items-center mb-6">
+            <section class="card rounded-[16px] p-5 lg:p-6">
+                <div class="flex flex-col gap-4 mb-5">
                     <div>
-                        <div class="font-medium">All Submissions</div>
-                        <div class="text-sm text-gray-500">Track detailed progress and view remarks</div>
+                        <h2 class="text-base font-bold text-gray-950">Assigned Submissions</h2>
+                        <p class="text-sm text-gray-500 mt-1">Select a task to see its status timeline, remarks, and files.</p>
                     </div>
-                    <div class="relative">
-                        <button onclick="toggleDropdown()" id="status-filter-btn"
-                                class="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 px-5 py-2.5 rounded-2xl text-sm font-medium">
-                            Pending 
-                            <span class="text-xs">▼</span>
-                        </button>
-                        
-                        <!-- Dropdown -->
-                        <div id="status-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl py-2 z-50 border">
-                            <a onclick="filterStatus('Pending')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Pending</a>
-                            <a onclick="filterStatus('Submitted')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Submitted</a>
-                            <a onclick="filterStatus('Approved')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Approved</a>
-                            <a onclick="filterStatus('Rejected')" class="block px-6 py-3 hover:bg-gray-100 cursor-pointer">Rejected</a>
+                    <div class="flex flex-col lg:flex-row lg:items-center gap-3 min-w-0">
+                        <div class="relative w-full lg:max-w-sm min-w-0">
+                            <svg class="icon w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                            <input id="searchInput" oninput="handleSearch(this.value)" type="text" placeholder="Search title, instruction, or remark" class="w-full bg-white border border-gray-200 rounded-xl pl-11 pr-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-[#621708]/10 focus:border-[#621708]/30">
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="filterStatus('all')" data-filter="all" class="filter-btn active border border-gray-200 bg-white">All</button>
+                            <button onclick="filterStatus('notsubmitted')" data-filter="notsubmitted" class="filter-btn border border-gray-200 bg-white">Pending</button>
+                            <button onclick="filterStatus('underreview')" data-filter="underreview" class="filter-btn border border-gray-200 bg-white">Review</button>
+                            <button onclick="filterStatus('approved')" data-filter="approved" class="filter-btn border border-gray-200 bg-white">Approved</button>
+                            <button onclick="filterStatus('rejected')" data-filter="rejected" class="filter-btn border border-gray-200 bg-white">Rejected</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Research Paper Submission -->
-                <div class="border rounded-3xl p-6 mb-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <div class="font-semibold">Research Paper Submission</div>
-                            <div class="text-sm text-gray-600 mt-1">Submit your latest research paper for peer review</div>
-                        </div>
-                        <span class="px-5 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-2xl">pending</span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-6 mt-6 text-sm">
-                        <div>
-                            <div class="text-gray-500">Assigned</div>
-                            <div class="font-medium">2026-03-01</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-500">Due</div>
-                            <div class="font-medium">2026-03-30</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-500">Documents</div>
-                            <div class="font-medium">0 document(s)</div>
-                        </div>
-                    </div>
-
-                    <!-- Timeline -->
-                    <div class="mt-8">
-                        <div class="font-medium text-sm mb-4">Timeline</div>
-                        <div class="flex items-start gap-4">
-                            <div class="w-5 h-5 bg-blue-600 rounded-full flex-shrink-0 mt-0.5"></div>
-                            <div class="flex-1">
-                                <div class="font-medium">Assigned</div>
-                                <div class="text-sm text-gray-500">Submission assigned to faculty</div>
+                <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+                    <div class="xl:col-span-5 min-w-0">
+                        <div id="statusList" class="overflow-hidden rounded-[16px] border border-gray-200 bg-white divide-y divide-gray-100">
+                            <div class="skeleton-row p-4 flex items-center gap-3">
+                                <div class="skeleton-circle" style="width:36px;height:36px"></div>
+                                <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
+                                <div class="skeleton-text" style="width:80px"></div>
+                                <div class="skeleton-text" style="width:60px"></div>
                             </div>
-                            <div class="text-xs text-gray-500">3/1/2026</div>
+                        </div>
+                    </div>
+                    <div class="xl:col-span-7 min-w-0">
+                        <div id="detailPanel" class="bg-slate-50 border border-gray-200 rounded-[16px] p-4 sm:p-5 min-h-[520px] overflow-hidden">
+                            <div class="skeleton-card">
+                                <div class="flex items-center gap-4 mb-4">
+                                    <div class="skeleton-circle" style="width:48px;height:48px"></div>
+                                    <div class="flex-1">
+                                        <div class="skeleton-text" style="width:60%;margin-bottom:8px"></div>
+                                        <div class="skeleton-text sm" style="width:40%"></div>
+                                    </div>
+                                </div>
+                                <div class="space-y-3 mt-4">
+                                    <div class="skeleton-text" style="width:100%"></div>
+                                    <div class="skeleton-text" style="width:80%"></div>
+                                    <div class="skeleton-text" style="width:70%"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Course Material Update -->
-                <div class="border rounded-3xl p-6">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <div class="font-semibold">Course Material Update</div>
-                            <div class="text-sm text-gray-600 mt-1">Update course syllabus and materials for the new semester</div>
-                        </div>
-                        <span class="px-5 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-2xl">submitted</span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-6 mt-6 text-sm">
-                        <div>
-                            <div class="text-gray-500">Assigned</div>
-                            <div class="font-medium">2026-03-01</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-500">Due</div>
-                            <div class="font-medium">2026-03-30</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-500">Documents</div>
-                            <div class="font-medium">1 document(s)</div>
-                        </div>
-                    </div>
-
-                    <div class="mt-8">
-                        <div class="font-medium text-sm mb-4">Timeline</div>
-                        <div class="flex items-start gap-4">
-                            <div class="w-5 h-5 bg-gray-400 rounded-full flex-shrink-0 mt-0.5"></div>
-                            <div class="flex-1">
-                                <div class="font-medium">Assigned</div>
-                                <div class="text-sm text-gray-500">Submission assigned to faculty</div>
-                            </div>
-                            <div class="text-xs text-gray-500">3/1/2026</div>
-                        </div>
-                        <div class="flex items-start gap-4 mt-6">
-                            <div class="w-5 h-5 bg-blue-600 rounded-full flex-shrink-0 mt-0.5"></div>
-                            <div class="flex-1">
-                                <div class="font-medium">Submitted</div>
-                                <div class="text-sm text-gray-500">Documents uploaded and submitted for review</div>
-                            </div>
-                            <div class="text-xs text-gray-500">3/15/2026</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            </section>
         </div>
-    </div>
+    </main>
 </div>
 
+<div id="message-container"></div>
+
 <script>
-    function toggleDropdown() {
-        const dropdown = document.getElementById('status-dropdown');
-        dropdown.classList.toggle('hidden');
-    }
+const SUPABASE_URL = typeof window.__SUPABASE_URL__ !== 'undefined' ? window.__SUPABASE_URL__ : 'https://uforealazougjckepggc.supabase.co';
+const SUPABASE_ANON = typeof window.__SUPABASE_ANON__ !== 'undefined' ? window.__SUPABASE_ANON__ : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
+const db = window.CiteFlowAuth?.ensureSharedClient?.()
+    || window.supabaseClient
+    || (typeof supabase !== 'undefined'
+        ? supabase.createClient(
+            SUPABASE_URL,
+            SUPABASE_ANON,
+            window.CiteFlowAuth?.AUTH_CLIENT_OPTIONS || {
+                auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+            }
+        )
+        : null);
+window.supabaseClient = db;
 
-    function filterStatus(status) {
-        document.getElementById('status-filter-btn').innerHTML = `${status} <span class="text-xs">▼</span>`;
-        document.getElementById('status-dropdown').classList.add('hidden');
-        alert(`Filtered to: ${status}`);
-    }
+const state = { faculty: [], tasks: [], assignments: [], submissions: [], files: [], notifications: [], taskFiles: [], approvalHistory: [], reportConfigs: [] };
+let currentFaculty = null;
+let currentUser = null;
+let activeFilter = 'all';
+let activeRowKey = null;
+let searchTerm = '';
+let realtimeChannel = null;
+let isFetchingData = false;
+let pendingDataRefresh = false;
+let authChecked = false;
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function(event) {
-        const dropdown = document.getElementById('status-dropdown');
-        const btn = document.getElementById('status-filter-btn');
-        if (!btn.contains(event.target) && !dropdown.contains(event.target)) {
-            dropdown.classList.add('hidden');
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+function formatDate(iso) {
+    return iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+}
+function formatDateTime(iso) {
+    return iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+}
+function daysUntil(iso) {
+    if (!iso) return null;
+    const now = new Date();
+    const due = new Date(iso);
+    return Math.ceil((due.getTime() - now.getTime()) / 86400000);
+}
+function getTaskDeadline(task) {
+    if (window.CiteFlowWorkflow?.getTaskDeadline) {
+        return CiteFlowWorkflow.getTaskDeadline(task);
+    }
+    return task?.deadline_at || task?.due_at || null;
+}
+function getTaskRequirementText(task) {
+    if (window.CiteFlowWorkflow?.getTaskRequirementText) {
+        return CiteFlowWorkflow.getTaskRequirementText(task);
+    }
+    return String(task?.instructions || task?.submission_instructions || '').trim();
+}
+function resolveCurrentFaculty() {
+    return currentFaculty;
+}
+
+function setSidebarFaculty(profile, user) {
+    const fallbackName = user?.user_metadata?.full_name || user?.email?.split('@')?.[0] || 'Faculty Member';
+    const name = profile?.full_name || profile?.name || fallbackName;
+
+    const navProfileName = document.querySelector('#profileModal #profileName');
+    const navProfileDepartment = document.getElementById('profileDepartment');
+    if (navProfileName) navProfileName.textContent = name;
+    if (navProfileDepartment) navProfileDepartment.textContent = profile?.department || profile?.department_code || 'N/A';
+}
+
+async function requireFacultyAuth() {
+    if (authChecked && currentUser) return true;
+
+    if (window.CiteFlowAuthGuard?.ready) {
+        await window.CiteFlowAuthGuard.ready;
+        if (window.CiteFlowAuthGuard.state === 'AUTHENTICATED' && window.CiteFlowAuthGuard.user) {
+            currentUser = window.CiteFlowAuthGuard.user;
+            authChecked = true;
+            return true;
         }
+        if (window.CiteFlowAuthGuard.state === 'AUTH_UNAUTHENTICATED') {
+            const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
+            window.location.replace(`../login.html?next=${next}`);
+            return false;
+        }
+    }
+
+    const session = window.CiteFlowAuth?.ensureActiveSession
+        ? await window.CiteFlowAuth.ensureActiveSession(db)
+        : (window.CiteFlowAuth?.getFreshSession
+            ? await window.CiteFlowAuth.getFreshSession(db)
+            : (await db.auth.getSession()).data?.session);
+    if (!session?.user) {
+        if (window.CiteFlowAuthGuard?.state === 'AUTHENTICATED' && window.CiteFlowAuthGuard.user) {
+            currentUser = window.CiteFlowAuthGuard.user;
+            authChecked = true;
+            return true;
+        }
+        if (window.CiteFlowAuthGuard?.state === 'AUTH_UNAUTHENTICATED') {
+            const next = encodeURIComponent(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
+            window.location.replace(`../login.html?next=${next}`);
+            return false;
+        }
+        console.warn('[StatusTracking] Session restoration in progress; waiting without hard redirect.');
+        return false;
+    }
+
+    const user = session.user;
+
+    if (window.CiteFlowWorkflow?.canAccessFacultyPortalSession) {
+        const access = await CiteFlowWorkflow.canAccessFacultyPortalSession(user);
+        if (!access.allowed) {
+            console.warn('[StatusTracking] Faculty portal check did not confirm access. Keeping the signed-in session.');
+        }
+    }
+
+    currentUser = user;
+    authChecked = true;
+    return true;
+}
+
+function normalizeFacultyForStatus(row) {
+    if (window.CiteFlowWorkflow) return CiteFlowWorkflow.normalizeFaculty(row);
+    if (!row) return null;
+    return {
+        ...row,
+        id: row.id,
+        full_name: row.full_name || row.name || row.email || 'Faculty Member',
+        department_code: row.department || row.department_code || 'N/A',
+        is_active: row.access_enabled !== false && String(row.status || 'Active').toLowerCase() === 'active'
+    };
+}
+function getDisplayStatus(submission, task) {
+    if (window.CiteFlowWorkflow) {
+        return {
+            label: CiteFlowWorkflow.formatWorkflowStatus(submission, task),
+            chip: CiteFlowWorkflow.getStatusClass(submission, task),
+            stage: CiteFlowWorkflow.getWorkflowStage(submission, task)
+        };
+    }
+    const status = normalizeStatus(submission?.status, task);
+    return { label: getStatusLabel(status), chip: getStatusChip(status), stage: status };
+}
+
+async function loadCurrentFacultyProfile() {
+    if (!currentUser) return null;
+    if (window.CiteFlowWorkflow) {
+        return CiteFlowWorkflow.getCurrentFaculty(currentUser);
+    }
+    const email = String(currentUser.email || '').toLowerCase();
+
+    let response = await db
+        .from('faculty')
+        .select('*')
+        .eq('auth_user_id', currentUser.id)
+        .maybeSingle();
+
+    if (response.error) {
+        console.error('Failed to load faculty profile by auth_user_id:', response.error);
+    }
+
+    if (!response.data && email) {
+        response = await db
+            .from('faculty')
+            .select('*')
+            .or(`email.eq.${email},existing_email.eq.${email}`)
+            .maybeSingle();
+        if (response.error) {
+            console.error('Failed to load faculty profile by email:', response.error);
+        }
+    }
+
+    const normalized = normalizeFacultyForStatus(response.data);
+    return normalized;
+}
+function normalizeStatus(raw, task) {
+    const status = raw || 'notsubmitted';
+    if (status === 'notsubmitted' && getTaskDeadline(task) && new Date(getTaskDeadline(task)).getTime() < Date.now()) return 'late';
+    return status;
+}
+function getStatusLabel(status) {
+    const map = { notsubmitted: 'Not Submitted', submitted: 'Submitted', late: 'Late', underreview: 'Under Review', approved: 'Approved', rejected: 'Declined', revision: 'Revision Requested', pending: 'Under Review' };
+    return map[status] || 'Not Submitted';
+}
+function getStatusChip(status) {
+    const map = {
+        notsubmitted: 'bg-gray-100 text-gray-700 border-gray-200',
+        submitted: 'bg-blue-50 text-blue-700 border-blue-100',
+        late: 'bg-red-50 text-red-700 border-red-100',
+        underreview: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+        approved: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        rejected: 'bg-rose-50 text-rose-700 border-rose-100',
+        revision: 'bg-amber-50 text-amber-700 border-amber-100',
+        pending: 'bg-indigo-50 text-indigo-700 border-indigo-100'
+    };
+    return map[status] || map.notsubmitted;
+}
+function getIndicator(status) {
+    const map = {
+        notsubmitted: 'bg-gray-300', submitted: 'bg-blue-500', late: 'bg-red-500', underreview: 'bg-indigo-500',
+        approved: 'bg-emerald-500', rejected: 'bg-rose-500', revision: 'bg-amber-500', pending: 'bg-indigo-500'
+    };
+    return map[status] || map.notsubmitted;
+}
+function getStatusTone(status) {
+    if (status === 'approved') return 'row-tone-approved';
+    if (status === 'rejected') return 'row-tone-rejected';
+    if (status === 'revision') return 'row-tone-revision';
+    if (['submitted', 'late', 'underreview', 'pending'].includes(status)) return 'row-tone-pending';
+    return 'row-tone-idle';
+}
+
+function miniTrackHtml(row) {
+    const stage = row.display?.stage || row.status;
+    let current = 1;
+    let tone = 'is-on';
+    if (['submitted', 'pending', 'underreview', 'chairperson_review'].includes(stage)) current = 3;
+    if (stage === 'final_approval') current = 4;
+    if (stage === 'completed' || stage === 'approved') current = 5;
+    if (stage === 'revision_required' || stage === 'revision') { current = 3; tone = 'is-warn'; }
+    if (stage === 'rejected') { current = 3; tone = 'is-danger'; }
+    return `<span class="cite-mini-track" title="Workflow progress">${[1,2,3,4,5].map(i => `<span class="cite-mini-dot ${i <= current ? tone : ''}"></span>`).join('')}</span>`;
+}
+
+function stepperClass(step) {
+    if (step.key === 'rejected' || step.label === 'Rejected') return step.active || step.done ? 'is-danger' : '';
+    if (step.key === 'revision' || step.label === 'Revision Required') return step.active || step.done ? 'is-warn' : '';
+    if (step.active) return 'is-active';
+    if (step.done) return 'is-done';
+    return '';
+}
+function getDueMeta(row) {
+    const status = row.status;
+    if (status === 'approved') return { label: 'Approved', color: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' };
+    if (!getTaskDeadline(row.task)) return { label: 'No due date', color: 'bg-gray-300', text: 'text-gray-600', bg: 'bg-gray-50' };
+    const d = daysUntil(getTaskDeadline(row.task));
+    if (d < 0) return { label: `${Math.abs(d)} day${Math.abs(d) === 1 ? '' : 's'} overdue`, color: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' };
+    if (d <= 1) return { label: d === 0 ? 'Due today' : '1 day left', color: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' };
+    if (d <= 3) return { label: `${d} days left`, color: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50' };
+    return { label: `${d} days left`, color: 'bg-gray-300', text: 'text-gray-600', bg: 'bg-gray-50' };
+}
+function computeRows() {
+    const faculty = resolveCurrentFaculty();
+    if (!faculty) return [];
+    return state.assignments.filter(a => String(a.faculty_id) === String(faculty.id)).map(a => {
+        const task = state.tasks.find(t => String(t.id) === String(a.task_id));
+        const submission = state.submissions.find(s => String(s.task_id) === String(a.task_id) && String(s.faculty_id) === String(faculty.id));
+        const files = submission ? state.files.filter(f => String(f.submission_id) === String(submission.id)) : [];
+        const display = getDisplayStatus(submission, task);
+        return { key: `${a.task_id}-${faculty.id}`, task, assignment: a, submission, files, status: normalizeStatus(submission?.status, task), display };
+    }).filter(r => r.task);
+}
+function filteredRows() {
+    const allRows = computeRows();
+    return allRows.filter(r => {
+        const statusGroup = (activeFilter === 'all') ||
+            (activeFilter === 'notsubmitted' && ['notsubmitted','late','revision'].includes(r.status)) ||
+            (activeFilter === 'underreview' && ['underreview','submitted','pending'].includes(r.status)) ||
+            r.status === activeFilter;
+        const haystack = `${r.task?.title || ''} ${r.task?.instructions || ''} ${r.submission?.review_remarks || ''} ${getStatusLabel(r.status)}`.toLowerCase();
+        const matchesSearch = !searchTerm || haystack.includes(searchTerm.toLowerCase());
+        return statusGroup && matchesSearch;
     });
+}
+function refreshNavNotifications() {
+    if (typeof window.refreshFacultyNavNotifications !== 'function') {
+        return;
+    }
+
+    const faculty = resolveCurrentFaculty();
+    let filtered = (state.notifications || []).filter((notification) => {
+        if (!faculty) return true;
+        if (notification.faculty_id != null) {
+            return String(notification.faculty_id) === String(faculty.id);
+        }
+        return true;
+    });
+    if (window.CiteFlowSettings?.filterNotifications) {
+        filtered = window.CiteFlowSettings.filterNotifications(filtered, 'faculty');
+    }
+
+    window.refreshFacultyNavNotifications(filtered);
+}
+function renderStats(rows) {
+    const counts = { pending: 0, underreview: 0, approved: 0, rejected: 0 };
+    rows.forEach(r => {
+        if (['notsubmitted','late','revision'].includes(r.status)) counts.pending++;
+        else if (['underreview','submitted','pending'].includes(r.status)) counts.underreview++;
+        else if (r.status === 'approved') counts.approved++;
+        else if (r.status === 'rejected') counts.rejected++;
+    });
+    document.getElementById('count-pending').textContent = counts.pending;
+    document.getElementById('count-underreview').textContent = counts.underreview;
+    document.getElementById('count-approved').textContent = counts.approved;
+    document.getElementById('count-rejected').textContent = counts.rejected;
+}
+function getFileUrl(file) {
+    if (!file) return '';
+    return file.file_url || file.public_url || file.url || file.download_url || file.signed_url || file.storage_url || file.file_path || file.path || '';
+}
+function getFileExt(fileName) {
+    const clean = String(fileName || '').split('?')[0].split('#')[0];
+    const parts = clean.split('.');
+    return parts.length > 1 ? parts.pop().toLowerCase() : '';
+}
+function encodeFileForPreview(file) {
+    try { return encodeURIComponent(JSON.stringify(file || {})); } catch (e) { return ''; }
+}
+function previewFileFromEncoded(encoded) {
+    try { renderPreview(JSON.parse(decodeURIComponent(encoded))); } catch (e) { renderPreview(null); }
+}
+function renderPreview(file) {
+    const preview = document.getElementById('documentPreview');
+    if (!preview) return;
+    if (!file) {
+        preview.innerHTML = '<div class="text-sm text-gray-500 bg-white border border-dashed border-gray-300 rounded-2xl p-5 text-center">Select a submitted document to preview it here.</div>';
+        return;
+    }
+    const name = escapeHtml(file.file_name || 'Submitted document');
+    const url = getFileUrl(file);
+    const ext = getFileExt(file.file_name || url);
+    if (!url) {
+        preview.innerHTML = `<div class="bg-white border border-amber-200 rounded-2xl p-5"><div class="flex items-start gap-3"><div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center"><svg class="icon w-5 h-5" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div><div><div class="font-semibold text-gray-900">${name}</div><p class="text-sm text-gray-600 mt-1">This file is listed in the database, but no preview URL/path field is available. Add a file_url, public_url, url, signed_url, storage_url, file_path, or path value to enable preview.</p></div></div></div>`;
+        return;
+    }
+    const safeUrl = escapeHtml(url);
+    const header = `<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3"><div class="min-w-0"><div class="text-sm font-bold text-gray-900 break-words">${name}</div><div class="text-xs text-gray-500 truncate">${safeUrl}</div></div><a href="${safeUrl}" target="_blank" rel="noopener" class="shrink-0 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[#621708] text-white text-xs font-bold hover:bg-[#8c2a10]"><svg class="icon w-4 h-4" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>Open</a></div>`;
+    if (['png','jpg','jpeg','gif','webp','bmp','svg'].includes(ext)) {
+        preview.innerHTML = header + `<img class="preview-img border border-gray-200" src="${safeUrl}" alt="${name}">`;
+    } else if (ext === 'pdf') {
+        preview.innerHTML = header + `<iframe class="preview-frame border border-gray-200" src="${safeUrl}"></iframe>`;
+    } else {
+        preview.innerHTML = header + `<iframe class="preview-frame border border-gray-200" src="https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(url)}"></iframe><p class="text-xs text-gray-500 mt-2">If the preview does not load, use Open to view the document in a new tab.</p>`;
+    }
+}
+
+function renderTimeline(row) {
+    let steps = [];
+    if (window.CiteFlowWorkflow) {
+        const config = (state.reportConfigs || []).find(c => String(c.id) === String(row.task?.report_config_id)) || null;
+        steps = CiteFlowWorkflow.buildTimelineSteps(row.submission, row.task, row.assignment, state.approvalHistory, config);
+    } else {
+        const status = row.status;
+        steps = [
+            { key: 'assigned', label: 'Assigned', date: row.assignment?.assigned_at, done: true, note: 'Task assigned to faculty member.' },
+            { key: 'submitted', label: 'Submitted', date: row.submission?.submitted_at, done: !!row.submission?.submitted_at, note: row.submission?.submitted_at ? 'Documents were submitted for review.' : 'Waiting for submission.' },
+            { key: 'reviewed', label: 'Reviewed', date: row.submission?.reviewed_at, done: !!row.submission?.reviewed_at || ['approved','rejected','revision'].includes(status), note: row.submission?.review_remarks || 'No review remarks yet.' }
+        ];
+    }
+    return `<div class="status-timeline"><div class="cite-stepper">${steps.map(step => {
+        const cls = stepperClass(step);
+        const icon = cls === 'is-done' || cls === 'is-danger' || cls === 'is-warn'
+            ? '<i class="fa-solid fa-check"></i>'
+            : '';
+        return `<div class="cite-step ${cls}">
+            <div class="cite-step-dot">${icon}</div>
+            <div class="min-w-0">
+                <div class="cite-step-label">${escapeHtml(step.label)}</div>
+                <div class="cite-step-date">${formatDateTime(step.date)}</div>
+                <div class="cite-step-note">${escapeHtml(step.note || '')}</div>
+            </div>
+        </div>`;
+    }).join('')}</div></div>`;
+}
+function renderDetail(row) {
+    const panel = document.getElementById('detailPanel');
+    if (!row) {
+        panel.innerHTML = `<div class="h-full min-h-[420px] flex items-center justify-center text-center"><div class="cite-empty"><div class="cite-empty-icon"><svg class="icon text-gray-400" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><div class="cite-empty-title">Select a submission</div><p class="cite-empty-text">Choose a task from the list to see its timeline, files, and remarks.</p></div></div>`;
+        return;
+    }
+    const due = getDueMeta(row);
+    const filesHtml = row.files.length ? row.files.map((f) => {
+        const url = getFileUrl(f);
+        const encoded = encodeFileForPreview(f);
+        const uploaded = f.created_at || f.uploaded_at || f.updated_at;
+        return `<button type="button" onclick="previewFileFromEncoded('${encoded}')" class="w-full text-left flex items-center gap-3 p-3 rounded-2xl bg-white border border-gray-200 hover:border-[#621708]/30 hover:bg-[#fffaf8] transition"><div class="w-10 h-10 rounded-xl bg-gray-50 text-gray-500 flex items-center justify-center"><svg class="icon w-5 h-5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><div class="min-w-0 flex-1"><div class="text-sm font-semibold text-gray-900 truncate">${escapeHtml(f.file_name || 'Uploaded document')}</div><div class="text-xs text-gray-500">${url ? 'Click to preview document' : 'Preview unavailable: missing file URL'}${uploaded ? ' · ' + formatDateTime(uploaded) : ''}</div></div><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>`;
+    }).join('') : '<div class="text-sm text-gray-500 bg-white border border-dashed border-gray-300 rounded-2xl p-4">No submitted documents yet.</div>';
+    const filesUpdatedHtml = window.CiteFlowWorkflow?.facultyFilesWereUpdatedAfterReview?.(row.submission)
+        ? `<div class="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">Files were updated after the last review. The current files are shown below.</div>`
+        : '';
+    const taskFileRows = (state.taskFiles || []).filter(tf => String(tf.task_id) === String(row.task.id));
+    const attachments = taskFileRows.length ? taskFileRows : (row.task?.attachment_names || []).map(name => ({ file_name: name }));
+    const attachmentsHtml = attachments.length ? attachments.map(file => {
+        const url = getFileUrl(file);
+        const encoded = encodeFileForPreview(file);
+        const label = escapeHtml(file.file_name || file.name || 'Task attachment');
+        if (url) {
+            return `<button type="button" onclick="previewFileFromEncoded('${encoded}')" class="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 hover:border-[#621708]/30 hover:bg-[#fffaf8] rounded-xl text-xs font-semibold text-gray-700"><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${label}</button>`;
+        }
+        return `<span class="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700"><svg class="icon w-4 h-4 text-gray-400" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${label}</span>`;
+    }).join('') : '<span class="text-sm text-gray-500">No required attachment template.</span>';
+    panel.innerHTML = `<div class="flex flex-col gap-5">
+        <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+            <div class="mb-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="status-badge-chip border ${row.display?.chip || getStatusChip(row.status)}"><span class="status-dot ${getIndicator(row.status)}"></span>${escapeHtml(row.display?.label || getStatusLabel(row.status))}</span>
+                    ${window.CiteFlowWorkflow?.resolveDocumentCategory && CiteFlowWorkflow.resolveDocumentCategory(row.task) ? `<span class="status-badge-chip bg-slate-100 text-slate-700 border-slate-200">${escapeHtml(CiteFlowWorkflow.formatDocumentCategory(row.task))}</span>` : ''}
+                </div>
+                <h3 class="text-lg sm:text-xl font-extrabold tracking-tight text-gray-950 mt-3 break-words">${escapeHtml(row.task.title)}</h3>
+                <p class="text-sm text-gray-500 mt-2 leading-6 break-words">${escapeHtml(getTaskRequirementText(row.task) || 'No instructions provided.')}</p>
+                ${row.task.reporting_period_label ? `<p class="text-xs text-gray-500 mt-2">Reporting period: <span class="font-semibold text-gray-700">${escapeHtml(row.task.reporting_period_label)}</span></p>` : ''}
+            </div>
+            <div class="grid sm:grid-cols-3 gap-3">
+                <div class="rounded-xl ${due.bg} p-4 border border-gray-100 min-w-0"><div class="text-xs text-gray-500">Due indicator</div><div class="flex items-center gap-2 mt-2 min-w-0"><span class="w-2.5 h-2.5 rounded-full ${due.color} shrink-0"></span><span class="text-sm font-bold ${due.text} break-words">${due.label}</span></div></div>
+                <div class="rounded-xl bg-gray-50 p-4 border border-gray-100 min-w-0"><div class="text-xs text-gray-500">Due date</div><div class="text-sm font-bold text-gray-900 mt-2 break-words">${formatDateTime(getTaskDeadline(row.task))}</div></div>
+                <div class="rounded-xl bg-gray-50 p-4 border border-gray-100 min-w-0"><div class="text-xs text-gray-500">Submitted</div><div class="text-sm font-bold text-gray-900 mt-2 break-words">${formatDate(row.submission?.submitted_at)}</div></div>
+            </div>
+        </div>
+        <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+            <h4 class="font-bold text-gray-900 mb-4">Progress Timeline</h4>
+            <div>${renderTimeline(row)}</div>
+        </div>
+        <div class="grid grid-cols-1 gap-5 min-w-0">
+            <div class="space-y-5">
+                <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+                    <h4 class="font-bold text-gray-900 mb-4">Submitted Documents</h4>
+                    <div class="space-y-3">${filesUpdatedHtml}${filesHtml}</div>
+                </div>
+                <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+                    <h4 class="font-bold text-gray-900 mb-4">Task Attachments</h4>
+                    <div class="flex flex-wrap gap-2">${attachmentsHtml}</div>
+                </div>
+            </div>
+            <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+                <div class="flex items-center justify-between gap-3 mb-4">
+                    <h4 class="font-bold text-gray-900">Document Preview</h4>
+                    <span class="text-xs text-gray-400 font-semibold">Preview</span>
+                </div>
+                <div id="documentPreview">${row.files.length ? '<div class="text-sm text-gray-500 bg-slate-50 border border-dashed border-gray-300 rounded-xl p-5 text-center">Select a submitted document above to preview it here.</div>' : '<div class="text-sm text-gray-500 bg-slate-50 border border-dashed border-gray-300 rounded-xl p-5 text-center">No document available for preview.</div>'}</div>
+            </div>
+        </div>
+        <div class="bg-white rounded-[16px] border border-gray-200 p-5">
+            <div class="flex items-start gap-3 mb-3">
+                <div class="cite-icon shrink-0"><svg class="icon w-5 h-5" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div>
+                <div class="min-w-0">
+                    <h4 class="font-bold text-gray-900">Admin Remarks</h4>
+                    <p class="text-xs text-gray-500 mt-0.5">Latest reviewer feedback</p>
+                </div>
+            </div>
+            <div class="text-sm text-gray-700 leading-6 bg-slate-50 border border-gray-100 rounded-xl p-4 break-words">${escapeHtml(row.submission?.review_remarks || 'No remarks have been added yet.')}</div>
+        </div>
+    </div>`;
+}
+function renderRows() {
+    const allRows = computeRows();
+    renderStats(allRows);
+    const rows = filteredRows();
+    const container = document.getElementById('statusList');
+    if (!rows.length) {
+        activeRowKey = null;
+        container.innerHTML = '<div class="cite-empty"><div class="cite-empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="cite-empty-title">No submissions match this view</div><p class="cite-empty-text">Try another filter or search term.</p></div>';
+        renderDetail(null);
+        return;
+    }
+    if (!activeRowKey || !rows.some(r => r.key === activeRowKey)) activeRowKey = rows[0].key;
+    container.innerHTML = rows.map(r => {
+        const due = getDueMeta(r);
+        return `<button type="button" onclick="selectRow('${r.key}')" class="task-row ${getStatusTone(r.status)} ${activeRowKey === r.key ? 'active' : ''} w-full text-left bg-white px-3 sm:px-4 py-3.5 flex items-stretch gap-3 border-0">
+            <span class="indicator-bar ${due.color}"></span>
+            <span class="status-row-main">
+                <span class="status-row-top">
+                    <span class="min-w-0">
+                        <span class="block font-bold text-gray-950 leading-snug break-words">${escapeHtml(r.task.title)}</span>
+                        <span class="block text-sm text-gray-500 mt-1 leading-snug line-clamp-2">${escapeHtml(getTaskRequirementText(r.task) || r.task.instructions || 'No instructions provided.')}</span>
+                    </span>
+                    <span class="status-badge-chip border ${r.display?.chip || getStatusChip(r.status)}">${escapeHtml(r.display?.label || getStatusLabel(r.status))}</span>
+                </span>
+                <span class="status-row-meta">
+                    <span title="Due date"><svg class="icon w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${formatDateTime(getTaskDeadline(r.task))}</span>
+                    <span class="${due.text}"><span class="w-2 h-2 rounded-full ${due.color} shrink-0"></span>${due.label}</span>
+                    <span>${miniTrackHtml(r)}</span>
+                    <span><svg class="icon w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>${r.files.length}</span>
+                </span>
+            </span>
+        </button>`;
+    }).join('');
+    renderDetail(rows.find(r => r.key === activeRowKey));
+}
+function selectRow(key) { activeRowKey = key; renderRows(); }
+function handleSearch(value) { searchTerm = value || ''; renderRows(); }
+function filterStatus(status) {
+    activeFilter = status;
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === status));
+    renderRows();
+}
+async function fetchAllData() {
+    if (isFetchingData) {
+        pendingDataRefresh = true;
+        return;
+    }
+    isFetchingData = true;
+    pendingDataRefresh = false;
+
+    try {
+        const ok = await requireFacultyAuth();
+        if (!ok) return;
+
+        currentFaculty = await loadCurrentFacultyProfile();
+        setSidebarFaculty(currentFaculty, currentUser);
+
+        if (!currentFaculty) {
+            document.getElementById('statusList').innerHTML = `<div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl p-4">Your account is signed in, but no matching faculty profile was found. Please ask the administrator to link your login to a faculty profile.</div>`;
+            renderDetail(null);
+            return;
+        }
+
+        if (currentFaculty.is_active === false) {
+            console.warn('Faculty profile is inactive, but assigned tasks will still be shown.');
+        }
+
+        const facultyId = currentFaculty.id;
+        let assignmentRows = [];
+        let taskRows = [];
+
+        if (window.CiteFlowWorkflow) {
+            const bundle = await CiteFlowWorkflow.loadFacultyAssignedTasks(facultyId);
+            if (bundle.error) {
+                document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(bundle.error.message || 'Failed to load assigned tasks.')}</div>`;
+                return;
+            }
+            assignmentRows = bundle.assignments;
+            taskRows = bundle.tasks;
+        } else {
+            const [tasks, assignments] = await Promise.all([
+                db.from('wf_tasks').select('*').order('created_at', { ascending: false }),
+                db.from('wf_task_assignments').select('*').eq('faculty_id', facultyId)
+            ]);
+            if (tasks.error || assignments.error) {
+                document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(tasks.error?.message || assignments.error?.message || 'Failed to load status data.')}</div>`;
+                return;
+            }
+            assignmentRows = assignments.data || [];
+            const assignmentTaskIds = new Set(assignmentRows.map(a => String(a.task_id)));
+            taskRows = (tasks.data || []).filter(t => assignmentTaskIds.has(String(t.id)));
+        }
+
+        const [submissions, files, notifications, taskFiles, approvalHistory, reportConfigs] = await Promise.all([
+            db.from('wf_submissions').select('*').eq('faculty_id', facultyId),
+            db.from('wf_submission_files').select('*'),
+            db.from('wf_notifications').select('*').or(`faculty_id.eq.${facultyId},faculty_id.is.null`).order('created_at', { ascending: false }).limit(100),
+            db.from('wf_task_files').select('*'),
+            db.from('wf_approval_history').select('*').eq('faculty_id', facultyId).order('created_at', { ascending: false }),
+            db.from('wf_report_configs').select('*')
+        ]);
+
+        if (submissions.error) {
+            document.getElementById('statusList').innerHTML = `<div class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-4">${escapeHtml(submissions.error.message || 'Failed to load status data.')}</div>`;
+            return;
+        }
+
+        if (files.error || notifications.error || taskFiles.error || approvalHistory.error) {
+            console.warn('Optional status data could not be loaded:', { files, notifications, taskFiles, approvalHistory });
+        }
+
+        state.faculty = [currentFaculty];
+        state.tasks = taskRows;
+        state.assignments = assignmentRows;
+        state.submissions = submissions.data || [];
+        const submissionIds = new Set(state.submissions.map(s => String(s.id)));
+        state.files = files.error ? [] : (files.data || []).filter(f => submissionIds.has(String(f.submission_id)));
+        if (window.CiteFlowSettings?.loadPreferences) {
+            try { await window.CiteFlowSettings.loadPreferences(); } catch (_) { /* keep defaults */ }
+        }
+        state.notifications = notifications.error ? [] : (notifications.data || []);
+        if (window.CiteFlowSettings?.filterNotifications) {
+            state.notifications = window.CiteFlowSettings.filterNotifications(state.notifications, 'faculty');
+        }
+        state.taskFiles = taskFiles.error ? [] : (taskFiles.data || []);
+        state.approvalHistory = approvalHistory.error ? [] : (approvalHistory.data || []);
+        state.reportConfigs = reportConfigs?.error ? [] : (reportConfigs.data || []);
+        renderRows();
+        refreshNavNotifications();
+    } finally {
+        isFetchingData = false;
+        if (pendingDataRefresh) {
+            pendingDataRefresh = false;
+            fetchAllData();
+        }
+    }
+}
+function initRealtime() {
+    if (window.CiteFlowWorkflow) {
+        CiteFlowWorkflow.subscribeWorkflow(() => {
+            fetchAllData();
+            if (typeof window.loadFacultyNavNotifications === 'function') {
+                window.loadFacultyNavNotifications();
+            }
+        }, [
+            'wf_submissions', 'wf_approval_history', 'wf_notifications', 'wf_task_assignments',
+            'wf_tasks', 'wf_activity_log', 'wf_comments', 'wf_report_configs', 'wf_submission_files'
+        ]);
+    }
+}
+window.onload = async () => {
+    try {
+        if (typeof loadSidebar === 'function') {
+            await loadSidebar();
+        } else if (typeof loadFacultyNavigation === 'function') {
+            await loadFacultyNavigation();
+        }
+    } catch (navError) {
+        console.error('Faculty navigation failed to load:', navError);
+    }
+
+    await fetchAllData();
+    initRealtime();
+};
 </script>
+<script src="../shared/system-ui.js"></script>
+<script src="../shared/cite-settings.js"></script>
+<script src="faculty-nav.js?v=auth-session-3"></script>
 </body>
 </html>
