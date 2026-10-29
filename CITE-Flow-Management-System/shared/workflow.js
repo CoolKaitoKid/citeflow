@@ -319,9 +319,10 @@
 
     function isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess) {
         if (!hasChairpersonWorkflowAccess(actorFaculty, delegatedAccess)) return false;
-        if (!targetFaculty) return true;
+        if (!targetFaculty) return false;
         const targetDept = facultyDepartmentCode(targetFaculty);
-        if (!targetDept) return true;
+        // A missing or non-specific department cannot be matched to a grant.
+        if (!targetDept || targetDept === 'n/a' || targetDept === 'all') return false;
         const authorized = chairpersonAuthorizedDepartments(actorFaculty, delegatedAccess);
         return authorized.includes(targetDept);
     }
@@ -350,6 +351,20 @@
         return requiresChairpersonReview(config, task)
             ? APPROVAL_STAGES.CHAIRPERSON
             : APPROVAL_STAGES.FINAL;
+    }
+
+    /**
+     * Stage written when faculty submit.
+     * A Dean's Office revision stays at final_approver. A first submission,
+     * and a revision requested by the Chairperson, use the initial stage.
+     */
+    function resolveFacultySubmissionApprovalStage(existingSubmission, config, task) {
+        const status = normalizeText(existingSubmission?.status);
+        const stage = normalizeStageValue(existingSubmission?.approval_stage);
+        if (existingSubmission && status === 'revision' && stage === APPROVAL_STAGES.FINAL) {
+            return APPROVAL_STAGES.FINAL;
+        }
+        return resolveInitialApprovalStage(config, task);
     }
 
     /**
@@ -1017,13 +1032,292 @@
         return 'monthly';
     }
 
-    function groupRecurringReportTasks(tasks, reportConfigs) {
+    function normalizedIdentityToken(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function presentConfigId(task) {
+        if (task?.report_config_id == null) return '';
+        const value = String(task.report_config_id).trim();
+        return value;
+    }
+
+    function periodBounds(task) {
+        const start = task?.reporting_period_start ? String(task.reporting_period_start).slice(0, 10) : '';
+        const end = task?.reporting_period_end ? String(task.reporting_period_end).slice(0, 10) : '';
+        return { start, end, complete: !!(start && end) };
+    }
+
+    function isSameLogicalRecurringCycle(taskA, taskB) {
+        if (!taskA || !taskB) return false;
+        if (taskA === taskB) return true;
+        if (taskA.id != null && taskB.id != null && String(taskA.id) === String(taskB.id)) return true;
+
+        const configIdA = presentConfigId(taskA);
+        const configIdB = presentConfigId(taskB);
+        // Missing or different configuration identity is not enough evidence to collapse a task.
+        if (!configIdA || !configIdB || configIdA !== configIdB) return false;
+
+        const scopeA = normalizedIdentityToken(taskA.assigned_scope);
+        const scopeB = normalizedIdentityToken(taskB.assigned_scope);
+        // A blank scope must not slip past a department, role, faculty, or other scope.
+        if (scopeA !== scopeB) return false;
+
+        const labelA = normalizedIdentityToken(taskA.assigned_label);
+        const labelB = normalizedIdentityToken(taskB.assigned_label);
+        // Conflicting recipient labels, including one side missing, stay separate.
+        if (labelA !== labelB) return false;
+
+        const genA = taskA.generated_for_period ? String(taskA.generated_for_period).trim() : '';
+        const genB = taskB.generated_for_period ? String(taskB.generated_for_period).trim() : '';
+        if (genA || genB) {
+            // Equal canonical keys identify the cycle. A conflicting or one-sided key does not
+            // fall through to dates, titles, or period labels.
+            return !!(genA && genB && genA === genB);
+        }
+
+        const rangeA = periodBounds(taskA);
+        const rangeB = periodBounds(taskB);
+        if (rangeA.complete && rangeB.complete) {
+            return rangeA.start === rangeB.start && rangeA.end === rangeB.end;
+        }
+
+        return false;
+    }
+
+    const MONTH_NAME_BY_NUMBER = [
+        '', 'january', 'february', 'march', 'april', 'may', 'june',
+        'july', 'august', 'september', 'october', 'november', 'december'
+    ];
+    const MONTH_NUMBER_BY_NAME = {
+        jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+        apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+        aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10,
+        nov: 11, november: 11, dec: 12, december: 12
+    };
+    const REPORT_TYPE_ALIASES = {
+        'daily time record': 'dtr',
+        'major final output': 'mfo',
+        'mfo accomplishment report': 'mfo',
+        'table of specifications': 'tos'
+    };
+
+    function calendarDateParts(value) {
+        const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!match) return null;
+        return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+    }
+
+    function lastCalendarDay(year, month) {
+        return new Date(Date.UTC(year, month, 0)).getUTCDate();
+    }
+
+    function stripRecurringPeriodSuffix(value) {
+        return String(value || '')
+            .replace(/\s*[-–—|:]\s*(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|q[1-4]|1st|2nd|semi-annual|semiannual|annual)\b.*$/i, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function canonicalReportType(source) {
+        if (source == null || source === '') return '';
+        const resolved = resolveDocumentCategory(source);
+        if (resolved) return normalizeText(resolved);
+        const raw = typeof source === 'object'
+            ? (source.report_name || source.title || source.name || '')
+            : source;
+        const compact = normalizeText(stripRecurringPeriodSuffix(raw)).replace(/[^a-z0-9]+/g, ' ').trim();
+        return REPORT_TYPE_ALIASES[compact] || compact;
+    }
+
+    function reportTypeKeys(source, linkedConfig) {
+        const keys = new Set();
+        [source, linkedConfig, source?.title, source?.report_name, linkedConfig?.report_name].forEach((value) => {
+            const key = canonicalReportType(value);
+            if (key) keys.add(key);
+        });
+        return keys;
+    }
+
+    function normalizePeriodLabel(value) {
+        const text = normalizeText(value).replace(/[^a-z0-9]+/g, ' ').trim();
+        if (!text) return '';
+        const monthYear = text.match(/^([a-z]+)\s+(\d{4})$/);
+        if (!monthYear) return text;
+        const month = MONTH_NUMBER_BY_NAME[monthYear[1]];
+        return month ? `${MONTH_NAME_BY_NUMBER[month]} ${monthYear[2]}` : text;
+    }
+
+    function fullMonthLabel(start, end) {
+        const from = calendarDateParts(start);
+        const to = calendarDateParts(end);
+        if (!from || !to || from.year !== to.year || from.month !== to.month) return '';
+        if (from.day !== 1 || to.day !== lastCalendarDay(from.year, from.month)) return '';
+        return `${MONTH_NAME_BY_NUMBER[from.month]} ${from.year}`;
+    }
+
+    function reportingPeriodKeys(record) {
+        const keys = new Set();
+        if (!record) return keys;
+        const start = record.reporting_period_start || record.periodStart || '';
+        const end = record.reporting_period_end || record.periodEnd || '';
+        const addRange = (rangeStart, rangeEnd) => {
+            const from = calendarDateParts(rangeStart);
+            const to = calendarDateParts(rangeEnd);
+            if (!from || !to) return;
+            const range = `${from.year}-${String(from.month).padStart(2, '0')}-${String(from.day).padStart(2, '0')}:${to.year}-${String(to.month).padStart(2, '0')}-${String(to.day).padStart(2, '0')}`;
+            keys.add(`range:${range}`);
+            const monthLabel = fullMonthLabel(rangeStart, rangeEnd);
+            if (monthLabel) keys.add(`label:${monthLabel}`);
+        };
+        addRange(start, end);
+        const generated = String(record.generated_for_period || record.generatedForPeriod || '');
+        const dated = generated.match(/(\d{4}-\d{2}-\d{2}).*?(\d{4}-\d{2}-\d{2})/);
+        if (dated) addRange(dated[1], dated[2]);
+        const label = normalizePeriodLabel(record.reporting_period_label || record.label || record.periodLabel);
+        if (label) keys.add(`label:${label}`);
+        return keys;
+    }
+
+    function sameReportingPeriod(intent, task) {
+        const left = reportingPeriodKeys(intent);
+        const right = reportingPeriodKeys(task);
+        for (const key of left) {
+            if (right.has(key)) return true;
+        }
+        return false;
+    }
+
+    function configForRecurringTask(task, configs) {
+        const configId = presentConfigId(task);
+        if (!configId) return null;
+        return (Array.isArray(configs) ? configs : []).find((config) => {
+            const linkedId = config?.id != null ? String(config.id).trim() : '';
+            return linkedId === configId;
+        }) || null;
+    }
+
+    function selectedFacultyKey(ids) {
+        return [...(Array.isArray(ids) ? ids : [])]
+            .map((id) => String(id).trim())
+            .filter(Boolean)
+            .sort()
+            .join(',');
+    }
+
+    function scopeSignatureFromConfig(config) {
+        const type = normalizeText(config?.recipient_type || 'all') || 'all';
+        if (type === 'department') return `department:${normalizeText(config?.recipient_department)}`;
+        if (type === 'role') return `role:${normalizeText(config?.recipient_role)}`;
+        if (type === 'faculty') return `faculty:${selectedFacultyKey(config?.selected_faculty_ids)}`;
+        return 'all';
+    }
+
+    function scopeSignatureFromTask(task) {
+        const type = normalizeText(task?.assigned_scope || '');
+        const label = normalizeText(task?.assigned_label);
+        if (!type || type === 'all') {
+            if (!label || label === 'all faculty') return 'all';
+            return `labeled:${label}`;
+        }
+        if (type === 'department') return `department:${label.replace(/^department\s*=\s*/, '').trim()}`;
+        if (type === 'role') return `role:${label.replace(/^role\s*=\s*/, '').trim()}`;
+        if (type === 'faculty') return `faculty-label:${label}`;
+        return `${type}:${label}`;
+    }
+
+    function sameRecipientScope(intent, task, configs) {
+        const left = scopeSignatureFromConfig(intent);
+        const linked = configForRecurringTask(task, configs);
+        const right = linked ? scopeSignatureFromConfig(linked) : scopeSignatureFromTask(task);
+        return !!left && left === right;
+    }
+
+    function isDuplicateRecurringReport(intent, task, configs) {
+        if (!intent || !task || !isRecurringTask(task)) return false;
+        const left = reportTypeKeys(intent, null);
+        const right = reportTypeKeys(task, configForRecurringTask(task, configs));
+        let sameType = false;
+        for (const key of left) {
+            if (right.has(key)) sameType = true;
+        }
+        if (!sameType) return false;
+        if (!sameRecipientScope(intent, task, configs)) return false;
+        return sameReportingPeriod(intent, task);
+    }
+
+    function linkedCycleTaskIds(task) {
+        const raw = Array.isArray(task?.linked_task_ids) && task.linked_task_ids.length
+            ? task.linked_task_ids
+            : [task?.id];
+        const seen = new Set();
+        const ids = [];
+        raw.forEach((id) => {
+            if (id == null || String(id).trim() === '') return;
+            const key = String(id);
+            if (seen.has(key)) return;
+            seen.add(key);
+            ids.push(id);
+        });
+        return ids;
+    }
+
+    function resolveLinkedRecordTaskId(record, fallbackTask) {
+        const submission = record?.submission || null;
+        const submissionSource = submission?.source_task_id || null;
+        if (submissionSource != null && String(submissionSource).trim() !== '') return submissionSource;
+        if (record?.source_task_id != null && String(record.source_task_id).trim() !== '') {
+            return record.source_task_id;
+        }
+        if (submission?.task_id != null && fallbackTask && String(submission.task_id) !== String(fallbackTask.id)) {
+            return submission.task_id;
+        }
+        return fallbackTask?.id ?? submission?.task_id ?? record?.task_id ?? null;
+    }
+
+    function groupRecurringReportTasks(tasks, reportConfigs, options = {}) {
         const configs = Array.isArray(reportConfigs) ? reportConfigs : [];
         const configMap = new Map();
         configs.forEach((c) => { if (c?.id) configMap.set(String(c.id), c); });
 
         const recurringTasks = (Array.isArray(tasks) ? tasks : []).filter(isRecurringTask);
         const groupMap = new Map();
+        const subs = Array.isArray(options?.submissions) ? options.submissions : [];
+
+        function countSubmissions(ids) {
+            const idSet = new Set((ids || []).map((id) => String(id)));
+            return subs.filter((submission) => submission && idSet.has(String(submission.task_id))).length;
+        }
+
+        function genuineSubmissionTasksByFaculty(ids) {
+            const idSet = new Set((ids || []).map((id) => String(id)));
+            const byFaculty = new Map();
+            subs.forEach((submission) => {
+                if (!submission || !idSet.has(String(submission.task_id))) return;
+                if (!isGenuineSubmission(submission)) return;
+                const facultyId = String(submission.faculty_id || '').trim();
+                if (!facultyId) return;
+                if (!byFaculty.has(facultyId)) byFaculty.set(facultyId, new Set());
+                byFaculty.get(facultyId).add(String(submission.task_id));
+            });
+            return byFaculty;
+        }
+
+        function sameFacultySubmittedOnBoth(idsA, idsB) {
+            const left = new Set((idsA || []).map((id) => String(id)));
+            const right = new Set((idsB || []).map((id) => String(id)));
+            const combined = genuineSubmissionTasksByFaculty([...(idsA || []), ...(idsB || [])]);
+            for (const taskIds of combined.values()) {
+                const onLeft = [...taskIds].some((id) => left.has(id));
+                const onRight = [...taskIds].some((id) => right.has(id));
+                if (onLeft && onRight) return true;
+            }
+            return false;
+        }
+
+        function cycleShell(task) {
+            return { ...task, linked_task_ids: [task.id] };
+        }
 
         recurringTasks.forEach((task) => {
             const configId = task.report_config_id ? String(task.report_config_id) : null;
@@ -1048,7 +1342,46 @@
                     cycles: []
                 });
             }
-            groupMap.get(groupKey).cycles.push(task);
+
+            const group = groupMap.get(groupKey);
+            const existingCycleIdx = group.cycles.findIndex((existing) =>
+                isSameLogicalRecurringCycle(existing, task)
+                && !sameFacultySubmittedOnBoth(existing.linked_task_ids || [existing.id], [task.id])
+            );
+
+            if (existingCycleIdx === -1) {
+                group.cycles.push(cycleShell(task));
+            } else {
+                const existingCycle = group.cycles[existingCycleIdx];
+                const existingIds = linkedCycleTaskIds(existingCycle);
+                const existingSubCount = countSubmissions(existingIds);
+                const newSubCount = countSubmissions([task.id]);
+
+                let primary = existingCycle;
+                if (newSubCount > existingSubCount) {
+                    primary = task;
+                } else if (existingSubCount === 0 && newSubCount === 0) {
+                    const timeExisting = new Date(existingCycle.updated_at || existingCycle.created_at || 0).getTime();
+                    const timeNew = new Date(task.updated_at || task.created_at || 0).getTime();
+                    if (timeNew > timeExisting) primary = task;
+                }
+
+                const linkedIds = [];
+                const pushId = (id) => {
+                    if (id == null || String(id).trim() === '') return;
+                    if (linkedIds.some((existing) => String(existing) === String(id))) return;
+                    linkedIds.push(id);
+                };
+                existingIds.forEach(pushId);
+                pushId(task.id);
+                pushId(existingCycle.id);
+                pushId(primary.id);
+
+                group.cycles[existingCycleIdx] = {
+                    ...(primary === existingCycle ? existingCycle : task),
+                    linked_task_ids: linkedIds
+                };
+            }
         });
 
         const groups = Array.from(groupMap.values());
@@ -1075,20 +1408,55 @@
     }
 
     function computeRecurringReportAnalytics(tasks, assignments, submissions, reportConfigs, options) {
-        const groups = groupRecurringReportTasks(tasks, reportConfigs);
+        const allAssignments = Array.isArray(assignments) ? assignments : [];
+        const allSubmissions = Array.isArray(submissions) ? submissions : [];
+
+        const groups = groupRecurringReportTasks(tasks, reportConfigs, {
+            submissions: allSubmissions,
+            assignments: allAssignments,
+            options
+        });
         const now = options?.now || Date.now();
         const cycleAnalyticsMap = new Map();
         const overallCounts = emptySubmissionAnalyticsCounts();
 
-        const allAssignments = Array.isArray(assignments) ? assignments : [];
-        const allSubmissions = Array.isArray(submissions) ? submissions : [];
-
         groups.forEach((group) => {
             group.cycles.forEach((task) => {
                 const taskId = String(task.id);
-                // Strictly isolate assignments and submissions to this specific task cycle
-                const taskAssignments = allAssignments.filter((a) => String(a.task_id) === taskId);
-                const taskSubmissions = allSubmissions.filter((s) => String(s.task_id) === taskId);
+                const cycleTaskIds = Array.isArray(task.linked_task_ids) && task.linked_task_ids.length
+                    ? task.linked_task_ids.map(String)
+                    : [taskId];
+
+                // Gather all assignments and submissions across all linked task IDs for this cycle
+                const rawAssignments = allAssignments.filter((a) => cycleTaskIds.includes(String(a.task_id)));
+                const rawSubmissions = allSubmissions.filter((s) => cycleTaskIds.includes(String(s.task_id)));
+
+                // Count each faculty once, but keep the assignment's real task id.
+                const taskAssignments = [];
+                const seenFac = new Set();
+                rawAssignments.forEach((assignment) => {
+                    const facId = String(assignment.faculty_id || '').trim();
+                    if (!facId || seenFac.has(facId)) return;
+                    seenFac.add(facId);
+                    taskAssignments.push({
+                        ...assignment,
+                        source_task_id: assignment.task_id,
+                        task_id: taskId
+                    });
+                });
+                const assignmentSourceByFaculty = new Map(
+                    taskAssignments.map((assignment) => [
+                        String(assignment.faculty_id),
+                        assignment.source_task_id
+                    ])
+                );
+
+                // Copies keep source_task_id. task_id is aligned only so per-faculty counting can see every linked submission.
+                const taskSubmissions = rawSubmissions.map((submission) => ({
+                    ...submission,
+                    source_task_id: submission.task_id,
+                    task_id: taskId
+                }));
 
                 const analytics = computeSubmissionAnalytics(taskAssignments, taskSubmissions, task, {
                     ...options,
@@ -1096,13 +1464,31 @@
                     now
                 });
 
-                cycleAnalyticsMap.set(taskId, {
+                const withSourceTask = (record, fallbackSource) => {
+                    const submissionSource = record?.submission?.source_task_id || null;
+                    const sourceTaskId = submissionSource || fallbackSource || record?.task_id || taskId;
+                    const submission = record?.submission
+                        ? { ...record.submission, source_task_id: submissionSource || record.submission.task_id }
+                        : record?.submission;
+                    return { ...record, source_task_id: sourceTaskId, submission };
+                };
+
+                const cycleEntry = {
                     task,
                     group,
                     counts: analytics.counts,
                     balances: analytics.balances,
-                    assignedRecords: analytics.assignedRecords,
-                    orphanedRecords: analytics.orphanedRecords
+                    assignedRecords: (analytics.assignedRecords || []).map((record) =>
+                        withSourceTask(record, assignmentSourceByFaculty.get(String(record.faculty_id)))
+                    ),
+                    orphanedRecords: (analytics.orphanedRecords || []).map((record) =>
+                        withSourceTask(record, record?.submission?.source_task_id)
+                    )
+                };
+
+                cycleAnalyticsMap.set(taskId, cycleEntry);
+                cycleTaskIds.forEach((id) => {
+                    if (id !== taskId) cycleAnalyticsMap.set(id, cycleEntry);
                 });
 
                 // Aggregate overall counts across all cycles
@@ -1389,11 +1775,11 @@
     }
 
     function canReviewAsChairperson(submission, actorFaculty, targetFaculty, context) {
-        if (!submission || !actorFaculty) return false;
+        if (!submission || !actorFaculty || !targetFaculty) return false;
         if (isFacultySubmitter(actorFaculty, submission)) return false;
         const { delegatedAccess, config, task } = resolveReviewContext(context);
         if (!hasChairpersonWorkflowAccess(actorFaculty, delegatedAccess)) return false;
-        if (targetFaculty && !isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess)) return false;
+        if (!isInChairpersonScope(actorFaculty, targetFaculty, delegatedAccess)) return false;
         return isPendingChairpersonReview(submission, config, task);
     }
 
@@ -2274,18 +2660,18 @@
 
         const actorName = getActorDisplayName(actorFaculty, actorUser);
         const stage = getApprovalStage(submission, config, task);
-        const target = targetFaculty || actorFaculty;
+        const target = targetFaculty || null;
         const reviewContext = { delegatedAccess: delegatedAccess || [], config, task };
 
-        // A chairperson whose grant row is hidden from the browser by RLS still
-        // fails the local check, so fall back to asking the database before
-        // refusing. This only ever widens the check to what the database itself
-        // would permit: the write is still governed by RLS, and
-        // updateSubmissionStrict() reports an actual refusal honestly.
-        const chairAllowedLocally = canReviewAsChairperson(submission, actorFaculty, target, reviewContext);
-        const chairStageIsOpen = isPendingChairpersonReview(submission, config, task);
-        const chairAllowed = chairAllowedLocally
-            || (chairStageIsOpen && await serverConfirmsChairpersonGrant(sb));
+        // A generic "this user has some chairperson grant" answer has no
+        // department. It must not authorize a submission outside that grant,
+        // and a missing target department fails closed.
+        const scopeDenied = !target
+            || !isInChairpersonScope(actorFaculty, target, reviewContext.delegatedAccess);
+        const taskMissing = !task?.id && !submission?.task_id;
+        const chairAllowed = canReviewAsChairperson(submission, actorFaculty, target, reviewContext)
+            && !scopeDenied
+            && !taskMissing;
 
         if (action === 'approved') {
             if (stage === APPROVAL_STAGES.CHAIRPERSON) {
@@ -2437,6 +2823,138 @@
         });
 
         return { ok: true, update };
+    }
+
+    function facultySubmissionRollbackSnapshot(submission) {
+        if (!submission?.id) return null;
+        return {
+            status: submission.status ?? 'notsubmitted',
+            submitted_at: submission.submitted_at ?? null,
+            is_late: submission.is_late === true,
+            submitted_status: submission.submitted_status ?? null,
+            approval_stage: submission.approval_stage ?? null,
+            resubmission_count: Number(submission.resubmission_count || 0)
+        };
+    }
+
+    /**
+     * Undo a submission write that ran before its files were stored.
+     * A new row is deleted. An existing row is restored. Neither path
+     * deletes files that belonged to a submission we did not just create.
+     */
+    async function revertFacultySubmissionAfterFailedUpload(sb, { createdNew, submissionId, previous }) {
+        if (!sb || !submissionId) {
+            return { ok: false, error: 'Cannot roll back because no submission id was returned.' };
+        }
+
+        if (createdNew) {
+            const removedFiles = await sb.from('wf_submission_files').delete().eq('submission_id', submissionId);
+            if (removedFiles?.error) {
+                return {
+                    ok: false,
+                    error: removedFiles.error.message
+                        || 'Failed to remove files created for the new submission.'
+                };
+            }
+            const removed = await sb.from('wf_submissions').delete().eq('id', submissionId).select('id');
+            if (removed?.error) {
+                return {
+                    ok: false,
+                    error: removed.error.message
+                        || 'Failed to remove the submission created before the upload failed.'
+                };
+            }
+            if (!Array.isArray(removed?.data) || removed.data.length === 0) {
+                return {
+                    ok: false,
+                    error: 'The new submission could not be confirmed as removed after the upload failed.'
+                };
+            }
+            return { ok: true, rolledBack: 'deleted' };
+        }
+
+        if (!previous) {
+            return { ok: false, error: 'The previous submission state was not available to restore.' };
+        }
+        const restored = await sb.from('wf_submissions').update(previous).eq('id', submissionId).select('id');
+        if (restored?.error) {
+            return {
+                ok: false,
+                error: restored.error.message || 'Failed to restore the previous submission.'
+            };
+        }
+        if (!Array.isArray(restored?.data) || restored.data.length === 0) {
+            return {
+                ok: false,
+                error: 'The previous submission state could not be confirmed as restored.'
+            };
+        }
+        return { ok: true, rolledBack: 'restored' };
+    }
+
+    async function submitFacultyTaskWithUploads(sb, options) {
+        const {
+            existingSubmission,
+            payload,
+            saveRecord,
+            uploadRequired,
+            upload
+        } = options || {};
+
+        const createdNew = !existingSubmission?.id;
+        const previous = facultySubmissionRollbackSnapshot(existingSubmission);
+        const saved = await saveRecord(existingSubmission, payload);
+        if (saved?.error) {
+            const message = saved.error.message || String(saved.error);
+            return { ok: false, phase: 'save', error: message };
+        }
+        const submissionId = saved?.data?.id;
+        if (!submissionId) {
+            return {
+                ok: false,
+                phase: 'save',
+                error: 'Submission was saved, but no submission ID was returned.'
+            };
+        }
+        if (!uploadRequired) {
+            return { ok: true, submissionId, createdNew };
+        }
+
+        try {
+            await upload({ submissionId });
+        } catch (error) {
+            const uploadMessage = error?.message || 'File upload failed.';
+            let rollback;
+            try {
+                rollback = await revertFacultySubmissionAfterFailedUpload(sb, {
+                    createdNew,
+                    submissionId,
+                    previous
+                });
+            } catch (rollbackError) {
+                rollback = {
+                    ok: false,
+                    error: rollbackError?.message || 'Rollback failed.'
+                };
+            }
+            if (!rollback.ok) {
+                return {
+                    ok: false,
+                    phase: 'rollback',
+                    submissionId,
+                    error: `File upload failed: ${uploadMessage} The submission could not be restored: ${rollback.error}`
+                };
+            }
+            return {
+                ok: false,
+                phase: 'upload',
+                submissionId,
+                rolledBack: rollback.rolledBack,
+                error: `File upload failed: ${uploadMessage} The submission was not left as submitted.`
+            };
+        }
+
+        return { ok: true, submissionId, createdNew };
     }
 
     async function recordSubmissionEvent(sb, { faculty, task, taskId, submissionId, isResubmit }) {
@@ -2702,7 +3220,7 @@
         if (!actor || !reportSubmission) return false;
         if (reportSubmission.status !== 'submitted') return false;
         if (!hasChairpersonWorkflowAccess(actor, delegatedAccess)) return false;
-        if (targetFaculty && !isInChairpersonScope(actor, targetFaculty, delegatedAccess)) return false;
+        if (!isInChairpersonScope(actor, targetFaculty, delegatedAccess)) return false;
         return true;
     }
 
@@ -2882,6 +3400,7 @@
         facultyDepartmentCode,
         requiresChairpersonReview,
         resolveInitialApprovalStage,
+        resolveFacultySubmissionApprovalStage,
         resolveInitialApprovalStageForSubmission,
         submitterIsOwnChairperson,
         unknownColumnFromError,
@@ -2911,6 +3430,9 @@
         sanitizeDbStatus,
         computeReviewTransition,
         buildReviewUpdate,
+        facultySubmissionRollbackSnapshot,
+        revertFacultySubmissionAfterFailedUpload,
+        submitFacultyTaskWithUploads,
         applySubmissionReview,
         unsubmitSubmission,
         recordSubmissionEvent,
@@ -2946,6 +3468,10 @@
         computeSubmissionAnalytics,
         isRecurringTask,
         resolveReportingFrequency,
+        isSameLogicalRecurringCycle,
+        isDuplicateRecurringReport,
+        linkedCycleTaskIds,
+        resolveLinkedRecordTaskId,
         groupRecurringReportTasks,
         computeRecurringReportAnalytics
     };

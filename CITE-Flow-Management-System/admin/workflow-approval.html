@@ -2065,11 +2065,13 @@
             </div>
             <div style="margin-top:12px">
                 <label class="field-label">Frequency <span class="text-red-500">*</span></label>
-                <select id="reportFrequency" class="field-input" onchange="updateReportDeadlinePreview()">
-                    <option value="monthly">Monthly</option>
+                <select id="reportFrequency" class="field-input" onchange="toggleReportFrequencyFields()">
+                    <option value="twice_a_month">Twice a Month</option>
+                    <option value="monthly" selected>Monthly</option>
                     <option value="quarterly">Quarterly</option>
                     <option value="semi_annual">Semi-Annual</option>
                     <option value="annual">Annual</option>
+                    <option value="custom">Custom Schedule</option>
                 </select>
             </div>
 
@@ -2083,21 +2085,73 @@
 
             <section class="wf-card">
                 <div class="wf-kicker">Deadline</div>
-            <div class="wf-report-grid">
-                <div>
-                    <label class="field-label">Deadline Day <span class="text-red-500">*</span></label>
-                    <input id="reportDueDay" type="number" min="1" max="31" value="5" class="field-input" oninput="updateReportDeadlinePreview()">
+
+                <!-- Standard Single Deadline (Monthly, Quarterly, Semi-Annual, Annual) -->
+                <div id="standardDeadlineFields">
+                    <div class="wf-report-grid">
+                        <div>
+                            <label class="field-label">Deadline Day <span class="text-red-500">*</span></label>
+                            <input id="reportDueDay" type="number" min="1" max="31" value="5" class="field-input" oninput="updateReportDeadlinePreview()">
+                        </div>
+                        <div>
+                            <label class="field-label">Deadline Time <span class="text-red-500">*</span></label>
+                            <input id="reportDueTime" type="time" value="12:00" class="field-input" oninput="updateReportDeadlinePreview()">
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label class="field-label">Deadline Time <span class="text-red-500">*</span></label>
-                    <input id="reportDueTime" type="time" value="12:00" class="field-input" oninput="updateReportDeadlinePreview()">
+
+                <!-- Twice a Month Deadlines (Two separate groups) -->
+                <div id="twiceMonthDeadlineFields" class="hidden">
+                    <div class="p-3 mb-2.5 rounded-lg border border-slate-200 bg-slate-50/70">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-semibold text-slate-800">1st Submission Deadline</span>
+                            <span class="text-[11px] text-slate-500">First cutoff</span>
+                        </div>
+                        <div class="wf-report-grid">
+                            <div>
+                                <label class="field-label">Deadline Day <span class="text-red-500">*</span></label>
+                                <input id="reportDueDay1" type="number" min="1" max="31" value="15" class="field-input" oninput="updateReportDeadlinePreview()">
+                            </div>
+                            <div>
+                                <label class="field-label">Deadline Time <span class="text-red-500">*</span></label>
+                                <input id="reportDueTime1" type="time" value="12:00" class="field-input" oninput="updateReportDeadlinePreview()">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-3 mb-3 rounded-lg border border-slate-200 bg-slate-50/70">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-semibold text-slate-800">2nd Submission Deadline</span>
+                            <span class="text-[11px] text-slate-500">Second cutoff</span>
+                        </div>
+                        <div class="wf-report-grid">
+                            <div>
+                                <label class="field-label">Deadline Day <span class="text-red-500">*</span></label>
+                                <input id="reportDueDay2" type="number" min="1" max="31" value="30" class="field-input" oninput="updateReportDeadlinePreview()">
+                            </div>
+                            <div>
+                                <label class="field-label">Deadline Time <span class="text-red-500">*</span></label>
+                                <input id="reportDueTime2" type="time" value="12:00" class="field-input" oninput="updateReportDeadlinePreview()">
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div>
-                <label class="field-label">Timezone</label>
-                <input class="field-input" value="Asia/Manila (Philippine Time)" disabled>
-            </div>
-            <div id="reportDeadlinePreview" class="wf-note"></div>
+
+                <!-- Custom Schedule Deadlines (Multiple entries with label, date, time) -->
+                <div id="customScheduleFields" class="hidden">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs font-medium text-slate-700">Custom Submission Schedule:</p>
+                        <button type="button" class="btn btn-ghost btn-sm text-xs py-1 px-2.5 border border-slate-200 hover:bg-slate-100" onclick="addCustomScheduleRow()">
+                            <i class="fa-solid fa-plus mr-1"></i> Add Deadline
+                        </button>
+                    </div>
+                    <div id="customScheduleList" class="space-y-2 mb-3"></div>
+                </div>
+
+                <div>
+                    <label class="field-label">Timezone</label>
+                    <input class="field-input" value="Asia/Manila (Philippine Time)" disabled>
+                </div>
+                <div id="reportDeadlinePreview" class="wf-note"></div>
             </section>
 
             <section class="wf-card">
@@ -2184,7 +2238,7 @@
                     <input id="reportFinalReview" type="checkbox" checked class="w-4 h-4 accent-[#621708]">
                     <span>
                         <span class="block text-sm font-medium text-gray-700">Final Approval</span>
-                        <span class="block text-xs text-gray-400">Chairperson → Dean/Secretary</span>
+                        <span class="block text-xs text-gray-400">Chairperson → Dean's Office</span>
                     </span>
                 </label>
             </div>
@@ -5185,39 +5239,6 @@ function applyReview(newStatus) {
     const types  = { approved: 'success', revision: 'warn', rejected: 'error' };
     applyReviewRealtime(sub.submission_id, newStatus, comment, labels, types, sub);
 }
-async function applyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
-    const { error } = await db
-        .from('wf_submissions')
-        .update({
-            status: newStatus,
-            reviewed_by_name: ADMIN_NAME,
-            reviewed_at: new Date().toISOString(),
-            review_remarks: comment
-        })
-        .eq('id', submissionId);
-    if (error) {
-        showToast(error.message || 'Failed to update review.', 'error');
-        return;
-    }
-    await createNotification({
-        type: 'review',
-        message: `${labels[newStatus]}: ${sub.faculty_name} - ${getTaskById(sub.task_id)?.title || 'Submission'}`,
-        is_read: false
-    }, {
-        task_id: sub.task_id,
-        faculty_id: sub.faculty_id,
-        submission_id: sub.submission_id
-    });
-    await db.from('wf_activity_log').insert({
-        action: labels[newStatus],
-        actor_name: ADMIN_NAME,
-        target: `${sub.faculty_name} - ${getTaskById(sub.task_id)?.title || 'Submission'}`,
-        log_type: newStatus
-    });
-    showToast(`${labels[newStatus]} - ${sub.faculty_name}'s submission.`, types[newStatus]);
-    closeReviewModal();
-    if (activeTaskDetailId) renderTaskDetailPage(activeTaskDetailId, { focusFacultyId: sub.faculty_id });
-}
 function approveSubmission()  { applyReview('approved'); }
 function requestRevision()    { applyReview('revision'); }
 function declineSubmission()  { applyReview('rejected'); }
@@ -6086,6 +6107,61 @@ function readReportConfigFormPreview() {
 function updateReportDeadlinePreview() {
     const el = document.getElementById('reportDeadlinePreview');
     if (!el) return;
+
+    const frequency = document.getElementById('reportFrequency')?.value || 'monthly';
+
+    if (frequency === 'twice_a_month') {
+        const day1 = Number(document.getElementById('reportDueDay1')?.value) || 15;
+        const time1 = document.getElementById('reportDueTime1')?.value || '12:00';
+        const day2 = Number(document.getElementById('reportDueDay2')?.value) || 30;
+        const time2 = document.getElementById('reportDueTime2')?.value || '12:00';
+        el.innerHTML = `
+            <div class="space-y-1">
+                <div>Faculty will submit twice each month:</div>
+                <div class="pl-2 border-l-2 border-[#621708]/30 text-xs text-slate-700">
+                    <div>• <strong>1st Submission:</strong> Day ${escapeHtml(day1)} at ${escapeHtml(time1)} (Asia/Manila)</div>
+                    <div>• <strong>2nd Submission:</strong> Day ${escapeHtml(day2)} at ${escapeHtml(time2)} (Asia/Manila)</div>
+                </div>
+                <div class="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                    <i class="fa-solid fa-circle-info mr-1"></i> <strong>Step 1 UI Preview:</strong> Two configurable deadlines are displayed. Saving and recurring task generation for Twice a Month will be connected in subsequent steps.
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    if (frequency === 'custom') {
+        const list = document.getElementById('customScheduleList');
+        const rows = list ? list.querySelectorAll('.custom-schedule-row') : [];
+        if (!rows.length) {
+            el.innerHTML = `
+                <span class="text-amber-700">No custom deadlines added yet. Click <strong>+ Add Deadline</strong> above to specify submission dates.</span>
+                <div class="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                    <i class="fa-solid fa-circle-info mr-1"></i> <strong>Step 1 UI Preview:</strong> Custom schedule builder is active. Saving and recurring task generation will be connected in subsequent steps.
+                </div>
+            `;
+            return;
+        }
+        const entries = Array.from(rows).map((row, idx) => {
+            const label = row.querySelector('.custom-schedule-label')?.value?.trim() || `Deadline #${idx + 1}`;
+            const date = row.querySelector('.custom-schedule-date')?.value;
+            const time = row.querySelector('.custom-schedule-time')?.value || '12:00';
+            return { label, date, time };
+        });
+        el.innerHTML = `
+            <div class="space-y-1">
+                <div>Configured <strong>${entries.length} custom submission deadline${entries.length === 1 ? '' : 's'}</strong>:</div>
+                <ul class="pl-4 list-disc text-xs text-slate-700 space-y-0.5">
+                    ${entries.map(e => `<li><strong>${escapeHtml(e.label)}:</strong> ${e.date ? `${escapeHtml(e.date)} at ${escapeHtml(e.time)}` : '<span class="text-red-500">Missing date</span>'} (Asia/Manila)</li>`).join('')}
+                </ul>
+                <div class="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                    <i class="fa-solid fa-circle-info mr-1"></i> <strong>Step 1 UI Preview:</strong> Custom schedule builder is active. Saving and recurring task generation will be connected in subsequent steps.
+                </div>
+            </div>
+        `;
+        return;
+    }
+
     try {
         const period = getPeriodForNextTask(readReportConfigFormPreview());
         el.innerHTML = `
@@ -6243,10 +6319,12 @@ function getRecipientFaculty(config) {
 
 function reportFrequencyLabel(value) {
     return {
+        twice_a_month: 'Twice a Month',
         monthly: 'Monthly',
         quarterly: 'Quarterly',
         semi_annual: 'Semi-Annual',
-        annual: 'Annual'
+        annual: 'Annual',
+        custom: 'Custom Schedule'
     }[value] || value || 'Recurring';
 }
 
@@ -6266,6 +6344,79 @@ function reportMethodLabel(config) {
         file_and_text: 'File + Text',
         multiple_files: 'Multiple Files'
     }[config.submission_method] || 'File Upload';
+}
+
+function toggleReportFrequencyFields() {
+    const frequency = document.getElementById('reportFrequency')?.value || 'monthly';
+    const standardEl = document.getElementById('standardDeadlineFields');
+    const twiceMonthEl = document.getElementById('twiceMonthDeadlineFields');
+    const customSchedEl = document.getElementById('customScheduleFields');
+
+    if (standardEl) standardEl.classList.toggle('hidden', frequency === 'twice_a_month' || frequency === 'custom');
+    if (twiceMonthEl) twiceMonthEl.classList.toggle('hidden', frequency !== 'twice_a_month');
+    if (customSchedEl) {
+        customSchedEl.classList.toggle('hidden', frequency !== 'custom');
+        if (frequency === 'custom') {
+            const list = document.getElementById('customScheduleList');
+            if (list && list.children.length === 0) {
+                addCustomScheduleRow({ label: 'Milestone 1', time: '12:00' });
+            }
+        }
+    }
+
+    updateReportDeadlinePreview();
+}
+
+function addCustomScheduleRow(data = {}) {
+    const list = document.getElementById('customScheduleList');
+    if (!list) return;
+
+    const row = document.createElement('div');
+    row.className = 'custom-schedule-row p-3 rounded-lg border border-slate-200 bg-slate-50/70 mb-2';
+    row.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-slate-800 schedule-row-index">Deadline #${list.children.length + 1}</span>
+            <button type="button" class="text-slate-400 hover:text-red-600 text-xs transition-colors p-1" onclick="removeCustomScheduleRow(this)" title="Remove deadline">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+                <label class="field-label text-[11px]">Milestone / Label</label>
+                <input type="text" class="field-input custom-schedule-label text-xs" placeholder="e.g. Midterm Report" value="${escapeHtml(data.label || '')}" oninput="updateReportDeadlinePreview()">
+            </div>
+            <div>
+                <label class="field-label text-[11px]">Deadline Date <span class="text-red-500">*</span></label>
+                <input type="date" class="field-input custom-schedule-date text-xs" value="${escapeHtml(data.date || '')}" oninput="updateReportDeadlinePreview()">
+            </div>
+            <div>
+                <label class="field-label text-[11px]">Deadline Time <span class="text-red-500">*</span></label>
+                <input type="time" class="field-input custom-schedule-time text-xs" value="${escapeHtml(data.time || '12:00')}" oninput="updateReportDeadlinePreview()">
+            </div>
+        </div>
+    `;
+    list.appendChild(row);
+    reindexCustomScheduleRows();
+    updateReportDeadlinePreview();
+}
+
+function removeCustomScheduleRow(btn) {
+    const row = btn?.closest ? btn.closest('.custom-schedule-row') : null;
+    if (row) {
+        row.remove();
+        reindexCustomScheduleRows();
+        updateReportDeadlinePreview();
+    }
+}
+
+function reindexCustomScheduleRows() {
+    const list = document.getElementById('customScheduleList');
+    if (!list) return;
+    const rows = list.querySelectorAll('.custom-schedule-row');
+    rows.forEach((row, idx) => {
+        const indexLabel = row.querySelector('.schedule-row-index');
+        if (indexLabel) indexLabel.textContent = `Deadline #${idx + 1}`;
+    });
 }
 
 function toggleReportRecipientFields() {
@@ -6304,6 +6455,12 @@ function resetReportConfigForm() {
     document.getElementById('reportFrequency').value = 'monthly';
     document.getElementById('reportDueDay').value = '5';
     document.getElementById('reportDueTime').value = '12:00';
+    if (document.getElementById('reportDueDay1')) document.getElementById('reportDueDay1').value = '15';
+    if (document.getElementById('reportDueTime1')) document.getElementById('reportDueTime1').value = '12:00';
+    if (document.getElementById('reportDueDay2')) document.getElementById('reportDueDay2').value = '30';
+    if (document.getElementById('reportDueTime2')) document.getElementById('reportDueTime2').value = '12:00';
+    const customList = document.getElementById('customScheduleList');
+    if (customList) customList.innerHTML = '';
     document.getElementById('reportRecipientType').value = 'all';
     document.getElementById('reportRecipientRole').value = 'CHAIRPERSON';
     document.getElementById('reportRecipientDepartment').value = 'BIT';
@@ -6317,6 +6474,7 @@ function resetReportConfigForm() {
     populateReportFacultySelect([]);
     toggleReportRecipientFields();
     toggleReportSubmissionFields();
+    toggleReportFrequencyFields();
     updateReportDeadlinePreview();
 }
 
@@ -6355,9 +6513,11 @@ function openReportConfigModal(configId = null) {
         populateReportFacultySelect(config.selected_faculty_ids || []);
         toggleReportRecipientFields();
         toggleReportSubmissionFields();
+        toggleReportFrequencyFields();
         updateReportDeadlinePreview();
     }
 
+    toggleReportFrequencyFields();
     updateReportDeadlinePreview();
     document.getElementById('reportConfigModal').classList.add('open');
 }
@@ -6735,6 +6895,118 @@ async function toggleReportConfig(id, active) {
     await fetchAllData();
 }
 
+const recurringTaskGenerationPromises = new Map();
+const incompleteRecurringTaskIds = new Set();
+
+function taskMatchesReportingCycle(task, config, period) {
+    if (!task || !config || !period) return false;
+    if (String(task.report_config_id || '') !== String(config.id || '')) return false;
+    const storedKey = String(task.generated_for_period || '').trim();
+    const expectedKey = String(period.generatedForPeriod || '').trim();
+    if (storedKey && expectedKey) return storedKey === expectedKey;
+    if (storedKey) return false;
+    const start = task.reporting_period_start ? String(task.reporting_period_start).slice(0, 10) : '';
+    const end = task.reporting_period_end ? String(task.reporting_period_end).slice(0, 10) : '';
+    return !!(start && end && start === period.periodStart && end === period.periodEnd);
+}
+
+function unsupportedInsertColumn(message) {
+    const text = String(message || '');
+    const patterns = [
+        /could not find the '([^']+)' column/i,
+        /column "([^"]+)"/i,
+        /'([^']+)' column of/i
+    ];
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) return match[1];
+    }
+    return null;
+}
+
+function rememberTaskAssignments(rows) {
+    if (!Array.isArray(workflowState.assignments)) workflowState.assignments = [];
+    (rows || []).forEach(row => {
+        if (!row || row.faculty_id == null) return;
+        const known = workflowState.assignments.some(item =>
+            String(item.task_id) === String(row.task_id)
+            && String(item.faculty_id) === String(row.faculty_id)
+        );
+        if (!known) workflowState.assignments.push(row);
+    });
+}
+
+function markRecurringTaskIncomplete(task) {
+    if (!task?.id) return;
+    incompleteRecurringTaskIds.add(String(task.id));
+    task.recurring_assignment_incomplete = true;
+}
+
+function clearRecurringTaskIncomplete(task) {
+    if (!task?.id) return;
+    incompleteRecurringTaskIds.delete(String(task.id));
+    delete task.recurring_assignment_incomplete;
+}
+
+async function facultyIdsAssignedToTask(taskId) {
+    const ids = new Set();
+    (workflowState.assignments || []).forEach(row => {
+        if (String(row?.task_id) === String(taskId) && row.faculty_id != null) {
+            ids.add(String(row.faculty_id));
+        }
+    });
+    if (!db || typeof db.from !== 'function') {
+        return { ids, verified: true, error: null };
+    }
+
+    const readAssignments = async (columns) => db.from('wf_task_assignments').select(columns).eq('task_id', taskId);
+    let result;
+    try {
+        result = await readAssignments('faculty_id');
+        if (result?.error && /column|schema|cache/i.test(result.error.message || '')) {
+            result = await readAssignments('*');
+        }
+    } catch (error) {
+        return { ids, verified: false, error };
+    }
+    if (result?.error) return { ids, verified: false, error: result.error };
+    const rows = (result?.data || []).map(row => ({
+        ...row,
+        task_id: row?.task_id ?? taskId
+    }));
+    const verifiedIds = new Set();
+    rows.forEach(row => {
+        if (row.faculty_id != null) verifiedIds.add(String(row.faculty_id));
+    });
+    const retained = (workflowState.assignments || []).filter(row => String(row?.task_id) !== String(taskId));
+    workflowState.assignments = retained;
+    rememberTaskAssignments(rows);
+    return { ids: verifiedIds, verified: true, error: null };
+}
+
+async function ensureRecurringTaskAssignments(task, config) {
+    const assigned = getRecipientFaculty(config);
+    if (!assigned.length) return { ok: false, reason: 'none', assigned, added: 0 };
+    const loaded = await facultyIdsAssignedToTask(task.id);
+    if (!loaded.verified) return { ok: false, reason: 'lookup', error: loaded.error, assigned, added: 0 };
+    const missing = assigned.filter(faculty => !loaded.ids.has(String(faculty.id)));
+    if (!missing.length) return { ok: true, reason: 'complete', assigned, added: 0 };
+    const rows = missing.map(faculty => ({
+        task_id: task.id,
+        faculty_id: faculty.id,
+        assigned_by_name: ADMIN_NAME
+    }));
+    let insertResult;
+    try {
+        insertResult = await db.from('wf_task_assignments').insert(rows);
+    } catch (error) {
+        return { ok: false, reason: 'insert', error, assigned, added: 0 };
+    }
+    if (insertResult?.error) return { ok: false, reason: 'insert', error: insertResult.error, assigned, added: 0 };
+    rememberTaskAssignments(rows);
+    return { ok: true, reason: 'added', assigned, added: rows.length };
+}
+
 async function generateNextTaskForConfig(configOrId, manual = false) {
     const configId = typeof configOrId === 'object' && configOrId
         ? configOrId.id
@@ -6747,94 +7019,174 @@ async function generateNextTaskForConfig(configOrId, manual = false) {
     }
 
     const period = getPeriodForNextTask(config);
-    const existing = (workflowState.tasks || []).find(t =>
-        String(t.report_config_id) === String(config.id) &&
-        String(t.generated_for_period || '') === String(period.generatedForPeriod)
-    );
+    const genKey = `${config.id}:${period.generatedForPeriod}`;
 
-    if (existing) {
-        if (!manual) return existing;
-        try {
-            const changed = await applyConfigToExistingRecurringTask(existing, config, period, { notify: true });
-            showToast(
-                changed
-                    ? `${existing.title} updated. Faculty now see the current requirement and due date.`
-                    : `The next ${period.label} task already exists.`
-            );
-        } catch (error) {
-            console.error('Recurring task update failed:', error);
-            showToast(error.message || 'Unable to update the current recurring task.', 'error');
+    if (recurringTaskGenerationPromises.has(genKey)) {
+        return await recurringTaskGenerationPromises.get(genKey);
+    }
+
+    const executeTaskGeneration = async () => {
+        // This page's loaded tasks plus one client read. The promise map below does not cover other tabs or sessions.
+        let createdThisAttempt = false;
+        const duplicateHelper = window.CiteFlowWorkflow && window.CiteFlowWorkflow.isDuplicateRecurringReport;
+        if (typeof duplicateHelper !== 'function') {
+            showToast('Unable to check for an existing recurring task. No new task was created.', 'error');
+            return null;
         }
-        return existing;
-    }
 
-    const assigned = getRecipientFaculty(config);
-    if (!assigned.length) {
-        if (manual) showToast('No active faculty match this report configuration.', 'warn');
-        return null;
-    }
+        let remoteTasks = [];
+        let lookupError = null;
+        if (db && typeof db.from === 'function') {
+            try {
+                const query = db.from('wf_tasks').select('*');
+                if (!query || typeof query.then !== 'function') {
+                    lookupError = new Error('The recurring task lookup is unavailable.');
+                } else {
+                    const lookup = await query;
+                    remoteTasks = Array.isArray(lookup?.data) ? lookup.data : [];
+                    lookupError = lookup?.error || null;
+                }
+            } catch (dbCheckErr) {
+                lookupError = dbCheckErr;
+            }
+            if (lookupError) {
+                const detail = lookupError.message || 'The recurring task lookup failed.';
+                console.error('Recurring task lookup failed. No new task was created.', lookupError);
+                showToast(`Unable to check for an existing recurring task. No new task was created. ${detail}`, 'error');
+                return null;
+            }
+        }
 
-    const fields = buildRecurringTaskFields(config, period);
+        const seenTaskIds = new Set();
+        const knownTasks = [];
+        [...remoteTasks, ...(workflowState.tasks || [])].forEach(task => {
+            if (!task) return;
+            const key = task.id != null ? `id:${task.id}` : '';
+            if (key && seenTaskIds.has(key)) return;
+            if (key) seenTaskIds.add(key);
+            knownTasks.push(task);
+        });
 
-    let { data: task, error: taskError } = await db.from('wf_tasks').insert({
-        ...fields,
-        attachment_names: [],
-        created_by_name: ADMIN_NAME,
-        report_config_id: config.id
-    }).select().single();
-
-    if (taskError && /column|schema|cache/i.test(taskError.message || '')) {
-        const fallback = {
-            title: fields.title,
-            instructions: fields.instructions,
-            attachment_names: [],
-            due_at: fields.due_at,
-            created_by_name: ADMIN_NAME,
-            assigned_label: fields.assigned_label
+        const intent = {
+            ...config,
+            periodStart: period.periodStart,
+            periodEnd: period.periodEnd,
+            label: period.label,
+            generatedForPeriod: period.generatedForPeriod
         };
-        const retry = await db.from('wf_tasks').insert(fallback).select().single();
-        task = retry.data;
-        taskError = retry.error;
-    }
+        const duplicate = knownTasks.find(task => duplicateHelper(intent, task, workflowState.reportConfigs || []));
+        if (duplicate) {
+            const otherConfiguration = String(duplicate.report_config_id || '') !== String(config.id || '');
+            if (manual || otherConfiguration) {
+                showToast(`This report already exists for ${period.label}.`, 'warn');
+            }
+            return null;
+        }
 
-    if (taskError) {
-        console.error('Recurring task creation failed:', taskError);
-        if (manual) showToast(taskError.message || 'Unable to generate recurring task.', 'error');
-        return null;
-    }
+        const assigned = getRecipientFaculty(config);
+        if (!assigned.length) {
+            if (manual) showToast('No active faculty match this report configuration.', 'warn');
+            return null;
+        }
 
-    const assignmentRows = assigned.map(f => ({
-        task_id: task.id,
-        faculty_id: f.id,
-        assigned_by_name: ADMIN_NAME
-    }));
+        const fields = buildRecurringTaskFields(config, period);
+        const insertPayload = {
+            ...fields,
+            attachment_names: [],
+            created_by_name: ADMIN_NAME,
+            report_config_id: config.id
+        };
+        let task = null;
+        let taskError = null;
+        const omittedColumns = [];
+        for (let attempt = 0; attempt < 16; attempt++) {
+            const inserted = await db.from('wf_tasks').insert(insertPayload).select().single();
+            if (!inserted?.error) {
+                task = inserted?.data || null;
+                taskError = null;
+                break;
+            }
+            taskError = inserted.error;
+            if (!/column|schema|cache/i.test(taskError.message || '')) break;
+            const column = unsupportedInsertColumn(taskError.message);
+            if (!column || !Object.prototype.hasOwnProperty.call(insertPayload, column)) break;
+            delete insertPayload[column];
+            omittedColumns.push(column);
+        }
+        if (omittedColumns.length) {
+            console.warn('Recurring task insert omitted unsupported columns:', omittedColumns.join(', '));
+        }
 
-    const { error: assignmentError } = await db.from('wf_task_assignments').insert(assignmentRows);
+        if (taskError || !task?.id) {
+            console.error('Recurring task creation failed:', taskError);
+            if (manual) showToast(taskError?.message || 'Unable to generate recurring task.', 'error');
+            return null;
+        }
+        createdThisAttempt = true;
 
-    if (assignmentError) {
-        await db.from('wf_tasks').delete().eq('id', task.id);
-        console.error('Recurring assignment failed:', assignmentError);
-        if (manual) showToast(assignmentError.message || 'Task created but assignments failed.', 'error');
-        return null;
-    }
+        // Synchronize in-memory task state immediately so subsequent checks find it
+        if (workflowState.tasks && !workflowState.tasks.some(t => String(t.id) === String(task.id))) {
+            workflowState.tasks.unshift(task);
+        }
 
-    await db.from('wf_activity_log').insert({
-        action: 'Recurring report task generated',
-        actor_name: ADMIN_NAME,
-        target: fields.title,
-        log_type: 'recurring',
-        report_config_id: config.id,
-        task_id: task.id
+        const ensured = await ensureRecurringTaskAssignments(task, config);
+        if (!ensured.ok) {
+            const assignmentError = ensured.error || new Error('Assignments could not be created.');
+            if (!createdThisAttempt) {
+                markRecurringTaskIncomplete(task);
+                console.error('Recurring assignments are still missing:', assignmentError);
+                showToast('Assignments could not be completed for the existing recurring task.', 'error');
+                return null;
+            }
+            let deleteError = null;
+            try {
+                const deleted = await db.from('wf_tasks').delete().eq('id', task.id);
+                deleteError = !deleted || deleted.error ? (deleted?.error || new Error('Task cleanup did not return a result.')) : null;
+            } catch (cleanupErr) {
+                deleteError = cleanupErr;
+            }
+            if (deleteError) {
+                markRecurringTaskIncomplete(task);
+                console.error('Recurring assignment failed and the new task could not be removed:', assignmentError, deleteError);
+                showToast('Assignments failed, and the new task could not be removed. It is incomplete and was not generated successfully.', 'error');
+                return null;
+            }
+            incompleteRecurringTaskIds.delete(String(task.id));
+            if (workflowState.tasks) {
+                workflowState.tasks = workflowState.tasks.filter(t => String(t.id) !== String(task.id));
+            }
+            console.error('Recurring assignment failed:', assignmentError);
+            const assignmentDetail = assignmentError.message ? ` ${assignmentError.message}` : '';
+            showToast(`Assignments failed and the new task was removed.${assignmentDetail}`, 'error');
+            return null;
+        }
+        clearRecurringTaskIncomplete(task);
+
+        await db.from('wf_activity_log').insert({
+            action: 'Recurring report task generated',
+            actor_name: ADMIN_NAME,
+            target: fields.title,
+            log_type: 'recurring',
+            report_config_id: config.id,
+            task_id: task.id
+        });
+
+        await createNotification({
+            type: 'task',
+            message: `New recurring report "${fields.title}" assigned to ${assigned.length} faculty`,
+            is_read: false
+        }, { task_id: task.id });
+
+        if (manual) showToast(`${fields.title} generated for ${assigned.length} faculty.`);
+        return task;
+    };
+
+    // Serializes overlapping calls in this page only. Other tabs and sessions do not share this map.
+    const promise = executeTaskGeneration().finally(() => {
+        recurringTaskGenerationPromises.delete(genKey);
     });
-
-    await createNotification({
-        type: 'task',
-        message: `New recurring report "${fields.title}" assigned to ${assigned.length} faculty`,
-        is_read: false
-    }, { task_id: task.id });
-
-    if (manual) showToast(`${fields.title} generated for ${assigned.length} faculty.`);
-    return task;
+    recurringTaskGenerationPromises.set(genKey, promise);
+    return await promise;
 }
 
 async function generateNextReportingTasks() {
@@ -7087,122 +7439,6 @@ async function recordApprovalHistory(submission, action, comment, actorRole, sta
     };
     const { error } = await db.from('wf_approval_history').insert(payload);
     if (error) console.warn('Approval history insert failed:', error.message);
-}
-
-async function applyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
-    const rawSubmission = workflowState.submissions.find(s => String(s.id) === String(submissionId));
-    const stage = getActiveApprovalStage(rawSubmission || sub);
-
-    // Admin page is the final approver side. A submission must first pass
-    // Chairperson review unless that step was disabled in its report config.
-    const task = getTaskById(sub.task_id);
-    const config = task?.report_config_id
-        ? (workflowState.reportConfigs || []).find(c => String(c.id) === String(task.report_config_id))
-        : null;
-
-    if (stage === 'chairperson' && config?.requires_chairperson_review !== false) {
-        showToast('This submission is still awaiting Chairperson review.', 'warn');
-        return;
-    }
-
-    let nextStatus = newStatus;
-    let nextStage = stage;
-
-    if (newStatus === 'approved') {
-        if (stage === 'chairperson') {
-            nextStage = config?.requires_final_approval === false ? 'approved' : 'final_approver';
-            nextStatus = nextStage === 'approved' ? 'approved' : 'underreview';
-        } else if (stage === 'final_approver') {
-            nextStage = 'approved';
-            nextStatus = 'approved';
-        }
-    } else if (newStatus === 'revision') {
-        nextStage = stage === 'final_approver' ? 'final_approver' : 'chairperson';
-        nextStatus = 'revision';
-    } else if (newStatus === 'rejected') {
-        nextStage = stage === 'final_approver' ? 'final_approver' : 'chairperson';
-        nextStatus = 'rejected';
-    }
-
-    const update = {
-        status: nextStatus,
-        approval_stage: nextStage,
-        reviewed_by_name: ADMIN_NAME,
-        reviewed_at: new Date().toISOString(),
-        review_remarks: comment
-    };
-
-    if (nextStage === 'approved') {
-        update.final_approved_at = new Date().toISOString();
-        update.final_approved_by_name = ADMIN_NAME;
-        update.final_approval_remarks = comment || null;
-    }
-
-    if (newStatus === 'revision' || newStatus === 'rejected') {
-        update.resubmission_count = Number(rawSubmission?.resubmission_count || 0) + 1;
-    }
-
-    const { error } = await db.from('wf_submissions').update(update).eq('id', submissionId);
-    if (error) {
-        showToast(error.message || 'Failed to update approval.', 'error');
-        return;
-    }
-
-    const action = newStatus === 'approved'
-        ? (nextStage === 'approved' ? 'final_approved' : 'chairperson_approved')
-        : newStatus === 'revision'
-            ? (stage === 'final_approver' ? 'final_revision' : 'chairperson_revision')
-            : 'rejected';
-
-    await recordApprovalHistory(
-        sub,
-        action,
-        comment,
-        stage === 'final_approver' ? 'DEAN/SECRETARY' : 'ADMIN',
-        nextStatus
-    );
-
-    await db.from('wf_activity_log').insert({
-        action: labels[newStatus] || newStatus,
-        actor_name: ADMIN_NAME,
-        target: `${sub.faculty_name} - ${task?.title || 'Submission'}`,
-        log_type: newStatus,
-        task_id: sub.task_id,
-        submission_id: sub.submission_id
-    });
-
-    await createNotification({
-        type: 'review',
-        message: `${labels[newStatus] || newStatus}: ${sub.faculty_name} - ${task?.title || 'Submission'}`,
-        is_read: false
-    }, {
-        task_id: sub.task_id,
-        faculty_id: sub.faculty_id,
-        submission_id: sub.submission_id
-    });
-
-    if (newStatus === 'approved' && nextStage === 'final_approver' && window.CiteFlowWorkflow?.notifyFinalApprovers) {
-        await CiteFlowWorkflow.notifyFinalApprovers(db, {
-            task,
-            taskId: sub.task_id,
-            submissionId: sub.submission_id,
-            message: `Final approval required: ${task?.title || 'Submission'}`
-        });
-    }
-
-    const toast =
-        newStatus === 'approved' && nextStage === 'final_approver'
-            ? 'Chairperson approval recorded. Submission is now awaiting Dean/Secretary approval.'
-            : newStatus === 'approved' && nextStage === 'approved'
-                ? 'Submission fully approved.'
-                : newStatus === 'revision'
-                    ? 'Revision requested. Faculty must revise and resubmit.'
-                    : 'Submission marked rejected/revision required.';
-
-    showToast(toast, newStatus === 'approved' ? 'success' : newStatus === 'revision' ? 'warn' : 'error');
-    closeReviewModal();
-    await fetchAllData();
-    if (activeTaskDetailId) renderTaskDetailPage(activeTaskDetailId, { focusFacultyId: sub.faculty_id });
 }
 
 /**
@@ -8837,12 +9073,14 @@ function renderReportSubmissions() {
                                 <span class="px-2 py-0.5 rounded ${c.not_submitted_overdue > 0 ? 'bg-rose-100/70 text-rose-800' : 'bg-amber-100/70 text-amber-800'} font-medium" title="Not submitted: Open (${c.not_submitted_open}) + Overdue (${c.not_submitted_overdue})">Not Submitted: <strong>${c.not_submitted}</strong> <span class="text-[10px] opacity-80">(${c.not_submitted_open} open &middot; ${c.not_submitted_overdue} overdue)</span></span>
                             </div>
                             <div class="flex items-center gap-1 shrink-0 ml-1">
-                                <button type="button" class="btn btn-ghost btn-sm px-2.5 py-1 text-xs" onclick="event.stopPropagation(); openAnalyticsModal('${task.id}')" title="Open Cycle Analytics">
+                                ${(WF?.linkedCycleTaskIds ? WF.linkedCycleTaskIds(task) : [task.id]).map((linkedId) => `
+                                <button type="button" class="btn btn-ghost btn-sm px-2.5 py-1 text-xs" onclick="event.stopPropagation(); openAnalyticsModal('${linkedId}')" title="Open Cycle Analytics">
                                     <i class="fa-solid fa-chart-pie mr-1 text-slate-500"></i> Analytics
                                 </button>
-                                <button type="button" class="btn btn-ghost btn-sm px-2.5 py-1 text-xs" onclick="event.stopPropagation(); openTaskDetailsPage('${task.id}')" title="Open Task Details Drawer">
+                                <button type="button" class="btn btn-ghost btn-sm px-2.5 py-1 text-xs" onclick="event.stopPropagation(); openTaskDetailsPage('${linkedId}')" title="Open Task Details Drawer">
                                     <i class="fa-solid fa-list-check mr-1 text-slate-500"></i> Details
                                 </button>
+                                `).join('')}
                             </div>
                         </div>
                     </div>
@@ -8864,6 +9102,7 @@ function renderReportSubmissions() {
         // Assigned faculty rows
         filteredAssigned.forEach(rec => {
             const fac = getFacultyById(rec.faculty_id);
+            const actionTaskId = WF?.resolveLinkedRecordTaskId ? WF.resolveLinkedRecordTaskId(rec, task) : (rec.source_task_id || task.id);
             const facultyName = fac?.full_name || 'Faculty';
             const facultyDept = String(fac?.department_code || fac?.department || '').trim().toUpperCase();
             const sub = rec.submission;
@@ -8916,7 +9155,7 @@ function renderReportSubmissions() {
                             ${renderStatusPill(statusLabel, cls.review_status)}
                         </td>
                         <td class="text-right">
-                            <button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openReviewModal('${task.id}', '${rec.faculty_id}')">Review</button>
+                            <button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openReviewModal('${actionTaskId}', '${rec.faculty_id}')">Review</button>
                         </td>
                     </tr>
                 `;
@@ -8945,7 +9184,7 @@ function renderReportSubmissions() {
                             ${renderStatusPill(pillLabel, cls.category)}
                         </td>
                         <td class="text-right">
-                            <button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openTaskDetailsPage('${task.id}', { focusFacultyId: '${rec.faculty_id}' })">Details</button>
+                            <button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openTaskDetailsPage('${actionTaskId}', { focusFacultyId: '${rec.faculty_id}' })">Details</button>
                         </td>
                     </tr>
                 `;
@@ -8965,6 +9204,7 @@ function renderReportSubmissions() {
 
             filteredOrphaned.forEach(rec => {
                 const fac = getFacultyById(rec.faculty_id);
+                const actionTaskId = WF?.resolveLinkedRecordTaskId ? WF.resolveLinkedRecordTaskId(rec, task) : (rec.source_task_id || task.id);
                 const facultyName = fac?.full_name || 'Faculty';
                 const facultyDept = String(fac?.department_code || fac?.department || '').trim().toUpperCase();
                 const sub = rec.submission;
@@ -8996,7 +9236,7 @@ function renderReportSubmissions() {
                         <td>${linkHtml}</td>
                         <td>${renderStatusPill(cls.review_status || 'Needs Review', cls.category)}</td>
                         <td class="text-right">
-                            <button type="button" class="btn btn-ghost btn-sm" onclick="openReviewModal('${task.id}', '${rec.faculty_id}')">Review</button>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="openReviewModal('${actionTaskId}', '${rec.faculty_id}')">Review</button>
                         </td>
                     </tr>
                 `;
@@ -9401,7 +9641,7 @@ if (_wfOriginalRecompute) {
     };
 }
 
-applyReviewRealtime = async function unifiedApplyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
+async function applyReviewRealtime(submissionId, newStatus, comment, labels, types, sub) {
     await loadWorkflowActor();
     if (!window.CiteFlowWorkflow) {
         showToast('Workflow module failed to load.', 'error');
@@ -9454,7 +9694,7 @@ applyReviewRealtime = async function unifiedApplyReviewRealtime(submissionId, ne
     const { transition } = result;
     const toast =
         newStatus === 'approved' && transition.nextStage === CiteFlowWorkflow.APPROVAL_STAGES.FINAL
-            ? 'Chairperson approval recorded. Submission is now awaiting final approval.'
+            ? "Chairperson approval recorded. Submission is now awaiting Dean's Office approval."
             : newStatus === 'approved' && transition.nextStage === CiteFlowWorkflow.APPROVAL_STAGES.APPROVED
                 ? 'Submission fully approved.'
                 : newStatus === 'revision'
@@ -9469,7 +9709,9 @@ applyReviewRealtime = async function unifiedApplyReviewRealtime(submissionId, ne
     if (rawSubmission) {
         rawSubmission.status = transition.nextStatus;
         rawSubmission.approval_stage = transition.nextStage;
-        rawSubmission.review_remarks = comment;
+        if (String(comment || '').trim()) {
+            rawSubmission.review_remarks = String(comment).trim();
+        }
         rawSubmission.reviewed_by_name = ADMIN_NAME;
         rawSubmission.reviewed_at = new Date().toISOString();
         if (transition.nextStatus === 'revision') {

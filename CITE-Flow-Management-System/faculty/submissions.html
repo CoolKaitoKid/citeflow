@@ -5563,53 +5563,13 @@ async function uploadDraftsForSubmission({
     files
 }) {
 
-    let uploaded = [];
-
-    try {
-
-        uploaded =
-            await uploadFilesToStorage({
-                facultyId,
-                taskId,
-                submissionId,
-                files
-            });
-
-    } catch (error) {
-
-        if (
-            String(
-                error?.message
-                || ''
-            ).toLowerCase()
-                .includes(
-                    'storage bucket'
-                )
-        ) {
-
-            uploaded =
-                files.map(
-                    file => ({
-
-                        file_name:
-                            file.name,
-
-                        file_url:
-                            '',
-
-                        storage_path:
-                            ''
-
-                    })
-                );
-
-        } else {
-
-            throw error;
-
-        }
-
-    }
+    const uploaded =
+        await uploadFilesToStorage({
+            facultyId,
+            taskId,
+            submissionId,
+            files
+        });
 
     return insertSubmissionFileRows(
         uploaded,
@@ -6432,7 +6392,22 @@ async function submitTask(taskId) {
             );
 
 
-        const approvalStage = await resolveApprovalStageForTask(task);
+        await resolveApprovalStageForTask(task);
+        const approvalStage = window.CiteFlowWorkflow?.resolveFacultySubmissionApprovalStage
+            ? CiteFlowWorkflow.resolveFacultySubmissionApprovalStage(
+                existingSubmission,
+                getTaskReportConfig(task),
+                task
+            )
+            : (
+                existingSubmission
+                && String(existingSubmission.status || '').toLowerCase() === 'revision'
+                && ['final', 'final_approver', 'final_approval'].includes(
+                    String(existingSubmission.approval_stage || '').toLowerCase()
+                )
+                    ? 'final_approver'
+                    : initialApprovalStageForTask(task)
+            );
 
         const isResubmit = Boolean(
             existingSubmission
@@ -6482,127 +6457,66 @@ async function submitTask(taskId) {
                 Number(existingSubmission.resubmission_count || 0) + 1;
         }
 
-        const {
-            data: savedSubmission,
-            error: saveError
-        } = await saveSubmissionRecord(existingSubmission, payload);
-
-        if (saveError) {
-            throw saveError;
+        if (!window.CiteFlowWorkflow?.submitFacultyTaskWithUploads) {
+            throw new Error('Submission workflow is unavailable. Nothing was submitted.');
         }
 
+        const uploadRequired = (
+            submissionMethod === 'upload' && files.length > 0
+        ) || submissionMethod === 'link';
 
-        const submissionId =
-            savedSubmission?.id;
+        const persisted = await CiteFlowWorkflow.submitFacultyTaskWithUploads(db, {
+            existingSubmission,
+            payload,
+            saveRecord: saveSubmissionRecord,
+            uploadRequired,
+            upload: async ({ submissionId }) => {
+                if (submissionMethod === 'upload') {
+                    await uploadDraftsForSubmission({
+                        facultyId: faculty.id,
+                        taskId,
+                        submissionId,
+                        files
+                    });
+                    return;
+                }
 
-
-        if (!submissionId) {
-
-            throw new Error(
-                'Submission was saved, but no submission ID was returned.'
-            );
-
-        }
-
-
-        /*
-        ------------------------------------------------------
-        File upload method
-        ------------------------------------------------------
-        */
-        if (
-            submissionMethod === 'upload'
-            &&
-            files.length
-        ) {
-
-            await uploadDraftsForSubmission({
-                facultyId: faculty.id,
-                taskId,
-                submissionId,
-                files
-            });
-
-            // Clear draft memory immediately so it doesn't overlap with saved files
-            delete draftUploads[taskId];
-        }
-
-
-        /*
-        ------------------------------------------------------
-        Link submission
-        ------------------------------------------------------
-        |
-        | The URL is saved into wf_submission_files as a
-        | submission record if file_url is available.
-        |
-        */
-
-        if (
-            submissionMethod === 'link'
-        ) {
-
-            const {
-                error: deleteOldLink
-            } =
-                await db
-                    .from('wf_submission_files')
-                    .delete()
-                    .eq(
-                        'submission_id',
-                        submissionId
-                    );
-
-
-            if (deleteOldLink) {
-                console.warn(deleteOldLink);
-            }
-
-
-            let {
-                error: linkError
-            } =
-                await db
+                const inserted = await db
                     .from('wf_submission_files')
                     .insert({
+                        submission_id: submissionId,
+                        file_name: 'External Submission Link',
+                        file_url: submissionUrl,
+                        storage_path: ''
+                    })
+                    .select('id');
 
-                        submission_id:
-                            submissionId,
-
-                        file_name:
-                            'External Submission Link',
-
-                        file_url:
-                            submissionUrl,
-
-                        storage_path:
-                            ''
-
-                    });
-
-
-            if (
-                linkError
-                &&
-                /column|schema|cache/i.test(
-                    linkError.message
-                    || ''
-                )
-            ) {
-
-                linkError =
-                    new Error(
+                let linkError = inserted.error;
+                if (linkError && /column|schema|cache/i.test(linkError.message || '')) {
+                    linkError = new Error(
                         'Your wf_submission_files table needs a file_url column to save link submissions.'
                     );
+                }
+                if (linkError) throw linkError;
 
+                const newId = Array.isArray(inserted.data) ? inserted.data[0]?.id : inserted.data?.id;
+                if (!newId) return;
+                const cleanup = await db
+                    .from('wf_submission_files')
+                    .delete()
+                    .eq('submission_id', submissionId)
+                    .neq('id', newId);
+                if (cleanup.error) {
+                    console.warn('Could not remove the previous link after the new link was saved:', cleanup.error);
+                }
             }
+        });
 
-
-            if (linkError) {
-                throw linkError;
-            }
-
+        if (!persisted.ok) {
+            throw new Error(persisted.error || 'Submission failed.');
         }
+
+        const submissionId = persisted.submissionId;
 
 
         /*
@@ -6658,7 +6572,14 @@ async function submitTask(taskId) {
 
         const statusLabel = window.CiteFlowWorkflow
             ? CiteFlowWorkflow.formatWorkflowStatus(
-                { status: late ? 'late' : 'submitted', approval_stage: initialApprovalStageForTask(task), submitted_at: now },
+                {
+                    status: late ? 'late' : 'submitted',
+                    approval_stage: approvalStage,
+                    submitted_at: now,
+                    reviewed_at: existingSubmission?.reviewed_at || null,
+                    reviewed_by_name: existingSubmission?.reviewed_by_name || null,
+                    resubmission_count: payload.resubmission_count || existingSubmission?.resubmission_count || 0
+                },
                 task
             )
             : 'Submitted for review';

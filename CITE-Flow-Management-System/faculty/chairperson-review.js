@@ -997,12 +997,19 @@
                 const isCycleMfo = group.is_mfo || submissionIsMfo({ task });
 
                 const people = facultyMap();
+                const linkedIds = typeof wf()?.linkedCycleTaskIds === 'function'
+                    ? wf().linkedCycleTaskIds(task)
+                    : [task.id];
+                const severalLinked = linkedIds.length > 1;
                 const facultyBreakdown = (cycleAnalytics?.assignedRecords || []).map((rec) => {
                     const person = people.get(String(rec.faculty_id));
                     const name = esc(person?.full_name || person?.name || 'Faculty Member');
                     const dept = esc((person?.department || person?.department_code || chairDepartment()).toUpperCase());
                     const pill = renderStatusPill(rec.classification?.status_key, rec.classification?.status_label);
                     const sub = rec.submission;
+                    const rowTaskId = typeof wf()?.resolveLinkedRecordTaskId === 'function'
+                        ? wf().resolveLinkedRecordTaskId(rec, task)
+                        : (rec.source_task_id || sub?.source_task_id || task.id);
 
                     return `
                         <div class="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 text-xs">
@@ -1013,10 +1020,26 @@
                             <div class="flex items-center gap-2">
                                 ${pill}
                                 ${sub ? `<button type="button" class="file-manage-btn" onclick="CiteFlowChairReview.openView('${sub.id}')">Review</button>` : ''}
+                                <button type="button" class="file-manage-btn" onclick="CiteFlowChairReview.openTaskDetails('${rowTaskId}')">Details</button>
                             </div>
                         </div>
                     `;
                 }).join('') || '<p class="text-xs text-slate-400 p-2">No departmental faculty assigned to this cycle.</p>';
+                const taskActionButtons = linkedIds.map((id) => {
+                    const linkedTask = taskMap().get(String(id));
+                    const suffix = severalLinked ? `: ${esc(linkedTask?.title || 'Linked task')}` : '';
+                    const mfoButton = isCycleMfo ? `
+                                    <button type="button" class="chair-btn-primary text-xs" onclick="CiteFlowChairReview.openConsolidatedMfo('${id}')" title="Open Department Consolidated MFO Report">
+                                        <i class="fa-solid fa-layer-group mr-1.5"></i> Consolidate MFO${suffix}
+                                    </button>
+                                ` : '';
+                    return `
+                                ${mfoButton}
+                                <button type="button" class="chair-btn-secondary text-xs" onclick="CiteFlowChairReview.openTaskDetails('${id}')">
+                                    <i class="fa-solid fa-circle-info mr-1"></i> Task Details${suffix}
+                                </button>
+                    `;
+                }).join('');
 
                 return `
                     <div class="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
@@ -1029,14 +1052,7 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
-                                ${isCycleMfo ? `
-                                    <button type="button" class="chair-btn-primary text-xs" onclick="CiteFlowChairReview.openConsolidatedMfo('${task.id}')" title="Open Department Consolidated MFO Report">
-                                        <i class="fa-solid fa-layer-group mr-1.5"></i> Consolidate MFO
-                                    </button>
-                                ` : ''}
-                                <button type="button" class="chair-btn-secondary text-xs" onclick="CiteFlowChairReview.openTaskDetails('${task.id}')">
-                                    <i class="fa-solid fa-circle-info mr-1"></i> Task Details
-                                </button>
+                                ${taskActionButtons}
                                 <button type="button" class="chair-btn-secondary text-xs" onclick="CiteFlowChairReview.toggleCycle('${group.group_key}', '${task.id}')">
                                     <i class="fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'} mr-1"></i> ${isExpanded ? 'Hide Faculty' : 'Show Faculty (' + counts.expected + ')'}
                                 </button>
