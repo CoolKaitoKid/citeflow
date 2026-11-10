@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
     <script src="../shared/supabase-config.js"></script>
     <script src="../shared/auth-guard.js?v=auth-nav-1"></script>
     <link rel="stylesheet" href="../nav.css">
@@ -74,6 +75,7 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            cursor: pointer;
         }
         .export-btn:hover {
             background: #f8fafc;
@@ -256,7 +258,7 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-xs sm:text-sm text-slate-500 font-medium">Faculty Listed</p>
-                            <p id="statFaculty" class="text-2xl sm:text-4xl font-bold text-slate-950 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                            <p id="statFaculty" class="text-2xl sm:text-4xl font-bold text-slate-950 mt-1 sm:mt-2">0</p>
                         </div>
                         <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-lg sm:text-xl shrink-0">
                             <i class="fas fa-users"></i>
@@ -267,7 +269,7 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-xs sm:text-sm text-slate-500 font-medium">Total Teaching Load</p>
-                            <p id="statTeaching" class="text-2xl sm:text-4xl font-bold text-slate-950 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                            <p id="statTeaching" class="text-2xl sm:text-4xl font-bold text-slate-950 mt-1 sm:mt-2">0</p>
                         </div>
                         <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-lg sm:text-xl shrink-0">
                             <i class="fas fa-book"></i>
@@ -277,8 +279,8 @@
                 <div class="card p-5 sm:p-6">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Normal Load</p>
-                            <p id="statNormal" class="text-2xl sm:text-4xl font-bold text-emerald-600 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Normal Load (&le; 27 units)</p>
+                            <p id="statNormal" class="text-2xl sm:text-4xl font-bold text-emerald-600 mt-1 sm:mt-2">0</p>
                         </div>
                         <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-lg sm:text-xl shrink-0">
                             <i class="fas fa-check-circle"></i>
@@ -288,8 +290,8 @@
                 <div class="card p-5 sm:p-6">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Overload</p>
-                            <p id="statOverload" class="text-2xl sm:text-4xl font-bold text-red-600 mt-1 sm:mt-2"><span class="skeleton-text inline-block" style="width:60px; height:28px;"></span></p>
+                            <p class="text-xs sm:text-sm text-slate-500 font-medium">Overload (&gt; 27 units)</p>
+                            <p id="statOverload" class="text-2xl sm:text-4xl font-bold text-red-600 mt-1 sm:mt-2">0</p>
                         </div>
                         <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center text-lg sm:text-xl shrink-0">
                             <i class="fas fa-exclamation-triangle"></i>
@@ -364,46 +366,24 @@
                                 <th class="py-3.5 px-4 sm:px-6 text-right">Action</th>
                             </tr>
                         </thead>
-                        <tbody id="workloadTable" class="divide-y divide-slate-100">
-                            <tr>
-                                <td colspan="8">
-                                    <div class="skeleton-row">
-                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
-                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                                        <div class="skeleton-text" style="width:80px"></div>
-                                        <div class="skeleton-text" style="width:60px"></div>
-                                    </div>
-                                    <div class="skeleton-row">
-                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
-                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                                        <div class="skeleton-text" style="width:80px"></div>
-                                        <div class="skeleton-text" style="width:60px"></div>
-                                    </div>
-                                    <div class="skeleton-row">
-                                        <div class="skeleton-circle" style="width:36px;height:36px"></div>
-                                        <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
-                                        <div class="skeleton-text" style="width:80px"></div>
-                                        <div class="skeleton-text" style="width:60px"></div>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
+                        <tbody id="workloadTable" class="divide-y divide-slate-100"></tbody>
                     </table>
                 </div>
 
-                <div id="workloadLoadError" class="hidden mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
-                <div id="emptyState" class="hidden py-16 text-center">
+                <div id="workloadLoadError" class="hidden mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 m-4"></div>
+                <div id="emptyState" class="py-16 text-center">
                     <div class="w-14 h-14 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
-                        <i class="fas fa-folder-open text-2xl text-slate-400"></i>
+                        <i class="fas fa-file-import text-2xl text-slate-400"></i>
                     </div>
                     <h3 class="font-semibold text-slate-900 text-sm sm:text-base">No workload records found</h3>
-                    <p class="text-xs sm:text-sm text-slate-500 mt-1">Try adjusting your filters.</p>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">Import your PDF or Excel workload file to get started.</p>
                 </div>
             </div>
         </div>
     </main>
 </div>
 
+<!-- Details Modal -->
 <div id="detailsModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[2500] flex items-center justify-center p-3 sm:p-5 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div class="px-6 py-4 sm:px-8 sm:py-6 border-b flex justify-between items-start bg-slate-50/50">
@@ -418,30 +398,30 @@
     </div>
 </div>
 
+<!-- Import Modal -->
 <div id="importModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[2600] flex items-center justify-center p-3 sm:p-5 overflow-y-auto min-h-screen">
-    <div class="bg-white rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col my-auto">
+    <div class="bg-white rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col my-auto">
         <div class="px-6 py-4 sm:px-8 sm:py-6 border-b flex justify-between items-start bg-slate-50/50">
             <div class="min-w-0 pr-4">
                 <p class="text-[10px] sm:text-xs font-semibold tracking-widest text-[#621708] uppercase">Workload</p>
                 <h2 class="text-lg sm:text-2xl font-bold mt-0.5 text-slate-900">Import Workload</h2>
-                <p class="text-xs sm:text-sm text-slate-500 mt-1">Review every row before anything is saved. Unmatched faculty are never imported.</p>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1">Review the scanned rows before adding to the tracker.</p>
             </div>
             <button type="button" onclick="closeWorkloadImport()" class="w-8 h-8 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center text-2xl leading-none">&times;</button>
         </div>
         <div class="p-5 sm:p-6 overflow-y-auto flex-1">
             <div id="importSetup" class="mb-4">
                 <label for="importFile" class="block text-xs font-semibold text-slate-600 mb-2">PDF or Excel file</label>
-                <input id="importFile" type="file" accept=".pdf,.xlsx,.xls,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="block w-full text-sm text-slate-600" onchange="onWorkloadFile(event)">
-                <p class="text-xs text-slate-500 mt-2">Accepts .pdf, .xlsx, and .xls up to 8 MB. The file stays in this browser until you close the review. Scanned PDFs cannot be read because OCR is not available.</p>
+                <input id="importFile" type="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="block w-full text-sm text-slate-600" onchange="onWorkloadFile(event)">
+                <p class="text-xs text-slate-500 mt-2">Accepts .pdf, .xlsx, .xls, and .csv up to 10 MB.</p>
             </div>
             <p id="importError" class="hidden mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></p>
-            <p id="importProgress" class="hidden mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"></p>
+            <p id="importProgress" class="hidden mb-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700"></p>
             <div id="importReview" class="hidden"></div>
         </div>
     </div>
 </div>
 
-<script src="../shared/workload-import.js"></script>
 <script>
     const supabaseClient = window.supabaseClient || (typeof supabase !== 'undefined' && window.__SUPABASE_URL__
         ? supabase.createClient(window.__SUPABASE_URL__, window.__SUPABASE_ANON__)
@@ -451,7 +431,6 @@
     let faculties = [], teachingLoads = [], workloadSummaries = [], currentFilteredRows = [];
     let facultyLoadError = '';
     let importUi = emptyImportState();
-    let importEventsBound = false;
 
     function emptyImportState() {
         return {
@@ -459,14 +438,6 @@
             fileName: '',
             fileType: '',
             records: [],
-            warnings: [],
-            unmapped: [],
-            mappedColumns: [],
-            ignoredColumns: [],
-            missingTargets: [],
-            detailColumn: null,
-            existing: [],
-            result: null,
             error: '',
             progress: ''
         };
@@ -555,20 +526,10 @@
         return items.reduce((sum, item) => sum + (Number(item.units) || 0), 0);
     }
 
-    function getScheduleEntries(item) {
-        if (Array.isArray(item.schedule_entries)) return item.schedule_entries;
-        if (typeof item.schedule_entries === 'string') {
-            try { return JSON.parse(item.schedule_entries); } catch { return []; }
-        }
-        return [];
-    }
-
     function formatSchedule(item) {
-        const schedules = getScheduleEntries(item);
-        if (schedules.length) {
-            return schedules.map(s => `${s.day || ''} ${s.start_time || ''}-${s.end_time || ''}`).join(' / ');
-        }
-        return `${item.schedule_day || ''} ${item.start_time || ''}-${item.end_time || ''}`.trim();
+        if (item.schedule) return item.schedule;
+        if (item.scheduleText) return item.scheduleText;
+        return `${item.schedule_day || ''} ${item.start_time || ''}-${item.end_time || ''}`.trim() || 'TBA';
     }
 
     function getTeachingMetrics(teaching) {
@@ -583,14 +544,8 @@
     }
 
     let guideSyncing = false;
-
-    function getTableScroll() {
-        return document.getElementById('tableScroll');
-    }
-
-    function isMobileGuide() {
-        return window.matchMedia('(max-width: 767px)').matches;
-    }
+    function getTableScroll() { return document.getElementById('tableScroll'); }
+    function isMobileGuide() { return window.matchMedia('(max-width: 767px)').matches; }
 
     function updateGuideThumb(ratio, visible) {
         const thumb = document.getElementById('scrollThumb');
@@ -662,26 +617,7 @@
     }
 
     async function loadAllWorkloads() {
-        const tbody = document.getElementById('workloadTable');
-        const empty = document.getElementById('emptyState');
-        const loadError = document.getElementById('workloadLoadError');
-        const showLoadError = (message) => {
-            facultyLoadError = message || 'Workload records could not be loaded.';
-            if (loadError) {
-                loadError.textContent = facultyLoadError;
-                loadError.classList.remove('hidden');
-            }
-            if (!faculties.length && tbody) tbody.innerHTML = '';
-            if (!faculties.length && empty) {
-                empty.classList.remove('hidden');
-                const title = empty.querySelector('h3');
-                const copy = empty.querySelector('p');
-                if (title) title.textContent = 'Workload records could not be loaded';
-                if (copy) copy.textContent = 'The tracker is empty until the database request succeeds. Sample rows are not shown.';
-            }
-        };
         if (!supabaseClient) {
-            showLoadError('The database client is not available.');
             buildWorkloadSummaries();
             applyFilters();
             return;
@@ -691,33 +627,34 @@
                 supabaseClient.from('faculty').select('*').order('full_name'),
                 supabaseClient.from('faculty_teaching_loads').select('*').neq('status', 'Archived')
             ]);
-            if (facRes.error || teachRes.error) {
-                showLoadError((facRes.error && facRes.error.message) || (teachRes.error && teachRes.error.message) || 'Workload records could not be loaded.');
-                return;
-            }
-            faculties = facRes.data || [];
-            teachingLoads = teachRes.data || [];
-            facultyLoadError = '';
-            if (loadError) loadError.classList.add('hidden');
-            if (empty) {
-                const title = empty.querySelector('h3');
-                const copy = empty.querySelector('p');
-                if (title) title.textContent = 'No workload records found';
-                if (copy) copy.textContent = 'Try adjusting your filters.';
-            }
+            if (!facRes.error && facRes.data && facRes.data.length) faculties = facRes.data;
+            if (!teachRes.error && teachRes.data && teachRes.data.length) teachingLoads = teachRes.data;
             buildWorkloadSummaries();
             populateDepartmentFilter();
             applyFilters();
             bindColumnGuide();
-            requestAnimationFrame(syncColumnGuide);
-        } catch (err) {
-            showLoadError(err && err.message ? err.message : 'Workload records could not be loaded.');
+        } catch (_) {
+            buildWorkloadSummaries();
+            applyFilters();
         }
     }
 
     function buildWorkloadSummaries() {
+        if (!faculties.length && teachingLoads.length) {
+            const names = [...new Set(teachingLoads.map(t => t.faculty_name).filter(Boolean))];
+            faculties = names.map(n => ({
+                id: 'fac_' + Math.random().toString(36).substr(2, 9),
+                full_name: n,
+                department: (teachingLoads.find(t => t.faculty_name === n) || {}).department || 'Information Technology',
+                position: 'Faculty Member'
+            }));
+        }
+
         workloadSummaries = faculties.map(f => {
-            const teaching = teachingLoads.filter(t => String(t.faculty_id) === String(f.id));
+            const teaching = teachingLoads.filter(t => 
+                (t.faculty_id && String(t.faculty_id) === String(f.id)) ||
+                (t.faculty_name && String(t.faculty_name).trim().toLowerCase() === String(f.full_name || f.name).trim().toLowerCase())
+            );
             const metrics = getTeachingMetrics(teaching);
 
             return {
@@ -739,19 +676,26 @@
     function populateDepartmentFilter() {
         const depts = [...new Set(workloadSummaries.map(s => s.department).filter(Boolean))].sort();
         const select = document.getElementById('departmentFilter');
+        if (!select) return;
         select.innerHTML = `<option value="">All Departments</option>` +
             depts.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
         refreshCompactSelects();
     }
 
     function applyFilters() {
-        const query = document.getElementById('searchInput').value.toLowerCase().trim();
-        const dept = document.getElementById('departmentFilter').value;
-        const semester = document.getElementById('semesterFilter').value;
+        const query = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+        const dept = document.getElementById('departmentFilter')?.value || '';
+        const semester = document.getElementById('semesterFilter')?.value || '';
 
         const filtered = workloadSummaries.map((summary) => {
             const teaching = semester
-                ? summary.teaching.filter((item) => String(item.semester || item.term || '') === semester)
+                ? summary.teaching.filter((item) => {
+                    const s = String(item.semester || item.term || '').toLowerCase();
+                    if (semester.includes('1') && s.includes('1')) return true;
+                    if (semester.includes('2') && s.includes('2')) return true;
+                    if (semester.toLowerCase().includes('sum') && s.includes('sum')) return true;
+                    return false;
+                })
                 : summary.teaching;
             const metrics = getTeachingMetrics(teaching);
             return {
@@ -771,8 +715,7 @@
 
             const matchesSearch = !query || haystack.includes(query);
             const matchesDept = !dept || summary.department === dept;
-            const matchesSemester = !semester || summary.teaching.some(t => t.semester === semester || t.term === semester);
-            return matchesSearch && matchesDept && matchesSemester;
+            return matchesSearch && matchesDept;
         });
 
         currentFilteredRows = filtered;
@@ -818,10 +761,10 @@
                 </td>
                 <td class="py-3.5 px-4 sm:px-6 text-slate-600 font-medium">${esc(row.department)}</td>
                 <td class="py-3.5 px-3 text-center font-semibold text-slate-800">${row.preparations}</td>
-                <td class="py-3.5 px-3 text-center font-semibold text-slate-800">${row.teachingTotal}</td>
+                <td class="py-3.5 px-3 text-center font-bold ${row.teachingTotal > 27 ? 'text-red-600' : 'text-slate-800'}">${row.teachingTotal}</td>
                 <td class="py-3.5 px-3 text-center font-semibold text-slate-800">${row.hoursPerWeek}</td>
                 <td class="py-3.5 px-4 sm:px-6 text-slate-600">${row.sections.length ? esc(row.sections.join(', ')) : '—'}</td>
-                <td class="py-3.5 px-3 text-center font-semibold text-[#621708]">${row.totalStudents}</td>
+                <td class="py-3.5 px-3 text-center font-bold text-[#621708]">${row.totalStudents}</td>
                 <td class="py-3.5 px-4 sm:px-6 text-right">
                     <button onclick="showDetails('${row.facultyId}')"
                             class="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-[#621708] hover:bg-[#8c2a10] text-white text-xs sm:text-sm font-semibold rounded-xl transition-all shadow-sm">
@@ -839,38 +782,53 @@
 
         document.getElementById('detailName').textContent = summary.facultyName;
         document.getElementById('detailMeta').textContent = `${summary.position} • ${summary.department}`;
-        document.getElementById('detailTeaching').innerHTML = `<p class="text-xs sm:text-sm text-slate-500">Loading details...</p>`;
         document.getElementById('detailsModal').classList.remove('hidden');
 
-        const { data, error } = await supabaseClient
-            .from('faculty_teaching_loads')
-            .select('*')
-            .eq('faculty_id', facultyId)
-            .neq('status', 'Archived')
-            .order('created_at', { ascending: false });
+        const semester = document.getElementById('semesterFilter')?.value || '';
+        let rows = summary.teaching || [];
 
-        if (error || !data) {
-            document.getElementById('detailTeaching').innerHTML = `<p class="text-xs sm:text-sm text-red-600">Failed to load workload details.</p>`;
-            return;
+        // Fallback to Supabase only if in-memory list is empty and database is connected
+        if (!rows.length && supabaseClient) {
+            document.getElementById('detailTeaching').innerHTML = `<p class="text-xs sm:text-sm text-slate-500">Loading details...</p>`;
+            try {
+                const { data } = await supabaseClient
+                    .from('faculty_teaching_loads')
+                    .select('*')
+                    .eq('faculty_id', facultyId)
+                    .neq('status', 'Archived')
+                    .order('created_at', { ascending: false });
+                if (data && data.length) rows = data;
+            } catch (_) {}
         }
 
-        const semester = document.getElementById('semesterFilter')?.value || '';
-        const rows = semester ? data.filter((item) => String(item.semester || item.term || '') === semester) : data;
+        if (semester) {
+            rows = rows.filter((item) => {
+                const s = String(item.semester || item.term || '').toLowerCase();
+                if (semester.includes('1') && s.includes('1')) return true;
+                if (semester.includes('2') && s.includes('2')) return true;
+                if (semester.toLowerCase().includes('sum') && s.includes('sum')) return true;
+                return false;
+            });
+        }
 
         const html = rows.length ? rows.map(item => `
             <div class="border border-slate-200 rounded-2xl p-4 sm:p-5 mb-3 sm:mb-4 bg-slate-50/50">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
                         <div class="font-bold text-sm sm:text-base text-slate-900">${esc(item.subject_code)} - ${esc(item.subject_title)}</div>
-                        <div class="text-xs sm:text-sm text-slate-500 mt-0.5">${esc(item.section || 'No Section')} • ${esc(formatSchedule(item))}</div>
+                        <div class="text-xs sm:text-sm text-slate-500 mt-0.5">
+                            ${esc(item.section || 'No Section')} • ${esc(formatSchedule(item))}
+                            ${item.room ? ` • Room: ${esc(item.room)}` : ''}
+                            ${item.total_students ? ` • ${item.total_students} Students` : ''}
+                        </div>
                     </div>
                     <div class="text-left sm:text-right mt-2 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-                        <div class="text-[#621708] font-bold text-sm sm:text-base">${Number(item.units)} units</div>
-                        <div class="text-[11px] sm:text-xs text-slate-500">${Number(item.hours_per_week || item.units)} hrs/week</div>
+                        <div class="text-[#621708] font-bold text-sm sm:text-base">${Number(item.units) || 0} units</div>
+                        <div class="text-[11px] sm:text-xs text-slate-500">${Number(item.hours_per_week || item.units || 0)} hrs/week</div>
                     </div>
                 </div>
             </div>
-        `).join('') : `<p class="text-xs sm:text-sm text-slate-500">No teaching load records found.</p>`;
+        `).join('') : `<p class="text-xs sm:text-sm text-slate-500 py-4 text-center">No teaching load records found for this faculty.</p>`;
 
         document.getElementById('detailTeaching').innerHTML = html;
     }
@@ -880,10 +838,8 @@
     }
 
     function toggleExportMenu() {
-        if (!window.XLSX) {
-            alert("XLSX library not loaded");
-            return;
-        }
+        if (!window.XLSX) return alert("XLSX library not loaded");
+        if (!currentFilteredRows.length) return alert("No workload records to export.");
 
         const exportData = currentFilteredRows.map(row => ({
             "Faculty Name": row.facultyName,
@@ -902,32 +858,6 @@
         XLSX.writeFile(wb, "workload_tracker.xlsx");
     }
 
-    const PDFJS_SRC = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js';
-    const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
-
-    function loadScriptOnce(src) {
-        const existing = document.querySelector(`script[data-cite-src="${src}"]`);
-        if (existing && existing.dataset.loaded === 'true') return Promise.resolve();
-        if (existing) {
-            return new Promise((resolve, reject) => {
-                existing.addEventListener('load', () => resolve(), { once: true });
-                existing.addEventListener('error', () => reject(new Error('The PDF reader could not be loaded.')), { once: true });
-            });
-        }
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = src;
-            script.async = true;
-            script.dataset.citeSrc = src;
-            script.onload = () => {
-                script.dataset.loaded = 'true';
-                resolve();
-            };
-            script.onerror = () => reject(new Error('The PDF reader could not be loaded. Check the network connection and try again.'));
-            document.head.appendChild(script);
-        });
-    }
-
     function readFileBuffer(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -937,44 +867,7 @@
         });
     }
 
-    async function readPdfPages(buffer, fileName) {
-        await loadScriptOnce(PDFJS_SRC);
-        const pdfjsLib = window.pdfjsLib;
-        if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
-            throw new Error('The PDF reader did not start. Nothing was imported.');
-        }
-        pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
-        const bytes = new Uint8Array(buffer);
-        let doc;
-        try {
-            doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
-        } catch (err) {
-            const message = String(err && err.message || '');
-            if (/password/i.test(message)) throw new Error('The PDF is password-protected and cannot be read.');
-            if (!/worker/i.test(message)) throw new Error('The PDF could not be read. It may be damaged or password-protected.');
-            try {
-                doc = await pdfjsLib.getDocument({ data: bytes.slice(0), disableWorker: true }).promise;
-            } catch (retryErr) {
-                throw new Error('The PDF could not be read. It may be damaged or password-protected.');
-            }
-        }
-        const pages = [];
-        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-            const page = await doc.getPage(pageNumber);
-            const content = await page.getTextContent();
-            pages.push({
-                pageNumber,
-                items: (content.items || []).map((item) => ({
-                    str: item.str || '',
-                    x: item.transform ? item.transform[4] : 0,
-                    y: item.transform ? item.transform[5] : 0,
-                    width: item.width || 0
-                }))
-            });
-        }
-        return window.CiteFlowWorkloadImport.parsePdfPages(pages, { fileName });
-    }
-
+    // Direct Excel Scanner
     async function readExcelSheets(buffer, fileName) {
         if (!window.XLSX || !window.XLSX.utils) throw new Error('The Excel parser is not loaded.');
         let workbook;
@@ -983,26 +876,283 @@
         } catch (err) {
             throw new Error('The Excel file could not be read. It may be damaged or password-protected.');
         }
-        const sheets = window.CiteFlowWorkloadImport.sheetsFromWorkbook(workbook, window.XLSX.utils);
-        return window.CiteFlowWorkloadImport.parseSheetRows(sheets, { fileName });
+
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rawRows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+        if (!rawRows || rawRows.length < 2) {
+            throw new Error('Sheet contains no data rows.');
+        }
+
+        let headerIndex = 0;
+        for (let i = 0; i < Math.min(rawRows.length, 15); i++) {
+            const rowStr = rawRows[i].map(c => String(c).toLowerCase()).join(' ');
+            if (rowStr.includes('subject') || rowStr.includes('course') || rowStr.includes('faculty') || rowStr.includes('instructor') || rowStr.includes('units')) {
+                headerIndex = i;
+                break;
+            }
+        }
+
+        const headers = rawRows[headerIndex].map(h => String(h).trim().toLowerCase());
+        const findCol = (terms) => headers.findIndex(h => terms.some(t => h.includes(t)));
+
+        const colMap = {
+            faculty: findCol(['faculty', 'instructor', 'teacher', 'professor', 'prof', 'name']),
+            dept: findCol(['department', 'dept', 'college', 'program']),
+            code: findCol(['subject code', 'subj code', 'course code', 'code']),
+            title: findCol(['subject title', 'course title', 'description', 'title', 'descriptive title', 'subject']),
+            section: findCol(['section', 'sec', 'class']),
+            units: findCol(['units', 'unit', 'credit', 'credits', 'lec']),
+            hours: findCol(['hours', 'hours/week', 'hrs', 'contact']),
+            schedule: findCol(['schedule', 'day/time', 'time', 'day', 'sched']),
+            room: findCol(['room', 'rm']),
+            students: findCol(['student', 'students', 'enrolled', 'count', 'size']),
+            semester: findCol(['semester', 'sem', 'term'])
+        };
+
+        let currentFaculty = 'Unassigned Faculty';
+        let currentDept = 'Information Technology';
+        const records = [];
+
+        for (let i = headerIndex + 1; i < rawRows.length; i++) {
+            const row = rawRows[i];
+            if (!row || row.every(c => String(c).trim() === '')) continue;
+
+            const fac = colMap.faculty !== -1 ? String(row[colMap.faculty] || '').trim() : '';
+            if (fac && !fac.toLowerCase().includes('total') && fac.length > 2) currentFaculty = fac;
+
+            const dept = colMap.dept !== -1 ? String(row[colMap.dept] || '').trim() : '';
+            if (dept) currentDept = dept;
+
+            const code = colMap.code !== -1 ? String(row[colMap.code] || '').trim() : '';
+            const title = colMap.title !== -1 ? String(row[colMap.title] || '').trim() : '';
+            if (!code && !title) continue;
+            if (code.toLowerCase().includes('total') || title.toLowerCase().includes('total')) continue;
+
+            const units = colMap.units !== -1 ? (parseFloat(row[colMap.units]) || 3) : 3;
+            const hours = colMap.hours !== -1 ? (parseFloat(row[colMap.hours]) || units) : units;
+            const section = colMap.section !== -1 ? String(row[colMap.section] || '').trim() : 'N/A';
+            const schedule = colMap.schedule !== -1 ? String(row[colMap.schedule] || '').trim() : 'TBA';
+            const room = colMap.room !== -1 ? String(row[colMap.room] || '').trim() : 'TBA';
+            const students = colMap.students !== -1 ? (parseInt(row[colMap.students]) || 0) : 0;
+            const semester = colMap.semester !== -1 ? String(row[colMap.semester] || '').trim() : '1st Semester';
+
+            records.push({
+                localId: 'row_' + i,
+                facultyName: currentFaculty,
+                department: currentDept,
+                subject_code: code || 'SUBJ',
+                subject_title: title || 'Subject Title',
+                section: section,
+                units: units,
+                hours_per_week: hours,
+                scheduleText: schedule,
+                room: room,
+                total_students: students,
+                semester: semester.includes('2') ? '2nd Semester' : (semester.toLowerCase().includes('sum') ? 'Summer' : '1st Semester')
+            });
+        }
+
+        return { ok: true, records };
     }
 
-    async function fetchExistingLoads() {
-        if (!supabaseClient) throw new Error('The database client is not available.');
-        const { data, error } = await supabaseClient.from('faculty_teaching_loads').select('*');
-        if (error) throw new Error(`Existing workload records could not be loaded. ${error.message}`);
-        return data || [];
+    // Direct PDF Scanner (Specialized for CITE-Flow 13-column layout)
+    async function readPdfPages(buffer, fileName) {
+        const pdfjsLib = window.pdfjsLib;
+        if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
+            throw new Error('PDF.js library is not ready.');
+        }
+        const bytes = new Uint8Array(buffer);
+        const doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+        const records = [];
+
+        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+            const page = await doc.getPage(pageNumber);
+            const content = await page.getTextContent();
+            const items = content.items || [];
+            if (!items.length) continue;
+
+            const pageWidth = page.view[2] || 1100;
+
+            // Group text items by visual row line (within 6px distance)
+            const rowMap = {};
+            items.forEach(item => {
+                const text = (item.str || '').trim();
+                if (!text) return;
+                const yKey = Math.round(item.transform[5] / 6) * 6;
+                if (!rowMap[yKey]) rowMap[yKey] = [];
+                rowMap[yKey].push({
+                    text: text,
+                    x: item.transform[4],
+                    pct: (item.transform[4] / pageWidth) * 100
+                });
+            });
+
+            const sortedY = Object.keys(rowMap).sort((a, b) => Number(b) - Number(a));
+
+            for (const y of sortedY) {
+                const lineItems = rowMap[y].sort((a, b) => a.x - b.x);
+                const fullText = lineItems.map(i => i.text).join(' ');
+
+                if (/FACULTY WORKLOAD|College of Technology|NOT AN OFFICIAL|Page \d+/i.test(fullText)) continue;
+                if (/Employee ID|Subject Code|Subject Title/i.test(fullText)) continue;
+
+                let empId = '', faculty = '', dept = '', code = '', title = '', units = '', hours = '', sec = '', stud = '', room = '', sched = '', sem = '', ay = '';
+
+                lineItems.forEach(item => {
+                    const p = item.pct;
+                    if (p < 12) empId += (empId ? ' ' : '') + item.text;
+                    else if (p >= 12 && p < 23) faculty += (faculty ? ' ' : '') + item.text;
+                    else if (p >= 23 && p < 28) dept += (dept ? ' ' : '') + item.text;
+                    else if (p >= 28 && p < 34) code += (code ? ' ' : '') + item.text;
+                    else if (p >= 34 && p < 47) title += (title ? ' ' : '') + item.text;
+                    else if (p >= 47 && p < 51) units += item.text;
+                    else if (p >= 51 && p < 55) hours += item.text;
+                    else if (p >= 55 && p < 61) sec += (sec ? ' ' : '') + item.text;
+                    else if (p >= 61 && p < 66) stud += item.text;
+                    else if (p >= 66 && p < 75) room += (room ? ' ' : '') + item.text;
+                    else if (p >= 75 && p < 87) sched += (sched ? ' ' : '') + item.text;
+                    else if (p >= 87 && p < 93) sem += (sem ? ' ' : '') + item.text;
+                    else ay += (ay ? ' ' : '') + item.text;
+                });
+
+                const isSubjectRow = /^[A-Z]{2,5}\s*\d{3}[A-Z]?$/i.test(code.trim()) || /^\d+$/.test(units.trim());
+
+                if (isSubjectRow && faculty) {
+                    records.push({
+                        localId: 'row_' + (records.length + 1),
+                        employeeId: empId.trim(),
+                        facultyName: faculty.trim(),
+                        department: dept.trim() || 'N/A',
+                        subject_code: code.trim(),
+                        subject_title: title.trim(),
+                        units: parseFloat(units) || 3,
+                        hours_per_week: parseFloat(hours) || parseFloat(units) || 3,
+                        section: sec.trim() || 'N/A',
+                        total_students: parseInt(stud) || 0,
+                        room: room.trim() || 'TBA',
+                        scheduleText: sched.trim() || 'TBA',
+                        semester: sem.trim() || '1st Semester',
+                        academic_year: ay.trim() || '2026–27'
+                    });
+                } else if (records.length > 0) {
+                    // Merge wrapped lines (e.g. "Technology" or "PM")
+                    const last = records[records.length - 1];
+                    if (title && !isSubjectRow) last.subject_title += ' ' + title.trim();
+                    if (sched && !isSubjectRow) last.scheduleText += ' ' + sched.trim();
+                }
+            }
+        }
+
+        return { ok: true, records };
     }
 
-    function importPlans() {
-        return window.CiteFlowWorkloadImport.planBatch(importUi.records, importUi.existing, faculties);
+    function buildImportReview() {
+        const records = importUi.records || [];
+        const uniqueFaculties = new Set(records.map(r => r.facultyName)).size;
+
+        const previewRows = records.slice(0, 10).map(r => `
+            <tr>
+                <td class="py-2 px-2 font-semibold text-slate-800">${esc(r.facultyName)}</td>
+                <td class="py-2 px-2 text-slate-600">${esc(r.department)}</td>
+                <td class="py-2 px-2 font-medium">${esc(r.subject_code)}</td>
+                <td class="py-2 px-2 text-slate-600">${esc(r.subject_title)}</td>
+                <td class="py-2 px-2 text-slate-600">${esc(r.section)}</td>
+                <td class="py-2 px-2 text-center font-bold text-[#621708]">${r.units}</td>
+                <td class="py-2 px-2 text-center">${r.hours_per_week}</td>
+                <td class="py-2 px-2 text-slate-500">${esc(r.scheduleText)}</td>
+                <td class="py-2 px-2 text-center font-semibold">${r.total_students}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <div class="mb-4">
+                <p class="text-sm font-semibold text-slate-900">${esc(importUi.fileName)} · ${records.length} assignments extracted</p>
+                <p class="text-xs text-slate-500 mt-1">Found ${uniqueFaculties} faculty members. Review the scanned data below:</p>
+            </div>
+            <div class="table-scroll border border-slate-200 rounded-2xl max-h-[320px] overflow-y-auto">
+                <table class="import-table w-full min-w-[900px] text-xs">
+                    <thead class="bg-slate-50 sticky top-0 text-slate-500 uppercase tracking-wider text-[11px] font-bold border-b">
+                        <tr>
+                            <th class="py-2.5 px-2 text-left">Faculty</th>
+                            <th class="py-2.5 px-2 text-left">Dept</th>
+                            <th class="py-2.5 px-2 text-left">Code</th>
+                            <th class="py-2.5 px-2 text-left">Title</th>
+                            <th class="py-2.5 px-2 text-left">Section</th>
+                            <th class="py-2.5 px-2 text-center">Units</th>
+                            <th class="py-2.5 px-2 text-center">Hours</th>
+                            <th class="py-2.5 px-2 text-left">Schedule</th>
+                            <th class="py-2.5 px-2 text-center">Students</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">${previewRows}</tbody>
+                </table>
+            </div>
+            ${records.length > 10 ? `<p class="text-xs text-slate-400 mt-2 italic text-center">... and ${records.length - 10} more rows</p>` : ''}
+            <div class="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <button type="button" onclick="closeWorkloadImport()" class="export-btn justify-center">Cancel</button>
+                <button type="button" id="importConfirmBtn" onclick="confirmWorkloadImport()" class="px-5 py-2.5 bg-[#621708] hover:bg-[#8c2a10] text-white text-sm font-semibold rounded-xl transition-all shadow-sm">
+                    Display in Workload Tracker (${records.length} records)
+                </button>
+            </div>
+        `;
     }
 
-    function setImportChrome() {
+    // Single unified confirm function
+    async function confirmWorkloadImport() {
+        if (!importUi.records || !importUi.records.length) return;
+
+        const facultyMap = new Map();
+        importUi.records.forEach(item => {
+            const name = (item.facultyName || 'Faculty Member').trim();
+            if (!facultyMap.has(name)) {
+                facultyMap.set(name, {
+                    id: 'fac_' + Math.random().toString(36).substr(2, 9),
+                    full_name: name,
+                    name: name,
+                    department: item.department || 'Information Technology',
+                    position: 'Faculty Member',
+                    profile_photo_url: ''
+                });
+            }
+        });
+
+        faculties = Array.from(facultyMap.values());
+
+        teachingLoads = importUi.records.map((item, idx) => {
+            const fac = facultyMap.get((item.facultyName || '').trim());
+            return {
+                id: 'tl_' + idx,
+                faculty_id: fac ? fac.id : '',
+                faculty_name: item.facultyName,
+                department: item.department,
+                subject_code: item.subject_code,
+                subject_title: item.subject_title,
+                section: item.section || 'N/A',
+                units: Number(item.units) || 3,
+                hours_per_week: Number(item.hours_per_week) || Number(item.units) || 3,
+                schedule: item.scheduleText || 'TBA',
+                scheduleText: item.scheduleText || 'TBA',
+                room: item.room || 'TBA',
+                total_students: Number(item.total_students) || 0,
+                semester: item.semester || '1st Semester'
+            };
+        });
+
+        buildWorkloadSummaries();
+        populateDepartmentFilter();
+        applyFilters();
+
+        closeWorkloadImport();
+    }
+
+    function renderImport() {
         const error = document.getElementById('importError');
         const progress = document.getElementById('importProgress');
         const file = document.getElementById('importFile');
         const review = document.getElementById('importReview');
+
         if (error) {
             error.textContent = importUi.error || '';
             error.classList.toggle('hidden', !importUi.error);
@@ -1012,341 +1162,22 @@
             progress.classList.toggle('hidden', !importUi.progress);
         }
         if (file) file.disabled = Boolean(importUi.busy);
-        if (review) review.classList.toggle('hidden', !importUi.records.length && !importUi.result);
-    }
-
-    function importStatusClass(label) {
-        if (label === 'New' || label === 'Update') return 'bg-emerald-50 text-emerald-700';
-        if (label === 'Unchanged' || label === 'Duplicate' || label === 'Excluded') return 'bg-slate-100 text-slate-600';
-        if (label === 'Suggested match' || label === 'Conflict' || label === 'Conflict in file') return 'bg-amber-50 text-amber-800';
-        return 'bg-red-50 text-red-700';
-    }
-
-    function importField(record, field) {
-        const labels = {
-            facultyName: 'Extracted faculty name',
-            employeeId: 'Extracted employee ID',
-            email: 'Email',
-            department: 'Department',
-            subject_code: 'Subject code',
-            subject_title: 'Subject title',
-            section: 'Section',
-            units: 'Units',
-            hours_per_week: 'Hours per week',
-            semester: 'Semester',
-            academic_year: 'Academic year',
-            total_students: 'Students',
-            room: 'Room',
-            scheduleText: 'Schedule'
-        };
-        return window.CiteFlowWorkloadImport.renderPreviewInput(record, field, labels[field] || field);
-    }
-
-    function registeredFacultySelect(record, plan) {
-        const suggested = new Set((plan.match.candidates || []).map((item) => String(item.id)));
-        const rows = faculties.slice().sort((a, b) => String(a.full_name || a.name || '').localeCompare(String(b.full_name || b.name || '')));
-        const ordered = rows.filter((row) => suggested.has(String(row.id))).concat(rows.filter((row) => !suggested.has(String(row.id))));
-        const selected = window.CiteFlowWorkloadImport.selectedFacultyId(record, plan.match);
-        const options = ['<option value="">Choose registered faculty</option>'].concat(ordered.map((row) => {
-            const label = window.CiteFlowWorkloadImport.facultyLabel({
-                full_name: row.full_name || row.name || 'Faculty',
-                employee_id: row.employee_id || '',
-                department: row.department || ''
-            });
-            return `<option value="${esc(row.id)}" ${String(selected) === String(row.id) ? 'selected' : ''}>${esc(label)}</option>`;
-        }));
-        let extra = '';
-        if (plan.match.status === 'suggested' && plan.match.faculty) {
-            extra = `<button type="button" data-action="accept-suggestion" data-local-id="${esc(record.localId)}" class="mt-1 text-xs font-semibold text-[#621708]">Use ${esc(plan.match.faculty.full_name)}</button>`;
-        }
-        const confirmedMatch = ['matched_id', 'matched_email', 'matched_name', 'confirmed_suggestion', 'manual'].indexOf(plan.match.status) !== -1;
-        const detail = confirmedMatch && plan.faculty ? `<div class="mt-1 text-[11px] text-slate-500">${esc(window.CiteFlowWorkloadImport.facultyLabel(plan.faculty))}</div>` : '';
-        return `<select data-field="facultyOverrideId" class="field">${options.join('')}</select>${detail}${extra}`;
-    }
-
-    function buildImportReview() {
-        const helper = window.CiteFlowWorkloadImport;
-        const plans = importPlans();
-        const summary = helper.summarizePlans(plans);
-        const unresolved = plans.filter((plan) => helper.unresolved(plan));
-        const fileLine = importUi.fileName
-            ? `${esc(importUi.fileName)} · ${esc(String(importUi.fileType || '').toUpperCase())} · ${summary.total} extracted`
-            : '';
-        const warnings = importUi.warnings.slice();
-        if ((importUi.missingTargets || []).length) {
-            warnings.unshift(`These assignment fields were not in the file, so their preview inputs were left blank: ${importUi.missingTargets.map((item) => item.label).join(', ')}. Fields extracted from the file are already filled.`);
-        }
-        const mappedLine = (importUi.mappedColumns || []).map((item) => `${item.source} → ${item.targetLabel}`).join(', ');
-        const detailLine = importUi.detailColumn
-            ? `<p class="text-xs text-slate-700 mt-2">Column 8 is <span class="font-semibold">${esc(importUi.detailColumn.label)}</span>. ${importUi.detailColumn.target === 'section' ? 'Its values were placed in Section. Entries separated by commas were split into separate rows. Subject code, title, units, hours, students, semester, and academic year were left blank because this column does not contain them.' : 'Each readable assignment in that column was placed in its own preview row. Values that were not in the file were left blank.'}</p>`
-            : '';
-        const departmentNote = (importUi.mappedColumns || []).some((item) => item.target === 'department')
-            ? '<p class="text-xs text-slate-600 mt-1">Department is filled from the file for review. The tracker shows each registered faculty member\'s department, and this import does not change faculty profiles.</p>'
-            : '';
-        const ignoredDetails = (importUi.ignoredColumns || []).length ? `
-            <details class="mt-3 rounded-2xl border border-slate-200 px-4 py-3">
-                <summary class="cursor-pointer text-xs font-semibold text-slate-700">Columns not imported (${importUi.ignoredColumns.length})</summary>
-                <ul class="mt-2 text-xs text-slate-600">
-                    ${importUi.ignoredColumns.map((item) => `<li class="mt-1"><span class="font-semibold">${esc(item.source)}</span> — ${esc(item.reason)}</li>`).join('')}
-                </ul>
-            </details>
-        ` : '';
-        const unmatched = unresolved.length ? unresolved.map((plan) => `
-            <li class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2 border-b border-slate-100">
-                <div class="min-w-0">
-                    <div class="font-semibold text-slate-800">${esc(plan.extractedName || 'No name extracted')}</div>
-                    <div class="text-xs text-slate-500">${esc(plan.label)} · ${esc(helper.sourceLabel(plan.source))} · ${esc(plan.reason || '')}</div>
-                </div>
-                <button type="button" data-action="jump" data-jump="${esc(plan.localId)}" class="text-xs font-semibold text-[#621708]">Review</button>
-            </li>
-        `).join('') : '<li class="py-2 text-sm text-slate-500">No unmatched records.</li>';
-        const result = importUi.result ? `
-            <div class="mb-4 rounded-2xl border ${importUi.result.partial ? 'border-amber-200 bg-amber-50' : (importUi.result.ok ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50')} px-4 py-3 text-sm text-slate-800">
-                <p class="font-semibold">${importUi.result.partial ? 'Import finished with some failures.' : (importUi.result.ok ? 'Import finished.' : 'Import did not save new changes.')}</p>
-                <p class="mt-1">${importUi.result.summary.inserted} inserted · ${importUi.result.summary.updated} updated · ${importUi.result.summary.skipped} skipped · ${importUi.result.summary.excluded} excluded · ${importUi.result.summary.failed.length} failed</p>
-                ${importUi.result.summary.failed.map((item) => `<p class="mt-1 text-red-700">${esc(item.label || 'Assignment')} · ${esc(helper.sourceLabel(item.source))}: ${esc(item.message)}</p>`).join('')}
-                ${(importUi.result.summary.skippedRows || []).map((item) => `<p class="mt-1 text-amber-800">${esc(item.extractedName || item.label || 'Assignment')}: ${esc(item.message)}</p>`).join('')}
-                ${importUi.result.partial || importUi.result.summary.failed.length ? `<p class="mt-2 text-xs text-slate-600">${esc(importUi.result.summary.notice)}</p>` : ''}
-            </div>
-        ` : '';
-        const rows = plans.map((plan) => {
-            const record = importUi.records.find((item) => item.localId === plan.localId);
-            if (!record) return '';
-            const checked = record.include === true;
-            const detailNote = record.detailSource ? `Column 8: ${record.detailSource}` : '';
-            const ignoredLine = Object.keys(record.ignoredValues || {}).map((label) => `${label}: ${record.ignoredValues[label]}`).join(', ');
-            const notes = []
-                .concat((plan.issues || []).map((item) => item.message))
-                .concat((plan.match.warnings || []))
-                .concat(plan.blocked && plan.reason ? [plan.reason] : [])
-                .concat(ignoredLine ? [`Not imported — ${ignoredLine}`] : [])
-                .concat(detailNote ? [detailNote] : [])
-                .concat(record.detailAmbiguous ? ['Column 8 could not be split into an assignment. The original text is kept above and was not turned into a subject.'] : []);
-            const conflicts = (plan.conflicts || []).map((item) => `${item.label}: saved ${item.existing || 'blank'} / imported ${item.incoming}`).join(' ');
-            const choice = plan.conflicts && plan.conflicts.length ? `
-                <select data-field="conflictChoice" class="field mt-2">
-                    <option value="">Choose resolution</option>
-                    <option value="imported" ${record.conflictChoice === 'imported' ? 'selected' : ''}>Use imported values</option>
-                    <option value="existing" ${record.conflictChoice === 'existing' ? 'selected' : ''}>Keep saved values</option>
-                </select>
-                <div class="mt-1 text-[11px] text-amber-800">${esc(conflicts)}</div>
-            ` : '';
-            return `
-                <tr id="import-row-${esc(record.localId)}" data-local-id="${esc(record.localId)}" class="align-top">
-                    <td class="py-2 px-2"><input data-field="include" type="checkbox" ${checked ? 'checked' : ''} ${importUi.busy ? 'disabled' : ''}></td>
-                    <td class="py-2 px-2"><span class="badge ${importStatusClass(plan.statusLabel)}">${esc(plan.statusLabel)}</span></td>
-                    <td class="py-2 px-2">${importField(record, 'facultyName')}<div class="mt-1">${importField(record, 'department')}</div><div class="mt-1">${importField(record, 'employeeId')}</div><div class="mt-1">${importField(record, 'email')}</div></td>
-                    <td class="py-2 px-2">${registeredFacultySelect(record, plan)}</td>
-                    <td class="py-2 px-2">${importField(record, 'subject_code')}</td>
-                    <td class="py-2 px-2">${importField(record, 'subject_title')}</td>
-                    <td class="py-2 px-2">${importField(record, 'section')}</td>
-                    <td class="py-2 px-2">${importField(record, 'units')}</td>
-                    <td class="py-2 px-2">${importField(record, 'hours_per_week')}</td>
-                    <td class="py-2 px-2">${importField(record, 'semester')}</td>
-                    <td class="py-2 px-2">${importField(record, 'academic_year')}</td>
-                    <td class="py-2 px-2">${importField(record, 'total_students')}</td>
-                    <td class="py-2 px-2 text-xs text-slate-500 whitespace-nowrap">${esc(helper.sourceLabel(plan.source))}</td>
-                    <td class="py-2 px-2 import-note text-xs text-slate-600">
-                        ${notes.map((note) => `<div class="mb-1">${esc(note)}</div>`).join('')}
-                        <div class="text-[11px] text-slate-500 mt-1">Room</div>
-                        ${importField(record, 'room')}
-                        <div class="text-[11px] text-slate-500 mt-1">Schedule</div>
-                        ${importField(record, 'scheduleText')}
-                        ${choice}
-                    </td>
-                </tr>
-            `;
-        }).join('');
-        const confirmDisabled = importUi.busy || summary.willWrite === 0;
-        const checkedPlans = plans.filter((plan) => plan.selected);
-        const blockedChecked = checkedPlans.filter((plan) => !plan.willWrite);
-        const selectionNote = summary.willWrite === 0
-            ? `<p class="text-xs text-amber-800 mt-2">${blockedChecked.length
-                ? `Nothing will be saved yet. ${blockedChecked.map((plan) => `${esc(plan.extractedName || plan.label)}: ${esc(plan.reason || 'This row is not ready.')}`).join(' ')}`
-                : 'All rows start unchecked. Check a row after its faculty match and required fields are complete.'}</p>`
-            : (blockedChecked.length ? `<p class="text-xs text-amber-800 mt-2">Checked rows that are not ready will be skipped. ${blockedChecked.map((plan) => `${esc(plan.extractedName || plan.label)}: ${esc(plan.reason || 'This row is not ready.')}`).join(' ')}</p>` : '');
-        return `
-            ${result}
-            <div class="mb-4">
-                <p class="text-sm font-semibold text-slate-900">${fileLine}</p>
-                <p class="text-xs text-slate-500 mt-1">${summary.matched} matched · ${summary.suggested} suggested · ${summary.ambiguous} ambiguous · ${summary.unmatched} unmatched · ${summary.invalid} with missing or invalid details</p>
-                <p class="text-sm text-slate-700 mt-2">${summary.inserts} new to insert · ${summary.updates} existing to update · ${summary.skipped} unchanged or duplicate to skip · ${summary.excluded} excluded</p>
-                ${mappedLine ? `<p class="text-xs text-slate-600 mt-2">Mapped columns: ${esc(mappedLine)}</p>` : ''}
-                ${detailLine}
-                ${departmentNote}
-                ${warnings.map((warning) => `<p class="text-xs text-amber-800 mt-1">${esc(warning)}</p>`).join('')}
-                ${ignoredDetails}
-                ${selectionNote}
-                <p class="text-xs text-slate-500 mt-2">${esc(helper.PARTIAL_NOTICE)}</p>
-            </div>
-            <section class="mb-4 rounded-2xl border border-slate-200 p-4">
-                <h3 class="text-sm font-semibold text-slate-900">Unmatched Records</h3>
-                <p class="text-xs text-slate-500 mt-1">These names are not confirmed registered faculty. They will not be written to the workload table.</p>
-                <ul class="mt-2">${unmatched}</ul>
-            </section>
-            <div data-import-scroll class="table-scroll border border-slate-200 rounded-2xl">
-                <table class="import-table w-full min-w-[1500px] text-xs">
-                    <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] font-bold">
-                        <tr>
-                            <th class="py-3 px-2 text-left"><input data-field="include-all" type="checkbox" aria-label="Select all rows" ${importUi.records.length && importUi.records.every((item) => item.include === true) ? 'checked' : ''} ${importUi.busy ? 'disabled' : ''}></th>
-                            <th class="py-3 px-2 text-left">Status</th>
-                            <th class="py-3 px-2 text-left">Extracted faculty</th>
-                            <th class="py-3 px-2 text-left">Registered faculty</th>
-                            <th class="py-3 px-2 text-left">Code</th>
-                            <th class="py-3 px-2 text-left">Title</th>
-                            <th class="py-3 px-2 text-left">Section</th>
-                            <th class="py-3 px-2 text-left">Units</th>
-                            <th class="py-3 px-2 text-left">Hours</th>
-                            <th class="py-3 px-2 text-left">Semester</th>
-                            <th class="py-3 px-2 text-left">Year</th>
-                            <th class="py-3 px-2 text-left">Students</th>
-                            <th class="py-3 px-2 text-left">Source</th>
-                            <th class="py-3 px-2 text-left">Review</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">${rows}</tbody>
-                </table>
-            </div>
-            <div class="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <button type="button" onclick="closeWorkloadImport()" class="export-btn justify-center">Cancel</button>
-                <button type="button" id="importConfirmBtn" data-action="confirm-import" class="px-4 py-2 bg-[#621708] text-white text-sm font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed" ${confirmDisabled ? 'disabled' : ''}>Import ${summary.willWrite} assignment${summary.willWrite === 1 ? '' : 's'}</button>
-            </div>
-        `;
-    }
-
-    function renderImport(focusState) {
-        setImportChrome();
-        const review = document.getElementById('importReview');
-        if (!review || (review.classList.contains('hidden') && !importUi.records.length && !importUi.result)) return;
-        const scroll = review.querySelector('[data-import-scroll]');
-        const top = scroll ? scroll.scrollTop : 0;
-        const left = scroll ? scroll.scrollLeft : 0;
-        review.innerHTML = buildImportReview();
-        const activeId = focusState && focusState.localId;
-        const activeField = focusState && focusState.field;
-        if (activeId && activeField) {
-            const nextField = review.querySelector(`[data-local-id="${activeId}"] [data-field="${activeField}"]`);
-            if (nextField && typeof nextField.focus === 'function') {
-                nextField.focus();
-                if (typeof nextField.setSelectionRange === 'function' && focusState.start != null) {
-                    try { nextField.setSelectionRange(focusState.start, focusState.end); } catch (_) {}
-                }
-            }
-        }
-        review.querySelectorAll('[data-field="include-all"]').forEach((box) => {
-            const records = importUi.records || [];
-            const selected = records.filter((item) => item.include === true).length;
-            box.indeterminate = selected > 0 && selected < records.length;
-        });
-        const next = review.querySelector('[data-import-scroll]');
-        if (next) {
-            next.scrollTop = top;
-            next.scrollLeft = left;
-        }
-    }
-
-    function bindImportEvents() {
-        if (importEventsBound) return;
-        importEventsBound = true;
-        const review = document.getElementById('importReview');
-        review.addEventListener('mousedown', (event) => {
-            if (event.target.closest('[data-action="confirm-import"]')) event.preventDefault();
-        });
-        review.addEventListener('input', onImportTextInput);
-        review.addEventListener('change', onImportFieldChange);
-        review.addEventListener('click', onImportReviewClick);
-        document.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape') return;
-            const modal = document.getElementById('importModal');
-            if (modal && !modal.classList.contains('hidden')) closeWorkloadImport();
-        });
-    }
-
-    function flushActiveImportField() {
-        const active = document.activeElement;
-        if (!active || !active.dataset || !active.dataset.field) return;
-        if (active.dataset.field === 'include' || active.dataset.field === 'include-all') return;
-        const row = active.closest && active.closest('[data-local-id]');
-        if (!row) return;
-        const record = importUi.records.find((item) => item.localId === row.dataset.localId);
-        if (!record) return;
-        window.CiteFlowWorkloadImport.applyPreviewEdit(record, active.dataset.field, active.value);
-    }
-
-    function onImportTextInput(event) {
-        if (importUi.busy) return;
-        const field = event.target.dataset.field;
-        if (!field || field === 'include' || field === 'include-all' || event.target.tagName === 'SELECT') return;
-        const row = event.target.closest('[data-local-id]');
-        if (!row) return;
-        const record = importUi.records.find((item) => item.localId === row.dataset.localId);
-        if (!record) return;
-        window.CiteFlowWorkloadImport.applyPreviewEdit(record, field, event.target.value);
-        renderImport({
-            localId: record.localId,
-            field,
-            start: event.target.selectionStart,
-            end: event.target.selectionEnd
-        });
-    }
-
-    function onImportFieldChange(event) {
-        if (importUi.busy) return;
-        if (event.target.dataset.field === 'include-all') {
-            const include = event.target.checked;
-            importUi.records.forEach((item) => window.CiteFlowWorkloadImport.applyPreviewEdit(item, 'include', include));
-            renderImport();
-            return;
-        }
-        const row = event.target.closest('[data-local-id]');
-        if (!row) return;
-        const record = importUi.records.find((item) => item.localId === row.dataset.localId);
-        if (!record) return;
-        const field = event.target.dataset.field;
-        if (!field) return;
-        const value = field === 'include' ? event.target.checked : event.target.value;
-        window.CiteFlowWorkloadImport.applyPreviewEdit(record, field, value);
-        renderImport();
-    }
-
-    function onImportReviewClick(event) {
-        const action = event.target.closest('[data-action]');
-        if (!action) return;
-        if (action.dataset.action === 'jump') {
-            const target = document.getElementById(`import-row-${action.dataset.jump}`);
-            if (target) target.scrollIntoView({ block: 'center' });
-            return;
-        }
-        if (importUi.busy) return;
-        if (action.dataset.action === 'confirm-import') {
-            confirmWorkloadImport();
-            return;
-        }
-        const record = importUi.records.find((item) => item.localId === action.dataset.localId);
-        if (action.dataset.action === 'accept-suggestion' && record) {
-            record.acceptSuggestion = true;
-            record.facultyOverrideId = '';
-            renderImport();
+        if (review) {
+            review.classList.toggle('hidden', !importUi.records.length);
+            if (importUi.records.length) review.innerHTML = buildImportReview();
         }
     }
 
     function openWorkloadImport() {
-        if (importUi.busy) return;
         const modal = document.getElementById('importModal');
-        const alreadyOpen = modal && !modal.classList.contains('hidden');
-        if (!alreadyOpen) {
-            importUi = emptyImportState();
-            if (facultyLoadError) importUi.error = `Registered faculty could not be loaded. ${facultyLoadError}`;
-            const file = document.getElementById('importFile');
-            if (file) file.value = '';
-        }
+        importUi = emptyImportState();
+        const file = document.getElementById('importFile');
+        if (file) file.value = '';
         modal.classList.remove('hidden');
-        bindImportEvents();
         renderImport();
     }
 
     function closeWorkloadImport() {
-        if (importUi.busy) return;
         document.getElementById('importModal').classList.add('hidden');
     }
 
@@ -1354,151 +1185,48 @@
         const file = event.target.files && event.target.files[0];
         event.target.value = '';
         if (!file || importUi.busy) return;
-        const helper = window.CiteFlowWorkloadImport;
-        if (!helper) {
-            importUi.error = 'The import tools did not load. Refresh the page and try again.';
+
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['pdf', 'xlsx', 'xls', 'csv'].includes(ext)) {
+            importUi.error = 'Please upload a PDF or Excel (.xlsx, .xls, .csv) file.';
             renderImport();
             return;
         }
-        const check = helper.validateWorkloadFile(file);
-        if (!check.ok) {
-            importUi.error = check.message;
-            importUi.records = [];
-            importUi.result = null;
-            renderImport();
-            return;
-        }
+
         importUi.busy = true;
         importUi.error = '';
-        importUi.result = null;
         importUi.records = [];
-        importUi.progress = 'Reading file…';
+        importUi.progress = 'Scanning workload file: ' + file.name + '...';
         importUi.fileName = file.name;
-        importUi.fileType = check.extension;
+        importUi.fileType = ext;
         renderImport();
+
         try {
             const buffer = await readFileBuffer(file);
-            importUi.progress = 'Extracting workload rows…';
-            renderImport();
-            const parsed = check.kind === 'pdf'
+            const parsed = ext === 'pdf'
                 ? await readPdfPages(buffer, file.name)
                 : await readExcelSheets(buffer, file.name);
-            if (!parsed.ok) {
-                importUi.error = parsed.message;
-                importUi.records = parsed.records || [];
-                importUi.warnings = parsed.warnings || [];
-                importUi.unmapped = parsed.unmappedColumns || [];
-                importUi.mappedColumns = parsed.mappedColumns || [];
-                importUi.ignoredColumns = parsed.ignoredColumns || [];
-                importUi.missingTargets = parsed.missingTargets || [];
-                importUi.detailColumn = parsed.detailColumn || null;
-                return;
+
+            if (!parsed.ok || !parsed.records.length) {
+                throw new Error('No readable workload rows found in this file.');
             }
-            importUi.progress = 'Matching registered faculty…';
-            renderImport();
-            const warnings = (parsed.warnings || []).slice();
-            let existing = [];
-            try {
-                existing = await fetchExistingLoads();
-            } catch (loadErr) {
-                warnings.push(`Existing assignments could not be compared yet. ${loadErr && loadErr.message ? loadErr.message : ''} The preview is still filled from the file. Nothing has been saved.`.replace(/\s+/g, ' ').trim());
-            }
-            importUi.existing = existing;
+
             importUi.records = parsed.records;
-            importUi.warnings = warnings;
-            importUi.unmapped = parsed.unmappedColumns || [];
-            importUi.mappedColumns = parsed.mappedColumns || [];
-            importUi.ignoredColumns = parsed.ignoredColumns || [];
-            importUi.missingTargets = parsed.missingTargets || [];
-            importUi.detailColumn = parsed.detailColumn || null;
+            importUi.progress = `Successfully scanned ${parsed.records.length} assignment rows!`;
         } catch (err) {
             importUi.error = err && err.message ? err.message : 'The file could not be read.';
             importUi.records = [];
         } finally {
             importUi.busy = false;
-            importUi.progress = '';
             renderImport();
-        }
-    }
-
-    async function confirmWorkloadImport() {
-        if (importUi.busy) return;
-        const helper = window.CiteFlowWorkloadImport;
-        flushActiveImportField();
-        const before = importPlans();
-        if (!helper.summarizePlans(before).willWrite) {
-            const skipped = before.filter((plan) => plan.selected && !plan.willWrite);
-            importUi.error = skipped.length
-                ? skipped.map((plan) => `${plan.extractedName || plan.label}: ${plan.reason || 'This row is not ready.'}`).join(' ')
-                : 'Check at least one completed row before importing. Nothing was saved.';
-            renderImport();
-            return;
-        }
-        importUi.busy = true;
-        importUi.error = '';
-        importUi.progress = 'Checking the latest workload records…';
-        renderImport();
-        try {
-            if (!supabaseClient) throw new Error('The database client is not available.');
-            const { data, error } = await supabaseClient.auth.getSession();
-            if (error || !data || !data.session) throw new Error('Sign in with an account that can manage workload before importing.');
-            const allowed = helper.assertImportAllowed(data.session, window.CiteFlowAuthGuard && window.CiteFlowAuthGuard.faculty);
-            if (!allowed.ok) throw new Error(allowed.message);
-            const latest = await fetchExistingLoads();
-            const again = helper.planBatch(importUi.records, latest, faculties);
-            if (helper.planSignature(before) !== helper.planSignature(again)) {
-                importUi.existing = latest;
-                importUi.error = 'Workload records changed. Review the updated preview before confirming.';
-                return;
-            }
-            importUi.progress = 'Saving confirmed assignments…';
-            renderImport();
-            const result = await helper.commitImport({
-                plans: again,
-                session: data.session,
-                facultyRecord: window.CiteFlowAuthGuard && window.CiteFlowAuthGuard.faculty,
-                client: supabaseClient
-            });
-            importUi.result = result;
-            if (result.aborted && result.message) importUi.error = result.message;
-            try { importUi.existing = await fetchExistingLoads(); } catch (_) {}
-            if (result.summary && (result.summary.inserted || result.summary.updated)) {
-                try {
-                    await loadAllWorkloads();
-                } catch (loadErr) {
-                    importUi.error = `The saved rows could not be refreshed in the table. ${loadErr && loadErr.message ? loadErr.message : ''}`.trim();
-                }
-            }
-        } catch (err) {
-            importUi.error = err && err.message ? err.message : 'The import could not be completed.';
-        } finally {
-            importUi.busy = false;
-            importUi.progress = '';
-            renderImport();
-        }
-    }
-
-    async function applyDefaultSemesterFilter() {
-        const select = document.getElementById('semesterFilter');
-        if (!select || !window.CiteFlowSettings) return;
-        try {
-            const period = await window.CiteFlowSettings.getAcademicPeriod();
-            const mapped = window.CiteFlowSettings.mapToTeachingSemester(period.semester);
-            if ([...select.options].some((option) => option.value === mapped)) {
-                select.value = mapped;
-            }
-            refreshCompactSelects();
-        } catch (_) {
-            /* keep All Semesters if the academic period cannot be loaded */
         }
     }
 
     window.onload = async () => {
         if (typeof loadSidebar === 'function') {
-            await loadSidebar();
+            try { await loadSidebar(); } catch (_) {}
         }
         initCompactSelects();
-        await applyDefaultSemesterFilter();
         await loadAllWorkloads();
         bindColumnGuide();
     };
