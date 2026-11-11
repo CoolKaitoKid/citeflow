@@ -2796,7 +2796,7 @@ function openPendingCalendarNotification() {
             found = {
                 id: id,
                 realId: id,
-                title: `🎂 Birthday: ${celebrantName}`,
+                title: `Birthday: ${celebrantName}`,
                 date: (typeof key === 'function') ? key(new Date()) : new Date().toISOString().slice(0, 10),
                 isBirthday: true,
                 type: 'event',
@@ -4484,6 +4484,21 @@ function pdfPillStyle(type){
         other:{fill:[248,250,252],text:[51,65,85],border:[226,232,240]}
     })[key] || {fill:[224,242,254],text:[3,105,161],border:[186,230,253]};
 }
+
+function pdfCleanText(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '') // Strips 🎂 and all emojis
+        .replace(/[\u{1F300}-\u{1FAD6}\u{1F900}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{27BF}]/gu, '')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/\u2022/g, '·')
+        .replace(/^\s*[:\-\u2013\u2014]+\s*/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function pdfEllipsis(doc, text, maxW){
     const s=String(text||'');
     if(!s || doc.getTextWidth(s)<=maxW) return s;
@@ -4517,8 +4532,19 @@ function pdfMonthListRows(){
         const stamp=String(e.realId||e.id);
         if(seen.has(stamp)) return;
         seen.add(stamp);
-        const dayLabel=(e.detailTime&&String(e.detailTime).split('•')[0].trim())||(typeof longDate==='function'?longDate(e.date):e.date);
-        rows.push([dayLabel, e.title||'', String(e.type||'').toUpperCase(), e.location||'', pdfTimeLabel(e)]);
+
+        // Forcefully strips 'Ø<ß,', '🎂', and any emoji from the title
+        const cleanTitle = String(e.title || '')
+            .replace(/Ø[<‹]ß[,‚]?\s*/gi, '')
+            .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')
+            .replace(/🎂\s*/g, '')
+            .replace(/^[,\-–—:\s]+/, '')
+            .trim();
+
+        const dayLabel = (e.detailTime && String(e.detailTime).split('•')[0].trim()) || 
+                         (typeof longDate === 'function' ? longDate(e.date) : e.date);
+
+        rows.push([dayLabel, cleanTitle, String(e.type||'').toUpperCase(), e.location||'', pdfTimeLabel(e)]);
     });
     return rows;
 }
@@ -4535,24 +4561,34 @@ function pdfDrawWeekdays(doc, x, y, gridW, cellW, headerH){
     doc.setLineWidth(0.22);
     doc.line(x, y+headerH, x+gridW, y+headerH);
 }
-function pdfDrawPill(doc, x, y, w, e, customH){
-    const style = pdfPillStyle(String(e.type||'').toLowerCase());
-    const h = customH || 6.4;
+function pdfDrawPill(doc, x, y, w, e, h = 5.2){
+    const style = pdfPillStyle(String(e.type || '').toLowerCase());
     doc.setFillColor(style.fill[0], style.fill[1], style.fill[2]);
     doc.setDrawColor(style.border[0], style.border[1], style.border[2]);
-    doc.setLineWidth(0.18);
-    doc.roundedRect(x, y, w, h, 1.4, 1.4, 'FD');
-    const maxW = w - 3.2;
+    doc.setLineWidth(0.15);
+    doc.roundedRect(x, y, w, h, 0.9, 0.9, 'FD');
+    const maxW = w - 2.4;
+    const cleanTitle = pdfCleanText(e.title || '');
+    const cleanTime = pdfCleanText(pdfTimeLabel(e));
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(h >= 6.2 ? 6.0 : 5.4);
-    doc.setTextColor(style.text[0], style.text[1], style.text[2]);
-    doc.text(pdfEllipsis(doc, e.title || '', maxW), x + 1.5, y + (h >= 6.2 ? 2.6 : 2.2));
+    if (h >= 4.2) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.0);
+        doc.setTextColor(style.text[0], style.text[1], style.text[2]);
+        doc.text(pdfEllipsis(doc, cleanTitle, maxW), x + 1.2, y + 2.1);
 
-       doc.setFont('helvetica', 'normal');
-    doc.setFontSize(h >= 6.2 ? 5.0 : 4.4);
-    doc.setTextColor(style.text[0], style.text[1], style.text[2]);
-    doc.text(pdfEllipsis(doc, pdfTimeLabel(e), maxW), x + 1.5, y + (h >= 6.2 ? 5.2 : 4.4));
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(4.1);
+        doc.setTextColor(style.text[0], style.text[1], style.text[2]);
+        doc.text(pdfEllipsis(doc, cleanTime, maxW), x + 1.2, y + h - 1.1);
+    } else {
+        doc.setFont('helvetica', 'bold');
+        const fSize = Math.max(3.6, Math.min(4.8, h * 0.9));
+        doc.setFontSize(fSize);
+        doc.setTextColor(style.text[0], style.text[1], style.text[2]);
+        const fullText = (cleanTime && cleanTime !== 'whole') ? `${cleanTitle} (${cleanTime})` : cleanTitle;
+        doc.text(pdfEllipsis(doc, fullText, maxW), x + 1.2, y + (h / 2) + (fSize * 0.12));
+    }
     return h;
 }
 
@@ -4694,72 +4730,85 @@ function pdfDrawOfficialHeader(doc, L, banners){
 }
 
 function pdfDrawMonthGrid(doc, startY, layout){
-    const L=layout;
-    const gridW=L.usable;
-    const cellW=gridW/7;
-    const headerH=6.5;
-    const pad=1.2;
-    const dayHeadH=4.8;
-    const weeks=pdfMonthWeeks();
-    const numWeeks=weeks.length || 5;
+    const L = layout;
+    const gridW = L.usable;
+    const cellW = gridW / 7;
+    const headerH = 6;
+    const pad = 1.2;
+    const weeks = pdfMonthWeeks();
+    const numWeeks = Math.max(weeks.length, 5);
 
-    pdfDrawWeekdays(doc, L.margin, startY, gridW, cellW, headerH);
+    const availH = L.contentBottom - startY - headerH;
 
-    const availableH = (L.pageH - 9) - (startY + headerH);
-    const rowH = availableH / numWeeks;
+    // Dynamically calculate row heights weighted by number of events per week
+    const weekMaxEvents = weeks.map(week => Math.max(1, ...week.map(c => c ? c.events.length : 0)));
+    const minRowH = numWeeks > 5 ? 18 : 20;
+    const totalMinH = minRowH * weeks.length;
+    const extraH = Math.max(0, availH - totalMinH);
+    const extraWeights = weekMaxEvents.map(m => Math.max(0, m - 1));
+    const sumExtraWeights = extraWeights.reduce((a, b) => a + b, 0);
 
-    let y = startY + headerH;
-    weeks.forEach(week=>{
-        week.forEach((cell,i)=>{
-            const x=L.margin+i*cellW;
-            if(!cell){
-                doc.setFillColor(248,250,252);
+    const rowHeights = weeks.map((w, i) => {
+        if (sumExtraWeights === 0) return availH / weeks.length;
+        return minRowH + (extraWeights[i] / sumExtraWeights) * extraH;
+    });
+
+    let y = startY;
+    const x0 = L.margin;
+
+    pdfDrawWeekdays(doc, x0, y, gridW, cellW, headerH);
+    y += headerH;
+
+    weeks.forEach((week, wIdx) => {
+        const rowH = rowHeights[wIdx];
+        week.forEach((cell, i) => {
+            const x = x0 + i * cellW;
+            if (!cell) {
+                doc.setFillColor(248, 250, 252);
                 doc.rect(x, y, cellW, rowH, 'F');
             } else {
-                doc.setFillColor(255,255,255);
+                doc.setFillColor(255, 255, 255);
                 doc.rect(x, y, cellW, rowH, 'F');
-                if(cell.isToday){
-                    doc.setFillColor(98,23,8);
-                    doc.circle(x+pad+3.3, y+pad+3.0, 3.2, 'F');
-                    doc.setFont('helvetica','bold');
-                    doc.setFontSize(7.4);
-                    doc.setTextColor(255,255,255);
-                    doc.text(String(cell.day), x+pad+3.3, y+pad+4.1, { align:'center' });
+
+                if (cell.isToday) {
+                    doc.setFillColor(98, 23, 8);
+                    doc.circle(x + pad + 2.8, y + pad + 2.8, 2.8, 'F');
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(6.5);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text(String(cell.day), x + pad + 2.8, y + pad + 3.8, { align: 'center' });
                 } else {
-                    doc.setFont('helvetica','bold');
-                    doc.setFontSize(8);
-                    doc.setTextColor(51,65,85);
-                    doc.text(String(cell.day), x+pad, y+pad+4.0);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(7);
+                    doc.setTextColor(51, 65, 85);
+                    doc.text(String(cell.day), x + pad + 1, y + pad + 3.6);
                 }
 
-                if(cell.events && cell.events.length){
-                    doc.setFont('helvetica','bold');
-                    doc.setFontSize(6.4);
-                    doc.setTextColor(148,163,184);
-                    doc.text(String(cell.events.length), x+cellW-pad, y+pad+4.0, { align:'right' });
+                if (cell.events.length > 0) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(5.5);
+                    doc.setTextColor(148, 163, 184);
+                    doc.text(String(cell.events.length), x + cellW - pad - 1, y + pad + 3.6, { align: 'right' });
+                }
 
-                    const count = cell.events.length;
-                    const availH = rowH - dayHeadH - pad * 2;
+                // Render ALL events without any "+X more" truncation
+                const count = cell.events.length;
+                if (count > 0) {
+                    const availCellH = rowH - 6.0;
+                    const pillGap = count > 3 ? 0.6 : 0.8;
+                    let pillH = (availCellH - (count - 1) * pillGap) / count;
+                    if (pillH > 5.2) pillH = 5.2;
+                    else if (pillH < 2.8) pillH = 2.8;
 
-                    let pillH = 6.6;
-                    let pillGap = 0.8;
-                    if (count === 3) {
-                        pillH = 6.3;
-                        pillGap = 0.7;
-                    } else if (count >= 4) {
-                        pillH = Math.max(4.6, (availH - (count - 1) * 0.5) / count);
-                        pillGap = 0.5;
-                    }
-
-                    let py = y + pad + dayHeadH;
+                    let py = y + pad + 5.2;
                     cell.events.forEach(ev => {
-                        pdfDrawPill(doc, x+pad, py, cellW-pad*2, ev, pillH);
+                        pdfDrawPill(doc, x + pad, py, cellW - pad * 2, ev, pillH);
                         py += pillH + pillGap;
                     });
                 }
             }
-            doc.setDrawColor(226,232,240);
-            doc.setLineWidth(0.20);
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.2);
             doc.rect(x, y, cellW, rowH, 'S');
         });
         y += rowH;
