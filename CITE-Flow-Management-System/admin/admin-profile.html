@@ -363,6 +363,30 @@
                 page-break-before: always !important;
             }
         }
+
+        /* Refined CITEFLOW Glassmorphism */
+        .citeflow-modal-backdrop {
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .citeflow-glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.85);
+            box-shadow: 0 25px 60px -15px rgba(98, 23, 8, 0.12), 0 10px 30px -10px rgba(15, 23, 42, 0.12);
+        }
+        .citeflow-glass-header {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.92) 100%);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+        }
+        .citeflow-glass-footer {
+            background: rgba(248, 250, 252, 0.88);
+            border-top: 1px solid rgba(226, 232, 240, 0.8);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
     </style>
 </head>
 
@@ -1942,6 +1966,27 @@ let currentAdminProfileId = null;
 let teachingLoads = [];
 let researchAuthors = [];
 
+function showToast(msg, type = 'info') {
+    if (window.showToast && window.showToast !== showToast) {
+        window.showToast(msg, type);
+    } else if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(msg, 4000, type === 'warn' ? 'warning' : type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+        window.CiteFlowUI.toast(msg, type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+        window.CiteFlowUI.alert(msg, type);
+    } else {
+        (window._nativeAlert || console.log)(msg);
+    }
+}
+window.showToast = showToast;
+if (!window._nativeAlert) {
+    window._nativeAlert = window.alert ? window.alert.bind(window) : () => {};
+}
+window.alert = function(msg) {
+    showToast(String(msg ?? ''), 'info');
+};
+
 /* ── Utility helpers ─────────────────────────────────────────────── */
 
 function esc(value) {
@@ -2197,7 +2242,7 @@ function removeScheduleRow(button) {
     const container = document.getElementById('teachingScheduleRows');
     if (!container) return;
     if (container.querySelectorAll('.schedule-row').length <= 1) {
-        alert('At least one schedule is required.');
+        showToast('At least one schedule is required.', 'warning');
         return;
     }
     button.closest('.schedule-row')?.remove();
@@ -2975,7 +3020,10 @@ function closeTeachingModal() {
 }
 
 async function saveTeachingLoad() {
-    if (!currentFaculty?.id) return alert('Profile is not loaded.');
+    if (!currentFaculty?.id) {
+        showToast('Profile is not loaded.', 'error');
+        return;
+    }
 
     const scheduleEntries = getTeachingSchedules();
     const firstSchedule = scheduleEntries[0] || {};
@@ -3004,19 +3052,22 @@ async function saveTeachingLoad() {
     };
 
     if (!payload.subject_code || !payload.subject_title || !payload.section || !payload.academic_year || !scheduleEntries.length) {
-        return alert('Please complete the required teaching load fields and at least one schedule.');
+        showToast('Please complete the required teaching load fields and at least one schedule.', 'warning');
+        return;
     }
 
     const { error } = await supabaseClient.from('faculty_teaching_loads').insert(payload);
 
     if (error) {
         console.error(error);
-        return alert('Unable to save teaching load: ' + error.message);
+        showToast('Unable to save teaching load: ' + error.message, 'error');
+        return;
     }
 
     closeTeachingModal();
     clearTeachingForm();
     await loadWorkloadEntries();
+    showToast('Teaching load added successfully.', 'success');
 }
 
 function clearTeachingForm() {
@@ -3041,10 +3092,12 @@ async function archiveWorkload(type, id) {
         .eq('id', id);
 
     if (error) {
-        return alert('Unable to remove workload entry: ' + error.message);
+        showToast('Unable to remove workload entry: ' + error.message, 'error');
+        return;
     }
 
     await loadWorkloadEntries();
+    showToast('Workload entry removed.', 'success');
 }
 
 /* ── Research ────────────────────────────────────────────────────── */
@@ -3911,7 +3964,7 @@ async function openEditDocumentModal(id) {
             doc = data;
         } catch (_) {}
     }
-    if (!doc) return CiteFlowUI?.alert ? CiteFlowUI.alert('Document not found.', 'warning') : alert('Document not found.');
+    if (!doc) return showToast('Document not found.', 'warning');
 
     unpackDocument(doc);
     window.currentEditingDocumentId = doc.id;
@@ -4235,28 +4288,36 @@ function closeExtensionProjectModal() {
 }
 
 async function saveExtensionProject() {
-    if (!currentFaculty?.id) return alert('Profile is not loaded.');
+    if (!currentFaculty?.id) {
+        showToast('Profile is not loaded.', 'error');
+        return;
+    }
     const btn = document.getElementById('saveExtProjectBtn');
     const title = document.getElementById('extProjectTitle').value.trim();
-    if (!title) return alert('Please enter a project title.');
+    if (!title) {
+        showToast('Please enter a project title.', 'warning');
+        return;
+    }
 
     const startDate = document.getElementById('extProjectStartDate').value || null;
     const endDate = document.getElementById('extProjectEndDate').value || null;
     const status = document.getElementById('extProjectStatus').value;
 
     if (startDate && endDate && endDate < startDate) {
-        return CiteFlowUI.alert('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
+        showToast('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
+        return;
     }
 
     const todayStr = new Date().toISOString().split('T')[0];
     if (status === 'Ongoing' && endDate && endDate < todayStr) {
-        return CiteFlowUI.alert(
-            `Invalid End Date: This extension project is marked as "Ongoing", but the end date (${endDate}) has already passed.\n\nPlease update the status to "Completed" or extend the end date to a future date.`,
-            'warning'
-        );
+        showToast(`Invalid End Date: Project is marked "Ongoing", but end date (${endDate}) has passed.`, 'warning');
+        return;
     }
 
-    if (!currentAdminProfileId) return alert('Admin profile record was not found for this account.');
+    if (!currentAdminProfileId) {
+        showToast('Admin profile record was not found for this account.', 'error');
+        return;
+    }
     const sdgs = Array.from(document.querySelectorAll('#sdgCheckboxes input[type="checkbox"]:checked')).map(cb => cb.value);
     const payload = {
         admin_profile_id: currentAdminProfileId,
@@ -4299,9 +4360,9 @@ async function saveExtensionProject() {
                 details: { Partner: payload.partner_organization, Beneficiaries: payload.beneficiary_count, SDGs: sdgs.join(', ') }
             });
         }
-        alert('Extension project saved successfully.');
+        showToast('Extension project saved successfully.', 'success');
     } catch (error) {
-        alert('Unable to save extension project: ' + error.message);
+        showToast('Unable to save extension project: ' + error.message, 'error');
     } finally {
         btn.disabled = false;
         btn.textContent = 'Save Project';
@@ -4314,9 +4375,9 @@ async function deleteExtensionProject(id) {
         const { error } = await supabaseClient.from('admin_extension_projects').delete().eq('id', id);
         if (error) throw error;
         await loadExtensionProjects();
-        alert('Extension project deleted.');
+        showToast('Extension project deleted.', 'success');
     } catch (error) {
-        alert('Unable to delete: ' + error.message);
+        showToast('Unable to delete: ' + error.message, 'error');
     }
 }
 
@@ -4355,9 +4416,9 @@ async function verifyDocument(docId) {
 
         await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
         await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.');
-        alert('Document verified successfully.');
+        showToast('Document verified successfully.', 'success');
     } catch (error) {
-        alert('Unable to verify document: ' + error.message);
+        showToast('Unable to verify document: ' + error.message, 'error');
     }
 }
 
@@ -4391,9 +4452,9 @@ async function rejectDocumentVerification(docId) {
 
         await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
         await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.');
-        alert('Document verification rejected.');
+        showToast('Document verification rejected.', 'warning');
     } catch (error) {
-        alert('Unable to reject document: ' + error.message);
+        showToast('Unable to reject document: ' + error.message, 'error');
     }
 }
 
@@ -4450,7 +4511,7 @@ async function checkExpiringDocuments() {
 // ═══════════════════════════════════════════════════
 
 async function generate201FileReport() {
-    if (!currentFaculty?.id) return alert('Profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Profile is not loaded.', 'error');
 
     const btn = event?.target?.closest('button');
     if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
@@ -4764,7 +4825,7 @@ async function generate201FileReport() {
 
     } catch (error) {
         console.error('generate201FileReport error:', error);
-        alert('Unable to generate 201 File Report: ' + error.message);
+        showToast('Unable to generate 201 File Report: ' + error.message, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '201 File'; }
     }
@@ -5227,10 +5288,10 @@ async function deleteAccomplishmentRecord(id) {
 
         closeViewAccomplishmentModal();
         await loadAccomplishments();
-        alert('Accomplishment deleted successfully.');
+        showToast('Accomplishment deleted successfully.', 'success');
     } catch (err) {
         console.error('Delete accomplishment error:', err);
-        alert('Failed to delete accomplishment: ' + (err.message || err));
+        showToast('Failed to delete accomplishment: ' + (err.message || err), 'error');
     }
 }
 
@@ -5355,11 +5416,11 @@ function handleAccomplishmentPhotosSelected(input) {
     const newFiles = Array.from(input.files);
     for (const f of newFiles) {
         if (!f.type.startsWith('image/')) {
-            alert(`File "${f.name}" is not an image.`);
+            showToast(`File "${f.name}" is not an image.`, 'warning');
             continue;
         }
         if (f.size > 5 * 1024 * 1024) {
-            alert(`File "${f.name}" exceeds 5 MB limit.`);
+            showToast(`File "${f.name}" exceeds 5 MB limit.`, 'warning');
             continue;
         }
         selectedAccomplishmentFiles.push(f);
@@ -5530,7 +5591,7 @@ function openEditAccomplishmentModal(id) {
 
 async function saveAccomplishment() {
     if (accomplishmentSaveInFlight) return;
-    if (!currentFaculty?.id) return alert('Profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Profile is not loaded.', 'error');
 
     const saveBtn = document.getElementById('saveAccomplishmentBtn');
     const title = document.getElementById('accomplishmentTitle').value.trim();
@@ -5540,8 +5601,8 @@ async function saveAccomplishment() {
     const venue = document.getElementById('accomplishmentVenue').value.trim();
     const durationHours = parseFloat(document.getElementById('accomplishmentDuration')?.value) || null;
 
-    if (!title) return alert('Please enter a title for the accomplishment.');
-    if (!dateAchieved) return alert('Please specify the date this was achieved.');
+    if (!title) return showToast('Please enter a title for the accomplishment.', 'warning');
+    if (!dateAchieved) return showToast('Please specify the date this was achieved.', 'warning');
 
     const isEdit = !!window.currentEditingAccomplishmentId;
     const saveLabel = isEdit ? 'Update Accomplishment' : 'Save Accomplishment';
@@ -5632,7 +5693,7 @@ async function saveAccomplishment() {
         }
     }
 
-    if (savedNotice) alert(savedNotice);
+    if (savedNotice) showToast(savedNotice, 'success');
 }
 
 function clearAccomplishmentForm() {
@@ -5987,8 +6048,8 @@ async function downloadAccomplishmentPdf(event) {
     const templateType = document.getElementById('reportTemplateType')?.value || 'offline';
     const startDate = document.getElementById('reportStartDate')?.value;
     const endDate = document.getElementById('reportEndDate')?.value;
-    if (!startDate || !endDate) return alert('Please select a start and end date for the report.');
-    if (endDate < startDate) return alert('End date must be on or after the start date.');
+    if (!startDate || !endDate) return showToast('Please select a start and end date for the report.', 'warning');
+    if (endDate < startDate) return showToast('End date must be on or after the start date.', 'warning');
 
     const facultyName = currentFaculty?.full_name || currentFaculty?.name || 'Administrator';
     const filenameBase = templateType === 'offline'
@@ -6005,13 +6066,13 @@ async function downloadAccomplishmentPdf(event) {
     try {
         const reportHtml = await generateReportHtml(templateType, startDate, endDate);
         if (!reportHtml) {
-            return alert('No report content to download.');
+            return showToast('No report content to download.', 'warning');
         }
 
         await renderReportPdf(reportHtml, filenameBase, { returnBlob: false });
     } catch (err) {
         console.error('downloadAccomplishmentPdf error:', err);
-        alert('Failed to download PDF: ' + (err.message || err));
+        showToast('Failed to download PDF: ' + (err.message || err), 'error');
     } finally {
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -6094,7 +6155,7 @@ async function renderReportPdf(htmlContent, filenameBase, options2) {
         }
     } catch (err) {
         console.error('renderReportPdf error:', err);
-        alert('Unable to generate PDF: ' + (err.message || err));
+        showToast('Unable to generate PDF: ' + (err.message || err), 'error');
         return null;
     } finally {
         if (stage && stage.parentNode) {
@@ -6556,9 +6617,9 @@ async function submitReportForApproval() {
         const startDate = document.getElementById('reportStartDate').value;
         const endDate = document.getElementById('reportEndDate').value;
 
-        if (!startDate || !endDate) return alert('Please select a start and end date for the report.');
-        if (endDate < startDate) return alert('End date must be on or after the start date.');
-        if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+        if (!startDate || !endDate) return showToast('Please select a start and end date for the report.', 'warning');
+        if (endDate < startDate) return showToast('End date must be on or after the start date.', 'warning');
+        if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
         const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty Member';
 
@@ -6574,7 +6635,7 @@ async function submitReportForApproval() {
         if (btn) btn.innerHTML = '<span class="animate-pulse">Creating PDF...</span>';
         if (previewBtn) previewBtn.innerHTML = '<span class="animate-pulse">Creating PDF...</span>';
         const pdfBlob = await renderReportPdf(reportHtml, filenameBase, { returnBlob: true });
-        if (!pdfBlob) return alert('Failed to generate PDF.');
+        if (!pdfBlob) return showToast('Failed to generate PDF.', 'error');
 
         // Upload to Supabase storage
         if (btn) btn.innerHTML = '<span class="animate-pulse">Uploading...</span>';
@@ -6626,17 +6687,13 @@ async function submitReportForApproval() {
         if (insertError) throw new Error('Submission failed: ' + insertError.message);
 
         closeReportChooserModal();
-        if (typeof showToast === 'function') {
-            showToast('Report submitted for approval!', 'success');
-        } else {
-            alert('Report submitted for approval successfully!');
-        }
+        showToast('Report submitted for approval!', 'success');
         await loadReportSubmissions();
         switchAccomplishmentSubView('subs');
 
     } catch (err) {
         console.error('submitReportForApproval error:', err);
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -6715,7 +6772,7 @@ function renderReportSubmissionsTable(submissions) {
         }
         if (s.chair_remarks || s.dean_remarks) {
             const remarks = s.dean_remarks || s.chair_remarks || '';
-            actions += `<button onclick="alert('${esc(remarks.replace(/'/g, "\\'"))}')" class="text-xs text-slate-500 hover:underline ml-2">Remarks</button>`;
+            actions += `<button onclick="showToast('Remarks: ' + '${esc(remarks.replace(/'/g, "\\'"))}', 'info')" class="text-xs text-slate-500 hover:underline ml-2">Remarks</button>`;
         }
 
         return `<tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
@@ -6743,7 +6800,7 @@ async function resubmitReport(reportId) {
             .eq('id', reportId)
             .single();
 
-        if (fetchErr || !existing) return alert('Could not find the report submission.');
+        if (fetchErr || !existing) return showToast('Could not find the report submission.', 'error');
 
         // Pre-fill the report chooser modal with the original dates
         document.getElementById('reportTemplateType').value = existing.report_type || 'offline';
@@ -6776,7 +6833,7 @@ async function resubmitReport(reportId) {
         submitBtn.setAttribute('data-orig-onclick', origOnclick);
 
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -6794,8 +6851,8 @@ async function resubmitReportExec(reportId) {
         const startDate = document.getElementById('reportStartDate').value;
         const endDate = document.getElementById('reportEndDate').value;
 
-        if (!startDate || !endDate) return alert('Please select dates.');
-        if (!currentFaculty?.id) return alert('Faculty profile not loaded.');
+        if (!startDate || !endDate) return showToast('Please select dates.', 'warning');
+        if (!currentFaculty?.id) return showToast('Faculty profile not loaded.', 'error');
 
         const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty Member';
         const reportHtml = await generateReportHtml(templateType, startDate, endDate);
@@ -6874,16 +6931,12 @@ async function resubmitReportExec(reportId) {
             btn.setAttribute('onclick', origOnclick);
         }
 
-        if (typeof showToast === 'function') {
-            showToast('Report resubmitted for approval!', 'success');
-        } else {
-            alert('Report resubmitted successfully!');
-        }
+        showToast('Report resubmitted for approval!', 'success');
         await loadReportSubmissions();
 
     } catch (err) {
         console.error('resubmitReportExec error:', err);
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -6903,13 +6956,13 @@ function previewEditProfilePhoto() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-        alert('Please select a valid image file.');
+        showToast('Please select a valid image file.', 'warning');
         fileInput.value = '';
         return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-        alert('Profile picture must be 2 MB or smaller.');
+        showToast('Profile picture must be 2 MB or smaller.', 'warning');
         fileInput.value = '';
         return;
     }
@@ -7312,7 +7365,7 @@ async function saveProfileChanges() {
         profilePhotoUrl = await uploadProfilePictureIfSelected();
     } catch (error) {
         console.error(error);
-        return alert(error.message || 'Unable to upload profile picture.');
+        return showToast(error.message || 'Unable to upload profile picture.', 'error');
     }
 
     const payload = {
@@ -7351,7 +7404,7 @@ async function saveProfileChanges() {
 
     if (error) {
         console.error(error);
-        return alert('Unable to update profile: ' + error.message);
+        return showToast('Unable to update profile: ' + error.message, 'error');
     }
 
     // Also sync admin_profiles
@@ -7410,7 +7463,7 @@ async function saveProfileChanges() {
         });
     }
 
-    alert('Profile updated successfully!');
+    showToast('Profile updated successfully!', 'success');
 }
 
 /* ── Init ─────────────────────────────────────────────────────────── */

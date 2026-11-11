@@ -128,9 +128,27 @@
         }
 
         .modal-backdrop {
-            background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(4px);
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             animation: fadeIn 0.2s ease-out forwards;
+        }
+        .citeflow-glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.85);
+            box-shadow: 0 25px 60px -15px rgba(98, 23, 8, 0.12), 0 10px 30px -10px rgba(15, 23, 42, 0.12);
+        }
+        .citeflow-glass-header {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.92) 100%);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+        }
+        .citeflow-glass-footer {
+            background: rgba(248, 250, 252, 0.88);
+            border-top: 1px solid rgba(226, 232, 240, 0.8);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
         }
         @keyframes fadeIn {
             from { opacity: 0; }
@@ -763,8 +781,18 @@ function showAppConfirm(message, title = 'Confirm Action', confirmText = 'Confir
     });
 }
 
+function showToast(msg, type = 'info') {
+    if (window.showToast) {
+        window.showToast(msg, type);
+    } else if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(msg, 4000, type === 'warn' ? 'warning' : type);
+    } else {
+        showAppAlert(String(msg ?? ''), type === 'error' ? 'Error' : 'Notice');
+    }
+}
+
 if (!window._nativeAlert) {
-    window._nativeAlert = window.alert ? window.alert.bind(window) : console.log;
+    window._nativeAlert = window.alert ? window.alert.bind(window) : () => {};
 }
 if (!window._nativeConfirm) {
     window._nativeConfirm = window.confirm ? window.confirm.bind(window) : () => true;
@@ -1068,7 +1096,7 @@ async function saveUserChanges(){
         role=document.getElementById('edit-role').value,
         department=document.getElementById('edit-department').value,
         status=document.getElementById('edit-status').value;
-    if(!name)return alert('Name is required.');
+    if(!name){showToast('Name is required.','warning');return;}
     
     let error=null;
     if(currentEditingUser.source==='faculty'){
@@ -1105,7 +1133,8 @@ async function saveUserChanges(){
     }
     if(error){
         console.error(error);
-        return alert('Unable to update user: '+error.message);
+        showToast('Unable to update user: '+error.message, 'error');
+        return;
     }
     closeEditUserModal();
     await logActivity('Updated','Updated user account for '+name);
@@ -1119,7 +1148,8 @@ async function deleteUser(source,id){
     let res=await supabaseClient.from(source).delete().eq('id',id);
     if(res.error){
         console.error(res.error);
-        return alert('Unable to delete user: '+res.error.message);
+        showToast('Unable to delete user: '+res.error.message, 'error');
+        return;
     }
     await logActivity('Deleted','Deleted user profile for '+u.name);
     await loadUsers();
@@ -1225,16 +1255,16 @@ async function createFacultyAccount(){
         activeEmail=document.getElementById('add-active-email').value.trim().toLowerCase(),
         password=document.getElementById('add-password').value.trim();
 
-    if(!isEmail(loginEmail)) return alert('Please enter a valid institutional / login email address.');
-    if(activeEmail && !isEmail(activeEmail)) return alert('Active notification email is invalid. Please check the email format.');
-    if(!password||password.length<8) return alert('Please generate a temporary password before creating the account.');
+    if(!isEmail(loginEmail)) { showToast('Please enter a valid institutional / login email address.', 'warning'); return; }
+    if(activeEmail && !isEmail(activeEmail)) { showToast('Active notification email is invalid. Please check the email format.', 'warning'); return; }
+    if(!password||password.length<8) { showToast('Please generate a temporary password before creating the account.', 'warning'); return; }
 
     let facultyId=generateFacultyId(),
         names=deriveNamePartsFromEmail(loginEmail),
         salaryRaw=document.getElementById('add-salary').value.trim(),
         salary=salaryRaw?Number(salaryRaw.replace(/,/g,'')):null;
 
-    if(salaryRaw&&(Number.isNaN(salary)||salary<0)) return alert('Salary must be a valid non-negative number.');
+    if(salaryRaw&&(Number.isNaN(salary)||salary<0)) { showToast('Salary must be a valid non-negative number.', 'warning'); return; }
 
     btn.disabled=true;
     btn.textContent='Creating & Sending...';
@@ -1406,7 +1436,7 @@ function toggleCredentialPasswordMask(){
 async function copyCredentialPassword(){
     try {
         await navigator.clipboard.writeText(rawGeneratedPassword);
-        alert('Temporary password copied to clipboard.');
+        showToast('Temporary password copied to clipboard.', 'success');
     } catch(e) {
         prompt('Copy this password:', rawGeneratedPassword);
     }
@@ -1421,7 +1451,7 @@ async function copyText(id){
     let t=document.getElementById(id).textContent.trim();
     try{
         await navigator.clipboard.writeText(t);
-        alert('Copied to clipboard.');
+        showToast('Copied to clipboard.', 'success');
     }catch(e){
         prompt('Copy this value:',t);
     }

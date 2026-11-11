@@ -472,6 +472,30 @@
                 color: #ffffff;
             }
         }
+
+        /* Refined CITEFLOW Glassmorphism */
+        .citeflow-modal-backdrop {
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .citeflow-glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.85);
+            box-shadow: 0 25px 60px -15px rgba(98, 23, 8, 0.12), 0 10px 30px -10px rgba(15, 23, 42, 0.12);
+        }
+        .citeflow-glass-header {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.92) 100%);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+        }
+        .citeflow-glass-footer {
+            background: rgba(248, 250, 252, 0.88);
+            border-top: 1px solid rgba(226, 232, 240, 0.8);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
     </style>
 </head>
 
@@ -1481,6 +1505,24 @@
 
 
 <script>
+function showToast(msg, type = 'info') {
+    if (window.showToast && window.showToast !== showToast) {
+        window.showToast(msg, type);
+    } else if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(msg, 4000, type === 'warn' ? 'warning' : type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+        window.CiteFlowUI.toast(msg, type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+        window.CiteFlowUI.alert(msg, type);
+    } else {
+        (window._nativeAlert || console.log)(msg);
+    }
+}
+window.showToast = showToast;
+if (!window._nativeAlert && window.alert) {
+    window._nativeAlert = window.alert.bind(window);
+    window.alert = function(msg) { showToast(String(msg ?? ''), 'info'); };
+}
 /* =============================================================
    SUPABASE
 ============================================================= */
@@ -2089,8 +2131,9 @@ async function loadFacultyProfiles() {
             error
         );
 
-        alert(
-            `Unable to load faculty profiles: ${error.message}`
+        showToast(
+            `Unable to load faculty profiles: ${error.message}`,
+            'error'
         );
 
         facultyData = [];
@@ -3089,8 +3132,9 @@ async function persistSelectedFacultyStatus() {
             error
         );
 
-        alert(
-            `Unable to update status: ${error.message}`
+        showToast(
+            `Unable to update status: ${error.message}`,
+            'error'
         );
 
         return;
@@ -3532,7 +3576,7 @@ function closeEditModal() {
 
 function uploadDocument() {
     if (!selectedFacultyId) {
-        alert('Please select a faculty member first.');
+        showToast('Please select a faculty member first.', 'warning');
         return;
     }
     const modal = document.getElementById('adminDocUploadModal');
@@ -3560,7 +3604,7 @@ function closeAdminDocUploadModal() {
 async function submitAdminDocumentUpload(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (!selectedFacultyId) {
-        alert('Please select a faculty member first.');
+        showToast('Please select a faculty member first.', 'warning');
         return;
     }
 
@@ -3573,11 +3617,11 @@ async function submitAdminDocumentUpload(e) {
     const msg = document.getElementById('adminDocUploadMsg');
 
     if (!title) {
-        alert('Please enter a document title.');
+        showToast('Please enter a document title.', 'warning');
         return;
     }
     if (!file) {
-        alert('Please select a file to upload.');
+        showToast('Please select a file to upload.', 'warning');
         return;
     }
 
@@ -3646,7 +3690,7 @@ async function submitAdminDocumentUpload(e) {
             msg.className = 'text-xs rounded-xl p-3 bg-red-50 text-red-700 border border-red-200 block';
             msg.textContent = 'Upload failed: ' + (err.message || err);
         } else {
-            alert('Upload failed: ' + (err.message || err));
+            showToast('Upload failed: ' + (err.message || err), 'error');
         }
     } finally {
         if (submitBtn) {
@@ -3658,7 +3702,7 @@ async function submitAdminDocumentUpload(e) {
 
 function viewDocumentFile(url) {
     if (!url) {
-        alert('No document file URL available.');
+        showToast('No document file URL available.', 'warning');
         return;
     }
     window.open(url, '_blank');
@@ -3666,7 +3710,7 @@ function viewDocumentFile(url) {
 
 function downloadDocumentFile(url, fileName) {
     if (!url) {
-        alert('No file available for download.');
+        showToast('No file available for download.', 'warning');
         return;
     }
     const a = document.createElement('a');
@@ -3690,9 +3734,10 @@ async function deleteFacultyDocument(docId) {
         if (selectedFacultyId) {
             await loadFacultyDocuments(selectedFacultyId);
         }
+        showToast('Document deleted successfully.', 'success');
     } catch (err) {
         console.error('Delete document error:', err);
-        alert('Failed to delete document: ' + (err.message || err));
+        showToast('Failed to delete document: ' + (err.message || err), 'error');
     }
 }
 
@@ -3706,21 +3751,12 @@ function deleteDocument(button) {
 
 
 function viewResearch(id) {
-
-    alert(
-        'Opened Research Project ' +
-        id
-    );
-
+    showToast('Opened Research Project ' + id, 'info');
 }
 
 
 function downloadResearch() {
-
-    alert(
-        'Downloading IoT_Research_Final.pdf...'
-    );
-
+    showToast('Downloading IoT_Research_Final.pdf...', 'info');
 }
 
 
@@ -3744,8 +3780,9 @@ function openAddFacultyModal() {
         !hasPermission('addFaculty')
     ) {
 
-        alert(
-            'You do not have permission to add faculty members.'
+        showToast(
+            'You do not have permission to add faculty members.',
+            'error'
         );
 
         return;
@@ -4416,24 +4453,14 @@ async function createFacultyAccount() {
     ========================================================= */
 
     if (!firstName) {
-
-        alert(
-            'Please enter the first name.'
-        );
-
+        showToast('Please enter the first name.', 'warning');
         return;
     }
-
 
     if (!lastName) {
-
-        alert(
-            'Please enter the last name.'
-        );
-
+        showToast('Please enter the last name.', 'warning');
         return;
     }
-
 
     const academicRank =
         document.getElementById('add-academic-rank')?.value || 'Instructor I';
@@ -4445,41 +4472,29 @@ async function createFacultyAccount() {
         'Dean/Secretary'
     ];
 
-
     const allowedDepartments = [
         'BSIE',
         'BSIT',
         'BIT'
     ];
 
-
     if (
         !allowedRoles.includes(
             position
         )
     ) {
-
-        alert(
-            'Please select a valid role.'
-        );
-
+        showToast('Please select a valid role.', 'warning');
         return;
     }
-
 
     if (
         !allowedDepartments.includes(
             department
         )
     ) {
-
-        alert(
-            'Please select a valid department.'
-        );
-
+        showToast('Please select a valid department.', 'warning');
         return;
     }
-
 
     if (
         !privateEmailInput ||
@@ -4487,14 +4502,9 @@ async function createFacultyAccount() {
             privateEmailInput
         )
     ) {
-
-        alert(
-            'Please enter a valid active email. Credentials will be sent there.'
-        );
-
+        showToast('Please enter a valid active email. Credentials will be sent there.', 'warning');
         return;
     }
-
 
     /* =========================================================
        PREPARE ACCOUNT DATA
@@ -4503,16 +4513,11 @@ async function createFacultyAccount() {
     const tempPassword =
         generatePassword();
 
-
     if (
         !tempPassword ||
         tempPassword.length < 8
     ) {
-
-        alert(
-            'Could not generate a temporary password. Please try again.'
-        );
-
+        showToast('Could not generate a temporary password. Please try again.', 'error');
         return;
     }
 
