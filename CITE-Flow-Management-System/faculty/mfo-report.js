@@ -385,14 +385,23 @@
     }
     function endBusy() { state.busy = false; state.busyLabel = ''; render(); }
 
-    function toast(message, type) {
+    function toast(message, type = 'info') {
+        const normType = (type === 'error') ? 'error' : (type === 'ok' || type === 'success') ? 'success' : 'info';
+        if (typeof global.showToast === 'function') {
+            global.showToast(message, normType);
+            return;
+        }
+        if (global.CiteFlowUI?.toast) {
+            global.CiteFlowUI.toast(message, normType);
+            return;
+        }
         let el = document.getElementById('mfoToast');
         if (!el) {
             el = document.createElement('div');
             el.id = 'mfoToast';
             document.body.appendChild(el);
         }
-        el.className = type === 'error' ? 'err' : 'ok';
+        el.className = normType === 'error' ? 'err' : 'ok';
         el.style.display = 'block';
         el.textContent = message;
         window.clearTimeout(toast._t);

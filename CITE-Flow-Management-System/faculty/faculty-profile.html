@@ -2269,6 +2269,64 @@
     </div>
 </div>
 
+<!-- WORKLOAD REMOVAL REQUEST MODAL -->
+<div id="workloadRemovalModal" onclick="if(event.target === this) closeWorkloadRemovalModal(null)" class="hidden fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm transition-opacity duration-200">
+    <div id="workloadRemovalCard" class="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-100 overflow-hidden transform transition-all duration-200 scale-95 opacity-0 relative">
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-red-50 text-[#621708] border border-red-200/60 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-clipboard-question text-lg"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold tracking-wider text-[#621708] uppercase">Teaching Load</p>
+                    <h2 class="text-lg font-bold text-slate-900 mt-0.5">Request Workload Removal</h2>
+                </div>
+            </div>
+            <button type="button" onclick="closeWorkloadRemovalModal(null)" class="icon-btn text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer" aria-label="Close dialog">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-4">
+            <!-- Approval Requirement Notice Callout -->
+            <div class="p-4 bg-amber-50/80 border border-amber-200/70 rounded-2xl flex items-start gap-3">
+                <div class="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                    <i class="fa-solid fa-circle-info text-xs"></i>
+                </div>
+                <div class="text-xs text-amber-900 leading-relaxed">
+                    <p class="font-semibold text-amber-950 mb-0.5">Administrative Approval Required</p>
+                    <p class="text-amber-900/90">Workload removal requires approval by the College Dean or College Secretary. Please enter the reason for requesting removal of this workload entry.</p>
+                </div>
+            </div>
+
+            <!-- Reason Textarea -->
+            <div>
+                <label for="workloadRemovalReason" class="field-label">
+                    Reason for Removal <span class="text-rose-500">*</span>
+                </label>
+                <textarea id="workloadRemovalReason" class="field" rows="4" placeholder="Please enter the reason for requesting removal of this workload entry (e.g., subject reassigned, dissolved section, scheduling change)..." oninput="document.getElementById('workloadRemovalError')?.classList.add('hidden')"></textarea>
+                <div id="workloadRemovalError" class="hidden text-xs text-rose-600 font-medium mt-1.5 flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-exclamation text-rose-500"></i>
+                    <span>Please enter a reason for requesting removal.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-3">
+            <button id="workloadRemovalCancelBtn" type="button" onclick="closeWorkloadRemovalModal(null)" class="secondary-btn cursor-pointer">
+                Cancel
+            </button>
+            <button id="workloadRemovalSubmitBtn" type="button" onclick="submitWorkloadRemovalModal()" class="primary-btn flex items-center gap-2 cursor-pointer" data-theme-primary="true">
+                <i class="fa-solid fa-paper-plane text-xs"></i>
+                <span>Submit Request</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- ACCOMPLISHMENT REPORT PREVIEW & GENERATION MODAL -->
 <div id="reportChooserModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-start justify-center z-[2500] p-2 sm:p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-2xl w-full max-w-[1100px] shadow-2xl overflow-hidden max-h-[94vh] flex flex-col my-3 sm:my-4 border border-slate-100">
@@ -2352,6 +2410,44 @@ let currentAuthUser = null;
 let currentFaculty = null;
 let isAuthSessionVerified = false;
 let teachingLoads = [];
+
+function showToast(msg, type = 'info') {
+    if (window.showToast && window.showToast !== showToast) {
+        window.showToast(msg, type);
+    } else if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(msg, 4000, type === 'warn' ? 'warning' : type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+        window.CiteFlowUI.toast(msg, type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+        window.CiteFlowUI.alert(msg, type);
+    } else {
+        const marks = {
+            success: { icon: "fa-circle-check", color: "#10b981" },
+            error: { icon: "fa-circle-xmark", color: "#f87171" },
+            warning: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            warn: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            info: { icon: "fa-circle-info", color: "#60a5fa" }
+        };
+        const normType = (type === 'warn' || type === 'warning') ? 'warning' : (['success', 'error', 'info'].includes(type) ? type : 'info');
+        const mark = marks[normType] || marks.info;
+        let toast = document.getElementById('citeflowGlobalToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'citeflowGlobalToast';
+            toast.className = 'citeflow-toast';
+            document.body.appendChild(toast);
+        }
+        const safe = document.createElement('div');
+        safe.textContent = String(msg ?? '').trim();
+        toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+        toast.classList.add('show');
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3500);
+    }
+}
+window.showToast = showToast;
 
 
 // Strips ALL CiteFlow metadata comments and stray encoded fragments from any description
@@ -2514,7 +2610,7 @@ function removeScheduleRow(button) {
     if (!container) return;
 
     if (container.querySelectorAll('.schedule-row').length <= 1) {
-        alert('At least one schedule is required.');
+        showToast('At least one schedule is required.', 'warning');
         return;
     }
 
@@ -3568,7 +3664,7 @@ function closeTeachingModal() {
 }
 
 async function saveTeachingLoad() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const scheduleEntries = getTeachingSchedules();
     const firstSchedule = scheduleEntries[0] || {};
@@ -3597,18 +3693,19 @@ async function saveTeachingLoad() {
     };
 
     if (!payload.subject_code || !payload.subject_title || !payload.section || !payload.academic_year || !scheduleEntries.length) {
-        return alert('Please complete the required teaching load fields and at least one schedule.');
+        return showToast('Please complete the required teaching load fields and at least one schedule.', 'warning');
     }
 
     const { error } = await supabaseClient.from('faculty_teaching_loads').insert(payload);
 
     if (error) {
         console.error(error);
-        return alert('Unable to save teaching load: ' + error.message);
+        return showToast('Unable to save teaching load: ' + error.message, 'error');
     }
 
     closeTeachingModal();
     clearTeachingForm();
+    showToast('Teaching load added successfully.', 'success');
     await loadWorkloadEntries();
 }
 
@@ -3625,6 +3722,99 @@ function clearTeachingForm() {
     resetTeachingSchedules();
 }
 
+let workloadRemovalResolve = null;
+
+function promptWorkloadRemovalReason() {
+    const modal = document.getElementById('workloadRemovalModal');
+    const card = document.getElementById('workloadRemovalCard');
+    const reasonInput = document.getElementById('workloadRemovalReason');
+    const errorEl = document.getElementById('workloadRemovalError');
+    if (!modal || !card) return Promise.resolve(null);
+
+    if (reasonInput) {
+        reasonInput.value = '';
+        if (!reasonInput._hasEnterListener) {
+            reasonInput._hasEnterListener = true;
+            reasonInput.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    submitWorkloadRemovalModal();
+                }
+            });
+        }
+    }
+    if (errorEl) errorEl.classList.add('hidden');
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    requestAnimationFrame(() => {
+        card.classList.remove('scale-95', 'opacity-0');
+        card.classList.add('scale-100', 'opacity-100');
+        if (reasonInput) reasonInput.focus();
+    });
+
+    return new Promise((resolve) => {
+        workloadRemovalResolve = resolve;
+    });
+}
+
+function closeWorkloadRemovalModal(result = null) {
+    const modal = document.getElementById('workloadRemovalModal');
+    const card = document.getElementById('workloadRemovalCard');
+    if (!modal || !card) {
+        if (workloadRemovalResolve) {
+            const cb = workloadRemovalResolve;
+            workloadRemovalResolve = null;
+            cb(result);
+        }
+        return;
+    }
+
+    card.classList.remove('scale-100', 'opacity-100');
+    card.classList.add('scale-95', 'opacity-0');
+
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (workloadRemovalResolve) {
+            const cb = workloadRemovalResolve;
+            workloadRemovalResolve = null;
+            cb(result);
+        }
+    }, 160);
+}
+
+function submitWorkloadRemovalModal() {
+    const reasonInput = document.getElementById('workloadRemovalReason');
+    const errorEl = document.getElementById('workloadRemovalError');
+    const reason = reasonInput ? reasonInput.value.trim() : '';
+
+    if (!reason) {
+        if (errorEl) {
+            errorEl.classList.remove('hidden');
+        }
+        if (reasonInput) reasonInput.focus();
+        return;
+    }
+
+    closeWorkloadRemovalModal(reason);
+}
+
+// Global keyboard listeners for Workload Removal Modal
+document.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('workloadRemovalModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        closeWorkloadRemovalModal(null);
+    }
+});
+
+window.promptWorkloadRemovalReason = promptWorkloadRemovalReason;
+window.closeWorkloadRemovalModal = closeWorkloadRemovalModal;
+window.submitWorkloadRemovalModal = submitWorkloadRemovalModal;
+
 async function archiveWorkload(type, id) {
     const isDeanOrSec = window.CiteFlowAuth && typeof window.CiteFlowAuth.isAdminPortalRole === 'function'
         && window.CiteFlowAuth.isAdminPortalRole();
@@ -3638,15 +3828,16 @@ async function archiveWorkload(type, id) {
             .eq('id', id);
 
         if (error) {
-            return alert('Unable to remove workload entry: ' + error.message);
+            return showToast('Unable to remove workload entry: ' + error.message, 'error');
         }
 
+        showToast('Workload entry removed.', 'success');
         await loadWorkloadEntries();
         return;
     }
 
     // Faculty workflow: Workload removal requires administrative approval by Dean or Secretary
-    const reason = prompt('Workload removal requires approval by the College Dean or College Secretary.\n\nPlease enter the reason for requesting removal of this workload entry:');
+    const reason = await promptWorkloadRemovalReason();
     if (reason === null) return; // User cancelled
 
     const { error } = await supabaseClient
@@ -3659,10 +3850,10 @@ async function archiveWorkload(type, id) {
         });
 
     if (error) {
-        return alert('Unable to submit deletion request: ' + error.message);
+        return showToast('Unable to submit deletion request: ' + error.message, 'error');
     }
 
-    alert('Workload deletion request submitted successfully. It will be reviewed by the College Dean or Secretary.');
+    showToast('Workload deletion request submitted successfully. It will be reviewed by the College Dean or Secretary.', 'success');
     await loadWorkloadEntries();
 }
 
@@ -4115,13 +4306,13 @@ function previewEditProfilePhoto() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-        alert('Please select a valid image file.');
+        showToast('Please select a valid image file.', 'warning');
         fileInput.value = '';
         return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-        alert('Profile picture must be 2 MB or smaller.');
+        showToast('Profile picture must be 2 MB or smaller.', 'warning');
         fileInput.value = '';
         return;
     }
@@ -4210,8 +4401,7 @@ function closeEditProfileModal() {
 }
 
 function notifyProfile(message, type) {
-    if (window.CiteFlowUI?.alert) return CiteFlowUI.alert(message, type);
-    if (typeof window.showNoticeModal === 'function') return window.showNoticeModal({ message, type });
+    showToast(message, type);
 }
 
 async function saveProfileChanges() {
@@ -4343,7 +4533,7 @@ function handleDocumentMediaSelected(input) {
     const files = Array.from(input.files);
     for (const f of files) {
         if (f.size > 25 * 1024 * 1024) {
-            CiteFlowUI.alert(`File "${f.name}" exceeds the 25 MB limit.`, 'warning');
+            showToast(`File "${f.name}" exceeds the 25 MB limit.`, 'warning');
             continue;
         }
         selectedDocumentFiles.push(f);
@@ -4419,7 +4609,7 @@ async function openEditDocumentModal(id) {
             doc = data;
         } catch (_) {}
     }
-    if (!doc) return CiteFlowUI?.alert ? CiteFlowUI.alert('Document not found.', 'warning') : alert('Document not found.');
+    if (!doc) return showToast('Document not found.', 'warning');
 
     unpackDocument(doc);
     window.currentEditingDocumentId = doc.id;
@@ -4485,14 +4675,14 @@ async function deleteDocumentRecord(id) {
         closeViewDocumentModal();
         await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
         await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.');
-        CiteFlowUI.alert('Document deleted successfully.', 'success');
+        showToast('Document deleted successfully.', 'success');
     } catch (error) {
-        CiteFlowUI.alert('Unable to delete document: ' + error.message, 'error');
+        showToast('Unable to delete document: ' + error.message, 'error');
     }
 }
 
 async function saveDocumentUpload() {
-    if (!currentFaculty?.id) return CiteFlowUI.alert('Faculty profile is not loaded.', 'error');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const saveBtn = document.getElementById('saveDocumentBtn');
     const title = document.getElementById('documentTitle').value.trim();
@@ -4510,9 +4700,9 @@ async function saveDocumentUpload() {
     const selectedCount = selectedDocumentFiles.length;
     const hasAnyFile = existingCount > 0 || selectedCount > 0 || legacyFile;
 
-    if (!title) return CiteFlowUI.alert('Please enter a document title.', 'warning');
+    if (!title) return showToast('Please enter a document title.', 'warning');
     if (!editId && !hasAnyFile) {
-        return CiteFlowUI.alert('Please attach at least one document file.', 'warning');
+        return showToast('Please attach at least one document file.', 'warning');
     }
 
     saveBtn.disabled = true;
@@ -4641,9 +4831,9 @@ async function saveDocumentUpload() {
             });
         }
 
-        CiteFlowUI.alert(`Document ${editId ? 'updated' : 'uploaded'} successfully with ${uploadedMedia.length} attached file(s).`, 'success');
+        showToast(`Document ${editId ? 'updated' : 'uploaded'} successfully with ${uploadedMedia.length} attached file(s).`, 'success');
     } catch (error) {
-        CiteFlowUI.alert('Unable to save document: ' + error.message, 'error');
+        showToast('Unable to save document: ' + error.message, 'error');
     } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = window.currentEditingDocumentId ? 'Update Document' : 'Upload Document';
@@ -4746,23 +4936,23 @@ function closeExtensionProjectModal() {
 }
 
 async function saveExtensionProject() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
     const btn = document.getElementById('saveExtProjectBtn');
     const title = document.getElementById('extProjectTitle').value.trim();
-    if (!title) return alert('Please enter a project title.');
+    if (!title) return showToast('Please enter a project title.', 'warning');
 
     const startDate = document.getElementById('extProjectStartDate').value || null;
     const endDate = document.getElementById('extProjectEndDate').value || null;
     const status = document.getElementById('extProjectStatus').value;
 
     if (startDate && endDate && endDate < startDate) {
-        return CiteFlowUI.alert('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
+        return showToast('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
     }
 
     const todayStr = new Date().toISOString().split('T')[0];
     if (status === 'Ongoing' && endDate && endDate < todayStr) {
-        return CiteFlowUI.alert(
-            `Invalid End Date: This extension project is marked as "Ongoing", but the end date (${endDate}) has already passed.\n\nPlease update the status to "Completed" or extend the end date to a future date.`,
+        return showToast(
+            `Invalid End Date: This extension project is marked as "Ongoing", but the end date (${endDate}) has already passed. Please update the status or extend the end date.`,
             'warning'
         );
     }
@@ -4809,9 +4999,9 @@ async function saveExtensionProject() {
                 details: { Partner: payload.partner_organization, Beneficiaries: payload.beneficiary_count, SDGs: sdgs.join(', ') }
             });
         }
-        alert('Extension project saved successfully.');
+        showToast('Extension project saved successfully.', 'success');
     } catch (error) {
-        alert('Unable to save extension project: ' + error.message);
+        showToast('Unable to save extension project: ' + error.message, 'error');
     } finally {
         btn.disabled = false;
         btn.textContent = 'Save Project';
@@ -4824,9 +5014,9 @@ async function deleteExtensionProject(id) {
         const { error } = await supabaseClient.from('extension_projects').delete().eq('id', id);
         if (error) throw error;
         await loadExtensionProjects();
-        alert('Extension project deleted.');
+        showToast('Extension project deleted.', 'success');
     } catch (error) {
-        alert('Unable to delete: ' + error.message);
+        showToast('Unable to delete: ' + error.message, 'error');
     }
 }
 
@@ -4843,7 +5033,7 @@ async function checkExpiringDocuments() {
 // ═══════════════════════════════════════════════════
 
 async function generate201FileReport() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const btn = event?.target?.closest('button');
     if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
@@ -5158,7 +5348,7 @@ async function generate201FileReport() {
 
     } catch (error) {
         console.error('generate201FileReport error:', error);
-        alert('Unable to generate 201 File Report: ' + error.message);
+        showToast('Unable to generate 201 File Report: ' + error.message, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '201 File'; }
     }
@@ -5187,7 +5377,7 @@ function handleResearchMediaSelected(input) {
     const files = Array.from(input.files);
     for (const f of files) {
         if (f.size > 25 * 1024 * 1024) {
-            CiteFlowUI.alert(`File "${f.name}" exceeds the 25 MB limit.`, 'warning');
+            showToast(`File "${f.name}" exceeds the 25 MB limit.`, 'warning');
             continue;
         }
         selectedResearchFiles.push(f);
@@ -5268,7 +5458,7 @@ function addResearchLink() {
     try {
         new URL(validUrl);
     } catch (_) {
-        return CiteFlowUI.alert('Please enter a valid URL (e.g. https://example.com)', 'warning');
+        return showToast('Please enter a valid URL (e.g. https://example.com)', 'warning');
     }
 
     const label = labelInput ? labelInput.value.trim() : '';
@@ -5296,7 +5486,7 @@ function renderResearchLinksList() {
 }
 
 async function saveResearchUpload() {
-    if (!currentFaculty?.id) return CiteFlowUI.alert('Faculty profile is not loaded.', 'error');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const saveBtn = document.getElementById('saveResearchBtn');
     const title = document.getElementById('researchTitle').value.trim();
@@ -5306,18 +5496,18 @@ async function saveResearchUpload() {
     const endDate = document.getElementById('researchEndDate').value || null;
     const legacyPubUrl = document.getElementById('researchPublicationUrl')?.value?.trim() || '';
 
-    if (!title) return CiteFlowUI.alert('Please enter a research title.', 'warning');
+    if (!title) return showToast('Please enter a research title.', 'warning');
 
     // Validation 1: Date logic
     if (startDate && endDate && endDate < startDate) {
-        return CiteFlowUI.alert('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
+        return showToast('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
     }
 
     // Validation 2: Ongoing status but past end date
     const todayStr = new Date().toISOString().split('T')[0];
     if (status === 'Ongoing' && endDate && endDate < todayStr) {
-        return CiteFlowUI.alert(
-            `Invalid End Date: This research project is marked as "Ongoing", but the scheduled end date (${endDate}) has already passed.\n\nPlease update the status to "Completed" or extend the end date.`,
+        return showToast(
+            `Invalid End Date: This research project is marked as "Ongoing", but the scheduled end date (${endDate}) has already passed. Please update the status or extend the end date.`,
             'warning'
         );
     }
@@ -5433,9 +5623,9 @@ async function saveResearchUpload() {
             });
         }
 
-        CiteFlowUI.alert(`Research record ${editId ? 'updated' : 'saved'} successfully with ${uploadedMedia.length} attached file(s).`, 'success');
+        showToast(`Research record ${editId ? 'updated' : 'saved'} successfully with ${uploadedMedia.length} attached file(s).`, 'success');
     } catch (error) {
-        CiteFlowUI.alert('Unable to save research record: ' + error.message, 'error');
+        showToast('Unable to save research record: ' + error.message, 'error');
     } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = window.currentEditingResearchId ? 'Update Research' : 'Save Research';
@@ -5552,9 +5742,9 @@ async function deleteResearchProject(id) {
         if (error) throw error;
         closeViewResearchModal();
         await loadResearch();
-        CiteFlowUI.alert('Research project deleted successfully.', 'success');
+        showToast('Research project deleted successfully.', 'success');
     } catch (error) {
-        CiteFlowUI.alert('Unable to delete research project: ' + error.message, 'error');
+        showToast('Unable to delete research project: ' + error.message, 'error');
     }
 }
 
@@ -5854,19 +6044,10 @@ async function deleteAccomplishmentRecord(id) {
 
         closeViewAccomplishmentModal();
         await loadAccomplishments();
-
-        if (typeof CiteFlowUI?.alert === 'function') {
-            CiteFlowUI.alert('Accomplishment deleted successfully.', 'success');
-        } else {
-            alert('Accomplishment deleted successfully.');
-        }
+        showToast('Accomplishment deleted successfully.', 'success');
     } catch (err) {
         console.error('Failed to delete accomplishment:', err);
-        if (typeof CiteFlowUI?.alert === 'function') {
-            CiteFlowUI.alert('Failed to delete: ' + err.message, 'error');
-        } else {
-            alert('Failed to delete: ' + err.message);
-        }
+        showToast('Failed to delete: ' + err.message, 'error');
     }
 }
 function openViewDocumentModal(id) {
@@ -6113,11 +6294,11 @@ function handleAccomplishmentPhotosSelected(input) {
     const newFiles = Array.from(input.files);
     for (const f of newFiles) {
         if (!f.type.startsWith('image/')) {
-            alert(`File "${f.name}" is not an image.`);
+            showToast(`File "${f.name}" is not an image.`, 'warning');
             continue;
         }
         if (f.size > 5 * 1024 * 1024) {
-            alert(`File "${f.name}" exceeds 5 MB limit.`);
+            showToast(`File "${f.name}" exceeds 5 MB limit.`, 'warning');
             continue;
         }
         selectedAccomplishmentFiles.push(f);
@@ -6240,7 +6421,7 @@ function openEditAccomplishmentModal(id) {
 }
 
 async function saveAccomplishment() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const saveBtn = document.getElementById('saveAccomplishmentBtn');
     const title = document.getElementById('accomplishmentTitle').value.trim();
@@ -6250,8 +6431,8 @@ async function saveAccomplishment() {
     const venue = document.getElementById('accomplishmentVenue').value.trim();
     const durationHours = parseFloat(document.getElementById('accomplishmentDuration')?.value) || null;
 
-    if (!title) return alert('Please enter a title for the accomplishment.');
-    if (!dateAchieved) return alert('Please specify the date this was achieved.');
+    if (!title) return showToast('Please enter a title for the accomplishment.', 'warning');
+    if (!dateAchieved) return showToast('Please specify the date this was achieved.', 'warning');
 
     const isEdit = !!window.currentEditingAccomplishmentId;
     saveBtn.disabled = true;
@@ -6342,10 +6523,10 @@ async function saveAccomplishment() {
             });
         }
 
-        alert(isEdit ? 'Accomplishment updated successfully.' : 'Accomplishment saved successfully.');
+        showToast(isEdit ? 'Accomplishment updated successfully.' : 'Accomplishment saved successfully.', 'success');
     } catch (error) {
         console.error('Save Accomplishment Error:', error);
-        alert('Unable to save accomplishment: ' + error.message);
+        showToast('Unable to save accomplishment: ' + error.message, 'error');
     } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = isEdit ? 'Update Accomplishment' : 'Save Accomplishment';
@@ -6705,8 +6886,8 @@ async function downloadAccomplishmentPdf(event) {
     const templateType = document.getElementById('reportTemplateType')?.value || 'offline';
     const startDate = document.getElementById('reportStartDate')?.value;
     const endDate = document.getElementById('reportEndDate')?.value;
-    if (!startDate || !endDate) return alert('Please select a start and end date for the report.');
-    if (endDate < startDate) return alert('End date must be on or after the start date.');
+    if (!startDate || !endDate) return showToast('Please select a start and end date for the report.', 'warning');
+    if (endDate < startDate) return showToast('End date must be on or after the start date.', 'warning');
 
     const facultyName = currentFaculty?.full_name || currentFaculty?.name || 'Faculty Member';
     const filenameBase = templateType === 'offline'
@@ -6723,13 +6904,13 @@ async function downloadAccomplishmentPdf(event) {
     try {
         const reportHtml = await generateReportHtml(templateType, startDate, endDate);
         if (!reportHtml) {
-            return alert('No report content to download.');
+            return showToast('No report content to download.', 'warning');
         }
 
         await renderReportPdf(reportHtml, filenameBase, { returnBlob: false });
     } catch (err) {
         console.error('downloadAccomplishmentPdf error:', err);
-        alert('Failed to download PDF: ' + (err.message || err));
+        showToast('Failed to download PDF: ' + (err.message || err), 'error');
     } finally {
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -6828,7 +7009,7 @@ async function renderReportPdf(htmlContent, filenameBase, options2) {
         }
     } catch (err) {
         console.error('renderReportPdf error:', err);
-        alert('Unable to generate PDF: ' + (err.message || err));
+        showToast('Unable to generate PDF: ' + (err.message || err), 'error');
         return null;
     } finally {
         if (stage && stage.parentNode) {
@@ -7290,9 +7471,9 @@ async function submitReportForApproval() {
         const startDate = document.getElementById('reportStartDate').value;
         const endDate = document.getElementById('reportEndDate').value;
 
-        if (!startDate || !endDate) return alert('Please select a start and end date for the report.');
-        if (endDate < startDate) return alert('End date must be on or after the start date.');
-        if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+        if (!startDate || !endDate) return showToast('Please select a start and end date for the report.', 'warning');
+        if (endDate < startDate) return showToast('End date must be on or after the start date.', 'warning');
+        if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
         const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty Member';
 
@@ -7308,7 +7489,7 @@ async function submitReportForApproval() {
         if (btn) btn.innerHTML = '<span class="animate-pulse">Creating PDF...</span>';
         if (previewBtn) previewBtn.innerHTML = '<span class="animate-pulse">Creating PDF...</span>';
         const pdfBlob = await renderReportPdf(reportHtml, filenameBase, { returnBlob: true });
-        if (!pdfBlob) return alert('Failed to generate PDF.');
+        if (!pdfBlob) return showToast('Failed to generate PDF.', 'error');
 
         // Upload to Supabase storage
         if (btn) btn.innerHTML = '<span class="animate-pulse">Uploading...</span>';
@@ -7360,17 +7541,13 @@ async function submitReportForApproval() {
         if (insertError) throw new Error('Submission failed: ' + insertError.message);
 
         closeReportChooserModal();
-        if (typeof showToast === 'function') {
-            showToast('Report submitted successfully!', 'success');
-        } else {
-            alert('Report submitted successfully!');
-        }
+        showToast('Report submitted successfully!', 'success');
         await loadReportSubmissions();
         switchAccomplishmentSubView('subs');
 
     } catch (err) {
         console.error('submitReportForApproval error:', err);
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -7582,7 +7759,7 @@ async function resubmitReport(reportId) {
             .eq('id', reportId)
             .single();
 
-        if (fetchErr || !existing) return alert('Could not find the report submission.');
+        if (fetchErr || !existing) return showToast('Could not find the report submission.', 'error');
 
         // Pre-fill the report chooser modal with the original dates
         document.getElementById('reportTemplateType').value = existing.report_type || 'offline';
@@ -7614,7 +7791,7 @@ async function resubmitReport(reportId) {
         submitBtn.setAttribute('data-orig-onclick', origOnclick);
 
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -7632,8 +7809,8 @@ async function resubmitReportExec(reportId) {
         const startDate = document.getElementById('reportStartDate').value;
         const endDate = document.getElementById('reportEndDate').value;
 
-        if (!startDate || !endDate) return alert('Please select dates.');
-        if (!currentFaculty?.id) return alert('Faculty profile not loaded.');
+        if (!startDate || !endDate) return showToast('Please select dates.', 'warning');
+        if (!currentFaculty?.id) return showToast('Faculty profile not loaded.', 'error');
 
         const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty Member';
         const reportHtml = await generateReportHtml(templateType, startDate, endDate);
@@ -7714,16 +7891,12 @@ async function resubmitReportExec(reportId) {
             btn.setAttribute('onclick', origOnclick);
         }
 
-        if (typeof showToast === 'function') {
-            showToast('Report resubmitted for approval!', 'success');
-        } else {
-            alert('Report resubmitted successfully!');
-        }
+        showToast('Report resubmitted for approval!', 'success');
         await loadReportSubmissions();
 
     } catch (err) {
         console.error('resubmitReportExec error:', err);
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -7855,11 +8028,11 @@ function handleWfhEvidenceFilesSelected(input) {
 
     files.forEach(file => {
         if (!file.type.startsWith('image/')) {
-            alert(`File "${file.name}" is not an image.`);
+            showToast(`File "${file.name}" is not an image.`, 'warning');
             return;
         }
         if (file.size > 10 * 1024 * 1024) {
-            alert(`File "${file.name}" exceeds 10 MB limit.`);
+            showToast(`File "${file.name}" exceeds 10 MB limit.`, 'warning');
             return;
         }
 
@@ -7945,11 +8118,7 @@ function saveWfhDraft(notify = false) {
     try {
         localStorage.setItem(`citeflow_wfh_draft_${currentFaculty.id}`, JSON.stringify(draft));
         if (notify) {
-            if (typeof showToast === 'function') {
-                showToast('WFH Accomplishment draft saved locally!', 'success');
-            } else {
-                alert('WFH Accomplishment draft saved successfully!');
-            }
+            showToast('WFH Accomplishment draft saved locally!', 'success');
         }
     } catch (e) {
         console.warn('Unable to save WFH draft to localStorage:', e);
@@ -8422,25 +8591,25 @@ async function generateWfhReportHtml() {
 }
 
 async function downloadWfhPdf() {
-    if (!currentFaculty) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty) return showToast('Faculty profile is not loaded.', 'error');
 
     const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty_Member';
     const filenameClean = `WFH_Accomplishment_Report_${facultyName.replace(/[^a-zA-Z0-9-_]/g, '_')}`;
 
     try {
         const html = await generateWfhReportHtml();
-        if (!html) return alert('Failed to generate report.');
+        if (!html) return showToast('Failed to generate report.', 'error');
         await renderReportPdf(html, filenameClean, { returnBlob: false });
     } catch (err) {
         console.error('downloadWfhPdf error:', err);
-        alert('Failed to download WFH PDF: ' + err.message);
+        showToast('Failed to download WFH PDF: ' + err.message, 'error');
     }
 }
 
 async function printWfhReport() {
     try {
         const html = await generateWfhReportHtml();
-        if (!html) return alert('Failed to generate report.');
+        if (!html) return showToast('Failed to generate report.', 'error');
 
         let printContainer = document.getElementById('cite-wfh-print-container');
         if (!printContainer) {
@@ -8464,7 +8633,7 @@ async function printWfhReport() {
         }, 1500);
     } catch (err) {
         console.error('printWfhReport error:', err);
-        alert('Print failed: ' + err.message);
+        showToast('Print failed: ' + err.message, 'error');
     }
 }
 
@@ -8509,13 +8678,13 @@ async function submitWfhReport() {
     const origHtml = btn ? btn.innerHTML : 'Submit for Approval';
 
     try {
-        if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+        if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
         const reportingPeriod = document.getElementById('wfhReportingPeriod')?.value?.trim();
-        if (!reportingPeriod) return alert('Please enter a reporting period.');
+        if (!reportingPeriod) return showToast('Please enter a reporting period.', 'warning');
 
         if (!wfhDailyEntries.some(e => e.date || e.activities || e.output)) {
-            return alert('Please enter at least one daily accomplishment entry.');
+            return showToast('Please enter at least one daily accomplishment entry.', 'warning');
         }
 
         if (btn) {
@@ -8598,17 +8767,12 @@ async function submitWfhReport() {
             });
         }
 
-        if (typeof showToast === 'function') {
-            showToast('WFH Accomplishment Report submitted for approval!', 'success');
-        } else {
-            alert('WFH Accomplishment Report submitted for approval successfully!');
-        }
-
+        showToast('WFH Accomplishment Report submitted for approval!', 'success');
         await loadReportSubmissions();
 
     } catch (err) {
         console.error('submitWfhReport error:', err);
-        alert('Submission failed: ' + (err.message || err));
+        showToast('Submission failed: ' + (err.message || err), 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -8837,11 +9001,7 @@ function saveItineraryDraft(notify = false) {
     try {
         localStorage.setItem(`citeflow_itinerary_draft_${currentFaculty.id}`, JSON.stringify(draft));
         if (notify) {
-            if (typeof showToast === 'function') {
-                showToast('Itinerary of Travel draft saved locally!', 'success');
-            } else {
-                alert('Itinerary draft saved successfully!');
-            }
+            showToast('Itinerary of Travel draft saved locally!', 'success');
         }
     } catch (e) {
         console.warn('Unable to save Itinerary draft:', e);
@@ -9126,25 +9286,25 @@ async function generateItineraryHtml() {
 }
 
 async function downloadItineraryPdf() {
-    if (!currentFaculty) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty) return showToast('Faculty profile is not loaded.', 'error');
 
     const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty_Member';
     const filenameClean = `Itinerary_of_Travel_${facultyName.replace(/[^a-zA-Z0-9-_]/g, '_')}`;
 
     try {
         const html = await generateItineraryHtml();
-        if (!html) return alert('Failed to generate Itinerary document.');
+        if (!html) return showToast('Failed to generate Itinerary document.', 'error');
         await renderReportPdf(html, filenameClean, { returnBlob: false });
     } catch (err) {
         console.error('downloadItineraryPdf error:', err);
-        alert('Failed to download Itinerary PDF: ' + err.message);
+        showToast('Failed to download Itinerary PDF: ' + err.message, 'error');
     }
 }
 
 async function printItineraryReport() {
     try {
         const html = await generateItineraryHtml();
-        if (!html) return alert('Failed to generate Itinerary report.');
+        if (!html) return showToast('Failed to generate Itinerary report.', 'error');
 
         let printContainer = document.getElementById('cite-itinerary-print-container');
         if (!printContainer) {
@@ -9168,7 +9328,7 @@ async function printItineraryReport() {
         }, 1500);
     } catch (err) {
         console.error('printItineraryReport error:', err);
-        alert('Print failed: ' + err.message);
+        showToast('Print failed: ' + err.message, 'error');
     }
 }
 
@@ -9213,13 +9373,13 @@ async function submitItineraryReport() {
     const origHtml = btn ? btn.innerHTML : 'Submit for Approval';
 
     try {
-        if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+        if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
         const dateOfTravel = document.getElementById('itineraryDateOfTravel')?.value?.trim();
-        if (!dateOfTravel) return alert('Please enter the Date of Travel.');
+        if (!dateOfTravel) return showToast('Please enter the Date of Travel.', 'warning');
 
         if (!itineraryEntries.some(e => e.destination || e.trans || e.perDiem || e.others)) {
-            return alert('Please enter at least one itinerary destination entry.');
+            return showToast('Please enter at least one itinerary destination entry.', 'warning');
         }
 
         if (btn) {
@@ -9300,17 +9460,12 @@ async function submitItineraryReport() {
             });
         }
 
-        if (typeof showToast === 'function') {
-            showToast('Itinerary of Travel submitted for approval!', 'success');
-        } else {
-            alert('Itinerary of Travel submitted for approval successfully!');
-        }
-
+        showToast('Itinerary of Travel submitted for approval!', 'success');
         await loadReportSubmissions();
 
     } catch (err) {
         console.error('submitItineraryReport error:', err);
-        alert('Submission failed: ' + (err.message || err));
+        showToast('Submission failed: ' + (err.message || err), 'error');
     } finally {
         if (btn) {
             btn.disabled = false;

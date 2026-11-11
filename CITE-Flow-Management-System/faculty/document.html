@@ -522,6 +522,50 @@
 <div id="message-container"></div>
 
 <script>
+    function showToast(msg, type = 'info') {
+        if (window.showToast && window.showToast !== showToast) {
+            window.showToast(msg, type);
+        } else if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+            window.CiteFlowModal.toast(msg, 4000, type === 'warn' ? 'warning' : type);
+        } else if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+            window.CiteFlowUI.toast(msg, type);
+        } else if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+            window.CiteFlowUI.alert(msg, type);
+        } else {
+            const marks = {
+                success: { icon: "fa-circle-check", color: "#10b981" },
+                error: { icon: "fa-circle-xmark", color: "#f87171" },
+                warning: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+                warn: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+                info: { icon: "fa-circle-info", color: "#60a5fa" }
+            };
+            const normType = (type === 'warn' || type === 'warning') ? 'warning' : (['success', 'error', 'info'].includes(type) ? type : 'info');
+            const mark = marks[normType] || marks.info;
+            let toast = document.getElementById('citeflowGlobalToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'citeflowGlobalToast';
+                toast.className = 'citeflow-toast';
+                document.body.appendChild(toast);
+            }
+            const safe = document.createElement('div');
+            safe.textContent = String(msg ?? '').trim();
+            toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+            toast.classList.add('show');
+            clearTimeout(toast._timer);
+            toast._timer = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+    }
+    window.showToast = showToast;
+    if (!window._nativeAlert && window.alert) {
+        window._nativeAlert = window.alert.bind(window);
+        window.alert = function(msg) {
+            showToast(String(msg ?? ''), 'info');
+        };
+    }
+
     // ==================== SUPABASE SETUP ====================
     const supabaseUrl = 'https://uforealazougjckepggc.supabase.co';
     const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmb3JlYWxhem91Z2pja2VwZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjAzODksImV4cCI6MjA5MTgzNjM4OX0.wzGQAiYOuiQjb3gAbaF41yAJJyQ-CCHfMruNUEwfnp0';
@@ -538,7 +582,7 @@
     }
     if (!supabaseClient) {
         console.error("Supabase client library failed to load.");
-        alert('Supabase library failed to load. Please refresh the page.');
+        showToast('Supabase library failed to load. Please refresh the page.', 'error');
     }
 
     let folders = [];
@@ -657,7 +701,7 @@
 
         if (folderError) {
             console.error("Load Folders Error:", folderError);
-            alert("Error loading folders: " + folderError.message);
+            showToast("Error loading folders: " + folderError.message, 'error');
             return;
         }
 
@@ -999,7 +1043,10 @@
         return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
     }
 
-    function showDocumentToast(message) {
+    function showDocumentToast(message, type = 'info') {
+        if (typeof showToast === 'function') {
+            showToast(message, type);
+        }
         const toast = document.getElementById('documentToast');
         const text = document.getElementById('documentToastText');
         if (!toast || !text) return;
@@ -1148,36 +1195,36 @@
     async function viewDocument(id) {
         const doc = documents.find(d => String(d.id) === String(id));
         if (!doc) {
-            alert('Document not found.');
+            showToast('Document not found.', 'warning');
             return;
         }
 
         try {
-            showDocumentToast('Preparing preview...');
+            showDocumentToast('Preparing preview...', 'info');
             const access = await resolveDocumentAccessUrl(doc, 3600);
             if (!access?.url) {
-                alert('Unable to preview document. Storage path could not be resolved.');
+                showToast('Unable to preview document. Storage path could not be resolved.', 'error');
                 return;
             }
             openDocumentPreviewModal(doc, access);
         } catch (err) {
             console.error('Preview error:', err);
-            alert('Unable to preview document.');
+            showToast('Unable to preview document.', 'error');
         }
     }
 
     async function downloadDocument(id) {
         const doc = documents.find(d => String(d.id) === String(id));
         if (!doc) {
-            alert('Document not found.');
+            showToast('Document not found.', 'warning');
             return;
         }
 
         try {
-            showDocumentToast('Preparing download...');
+            showDocumentToast('Preparing download...', 'info');
             const access = await resolveDocumentAccessUrl(doc, 300);
             if (!access?.url) {
-                alert('Unable to download document. Storage path could not be resolved.');
+                showToast('Unable to download document. Storage path could not be resolved.', 'error');
                 return;
             }
 
@@ -1189,7 +1236,7 @@
             a.click();
             a.remove();
 
-            showDocumentToast('Download started.');
+            showDocumentToast('Download started.', 'success');
 
             if (window.EngagementLogger?.logDownload) {
                 window.EngagementLogger.logDownload({
@@ -1204,7 +1251,7 @@
             }
         } catch (err) {
             console.error('Download error:', err);
-            alert('Unable to download document.');
+            showToast('Unable to download document.', 'error');
         }
     }
 

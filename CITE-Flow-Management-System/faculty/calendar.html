@@ -1725,6 +1725,50 @@ select.modal-field {
 
 <script>
 const supabaseClient = window.supabaseClient;
+
+function showToast(msg, type = 'info') {
+    if (window.showToast && window.showToast !== showToast) {
+        window.showToast(msg, type);
+    } else if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(msg, 4000, type === 'warn' ? 'warning' : type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+        window.CiteFlowUI.toast(msg, type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+        window.CiteFlowUI.alert(msg, type);
+    } else {
+        const marks = {
+            success: { icon: "fa-circle-check", color: "#10b981" },
+            error: { icon: "fa-circle-xmark", color: "#f87171" },
+            warning: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            warn: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            info: { icon: "fa-circle-info", color: "#60a5fa" }
+        };
+        const normType = (type === 'warn' || type === 'warning') ? 'warning' : (['success', 'error', 'info'].includes(type) ? type : 'info');
+        const mark = marks[normType] || marks.info;
+        let toast = document.getElementById('citeflowGlobalToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'citeflowGlobalToast';
+            toast.className = 'citeflow-toast';
+            document.body.appendChild(toast);
+        }
+        const safe = document.createElement('div');
+        safe.textContent = String(msg ?? '').trim();
+        toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+        toast.classList.add('show');
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3500);
+    }
+}
+window.showToast = showToast;
+if (!window._nativeAlert && window.alert) {
+    window._nativeAlert = window.alert.bind(window);
+    window.alert = function(msg) {
+        showToast(String(msg ?? ''), 'info');
+    };
+}
 function withTimeout(promise, ms){
     return new Promise((resolve, reject)=>{
         const timer=setTimeout(()=>reject(new Error('timeout')), ms);
@@ -3098,7 +3142,7 @@ function onLeaveEndDateChange() {
     let start = leaveVal('leave-start-date');
     let end = leaveVal('leave-end-date');
     if (start && end && end < start) {
-        alert('End date (To) cannot be earlier than start date (From).');
+        showToast('End date (To) cannot be earlier than start date (From).', 'warning');
         document.getElementById('leave-end-date').value = start;
     }
     updateLeaveWorkingDays();
@@ -3130,7 +3174,7 @@ function onDynamicDateChange(rowId, role) {
         if (role === 'start' && (!eEl.value || eEl.value < sEl.value)) {
             eEl.value = sEl.value;
         } else if (role === 'end' && sEl.value && eEl.value && eEl.value < sEl.value) {
-            alert('End date (To) cannot be earlier than start date (From).');
+            showToast('End date (To) cannot be earlier than start date (From).', 'warning');
             eEl.value = sEl.value;
         }
     }
@@ -3552,7 +3596,7 @@ function applyLeaveDateSelection(dateStr) {
             }
         } else if (input.dataset.role === 'end') {
             if (sEl && sEl.value && eEl.value && eEl.value < sEl.value) {
-                alert('End date (To) cannot be earlier than start date (From).');
+                showToast('End date (To) cannot be earlier than start date (From).', 'warning');
                 eEl.value = sEl.value;
             }
         }
@@ -4061,7 +4105,7 @@ async function insertFacultyLeave(row){
 
 async function submitLeaveFiling(){
     if(!canUseSupabase()){
-        alert('Supabase is not configured. Cannot submit leave application.');
+        showToast('Supabase is not configured. Cannot submit leave application.', 'error');
         return;
     }
     const submitBtn = document.getElementById('leave-submit-btn');
@@ -4073,7 +4117,7 @@ async function submitLeaveFiling(){
     try {
         const rawRanges = getAllLeaveDateRanges();
         if (!rawRanges.length || !rawRanges[0].start) {
-            alert('Please select at least one valid leave date range (From and To).');
+            showToast('Please select at least one valid leave date range (From and To).', 'warning');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave'; }
             showLeavePage(1);
             return;
@@ -4089,7 +4133,7 @@ async function submitLeaveFiling(){
 
         const leaveType = leaveChecked('leave-type');
         if (!leaveType) {
-            alert('Please select a Type of Leave in Box 6.A.');
+            showToast('Please select a Type of Leave in Box 6.A.', 'warning');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave'; }
             showLeavePage(1);
             return;
@@ -4203,7 +4247,7 @@ async function submitLeaveFiling(){
         const { data: inserted, error: insErr } = await insertFacultyLeave(payload);
         if (insErr) {
             console.error('Leave filing error:', insErr);
-            alert('Failed to submit leave application: ' + (insErr.message || 'Unknown error'));
+            showToast('Failed to submit leave application: ' + (insErr.message || 'Unknown error'), 'error');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Leave'; }
             return;
         }
@@ -4229,12 +4273,12 @@ async function submitLeaveFiling(){
 
             msgModal.classList.remove('hidden');
         } else {
-            alert('Leave application submitted successfully!');
+            showToast('Leave application submitted successfully!', 'success');
         }
 
     } catch (err) {
         console.error(err);
-        alert('An unexpected error occurred: ' + (err.message || err));
+        showToast('An unexpected error occurred: ' + (err.message || err), 'error');
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
@@ -4379,7 +4423,7 @@ async function submitFacultyFeedback() {
     const attendance = document.getElementById('fb-attendance')?.value || 'Present';
 
     if (!summary) {
-        return alert('Please enter a feedback summary.');
+        return showToast('Please enter a feedback summary.', 'warning');
     }
 
     // 1. Resolve current event and true ID (handles multi-day dates & prefixes)
@@ -4392,7 +4436,7 @@ async function submitFacultyFeedback() {
     let cleanEventId = currentEvent?.realId || (currentDetailEventId ? String(currentDetailEventId).replace(/^event-/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '') : null);
 
     if (!cleanEventId) {
-        return alert('Unable to resolve event reference. Please close and re-select the event.');
+        return showToast('Unable to resolve event reference. Please close and re-select the event.', 'error');
     }
 
     // 2. Resolve faculty name with full fallbacks
@@ -4428,7 +4472,7 @@ async function submitFacultyFeedback() {
 
         if (error) {
             console.error('Feedback Error:', error);
-            return alert('Unable to submit feedback: ' + (error.message || 'Please try again.'));
+            return showToast('Unable to submit feedback: ' + (error.message || 'Please try again.'), 'error');
         }
 
         // 5. Notify Admins in real-time
@@ -4440,7 +4484,7 @@ async function submitFacultyFeedback() {
             }, currentEvent);
         }
 
-        alert('Feedback successfully submitted. Admin has been notified.');
+        showToast('Feedback successfully submitted. Admin has been notified.', 'success');
 
         // 6. Clear form inputs and close modal
         ['fb-summary', 'fb-suggestions', 'fb-content-quality', 'fb-speaker-quality'].forEach(id => {
@@ -4451,7 +4495,7 @@ async function submitFacultyFeedback() {
         closeDetailModal();
     } catch (err) {
         console.error('Unexpected Feedback Error:', err);
-        alert('An unexpected error occurred while submitting feedback.');
+        showToast('An unexpected error occurred while submitting feedback.', 'error');
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
@@ -4890,7 +4934,7 @@ async function exportCalendarPDF() {
         doc.save(`CITE-Flow-${isChairViewer() ? 'Chairperson' : 'Faculty'}-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
     } catch (err) {
         console.error('PDF export error:', err);
-        alert('Unable to export PDF. Please check your connection and try again.');
+        showToast('Unable to export PDF. Please check your connection and try again.', 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -4962,7 +5006,7 @@ window.showCalendarConfirm = showCalendarConfirm;
 function showCalendarMessage(title, text, type = 'info') {
     const modal = document.getElementById('calendar-message-modal');
     if (!modal) {
-        window.alert(text || title);
+        showToast(text || title, type);
         return;
     }
     const titleEl = document.getElementById('calendar-message-title');

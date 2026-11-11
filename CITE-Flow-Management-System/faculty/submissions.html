@@ -2353,19 +2353,46 @@ function isInReviewStage(submission, task) {
 }
 
 
-function toastMessage(message, type) {
-
-    if (window.CiteFlowWorkflow?.showToast) {
-        CiteFlowWorkflow.showToast(message, type);
-        return;
+function showToast(msg, type = 'info') {
+    if (window.showToast && window.showToast !== showToast) {
+        window.showToast(msg, type);
+    } else if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(msg, 4000, type === 'warn' ? 'warning' : type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+        window.CiteFlowUI.toast(msg, type);
+    } else if (window.CiteFlowWorkflow?.showToast) {
+        CiteFlowWorkflow.showToast(msg, type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+        window.CiteFlowUI.alert(msg, type);
+    } else {
+        const marks = {
+            success: { icon: "fa-circle-check", color: "#10b981" },
+            error: { icon: "fa-circle-xmark", color: "#f87171" },
+            warning: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            warn: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            info: { icon: "fa-circle-info", color: "#60a5fa" }
+        };
+        const normType = (type === 'warn' || type === 'warning') ? 'warning' : (['success', 'error', 'info'].includes(type) ? type : 'info');
+        const mark = marks[normType] || marks.info;
+        let toast = document.getElementById('citeflowGlobalToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'citeflowGlobalToast';
+            toast.className = 'citeflow-toast';
+            document.body.appendChild(toast);
+        }
+        const safe = document.createElement('div');
+        safe.textContent = String(msg ?? '').trim();
+        toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+        toast.classList.add('show');
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => toast.classList.remove('show'), 3500);
     }
+}
+window.showToast = showToast;
 
-    if (window.CiteFlowUI?.showMessage) {
-        CiteFlowUI.showMessage(message, type === 'error' ? 'error' : 'info');
-        return;
-    }
-
-    console.error(message);
+function toastMessage(message, type = 'info') {
+    showToast(message, type);
 }
 
 
@@ -5716,7 +5743,7 @@ window.removeSubmissionFile = async function removeSubmissionFile(taskId, fileId
             }
         }
 
-        alert('File removed successfully!');
+        toastMessage('File removed successfully!', 'success');
 
         // 7. Re-render UI immediately
         selectedTaskId = String(taskId);
@@ -5725,7 +5752,7 @@ window.removeSubmissionFile = async function removeSubmissionFile(taskId, fileId
 
     } catch (err) {
         console.error('[CiteFlow] Remove error:', err);
-        alert('Could not remove file: ' + (err?.message || err));
+        toastMessage('Could not remove file: ' + (err?.message || err), 'error');
     }
 };
 
@@ -5895,9 +5922,13 @@ window.citeAlert = function citeAlert(message, title = 'Notice') {
     });
 };
 
-// Override standard browser popups to use the theme modal
+// Override standard browser popups to use the toast notification system
 window.alert = function (msg) {
-    window.citeAlert(String(msg || ''));
+    if (typeof showToast === 'function') {
+        showToast(String(msg || ''), 'info');
+    } else {
+        window.citeAlert(String(msg || ''));
+    }
 };
 
 
