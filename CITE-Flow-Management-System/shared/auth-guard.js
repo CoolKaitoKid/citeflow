@@ -85,6 +85,10 @@
         guardApi.session = payload.session || null;
         guardApi.user = payload.user || payload.session?.user || null;
         guardApi.faculty = payload.faculty || null;
+        guardApi.adminProfile = payload.adminProfile || null;
+        guardApi.isAdminRole = Boolean(payload.isAdminRole);
+        guardApi.isDean = Boolean(payload.isDean);
+        guardApi.isSecretary = Boolean(payload.isSecretary);
         resolveReady(guardApi);
     }
 
@@ -266,9 +270,19 @@
                 || null;
             const adminProfileRole = String(adminProfile?.role || '').toLowerCase();
             const facultyRole = String(facultyRecord?.role || facultyRecord?.position || role || '').toLowerCase();
-            const isChair = facultyRole.includes('chair');
-            const isDean = facultyRole === 'dean' || adminProfileRole.includes('dean');
-            const isSecretary = facultyRole.includes('secretary') || adminProfileRole.includes('secretary');
+            const userMeta = user.user_metadata || {};
+            const userMetaPos = String(userMeta.position || userMeta.designation || userMeta.title || userMeta.role || '').toLowerCase();
+            let execPos = '';
+            if (typeof localStorage !== 'undefined') {
+                try {
+                    const exec = JSON.parse(localStorage.getItem('citeflow_dean_exec_details') || '{}');
+                    const cachedUser = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
+                    execPos = String(exec.position || cachedUser.position || cachedUser.designation || cachedUser.role || '').toLowerCase();
+                } catch (_) {}
+            }
+            const isChair = facultyRole.includes('chair') || userMetaPos.includes('chair') || execPos.includes('chair');
+            const isDean = facultyRole.includes('dean') || adminProfileRole.includes('dean') || userMetaPos.includes('dean') || execPos.includes('dean');
+            const isSecretary = facultyRole.includes('secretary') || adminProfileRole.includes('secretary') || userMetaPos.includes('secretary') || execPos.includes('secretary');
             const isAdminRole = role === 'admin'
                 || role === 'administrator'
                 || facultyRole === 'admin'
@@ -291,10 +305,18 @@
                 window.CiteFlowAuth.cacheUserInfo(user, cachedRole, facultyRecord);
             }
 
+            const resolvedFaculty = isAdminRole
+                ? Object.assign({ role: 'Admin', admin_access: true }, facultyRecord || {}, { admin_access: true })
+                : facultyRecord;
+
             finish(AuthState.AUTHENTICATED, {
                 session: activeSession,
                 user,
-                faculty: facultyRecord
+                faculty: resolvedFaculty,
+                adminProfile,
+                isAdminRole,
+                isDean,
+                isSecretary
             });
 
             if (isOnboardingArea) {
@@ -330,7 +352,7 @@
                         window.location.replace(isInsideSubfolder ? 'dashboard.html' : `${prefix}admin/dashboard.html`);
                         return;
                     }
-                } else if (role === 'faculty' || (facultyRole === 'faculty' && !hasAdminAccess && !isChair && !isDean && !isSecretary && !isAdminRole)) {
+                } else if ((role === 'faculty' || facultyRole === 'faculty') && !hasAdminAccess && !isChair && !isDean && !isSecretary && !isAdminRole) {
                     window.location.replace(isInsideSubfolder ? '../faculty/dashboard.html' : 'faculty/dashboard.html');
                     return;
                 }
@@ -446,7 +468,7 @@
         try {
             const { data, error } = await sb
                 .from('wf_delegated_access')
-                .select('id, is_active, grantee_faculty_id, grantee_auth_user_id, grantee_name, grantee_email, email')
+                .select('id, is_active, grantee_faculty_id, grantee_auth_user_id, grantee_name, grantee_email')
                 .eq('is_active', true);
             if (error || !Array.isArray(data) || !data.length) return false;
             const facultyId = facultyRecord.id != null ? String(facultyRecord.id) : '';

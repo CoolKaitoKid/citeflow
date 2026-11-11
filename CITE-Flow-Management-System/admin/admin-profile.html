@@ -837,10 +837,10 @@
                 </div>
 
                 <div class="card p-6 mb-7">
-                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
                         <div>
                             <h2 class="text-lg font-semibold text-slate-950">Teaching Loads</h2>
-                            <p class="text-sm text-slate-500">Add subjects, sections, schedules, rooms, and units.</p>
+                            <p class="text-sm text-slate-500">Assigned subjects grouped by Academic Year with complete workload details.</p>
                         </div>
 
                         <button onclick="openTeachingModal()" class="primary-btn flex items-center gap-2" data-theme-primary="true">
@@ -851,7 +851,29 @@
                             Add Teaching Load
                         </button>
                     </div>
-                    <div id="teachingList" class="space-y-3"></div>
+
+                    <div id="workloadFilterBar" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-3 items-end p-4 mb-6 rounded-2xl bg-slate-50/80 border border-slate-200/80">
+                        <div>
+                            <label for="workloadAcademicYearFilter" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Academic Year</label>
+                            <select id="workloadAcademicYearFilter" onchange="onWorkloadFilterChange()" class="field !py-2.5 !px-3.5 !rounded-xl text-sm font-medium text-slate-800">
+                                <option value="">All Academic Years</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="workloadSemesterFilter" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Semester</label>
+                            <select id="workloadSemesterFilter" onchange="onWorkloadFilterChange()" class="field !py-2.5 !px-3.5 !rounded-xl text-sm font-medium text-slate-800">
+                                <option value="">All Semesters</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center justify-between sm:justify-end gap-3 pt-1 sm:pt-0">
+                            <span id="workloadFilterSummary" class="text-xs font-semibold text-slate-500"></span>
+                            <button id="workloadResetFiltersBtn" type="button" onclick="resetWorkloadFilters()" class="hidden text-xs font-semibold text-[#621708] hover:text-[#8c2a10] px-3 py-2 rounded-xl border border-[#621708]/20 bg-white hover:bg-red-50/40 transition-colors">
+                                Reset Filters
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="teachingList" class="space-y-6"></div>
                 </div>
             </section>
         </div>
@@ -2075,6 +2097,9 @@ function switchTab(tab) {
         if (el) el.classList.toggle('hidden', item !== tab);
         if (btn) btn.classList.toggle('active', item === tab);
     });
+    if (tab === 'workload' && typeof loadWorkloadEntries === 'function') {
+        loadWorkloadEntries();
+    }
 }
 
 function switchExtensionSubView(subview) {
@@ -2494,10 +2519,39 @@ document.getElementById('profilePhone').textContent = cleanPhone || 'No contact 
 async function loadWorkloadEntries() {
     if (!currentFaculty?.id) return;
 
+    let targetFacultyId = currentFaculty.id;
+    if (supabaseClient && currentAuthUser) {
+        try {
+            const conds = [`auth_user_id.eq.${currentAuthUser.id}`];
+            if (currentFaculty.id && /^\d+$/.test(String(currentFaculty.id))) {
+                conds.push(`id.eq.${currentFaculty.id}`);
+            }
+            if (currentAuthUser.email) {
+                conds.push(`email.ilike.${currentAuthUser.email.trim()}`);
+            }
+            const { data: canonical } = await supabaseClient
+                .from('faculty')
+                .select('id, auth_user_id')
+                .or(conds.join(','))
+                .maybeSingle();
+            if (canonical?.id) {
+                targetFacultyId = canonical.id;
+                currentFaculty.id = canonical.id;
+            }
+        } catch (_) {}
+    }
+
+    if (!targetFacultyId || !/^\d+$/.test(String(targetFacultyId))) {
+        console.warn('Cannot load teaching loads: invalid or non-numeric faculty_id:', targetFacultyId);
+        teachingLoads = [];
+        renderWorkload();
+        return;
+    }
+
     const teachingResponse = await supabaseClient
         .from('faculty_teaching_loads')
         .select('*')
-        .eq('faculty_id', currentFaculty.id)
+        .eq('faculty_id', targetFacultyId)
         .neq('status', 'Archived')
         .order('created_at', { ascending: false });
 
@@ -2505,30 +2559,273 @@ async function loadWorkloadEntries() {
     renderWorkload();
 }
 
-function workloadItem(title, meta, units, type, id) {
+function hasWorkloadFieldValue(value) {
+    if (value === null || value === undefined) return false;
+    return String(value).trim() !== '';
+}
+
+function getExistingWorkloadSchedule(item) {
+    if (!item || typeof item !== 'object') return '';
+    const schedules = parseScheduleEntries(item.schedule_entries);
+    if (schedules.length) {
+        const formattedEntries = schedules
+            .map(schedule => {
+                const day = String(schedule?.day || '').trim();
+                const start = String(schedule?.start_time || '').trim();
+                const end = String(schedule?.end_time || '').trim();
+                const timeRange = [start, end].filter(Boolean).join('–');
+                return [day, timeRange].filter(Boolean).join(' ').trim();
+            })
+            .filter(Boolean);
+        if (formattedEntries.length) {
+            return formattedEntries.join(' / ');
+        }
+    }
+
+    const day = String(item.schedule_day || '').trim();
+    const start = String(item.start_time || '').trim();
+    const end = String(item.end_time || '').trim();
+    const timeRange = [start, end].filter(Boolean).join('–');
+    const directSchedule = [day, timeRange].filter(Boolean).join(' ').trim();
+    if (directSchedule) return directSchedule;
+
+    return String(item.schedule || '').trim();
+}
+
+function normalizeAcademicYearKey(value) {
+    return String(value || '').trim().replace(/\s*[–—-]\s*/g, '-');
+}
+
+function formatAcademicYearHeading(yearKey) {
+    if (!yearKey) return 'Unspecified Academic Year';
+    const display = String(yearKey).trim().replace(/(\d{4})\s*-\s*(\d{4})/, '$1–$2');
+    return /^academic\s+year/i.test(display) ? display : `Academic Year ${display}`;
+}
+
+function compareAcademicYearsDesc(a, b) {
+    const keyA = normalizeAcademicYearKey(a);
+    const keyB = normalizeAcademicYearKey(b);
+    if (!keyA && !keyB) return 0;
+    if (!keyA) return 1;
+    if (!keyB) return -1;
+
+    const yearsA = (keyA.match(/\d{4}/g) || []).map(Number);
+    const yearsB = (keyB.match(/\d{4}/g) || []).map(Number);
+
+    if (yearsA.length && yearsB.length) {
+        if (yearsB[0] !== yearsA[0]) return yearsB[0] - yearsA[0];
+        const endA = yearsA[1] || yearsA[0];
+        const endB = yearsB[1] || yearsB[0];
+        if (endB !== endA) return endB - endA;
+    } else if (yearsA.length) {
+        return -1;
+    } else if (yearsB.length) {
+        return 1;
+    }
+
+    return keyB.localeCompare(keyA);
+}
+
+function compareSemestersOrder(a, b) {
+    const rank = value => {
+        const s = String(value || '').trim().toLowerCase();
+        if (s.includes('1st') || s.includes('first')) return 1;
+        if (s.includes('2nd') || s.includes('second')) return 2;
+        if (s.includes('summer') || s.includes('midyear')) return 3;
+        return 4;
+    };
+    const rA = rank(a);
+    const rB = rank(b);
+    if (rA !== rB) return rA - rB;
+    return String(a || '').localeCompare(String(b || ''));
+}
+
+function dedupeWorkloadItems(items) {
+    const seen = new Set();
+    const result = [];
+    (items || []).forEach(item => {
+        if (!item || typeof item !== 'object') return;
+        const idKey = hasWorkloadFieldValue(item.id) ? `id:${String(item.id).trim()}` : '';
+        const compositeKey = [
+            normalizeAcademicYearKey(item.academic_year).toLowerCase(),
+            String(item.semester || '').trim().toLowerCase(),
+            String(item.subject_code || '').trim().toLowerCase(),
+            String(item.subject_title || '').trim().toLowerCase(),
+            String(item.section || '').trim().toLowerCase(),
+            getExistingWorkloadSchedule(item).toLowerCase()
+        ].join('|');
+        const key = idKey || `comp:${compositeKey}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        result.push(item);
+    });
+    return result;
+}
+
+function populateWorkloadFilterOptions(items) {
+    const yearSelect = document.getElementById('workloadAcademicYearFilter');
+    const semSelect = document.getElementById('workloadSemesterFilter');
+    if (!yearSelect || !semSelect) return;
+
+    const previousYear = yearSelect.value;
+    const previousSem = semSelect.value;
+
+    const yearMap = new Map();
+    const semMap = new Map();
+
+    (items || []).forEach(item => {
+        if (hasWorkloadFieldValue(item.academic_year)) {
+            const normYear = normalizeAcademicYearKey(item.academic_year);
+            if (normYear && !yearMap.has(normYear)) {
+                yearMap.set(normYear, String(item.academic_year).trim());
+            }
+        }
+        if (hasWorkloadFieldValue(item.semester)) {
+            const semRaw = String(item.semester).trim();
+            const semKey = semRaw.toLowerCase();
+            if (!semMap.has(semKey)) {
+                semMap.set(semKey, semRaw);
+            }
+        }
+    });
+
+    const sortedYearKeys = [...yearMap.keys()].sort(compareAcademicYearsDesc);
+    const sortedSemKeys = [...semMap.keys()].sort((a, b) => compareSemestersOrder(semMap.get(a), semMap.get(b)));
+
+    yearSelect.innerHTML = `<option value="">All Academic Years</option>` +
+        sortedYearKeys.map(key => `<option value="${esc(key)}">${esc(yearMap.get(key))}</option>`).join('');
+
+    semSelect.innerHTML = `<option value="">All Semesters</option>` +
+        sortedSemKeys.map(key => `<option value="${esc(semMap.get(key))}">${esc(semMap.get(key))}</option>`).join('');
+
+    if (previousYear && sortedYearKeys.includes(previousYear)) {
+        yearSelect.value = previousYear;
+    } else {
+        yearSelect.value = '';
+    }
+
+    if (previousSem && [...semMap.values()].some(v => v.toLowerCase() === previousSem.toLowerCase())) {
+        const match = [...semMap.values()].find(v => v.toLowerCase() === previousSem.toLowerCase());
+        semSelect.value = match || '';
+    } else {
+        semSelect.value = '';
+    }
+}
+
+function onWorkloadFilterChange() {
+    renderWorkload(true);
+}
+
+function resetWorkloadFilters() {
+    const yearSelect = document.getElementById('workloadAcademicYearFilter');
+    const semSelect = document.getElementById('workloadSemesterFilter');
+    if (yearSelect) yearSelect.value = '';
+    if (semSelect) semSelect.value = '';
+    renderWorkload(true);
+}
+
+function workloadSubjectCard(item) {
+    const hasCode = hasWorkloadFieldValue(item.subject_code);
+    const hasTitle = hasWorkloadFieldValue(item.subject_title);
+    const hasSection = hasWorkloadFieldValue(item.section);
+    const hasUnits = hasWorkloadFieldValue(item.units);
+    const hasHours = hasWorkloadFieldValue(item.hours_per_week);
+    const hasStudents = hasWorkloadFieldValue(item.total_students);
+    const hasSemester = hasWorkloadFieldValue(item.semester);
+    const hasAcademicYear = hasWorkloadFieldValue(item.academic_year);
+    const hasRoom = hasWorkloadFieldValue(item.room);
+    const scheduleText = getExistingWorkloadSchedule(item);
+    const hasSchedule = hasWorkloadFieldValue(scheduleText);
+    const hasRemarks = hasWorkloadFieldValue(item.remarks);
+
+    const detailFields = [];
+    if (hasCode) detailFields.push({ label: 'Subject Code', value: String(item.subject_code).trim() });
+    if (hasTitle) detailFields.push({ label: 'Subject Title', value: String(item.subject_title).trim() });
+    if (hasSection) detailFields.push({ label: 'Section', value: String(item.section).trim() });
+    if (hasUnits) detailFields.push({ label: 'Units', value: `${Number(item.units)}` });
+    if (hasHours) detailFields.push({ label: 'Hours per Week', value: `${Number(item.hours_per_week)}` });
+    if (hasStudents) detailFields.push({ label: 'Number of Students', value: `${Number(item.total_students)}` });
+    if (hasSemester) detailFields.push({ label: 'Semester', value: String(item.semester).trim() });
+    if (hasAcademicYear) detailFields.push({ label: 'Academic Year', value: String(item.academic_year).trim() });
+    if (hasRoom) detailFields.push({ label: 'Room', value: String(item.room).trim() });
+    if (hasSchedule) detailFields.push({ label: 'Schedule', value: scheduleText, wide: true });
+    if (hasRemarks) detailFields.push({ label: 'Remarks', value: String(item.remarks).trim(), wide: true });
+
+    const headingTitle = hasTitle
+        ? String(item.subject_title).trim()
+        : (hasCode ? String(item.subject_code).trim() : 'Subject Assignment');
+
     return `
-        <div class="border border-slate-200 rounded-2xl p-4 bg-white flex items-start justify-between gap-4">
-            <div>
-                <div class="font-semibold text-slate-900">${esc(title)}</div>
-                <div class="text-xs text-slate-500 mt-1">${esc(meta || 'No details provided')}</div>
-                <div class="mt-2 text-sm font-semibold text-[#621708]">${Number(units) || 0} units</div>
+        <article class="workload-subject-card border border-slate-200/90 hover:border-[#621708]/30 rounded-2xl p-5 bg-white shadow-sm hover:shadow-md transition-all">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-4 border-b border-slate-100">
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                        ${hasCode ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold tracking-wide bg-[#621708]/10 text-[#621708]">${esc(String(item.subject_code).trim())}</span>` : ''}
+                        ${hasSection ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Section ${esc(String(item.section).trim())}</span>` : ''}
+                        ${hasSemester ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200/60">${esc(String(item.semester).trim())}</span>` : ''}
+                    </div>
+                    <h4 class="text-base font-semibold text-slate-950 break-words">${esc(headingTitle)}</h4>
+                </div>
+
+                <div class="flex items-center gap-2.5 self-start shrink-0">
+                    ${hasUnits ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-[#621708] text-white">${esc(String(Number(item.units)))} ${Number(item.units) === 1 ? 'Unit' : 'Units'}</span>` : ''}
+                    ${hasWorkloadFieldValue(item.id) ? `
+                    <button onclick="archiveWorkload('teaching', '${esc(item.id)}')"
+                            class="icon-btn text-red-600 hover:bg-red-50 hover:border-red-200"
+                            title="Remove entry">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18"/>
+                            <path d="M8 6V4h8v2"/>
+                            <path d="m7 6 1 14h8l1-14"/>
+                        </svg>
+                    </button>
+                    ` : ''}
+                </div>
             </div>
 
-            <button onclick="archiveWorkload('${type}', '${id}')"
-                    class="icon-btn text-red-600 hover:bg-red-50 hover:border-red-200"
-                    title="Remove entry">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M3 6h18"/>
-                    <path d="M8 6V4h8v2"/>
-                    <path d="m7 6 1 14h8l1-14"/>
-                </svg>
-            </button>
-        </div>
+            ${detailFields.length ? `
+            <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-3 pt-4">
+                ${detailFields.map(field => `
+                    <div class="${field.wide ? 'sm:col-span-2' : ''}">
+                        <dt class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">${esc(field.label)}</dt>
+                        <dd class="text-sm font-medium text-slate-800 mt-0.5 break-words">${esc(field.value)}</dd>
+                    </div>
+                `).join('')}
+            </dl>
+            ` : ''}
+        </article>
     `;
 }
 
-function renderWorkload() {
-    const teachingTotal = sumUnits(teachingLoads);
+function workloadItem(title, meta, units, type, id) {
+    return workloadSubjectCard({
+        id,
+        subject_title: title,
+        remarks: meta,
+        units
+    });
+}
+
+function renderWorkload(preserveFilters = false) {
+    const uniqueLoads = dedupeWorkloadItems(teachingLoads);
+    if (!preserveFilters) {
+        populateWorkloadFilterOptions(uniqueLoads);
+    }
+
+    const yearFilter = normalizeAcademicYearKey(document.getElementById('workloadAcademicYearFilter')?.value || '');
+    const semFilter = String(document.getElementById('workloadSemesterFilter')?.value || '').trim().toLowerCase();
+
+    const filteredLoads = uniqueLoads.filter(item => {
+        if (yearFilter && normalizeAcademicYearKey(item.academic_year) !== yearFilter) {
+            return false;
+        }
+        if (semFilter && String(item.semester || '').trim().toLowerCase() !== semFilter) {
+            return false;
+        }
+        return true;
+    });
+
+    const teachingTotal = sumUnits(filteredLoads);
     const deloadingUnits = Number(currentFaculty?.deloading_units !== undefined ? currentFaculty.deloading_units : 12);
     const total = teachingTotal + deloadingUnits;
 
@@ -2555,15 +2852,108 @@ function renderWorkload() {
         }
     }
 
-    document.getElementById('teachingList').innerHTML = teachingLoads.length
-        ? teachingLoads.map(item => workloadItem(
-            `${item.subject_code} - ${item.subject_title}`,
-            `${item.section} • ${formatSchedule(item)} • ${item.room || 'TBA'} • ${item.semester} ${item.academic_year} • ${Number(item.hours_per_week || item.units || 0)} hrs/week • ${Number(item.total_students || 0)} students`,
-            item.units,
-            'teaching',
-            item.id
-        )).join('')
-        : '<div class="text-sm text-slate-500">No specialized teaching loads added yet.</div>';
+    const resetBtn = document.getElementById('workloadResetFiltersBtn');
+    if (resetBtn) {
+        resetBtn.classList.toggle('hidden', !yearFilter && !semFilter);
+    }
+
+    const summaryEl = document.getElementById('workloadFilterSummary');
+    if (summaryEl) {
+        summaryEl.textContent = uniqueLoads.length
+            ? `Showing ${filteredLoads.length} of ${uniqueLoads.length} subject${uniqueLoads.length === 1 ? '' : 's'}`
+            : '';
+    }
+
+    const listEl = document.getElementById('teachingList');
+    if (!listEl) return;
+
+    if (!uniqueLoads.length) {
+        listEl.innerHTML = `
+            <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center">
+                <p class="text-sm font-semibold text-slate-700">No specialized teaching loads added yet.</p>
+                <p class="text-xs text-slate-500 mt-1">Assigned or added subjects will appear here as individual cards grouped by Academic Year.</p>
+            </div>
+        `;
+        return;
+    }
+
+    if (!filteredLoads.length) {
+        listEl.innerHTML = `
+            <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center">
+                <p class="text-sm font-semibold text-slate-700">No workload assignments match the selected filters.</p>
+                <p class="text-xs text-slate-500 mt-1">Try selecting a different Academic Year or Semester.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const groupsMap = new Map();
+    filteredLoads.forEach(item => {
+        const yearKey = hasWorkloadFieldValue(item.academic_year)
+            ? normalizeAcademicYearKey(item.academic_year)
+            : '';
+        if (!groupsMap.has(yearKey)) {
+            groupsMap.set(yearKey, []);
+        }
+        groupsMap.get(yearKey).push(item);
+    });
+
+    const sortedGroupKeys = [...groupsMap.keys()].sort(compareAcademicYearsDesc);
+
+    listEl.innerHTML = sortedGroupKeys.map(yearKey => {
+        const groupItems = groupsMap.get(yearKey) || [];
+        const groupUnits = sumUnits(groupItems);
+        const headingText = formatAcademicYearHeading(yearKey);
+
+        const semGroupsMap = new Map();
+        groupItems.forEach(item => {
+            const semKey = String(item.semester || '').trim() || 'Unspecified Semester';
+            if (!semGroupsMap.has(semKey)) {
+                semGroupsMap.set(semKey, []);
+            }
+            semGroupsMap.get(semKey).push(item);
+        });
+
+        const sortedSemKeys = [...semGroupsMap.keys()].sort((a, b) => compareSemestersOrder(a, b));
+
+        const semBlocksHtml = sortedSemKeys.map(semKey => {
+            const semItems = semGroupsMap.get(semKey) || [];
+            const semUnits = sumUnits(semItems);
+            return `
+                <div class="workload-sem-group space-y-3 pl-0 sm:pl-3 border-l-2 border-slate-200/80">
+                    <div class="flex items-center justify-between gap-2 py-1">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-block w-2 h-2 rounded-full bg-amber-600"></span>
+                            <h4 class="text-sm font-bold text-slate-800 tracking-tight">${esc(semKey)}</h4>
+                        </div>
+                        <span class="text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200/60 px-2.5 py-0.5 rounded-full">
+                            ${semItems.length} ${semItems.length === 1 ? 'Subject' : 'Subjects'} • ${semUnits} ${semUnits === 1 ? 'Unit' : 'Units'}
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        ${semItems.map(item => workloadSubjectCard(item)).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="workload-year-group space-y-4" data-academic-year="${esc(yearKey)}">
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-2 h-5 rounded-full bg-[#621708]"></span>
+                        <h3 class="text-base font-bold text-slate-900 tracking-tight">${esc(headingText)}</h3>
+                    </div>
+                    <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                        ${groupItems.length} ${groupItems.length === 1 ? 'Subject' : 'Subjects'} • ${groupUnits} ${groupUnits === 1 ? 'Unit' : 'Units'}
+                    </span>
+                </div>
+                <div class="space-y-4">
+                    ${semBlocksHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 async function openTeachingModal() {
@@ -2596,8 +2986,8 @@ async function saveTeachingLoad() {
         subject_title: document.getElementById('teachingSubjectTitle').value.trim(),
         section: document.getElementById('teachingSection').value.trim(),
         schedule_day: scheduleEntries.map(schedule => schedule.day).join(', '),
-        start_time: firstSchedule.start_time || '',
-        end_time: firstSchedule.end_time || '',
+        start_time: firstSchedule.start_time || null,
+        end_time: firstSchedule.end_time || null,
         schedule_entries: scheduleEntries,
         room: document.getElementById('teachingRoom').value.trim(),
         units: Number(document.getElementById('teachingUnits').value || 0),
