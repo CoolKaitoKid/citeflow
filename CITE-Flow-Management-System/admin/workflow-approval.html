@@ -908,11 +908,24 @@
             padding-bottom: 0;
             font-size: 13px;
         }
-        #workflowMainView .wf-toolbar select.field-input {
-            width: auto !important;
-            flex: 1 1 150px;
-            max-width: 220px;
-        }
+        #workflowMainView .wf-toolbar {
+    gap: 10px !important; /* Ensures at least 10px gap between all items */
+}
+
+#workflowMainView .wf-toolbar select.field-input {
+   
+    flex: 1 1 140px;
+    min-width: 0;         /* Allows dropdown to shrink so the gap is never squeezed to 0 */
+    max-width: 166px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* Fallback: guarantees separation even if line space is constrained */
+#workflowMainView .wf-toolbar select.field-input + select.field-input {
+    margin-left: 8px;
+}
         #workflowMainView .view-toggle { border-radius: 8px; }
         #workflowMainView .view-toggle button { padding: 7px 12px; font-size: 12px; }
         #taskTableSurface:not(.hidden) {
@@ -5391,7 +5404,7 @@ async function grantAccess() {
     const facultyId = select?.value;
 
     if (!facultyId) {
-        alert('Please select a faculty member.');
+        showToast('Please select a faculty member.', 'warn');
         return;
     }
 
@@ -5405,7 +5418,7 @@ async function grantAccess() {
     if (document.getElementById('deptBIT')?.checked) selectedDepts.push('BIT');
 
     if (!selectedDepts.length) {
-        alert('Please select at least one department (BSIT, BSIE, or BIT).');
+        showToast('Please select at least one department (BSIT, BSIE, or BIT).', 'warn');
         return;
     }
 
@@ -5436,7 +5449,7 @@ async function grantAccess() {
         showToast('Chairperson review access granted!', 'success');
     } catch (err) {
         console.error('Error granting access:', err);
-        alert('Failed to grant access: ' + err.message);
+        showToast('Failed to grant access: ' + err.message, 'error');
     }
 }
 
@@ -5469,7 +5482,7 @@ async function revokeAccess(grantId, facultyId) {
         showToast('Access revoked. Chairperson Review is now locked for this user.', 'warn');
     } catch (err) {
         console.error('Error revoking access:', err);
-        alert('Failed to revoke access: ' + err.message);
+        showToast('Failed to revoke access: ' + err.message, 'error');
     }
 }
 

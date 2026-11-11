@@ -268,12 +268,38 @@
         const originalRefresh = client.auth.refreshSession.bind(client.auth);
         const originalGetUser = client.auth.getUser.bind(client.auth);
         const originalSignOut = client.auth.signOut.bind(client.auth);
+        const originalGetSession = typeof client.auth.getSession === 'function'
+            ? client.auth.getSession.bind(client.auth)
+            : null;
+        if (originalGetSession && !client._citeFlowOriginalGetSession) {
+            client._citeFlowOriginalGetSession = originalGetSession;
+        }
         const originalRemoveSession = typeof client.auth._removeSession === 'function'
             ? client.auth._removeSession.bind(client.auth)
             : null;
         const originalCallRefresh = typeof client.auth._callRefreshToken === 'function'
             ? client.auth._callRefreshToken.bind(client.auth)
             : null;
+
+        if (originalGetSession) {
+            client.auth.getSession = async function () {
+                try {
+                    const result = await originalGetSession();
+                    if (result?.data?.session?.access_token) return result;
+                    const persisted = readStoredAuthSession();
+                    if (persisted && accessTokenStillValid(persisted)) {
+                        return { data: { session: persisted }, error: null };
+                    }
+                    return result;
+                } catch (error) {
+                    const persisted = readStoredAuthSession();
+                    if (persisted && accessTokenStillValid(persisted)) {
+                        return { data: { session: persisted }, error: null };
+                    }
+                    return { data: { session: null }, error };
+                }
+            };
+        }
 
         // GoTrue treats invalid_grant / AuthSessionMissingError as "signed out"
         // and deletes the sb-* token. A second page refreshing the same token
@@ -326,7 +352,7 @@
                             reason: 'access token still valid'
                         });
                     }
-                    return Promise.resolve({ data: storedNow, error: null });
+                    return Promise.resolve({ data: storedNow, session: storedNow, error: null });
                 }
                 if (window.__citeflowCallRefreshInFlight) return window.__citeflowCallRefreshInFlight;
                 console.info('[AUTH TRACE] refresh started', { path: window.location.pathname });
@@ -339,14 +365,14 @@
                             ok: Boolean(!error && session?.access_token),
                             userId: session?.user?.id || null
                         });
-                        if (!error && session?.access_token) return { data: session, error: null };
+                        if (!error && session?.access_token) return { data: session, session, error: null };
                         const latest = readStoredAuthSession();
                         if (latest && accessTokenStillValid(latest)) {
                             window.__citeflowRefreshCooldownUntil = Date.now() + 20000;
                             console.warn('[AUTH TRACE] refresh failed; keeping the unexpired access token', error);
-                            return { data: latest, error: null };
+                            return { data: latest, session: latest, error: null };
                         }
-                        return { data: session || null, error };
+                        return { data: session || null, session: session || null, error };
                     })
                     .finally(() => { window.__citeflowCallRefreshInFlight = null; });
                 return window.__citeflowCallRefreshInFlight;

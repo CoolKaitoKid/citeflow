@@ -363,12 +363,37 @@
     let savedTheme = toThemeHex(window.CiteFlowUI.getDefaultTheme());
     let selectedTheme = savedTheme;
 
-    function showToast(title, message) {
-        document.getElementById('toastTitle').textContent = title;
-        document.getElementById('toastMessage').textContent = message;
+    function showToast(titleOrMessage, messageOrType, type = 'info') {
+        let msg = titleOrMessage;
+        let t = type;
+        if (arguments.length === 1) {
+            msg = titleOrMessage;
+            t = 'info';
+        } else if (arguments.length === 2) {
+            if (['success', 'error', 'warning', 'warn', 'info'].includes(messageOrType)) {
+                msg = titleOrMessage;
+                t = messageOrType;
+            } else {
+                msg = `${titleOrMessage ? titleOrMessage + ': ' : ''}${messageOrType}`;
+                t = 'success';
+            }
+        } else {
+            msg = `${titleOrMessage ? titleOrMessage + ': ' : ''}${messageOrType}`;
+            t = type;
+        }
+
+        if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+            window.CiteFlowUI.toast(msg, t);
+        }
+        const tTitle = document.getElementById('toastTitle');
+        const tMsg = document.getElementById('toastMessage');
         const toast = document.getElementById('toast');
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2600);
+        if (tTitle && tMsg && toast) {
+            tTitle.textContent = titleOrMessage;
+            tMsg.textContent = messageOrType || '';
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2600);
+        }
     }
 
     function showError(message) {

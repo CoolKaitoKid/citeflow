@@ -2044,7 +2044,7 @@ function birthdayCalendarEntries(faculty, year) {
     const bdayDateStr = `${year}-${month}-${day}`;
     
     const fullName = [faculty.first_name, faculty.last_name].filter(Boolean).join(' ').trim() || 'Faculty Member';
-    const title = `🎂 Birthday: ${fullName}`;
+    const title = `Birthday: ${fullName}`;
     
     return [{
         id: `birthday-${faculty.id}-${year}`,
@@ -2236,21 +2236,52 @@ function card(e,showDate=false){
 
 function renderSeparatedUpcoming(){
     let todayStart = new Date(new Date().setHours(0,0,0,0));
-    let future=events.filter(e=>{
+    
+    // Identifies if an event is a birthday
+    const isBirthdayEvent = (e) => {
+        return !!(e.isBirthday || 
+                  String(e.id || '').startsWith('birthday-') || 
+                  /birthday/i.test(String(e.title || '')));
+    };
+
+    // Checks if the date falls inside the currently viewed month
+    const isInViewMonth = (dateStr) => {
+        if (!dateStr) return false;
+        const [y, m] = String(dateStr).split('-').map(Number);
+        return y === currentYear && (m - 1) === currentMonth;
+    };
+
+    let future = events.filter(e => {
+        // 👉 Birthdays ONLY display if they are inside the currently viewed month!
+        if (isBirthdayEvent(e)) {
+            return isInViewMonth(e.date);
+        }
         let end = e.endAt ? new Date(e.endAt) : new Date(e.startAt);
         return end >= todayStart;
-    }).sort((a,b)=>new Date(a.startAt)-new Date(b.startAt));
+    }).sort((a,b) => new Date(a.startAt) - new Date(b.startAt));
+
     let schoolEvents = future.filter(e => e.category === 'schedule' && e.type === 'event' && e.schedulePrimary !== false);
     let schedules = future.filter(e => e.category === 'schedule' && e.type !== 'event' && e.schedulePrimary !== false);
     let leaves = future.filter(e => e.category === 'leave' && e.leavePrimary);
-    document.getElementById('count-schedules').textContent=schedules.length;
-    document.getElementById('list-schedules').innerHTML=schedules.length?schedules.map(e=>card(e,true)).join(''):'<div class="text-xs text-slate-400 italic">No upcoming schedules</div>';
-    if(document.getElementById('count-upcoming')) {
-        document.getElementById('count-upcoming').textContent=schoolEvents.length;
-        document.getElementById('list-upcoming').innerHTML=schoolEvents.length?schoolEvents.map(e=>card(e,true)).join(''):'<div class="text-xs text-slate-400 italic">No upcoming events</div>';
+
+    document.getElementById('count-schedules').textContent = schedules.length;
+    document.getElementById('list-schedules').innerHTML = schedules.length 
+        ? schedules.map(e => card(e,true)).join('') 
+        : '<div class="text-xs text-slate-400 italic">No upcoming schedules</div>';
+
+    if (document.getElementById('count-upcoming')) {
+        document.getElementById('count-upcoming').textContent = schoolEvents.length;
+        document.getElementById('list-upcoming').innerHTML = schoolEvents.length 
+            ? schoolEvents.map(e => card(e,true)).join('') 
+            : '<div class="text-xs text-slate-400 italic">No upcoming events</div>';
     }
-    document.getElementById('count-leaves').textContent=leaves.length;
-    document.getElementById('list-leaves').innerHTML=leaves.length?leaves.map(e=>card(e,true)).join(''):'<div class="text-xs text-slate-400 italic">No upcoming leaves</div>';
+
+    if (document.getElementById('count-leaves')) {
+        document.getElementById('count-leaves').textContent = leaves.length;
+        document.getElementById('list-leaves').innerHTML = leaves.length 
+            ? leaves.map(e => card(e,true)).join('') 
+            : '<div class="text-xs text-slate-400 italic">No upcoming leaves</div>';
+    }
 }
 
 function renderSelected(){
@@ -3473,6 +3504,23 @@ function pdfPillStyle(type){
         other:{fill:[248,250,252],text:[51,65,85],border:[226,232,240]}
     })[key] || {fill:[224,242,254],text:[3,105,161],border:[186,230,253]};
 }
+
+function pdfCleanText(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/Ø[<‹]ß[,‚]?\s*/gi, '') // <-- Forcefully deletes the literal "Ø<ß,"
+        .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '') // Strips 🎂 and all emojis
+        .replace(/[\u{1F300}-\u{1FAD6}\u{1F900}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{27BF}]/gu, '')
+        .replace(/^[🎂🎈🎉🎊🎁✨\s,;:\-–—]+/u, '')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/\u2022/g, '·')
+        .replace(/^\s*[:\-\u2013\u2014]+\s*/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function pdfEllipsis(doc, text, maxW){
     const s=String(text||'');
     if(!s || doc.getTextWidth(s)<=maxW) return s;
@@ -3480,6 +3528,7 @@ function pdfEllipsis(doc, text, maxW){
     while(t.length>1 && doc.getTextWidth(t+'...')>maxW) t=t.slice(0,-1);
     return t+'...';
 }
+
 function pdfMonthWeeks(){
     const first=new Date(currentYear,currentMonth,1).getDay();
     const daysInMonth=new Date(currentYear,currentMonth+1,0).getDate();
@@ -3495,6 +3544,7 @@ function pdfMonthWeeks(){
     for(let i=0;i<cells.length;i+=7) weeks.push(cells.slice(i,i+7));
     return weeks;
 }
+
 function pdfMonthListRows(){
     const seen=new Set();
     const rows=[];
@@ -3506,11 +3556,12 @@ function pdfMonthListRows(){
         const stamp=String(e.realId||e.id);
         if(seen.has(stamp)) return;
         seen.add(stamp);
-        const dayLabel=(e.detailTime&&String(e.detailTime).split('•')[0].trim())||(typeof longDate==='function'?longDate(e.date):e.date);
-        rows.push([dayLabel, e.title||'', String(e.type||'').toUpperCase(), e.location||'', pdfTimeLabel(e)]);
+        const dayLabel=pdfCleanText((e.detailTime&&String(e.detailTime).split('•')[0].trim())||(typeof longDate==='function'?longDate(e.date):e.date));
+        rows.push([dayLabel, pdfCleanText(e.title||''), String(e.type||'').toUpperCase(), pdfCleanText(e.location||''), pdfCleanText(pdfTimeLabel(e))]);
     });
     return rows;
 }
+
 function pdfDrawWeekdays(doc, x, y, gridW, cellW, headerH){
     doc.setFillColor(248,250,252);
     doc.rect(x, y, gridW, headerH, 'F');
@@ -3524,23 +3575,40 @@ function pdfDrawWeekdays(doc, x, y, gridW, cellW, headerH){
     doc.setLineWidth(0.2);
     doc.line(x, y+headerH, x+gridW, y+headerH);
 }
+
 function pdfDrawPill(doc, x, y, w, e, h = 5.2){
-    const style=pdfPillStyle(String(e.type||'').toLowerCase());
+    const style = pdfPillStyle(String(e.type || '').toLowerCase());
     doc.setFillColor(style.fill[0], style.fill[1], style.fill[2]);
     doc.setDrawColor(style.border[0], style.border[1], style.border[2]);
     doc.setLineWidth(0.15);
-    doc.roundedRect(x, y, w, h, 1.2, 1.2, 'FD');
-    const maxW=w-2.4;
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(5.2);
-    doc.setTextColor(style.text[0], style.text[1], style.text[2]);
-    doc.text(pdfEllipsis(doc, e.title||'', maxW), x+1.2, y+2.3);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(4.3);
-    doc.setTextColor(style.text[0], style.text[1], style.text[2]);
-    doc.text(pdfEllipsis(doc, pdfTimeLabel(e), maxW), x+1.2, y+4.3);
+    doc.roundedRect(x, y, w, h, 0.9, 0.9, 'FD');
+    const maxW = w - 2.4;
+    const cleanTitle = pdfCleanText(e.title || '');
+    const cleanTime = pdfCleanText(pdfTimeLabel(e));
+
+    if (h >= 4.2) {
+        // Two-line layout: Title on top, Time on bottom
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.0);
+        doc.setTextColor(style.text[0], style.text[1], style.text[2]);
+        doc.text(pdfEllipsis(doc, cleanTitle, maxW), x + 1.2, y + 2.1);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(4.1);
+        doc.setTextColor(style.text[0], style.text[1], style.text[2]);
+        doc.text(pdfEllipsis(doc, cleanTime, maxW), x + 1.2, y + h - 1.1);
+    } else {
+        // Compact single-line layout for busy days
+        doc.setFont('helvetica', 'bold');
+        const fSize = Math.max(3.6, Math.min(4.8, h * 0.9));
+        doc.setFontSize(fSize);
+        doc.setTextColor(style.text[0], style.text[1], style.text[2]);
+        const fullText = (cleanTime && cleanTime !== 'whole') ? `${cleanTitle} (${cleanTime})` : cleanTitle;
+        doc.text(pdfEllipsis(doc, fullText, maxW), x + 1.2, y + (h / 2) + (fSize * 0.12));
+    }
     return h;
 }
+
 async function loadPdfBanners(){
     if(window.__citePdfBanners) return window.__citePdfBanners;
     const files={ seal:'ctu-seal.png', bagong:'bagong-pilipinas.png', footer:'ctu-rankings-banner.png' };
@@ -3578,11 +3646,13 @@ async function loadPdfBanners(){
     window.__citePdfBanners=banners;
     return banners;
 }
+
 function pdfImageKind(data){
     const s=String(data||'');
     if(s.indexOf('image/jpeg')>=0) return 'JPEG';
     return 'PNG';
 }
+
 function pdfBannerSize(doc, data, maxW, maxH){
     if(!data) return { w:0, h:0 };
     try {
@@ -3594,6 +3664,7 @@ function pdfBannerSize(doc, data, maxW, maxH){
         return { w:0, h:0 };
     }
 }
+
 function pdfPageLayout(doc, banners){
     const pageW=doc.internal.pageSize.getWidth();
     const pageH=doc.internal.pageSize.getHeight();
@@ -3607,12 +3678,14 @@ function pdfPageLayout(doc, banners){
     const contentBottom=pageH-8;
     return { pageW, pageH, margin, usable, footer, letterTop, logo, afterLetter, slimTop, contentBottom };
 }
+
 function pdfDrawSlimHeader(doc, L, portalLabel, pageNo, pageCount){
     doc.setFont('helvetica','normal');
     doc.setFontSize(7);
     doc.setTextColor(148,163,184);
     doc.text(`${months[currentMonth]} ${currentYear}  ·  ${pageNo} / ${pageCount}`, L.pageW-L.margin, L.pageH-4.5, { align:'right' });
 }
+
 function pdfDrawOfficialHeader(doc, L, banners){
     const top=3.8;
     const logoMax=18;
@@ -3660,344 +3733,195 @@ function pdfDrawOfficialHeader(doc, L, banners){
 }
 
 function pdfDrawMonthGrid(doc, startY, layout){
-    const L=layout;
-    const gridW=L.usable;
-    const cellW=gridW/7;
-    const headerH=6;
-    const pad=1.5;
-    const weeks=pdfMonthWeeks();
-    const numWeeks=Math.max(weeks.length, 5);
-    
-    const availH=L.contentBottom - startY - headerH;
-    const rowH=Math.min(availH / numWeeks, 32);
-    
-    let y=startY;
-    const x0=L.margin;
-    
+    const L = layout;
+    const gridW = L.usable;
+    const cellW = gridW / 7;
+    const headerH = 6;
+    const pad = 1.2;
+    const weeks = pdfMonthWeeks();
+    const numWeeks = Math.max(weeks.length, 5);
+
+    const availH = L.contentBottom - startY - headerH;
+
+    // Dynamically calculate row heights weighted by number of events per week
+    const weekMaxEvents = weeks.map(week => Math.max(1, ...week.map(c => c ? c.events.length : 0)));
+    const minRowH = numWeeks > 5 ? 18 : 20;
+    const totalMinH = minRowH * weeks.length;
+    const extraH = Math.max(0, availH - totalMinH);
+    const extraWeights = weekMaxEvents.map(m => Math.max(0, m - 1));
+    const sumExtraWeights = extraWeights.reduce((a, b) => a + b, 0);
+
+    const rowHeights = weeks.map((w, i) => {
+        if (sumExtraWeights === 0) return availH / weeks.length;
+        return minRowH + (extraWeights[i] / sumExtraWeights) * extraH;
+    });
+
+    let y = startY;
+    const x0 = L.margin;
+
     pdfDrawWeekdays(doc, x0, y, gridW, cellW, headerH);
-    y+=headerH;
-    
-    weeks.forEach(week=>{
-        week.forEach((cell,i)=>{
-            const x=x0+i*cellW;
-            if(!cell){
-                doc.setFillColor(248,250,252);
+    y += headerH;
+
+    weeks.forEach((week, wIdx) => {
+        const rowH = rowHeights[wIdx];
+        week.forEach((cell, i) => {
+            const x = x0 + i * cellW;
+            if (!cell) {
+                doc.setFillColor(248, 250, 252);
                 doc.rect(x, y, cellW, rowH, 'F');
             } else {
-                doc.setFillColor(255,255,255);
+                doc.setFillColor(255, 255, 255);
                 doc.rect(x, y, cellW, rowH, 'F');
-                
-                if(cell.isToday){
-                    doc.setFillColor(98,23,8);
-                    doc.circle(x+pad+2.8, y+pad+2.8, 2.8, 'F');
-                    doc.setFont('helvetica','bold');
+
+                if (cell.isToday) {
+                    doc.setFillColor(98, 23, 8);
+                    doc.circle(x + pad + 2.8, y + pad + 2.8, 2.8, 'F');
+                    doc.setFont('helvetica', 'bold');
                     doc.setFontSize(6.5);
-                    doc.setTextColor(255,255,255);
-                    doc.text(String(cell.day), x+pad+2.8, y+pad+3.8, { align:'center' });
+                    doc.setTextColor(255, 255, 255);
+                    doc.text(String(cell.day), x + pad + 2.8, y + pad + 3.8, { align: 'center' });
                 } else {
-                    doc.setFont('helvetica','bold');
+                    doc.setFont('helvetica', 'bold');
                     doc.setFontSize(7);
-                    doc.setTextColor(51,65,85);
-                    doc.text(String(cell.day), x+pad+1, y+pad+3.6);
+                    doc.setTextColor(51, 65, 85);
+                    doc.text(String(cell.day), x + pad + 1, y + pad + 3.6);
                 }
-                
-                if(cell.events.length>0){
-                    doc.setFont('helvetica','bold');
+
+                if (cell.events.length > 0) {
+                    doc.setFont('helvetica', 'bold');
                     doc.setFontSize(5.5);
-                    doc.setTextColor(148,163,184);
-                    doc.text(String(cell.events.length), x+cellW-pad-1, y+pad+3.6, { align:'right' });
+                    doc.setTextColor(148, 163, 184);
+                    doc.text(String(cell.events.length), x + cellW - pad - 1, y + pad + 3.6, { align: 'right' });
                 }
-                
-                let py=y+pad+5.5;
-                const pillH=5.2;
-                const pillGap=1;
-                const maxVisible=Math.floor((rowH - 7.5)/(pillH + pillGap));
-                const toShow=cell.events.slice(0, maxVisible);
-                
-                toShow.forEach(ev=>{
-                    pdfDrawPill(doc, x+pad, py, cellW-pad*2, ev, pillH);
-                    py+=pillH+pillGap;
-                });
-                
-                if(cell.events.length>maxVisible){
-                    doc.setFont('helvetica','bold');
-                    doc.setFontSize(4.8);
-                    doc.setTextColor(98,23,8);
-                    doc.text(`+${cell.events.length - maxVisible} more`, x+pad+1, py+2.5);
+
+                // ✅ Renders ALL events — no slicing, no "+X more"
+                const count = cell.events.length;
+                if (count > 0) {
+                    const availCellH = rowH - 6.0;
+                    const pillGap = count > 3 ? 0.6 : 0.8;
+                    let pillH = (availCellH - (count - 1) * pillGap) / count;
+                    if (pillH > 5.2) pillH = 5.2;
+                    else if (pillH < 2.8) pillH = 2.8;
+
+                    let py = y + pad + 5.2;
+                    cell.events.forEach(ev => {
+                        pdfDrawPill(doc, x + pad, py, cellW - pad * 2, ev, pillH);
+                        py += pillH + pillGap;
+                    });
                 }
             }
-            doc.setDrawColor(226,232,240);
+            doc.setDrawColor(226, 232, 240);
             doc.setLineWidth(0.2);
             doc.rect(x, y, cellW, rowH, 'S');
         });
-        y+=rowH;
+        y += rowH;
     });
     return y;
 }
 
-function drawCalendarPdf(doc, portalLabel, banners){
-    const L=pdfPageLayout(doc, banners||{});
-    pdfDrawOfficialHeader(doc, L, banners||{});
-    const titleY=L.afterLetter+3.5;
-    doc.setFont('helvetica','bold');
+function drawCalendarPdf(doc, portalLabel, banners) {
+    const L = pdfPageLayout(doc, banners || {});
+    pdfDrawOfficialHeader(doc, L, banners || {});
+    const titleY = L.afterLetter + 3.5;
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.setTextColor(15,23,42);
+    doc.setTextColor(15, 23, 42);
     doc.text(`${months[currentMonth]} ${currentYear}`, L.margin, titleY);
-    doc.setFont('helvetica','normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
-    doc.setTextColor(100,116,139);
-    doc.text(portalLabel+'  ·  every schedule shown', L.pageW-L.margin, titleY, { align:'right' });
-    
-    pdfDrawMonthGrid(doc, titleY+3.5, L);
-    
+    doc.setTextColor(100, 116, 139);
+    doc.text(portalLabel + '  ·  every schedule shown', L.pageW - L.margin, titleY, { align: 'right' });
+
+    // 1. Full Calendar Month Grid Fits 100% on Page 1
+    pdfDrawMonthGrid(doc, titleY + 3.5, L);
+
+    // 2. Comprehensive Detailed Table on Page 2
     doc.addPage();
-    let y=L.slimTop+5;
-    doc.setFont('helvetica','bold');
+    let y = L.slimTop + 5;
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(11.5);
-    doc.setTextColor(15,23,42);
+    doc.setTextColor(15, 23, 42);
     doc.text(`Schedules for ${months[currentMonth]} ${currentYear}`, L.margin, y);
-    
-    const list=pdfMonthListRows();
+
+    const list = pdfMonthListRows();
     doc.autoTable({
-        startY: y+3,
-        margin: { left:L.margin, right:L.margin, top:L.slimTop+2, bottom: L.footer.h ? L.footer.h+14 : 12 },
-        head: [['Inclusive Dates','Title / Faculty Name','Type','Location / Office','Duration / Time']],
-        body: list.length?list:[['—','No schedules recorded for this month','','','']],
+        startY: y + 3,
+        margin: { left: L.margin, right: L.margin, top: L.slimTop + 2, bottom: L.footer.h ? L.footer.h + 14 : 12 },
+        head: [['Inclusive Dates', 'Title / Faculty Name', 'Type', 'Location / Office', 'Duration / Time']],
+        body: list.length ? list : [['—', 'No schedules recorded for this month', '', '', '']],
         theme: 'grid',
-        headStyles: { fillColor:[98,23,8], textColor:255, fontStyle:'bold', fontSize:8, cellPadding:2 },
-        styles: { fontSize:7.8, textColor:[51,65,85], lineColor:[226,232,240], lineWidth:0.18, cellPadding:2, valign:'middle' },
-        alternateRowStyles: { fillColor:[248,250,252] },
-        columnStyles: { 0:{ cellWidth:55 }, 2:{ cellWidth:24 }, 4:{ cellWidth:38 } }
+        headStyles: { fillColor: [98, 23, 8], textColor: 255, fontStyle: 'bold', fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 7.8, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.18, cellPadding: 2, valign: 'middle' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: { 0: { cellWidth: 55 }, 2: { cellWidth: 24 }, 4: { cellWidth: 38 } }
     });
-    
-    if(banners && banners.footer && L.footer.h){
-        const lastY=(doc.lastAutoTable&&doc.lastAutoTable.finalY)||y;
-        let by=lastY+6;
-        if(by+L.footer.h>L.pageH-8){
+
+    if (banners && banners.footer && L.footer.h) {
+        const lastY = (doc.lastAutoTable && doc.lastAutoTable.finalY) || y;
+        let by = lastY + 6;
+        if (by + L.footer.h > L.pageH - 8) {
             doc.addPage();
-            by=L.slimTop+8;
+            by = L.slimTop + 8;
         }
-        doc.addImage(banners.footer, pdfImageKind(banners.footer), (L.pageW-L.footer.w)/2, by, L.footer.w, L.footer.h);
+        doc.addImage(banners.footer, pdfImageKind(banners.footer), (L.pageW - L.footer.w) / 2, by, L.footer.w, L.footer.h);
     }
-    
-    const pages=doc.getNumberOfPages();
-    for(let i=1;i<=pages;i++){
+
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
         doc.setPage(i);
         pdfDrawSlimHeader(doc, L, portalLabel, i, pages);
     }
 }
 
-// =========================================================
-// ADMIN BIRTHDAY MODAL & WISHES CONTROLLER
-// =========================================================
-let currentCelebrantEvent = null;
-let currentLoadedBirthdayComments = [];
-
-const escSafe = (s) => (typeof esc === 'function' ? esc(s) : String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
-
-async function fetchBirthdayComments(celebrantName, year) {
-    if (!supabaseClient) return [];
-    try {
-        const { data, error } = await supabaseClient
-            .from('faculty_birthday_comments')
-            .select('*')
-            .eq('celebrant_year', year)
-            .ilike('celebrant_name', celebrantName)
-            .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        return data || [];
-    } catch (err) {
-        console.warn('Could not load birthday comments:', err);
-        return [];
+function exportCalendarPDF() {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        loadPdfLibs().then(function() { exportCalendarPDF(); }).catch(function() { showCalendarMessage('PDF Error', 'Unable to load PDF exporter. Check your internet connection and try again.', 'error'); });
+        return;
     }
+    const { jsPDF } = window.jspdf;
+    const banners = window.__citePdfBanners || { seal: '', bagong: '', footer: '' };
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    drawCalendarPdf(doc, 'Admin Calendar', banners);
+    doc.save(`CITE-Flow-Admin-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
 }
 
-async function openBirthdayModal(event) {
-    currentCelebrantEvent = event;
+// =========================================================
+// BIRTHDAY CELEBRATION & WISHES MODAL CONTROLLER
+// =========================================================
+let currentBirthdayCelebrant = null;
+let bdayConfettiAnimId = null;
+
+function openBirthdayModal(e) {
+    currentBirthdayCelebrant = e;
     const modal = document.getElementById('birthday-modal');
     if (!modal) return;
 
-    let name = (event.title || '').replace(/^🎂\s*Birthday:\s*/i, '').trim();
-    if (!name) name = event.facultyName || 'Colleague';
+    const celebrantName = e.facultyName || (e.title || '').replace(/^🎂?\s*Birthday:\s*/i, '').trim() || 'Faculty Member';
+    const celebrantNameEl = document.getElementById('bday-celebrant-name');
+    if (celebrantNameEl) celebrantNameEl.textContent = celebrantName;
 
-    const year = parseInt(event.date ? event.date.slice(0, 4) : currentYear, 10);
-
-    const nameEl = document.getElementById('bday-celebrant-name');
     const dateBadgeEl = document.getElementById('bday-date-badge');
-    const inputEl = document.getElementById('bday-wish-input');
-
-    if (nameEl) nameEl.textContent = name;
-    if (dateBadgeEl) dateBadgeEl.textContent = `${(typeof longDate === 'function' ? longDate(event.date) : event.date)} • Campus Birthday Celebration`;
-    if (inputEl) inputEl.value = '';
-
-    const listEl = document.getElementById('bday-wishes-list');
-    if (listEl) {
-        listEl.innerHTML = '<div class="text-xs text-slate-400 italic text-center py-4"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Loading birthday wishes...</div>';
+    if (dateBadgeEl && e.date) {
+        dateBadgeEl.textContent = longDate(e.date);
     }
 
-    modal.classList.remove('hidden');
-    setTimeout(() => launchBirthdayConfetti(), 100);
+    const input = document.getElementById('bday-wish-input');
+    if (input) input.value = '';
 
-    const comments = await fetchBirthdayComments(name, year);
-    renderBirthdayWishes(comments, name);
+    loadBirthdayWishes(e);
+    startConfetti();
+
+    modal.classList.remove('hidden');
 }
 
 function closeBirthdayModal() {
     const modal = document.getElementById('birthday-modal');
     if (modal) modal.classList.add('hidden');
-    currentCelebrantEvent = null;
+    stopConfetti();
+    currentBirthdayCelebrant = null;
 }
-
-function formatCommentTime(isoStr) {
-    if (!isoStr) return 'Just now';
-    const d = new Date(isoStr);
-    if (Number.isNaN(d.getTime())) return 'Recently';
-    return new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit'
-    }).format(d);
-}
-
-function renderBirthdayWishes(comments, celebrantName) {
-    const listEl = document.getElementById('bday-wishes-list');
-    const countEl = document.getElementById('bday-wishes-count');
-    if (!listEl) return;
-
-    currentLoadedBirthdayComments = Array.isArray(comments) ? comments : [];
-    const list = currentLoadedBirthdayComments;
-
-    if (countEl) countEl.textContent = `${list.length} ${list.length === 1 ? 'message' : 'messages'}`;
-
-    if (!list.length) {
-        listEl.innerHTML = `
-            <div class="bg-white rounded-xl p-4 border border-dashed border-rose-200 text-center space-y-1">
-                <div class="text-2xl">💌</div>
-                <div class="text-xs font-semibold text-slate-700">No wishes posted yet for ${escSafe(celebrantName || 'the celebrant')}.</div>
-                <div class="text-[11px] text-slate-400">Be the first to post a warm birthday greeting below!</div>
-            </div>
-        `;
-        return;
-    }
-
-    const myAuthId = currentUser?.id;
-    const myEmail = String(currentUser?.email || '').trim().toLowerCase();
-
-    listEl.innerHTML = list.map(c => {
-        const isMine = (myAuthId && String(c.author_id) === String(myAuthId)) ||
-                       (myEmail && String(c.author_email || '').trim().toLowerCase() === myEmail);
-
-        return `
-            <div class="bg-white rounded-xl p-3 border border-slate-100 shadow-sm flex items-start gap-2.5">
-                <div class="w-7 h-7 rounded-full bg-rose-100 text-rose-800 font-bold flex items-center justify-center text-[10px] shrink-0 uppercase">
-                    ${escSafe((c.author_name || 'F').charAt(0))}
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center justify-between gap-1">
-                        <span class="text-xs font-bold text-slate-900 truncate">${escSafe(c.author_name || 'Faculty Member')}</span>
-                        <div class="flex items-center gap-1.5 shrink-0">
-                            <span class="text-[9.5px] text-slate-400">${escSafe(formatCommentTime(c.created_at))}</span>
-                            ${isMine ? `
-                                <button type="button" onclick="startEditBirthdayComment(${c.id})" class="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition" title="Edit your greeting">
-                                    <i class="fa-solid fa-pen text-[10px]"></i>
-                                </button>
-                                <button type="button" onclick="deleteBirthdayComment(${c.id})" class="text-slate-400 hover:text-rose-600 p-0.5 rounded transition" title="Delete your greeting">
-                                    <i class="fa-solid fa-trash-can text-[10px]"></i>
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-                    ${c.author_role ? `<div class="text-[9.5px] text-slate-400 font-medium">${escSafe(c.author_role)}</div>` : ''}
-                    
-                    <div id="bday-comment-body-${c.id}" class="mt-1">
-                        <p class="text-xs text-slate-700 leading-relaxed bg-slate-50/70 rounded-lg p-2 border border-slate-50">${escSafe(c.message)}</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-function startEditBirthdayComment(commentId) {
-    const comment = currentLoadedBirthdayComments.find(x => String(x.id) === String(commentId));
-    if (!comment) return;
-    const bodyEl = document.getElementById(`bday-comment-body-${commentId}`);
-    if (!bodyEl) return;
-
-    bodyEl.innerHTML = `
-        <div class="space-y-1.5">
-            <textarea id="bday-edit-input-${commentId}" rows="2" class="w-full text-xs bg-white border border-[#621708] rounded-xl p-2 outline-none focus:ring-1 focus:ring-[#621708] text-slate-800 leading-relaxed">${escSafe(comment.message)}</textarea>
-            <div class="flex items-center justify-end gap-1.5">
-                <button type="button" onclick="cancelEditBirthdayComment(${commentId})" class="text-[10.5px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold transition">Cancel</button>
-                <button type="button" onclick="saveEditBirthdayComment(${commentId})" class="text-[10.5px] px-3 py-1 rounded-lg bg-[#621708] hover:bg-[#831843] text-white font-semibold transition">Save</button>
-            </div>
-        </div>
-    `;
-    const textarea = document.getElementById(`bday-edit-input-${commentId}`);
-    if (textarea) {
-        textarea.focus();
-        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-    }
-}
-
-function cancelEditBirthdayComment(commentId) {
-    const comment = currentLoadedBirthdayComments.find(x => String(x.id) === String(commentId));
-    const bodyEl = document.getElementById(`bday-comment-body-${commentId}`);
-    if (!bodyEl || !comment) return;
-    bodyEl.innerHTML = `<p class="text-xs text-slate-700 leading-relaxed bg-slate-50/70 rounded-lg p-2 border border-slate-50">${escSafe(comment.message)}</p>`;
-}
-
-async function saveEditBirthdayComment(commentId) {
-    const textarea = document.getElementById(`bday-edit-input-${commentId}`);
-    const newMsg = (textarea?.value || '').trim();
-    if (!newMsg) return;
-
-    try {
-        const { error } = await supabaseClient
-            .from('faculty_birthday_comments')
-            .update({ message: newMsg })
-            .eq('id', commentId);
-
-        if (error) throw error;
-        const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
-        const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
-        const fresh = await fetchBirthdayComments(celebrantName, year);
-        renderBirthdayWishes(fresh, celebrantName);
-    } catch (err) {
-        console.error('Error updating birthday comment:', err);
-    }
-}
-
-// 4. Deletes Comment using Custom CITE-Flow Modal (No browser alert)
-async function deleteBirthdayComment(commentId) {
-    const confirmed = await showCalendarConfirm(
-        'Delete Birthday Greeting',
-        'Are you sure you want to remove this birthday greeting? This action cannot be undone.',
-        { confirmText: 'Delete Greeting', cancelText: 'Cancel' }
-    );
-    if (!confirmed) return;
-
-    try {
-        const { error } = await supabaseClient
-            .from('faculty_birthday_comments')
-            .delete()
-            .eq('id', commentId);
-
-        if (error) throw error;
-
-        const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
-        const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
-        const freshComments = await fetchBirthdayComments(celebrantName, year);
-        renderBirthdayWishes(freshComments, celebrantName);
-
-        showCalendarMessage('Greeting Deleted', 'Your birthday greeting was removed successfully.', 'info');
-    } catch (err) {
-        console.error('Error deleting birthday comment:', err);
-        showCalendarMessage('Unable to delete', 'Could not delete greeting: ' + (err.message || 'Please try again.'), 'error');
-    }
-}
+window.openBirthdayModal = openBirthdayModal;
+window.closeBirthdayModal = closeBirthdayModal;
 
 function setQuickWish(text) {
     const input = document.getElementById('bday-wish-input');
@@ -4006,160 +3930,178 @@ function setQuickWish(text) {
         input.focus();
     }
 }
+window.setQuickWish = setQuickWish;
+
+const bdayWishesStore = Object.create(null);
+
+async function loadBirthdayWishes(e) {
+    const key = e.realId ? `faculty_${e.realId}` : (e.id || 'bday');
+    const listEl = document.getElementById('bday-wishes-list');
+    const countEl = document.getElementById('bday-wishes-count');
+    if (!listEl) return;
+
+    let wishes = bdayWishesStore[key] || [];
+    try {
+        const { data, error } = await supabaseClient
+            .from('faculty_birthday_wishes')
+            .select('*')
+            .eq('faculty_id', e.realId)
+            .order('created_at', { ascending: false });
+        if (!error && Array.isArray(data)) {
+            wishes = data;
+            bdayWishesStore[key] = data;
+        }
+    } catch (_) {}
+
+    renderWishes(wishes);
+}
+
+function renderWishes(wishes) {
+    const listEl = document.getElementById('bday-wishes-list');
+    const countEl = document.getElementById('bday-wishes-count');
+    if (!listEl) return;
+
+    if (countEl) countEl.textContent = `${wishes.length} message${wishes.length === 1 ? '' : 's'}`;
+
+    if (!wishes.length) {
+        listEl.innerHTML = '<div class="text-xs text-slate-400 italic text-center py-4 bg-white/60 rounded-xl border border-slate-100">Be the first to send a birthday greeting!</div>';
+        return;
+    }
+
+    listEl.innerHTML = wishes.map(w => `
+        <div class="bg-white p-2.5 rounded-xl border border-rose-100/70 shadow-2xs text-xs space-y-1">
+            <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-800">${esc(w.sender_name || 'CITE Colleague')}</span>
+                <span class="text-[10px] text-slate-400">${w.created_at ? new Date(w.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}</span>
+            </div>
+            <p class="text-slate-600 text-xs">${esc(w.message || w.wish || '')}</p>
+        </div>
+    `).join('');
+}
 
 async function postBirthdayWish() {
     const input = document.getElementById('bday-wish-input');
-    const msg = (input?.value || '').trim();
-    if (!msg) return;
+    const text = input ? input.value.trim() : '';
+    if (!text || !currentBirthdayCelebrant) return;
 
-    const celebrantName = document.getElementById('bday-celebrant-name')?.textContent || 'Faculty';
-    const year = parseInt(currentCelebrantEvent?.date ? currentCelebrantEvent.date.slice(0, 4) : currentYear, 10);
-    const celebrantId = currentCelebrantEvent?.id ? String(currentCelebrantEvent.id) : (currentCelebrantEvent?.realId ? String(currentCelebrantEvent.realId) : null);
+    const senderName = currentProfile
+        ? formatFullName(currentProfile.first_name, currentProfile.last_name, currentUser?.email)
+        : (currentUser?.email || 'Administrator');
 
-    const adminName = [currentProfile?.first_name, currentProfile?.last_name].filter(Boolean).join(' ').trim() 
-        || currentProfile?.full_name 
-        || currentUser?.email 
-        || 'Administrator';
-    const adminRole = currentProfile?.role || 'Administrator';
+    const key = currentBirthdayCelebrant.realId ? `faculty_${currentBirthdayCelebrant.realId}` : (currentBirthdayCelebrant.id || 'bday');
+    const newWish = {
+        faculty_id: currentBirthdayCelebrant.realId || null,
+        sender_id: currentUser?.id || null,
+        sender_name: senderName,
+        message: text,
+        created_at: new Date().toISOString()
+    };
 
-    const sendBtn = input.nextElementSibling;
-    if (sendBtn) sendBtn.disabled = true;
+    if (!bdayWishesStore[key]) bdayWishesStore[key] = [];
+    bdayWishesStore[key].unshift(newWish);
+    renderWishes(bdayWishesStore[key]);
+    if (input) input.value = '';
 
     try {
-        // 1. Save greeting to database
-        const { error } = await supabaseClient
-            .from('faculty_birthday_comments')
-            .insert({
-                celebrant_name: celebrantName,
-                celebrant_id: celebrantId,
-                celebrant_year: year,
-                author_id: currentUser?.id || null,
-                author_name: adminName,
-                author_role: adminRole,
-                author_email: currentUser?.email || '',
-                message: msg
-            });
+        await supabaseClient.from('faculty_birthday_wishes').insert([newWish]);
+    } catch (_) {}
 
-        if (error) throw error;
-
-        // 2. Dispatch notification to the celebrant
-        if (window.CalendarNotifications && typeof CalendarNotifications.notifyBirthdayComment === 'function') {
-            CalendarNotifications.notifyBirthdayComment({
-                celebrant_name: celebrantName,
-                celebrant_id: celebrantId,
-                author_name: adminName,
-                message: msg,
-                celebrant_year: year
-            }).catch(err => console.warn('Could not dispatch birthday notification:', err));
-        }
-
-        // 3. Reset input, refresh comment feed & launch confetti
-        input.value = '';
-        const freshComments = await fetchBirthdayComments(celebrantName, year);
-        renderBirthdayWishes(freshComments, celebrantName);
-        launchBirthdayConfetti();
-
-    } catch (err) {
-        console.error('Error posting birthday comment:', err);
-        if (typeof showCalendarMessage === 'function') {
-            showCalendarMessage('Unable to Post', 'Could not post your greeting: ' + (err.message || 'Please try again.'), 'error');
-        } else {
-            alert('Could not post your greeting: ' + (err.message || 'Please try again.'));
-        }
-    } finally {
-        if (sendBtn) sendBtn.disabled = false;
-    }
+    burstConfetti();
 }
+window.postBirthdayWish = postBirthdayWish;
 
-function launchBirthdayConfetti() {
+// Canvas Confetti
+let confettiParticles = [];
+function startConfetti() {
     const canvas = document.getElementById('bday-confetti-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const w = canvas.width = canvas.offsetWidth;
-    const h = canvas.height = canvas.offsetHeight;
-    if (!w || !h) return;
+    canvas.width = canvas.parentElement.offsetWidth || 500;
+    canvas.height = canvas.parentElement.offsetHeight || 180;
 
-    const particles = [];
-    const colors = ['#f43f5e', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ffffff', '#ffd700'];
-
-    for (let i = 0; i < 45; i++) {
-        particles.push({
-            x: w / 2,
-            y: h / 2,
+    confettiParticles = [];
+    const colors = ['#f43f5e', '#fbbf24', '#38bdf8', '#a855f7', '#34d399', '#ffffff'];
+    for (let i = 0; i < 40; i++) {
+        confettiParticles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
             r: Math.random() * 4 + 2,
+            d: Math.random() * 40,
             color: colors[Math.floor(Math.random() * colors.length)],
-            vx: (Math.random() - 0.5) * 8,
-            vy: (Math.random() - 0.7) * 7,
-            opacity: 1
+            tilt: Math.random() * 10 - 10,
+            tiltAngleInc: Math.random() * 0.07 + 0.05,
+            tiltAngle: 0
         });
     }
 
-    let frames = 0;
-    function render() {
-        ctx.clearRect(0, 0, w, h);
-        let active = false;
-        particles.forEach(p => {
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vy += 0.15;
-            p.opacity -= 0.015;
-            if (p.opacity > 0) {
-                active = true;
-                ctx.beginPath();
-                ctx.fillStyle = p.color;
-                ctx.globalAlpha = Math.max(0, p.opacity);
-                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                ctx.fill();
+    if (bdayConfettiAnimId) cancelAnimationFrame(bdayConfettiAnimId);
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < confettiParticles.length; i++) {
+            const p = confettiParticles[i];
+            ctx.beginPath();
+            ctx.lineWidth = p.r;
+            ctx.strokeStyle = p.color;
+            ctx.moveTo(p.x + p.tilt + p.r / 2, p.y);
+            ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r / 2);
+            ctx.stroke();
+
+            p.tiltAngle += p.tiltAngleInc;
+            p.y += (Math.cos(p.d) + 1.5 + p.r / 2) * 0.6;
+            p.tilt = Math.sin(p.tiltAngle) * 8;
+
+            if (p.y > canvas.height) {
+                p.y = -10;
+                p.x = Math.random() * canvas.width;
             }
-        });
-        ctx.globalAlpha = 1;
-        frames++;
-        if (active && frames < 75) {
-            requestAnimationFrame(render);
-        } else {
-            ctx.clearRect(0, 0, w, h);
         }
+        bdayConfettiAnimId = requestAnimationFrame(draw);
     }
-    render();
+    draw();
 }
 
-function exportCalendarPDF() {
-    if(!window.jspdf || !window.jspdf.jsPDF){
-        loadPdfLibs().then(function(){ exportCalendarPDF(); }).catch(function(){ showCalendarMessage('Unable to export PDF','Unable to load the PDF exporter. Check your connection and try again.','error'); });
-        return;
+function stopConfetti() {
+    if (bdayConfettiAnimId) {
+        cancelAnimationFrame(bdayConfettiAnimId);
+        bdayConfettiAnimId = null;
     }
-    const { jsPDF } = window.jspdf;
-    const banners = window.__citePdfBanners || { seal:'', bagong:'', footer:'' };
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
-    drawCalendarPdf(doc, 'Admin Calendar', banners);
-    doc.save(`CITE-Flow-Admin-Calendar-${months[currentMonth]}-${currentYear}.pdf`);
+    const canvas = document.getElementById('bday-confetti-canvas');
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+function burstConfetti() {
+    startConfetti();
+    setTimeout(() => {}, 3000);
 }
 </script>
 <script src="../shared/system-ui.js"></script>
 <div id="message-container"></div>
-<script src="../nav.js?v=admin-hook-1"></script>
+<script src="../nav.js?v=10"></script>
 <script src="nav.js"></script>
 <style id="cite-cal-selects">
-.cite-select-wrap{position:relative;display:inline-flex;align-items:center}
-.cite-select-wrap>select,#month-select,#year-select{
-    -webkit-appearance:none!important;
-    appearance:none!important;
-    background-color:#ffffff!important;
-    background-image:none!important;
-    padding-right:34px!important;
-    cursor:pointer;
+.cite-select-wrap { position: relative; display: inline-flex; align-items: center; }
+.cite-select-wrap > select, #month-select, #year-select {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    padding-right: 34px !important;
+    cursor: pointer;
 }
-.cite-select-chevron{
-    position:absolute!important;
-    right:10px!important;
-    top:50%!important;
-    width:14px!important;
-    height:14px!important;
-    margin-top:-7px!important;
-    pointer-events:none!important;
-    color:#475569!important;
-    z-index:2!important;
-    display:block!important;
+.cite-select-chevron {
+    position: absolute !important;
+    right: 10px !important;
+    top: 50% !important;
+    width: 14px !important;
+    height: 14px !important;
+    margin-top: -7px !important;
+    pointer-events: none !important;
+    color: #475569 !important;
+    z-index: 2 !important;
+    display: block !important;
 }
 </style>
 <script>
@@ -4172,16 +4114,8 @@ function exportCalendarPDF() {
     if (selects) document.body.appendChild(selects);
     if (compact) document.body.appendChild(compact);
     if (main) main.classList.remove('main-content');
-    setupScheduleDateAutoDisplay();
     if (typeof bootAdminCalendar === 'function') bootAdminCalendar();
 })();
-
-// Final explicit bindings for calendar modal controls.
-window.openAddEventModal = openAddEventModal;
-window.closeAddEventModal = closeAddEventModal;
-window.toggleModalAllDay = toggleModalAllDay;
-window.saveEventFromModal = saveEventFromModal;
-
 </script>
 </body>
 </html>

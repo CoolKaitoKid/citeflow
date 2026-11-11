@@ -41,6 +41,7 @@
     const TARGET_LABELS = {
         facultyName: 'Faculty',
         employeeId: 'Employee ID',
+        facultyRecordId: 'Faculty ID',
         email: 'Email',
         department: 'Department',
         subject_code: 'Subject code',
@@ -68,11 +69,17 @@
     const RAW_FIELDS = ['facultyName', 'employeeId', 'email', 'department', 'subject_code', 'subject_title', 'section', 'units', 'hours_per_week', 'semester', 'academic_year', 'total_students', 'room', 'remarks', 'scheduleText'];
 
     function collapse(value) {
-        return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+        return String(value == null ? '' : value)
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/\u00A0/g, ' ')
+            .replace(/[\u2018\u2019]/g, "'")
+            .replace(/[\u201C\u201D]/g, '"')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
     function blankRaw() {
-        const raw = {};
+        const raw = { facultyRecordId: '' };
         RAW_FIELDS.forEach((field) => { raw[field] = ''; });
         return raw;
     }
@@ -120,16 +127,19 @@
     }
 
     function validateWorkloadFile(file) {
-        if (!file) return { ok: false, code: 'empty', message: 'Choose a PDF or Excel file.' };
+        if (!file) return { ok: false, code: 'empty', message: 'Choose a PDF, Excel, or Word file.' };
         const size = Number(file.size);
         if (!Number.isFinite(size) || size <= 0) return { ok: false, code: 'empty', message: 'The file is empty.' };
         if (size > MAX_FILE_BYTES) return { ok: false, code: 'too_large', message: 'The file is larger than 8 MB.' };
         const name = String(file.name || '');
         const ext = name.toLowerCase().split('.').pop();
-        if (!name || name.indexOf('.') === -1 || ['pdf', 'xlsx', 'xls'].indexOf(ext) === -1) {
-            return { ok: false, code: 'unsupported', message: 'Unsupported file. Use a .pdf, .xlsx, or .xls file.' };
+        if (!name || name.indexOf('.') === -1 || ['pdf', 'xlsx', 'xls', 'docx'].indexOf(ext) === -1) {
+            return { ok: false, code: 'unsupported', message: 'Unsupported file format. Please upload a .pdf, .xlsx, .xls, or .docx file.' };
         }
-        return { ok: true, kind: ext === 'pdf' ? 'pdf' : 'excel', extension: ext };
+        let kind = 'pdf';
+        if (ext === 'xlsx' || ext === 'xls') kind = 'excel';
+        else if (ext === 'docx') kind = 'word';
+        return { ok: true, kind, extension: ext };
     }
 
     function scoreHeaderCells(cells) {
@@ -137,7 +147,7 @@
         const ignored = [];
         const unmapped = [];
         let seen = 0;
-        let detail = null;
+        let detail = /** @type {any} */ (null);
         cells.forEach((cell, index) => {
             const text = typeof cell === 'string' ? cell : cell.text;
             const label = collapse(text);
@@ -160,7 +170,18 @@
                 unmapped.push(meta);
                 return;
             }
-            if (columns[field] == null) columns[field] = meta;
+            if (columns[field] == null) {
+                columns[field] = meta;
+            } else if (field === 'employeeId' && columns.facultyRecordId == null) {
+                const prevNorm = normHeader(columns.employeeId.label);
+                const currNorm = normHeader(label);
+                if (/^faculty\b/.test(prevNorm) && !/^faculty\b/.test(currNorm)) {
+                    columns.facultyRecordId = columns.employeeId;
+                    columns.employeeId = meta;
+                } else {
+                    columns.facultyRecordId = meta;
+                }
+            }
         });
         if (detail) detail.field = headerField(detail.label) || '';
         const fields = Object.keys(columns);
@@ -195,8 +216,9 @@
     function absorbHeader(report, header) {
         Object.keys(header.columns || {}).forEach((field) => {
             const source = header.columns[field].label;
-            if (!report.mappedColumns.some((item) => item.target === field && item.source === source)) {
-                report.mappedColumns.push({ source, target: field, targetLabel: TARGET_LABELS[field] || field });
+            const target = field === 'facultyRecordId' ? 'employeeId' : field;
+            if (!report.mappedColumns.some((item) => item.target === target && item.source === source)) {
+                report.mappedColumns.push({ source, target, targetLabel: TARGET_LABELS[field] || TARGET_LABELS[target] || target });
             }
         });
         (header.ignored || []).forEach((meta) => {
@@ -230,12 +252,37 @@
         }, result);
     }
 
+    function sanitizePersonFields(raw) {
+        if (!raw) return raw;
+        let name = collapse(raw.facultyName);
+        let empId = collapse(raw.employeeId);
+        let facRecId = collapse(raw.facultyRecordId);
+        const embeddedId = name.match(/\b((?:FAC|EMP|ADM)-\d{4}-\d{3,12})\b/i);
+        if (embeddedId) {
+            const extractedCode = embeddedId[1];
+            name = collapse(name.replace(embeddedId[0], ''));
+            if (!empId) {
+                empId = extractedCode;
+            } else if (/^\d+$/.test(empId) && !facRecId) {
+                facRecId = empId;
+                empId = extractedCode;
+            }
+        }
+        if (!empId && facRecId) {
+            empId = facRecId;
+        }
+        raw.facultyName = name;
+        raw.employeeId = empId;
+        raw.facultyRecordId = facRecId;
+        return raw;
+    }
+
     function mapRow(row, header) {
         const raw = blankRaw();
         Object.keys(header.columns).forEach((field) => {
             raw[field] = cellString(row[header.columns[field].index]);
         });
-        return raw;
+        return sanitizePersonFields(raw);
     }
 
     function mapIgnored(row, header) {
@@ -250,7 +297,8 @@
     function isRepeatedHeader(raw) {
         let hits = 0;
         Object.keys(raw).forEach((field) => {
-            if (headerField(raw[field]) === field) hits += 1;
+            const target = field === 'facultyRecordId' ? 'employeeId' : field;
+            if (headerField(raw[field]) === target) hits += 1;
         });
         return hits >= 2;
     }
@@ -259,19 +307,42 @@
         const values = RAW_FIELDS.map((field) => collapse(raw[field])).filter(Boolean);
         const extras = Object.keys(ignoredValues || {}).map((key) => collapse(ignoredValues[key])).filter(Boolean);
         const populated = values.concat(extras);
-        return populated.length === 1 && populated[0].length > 80;
+        if (populated.length === 1 && populated[0].length > 80) return true;
+        if (populated.some((text) => text.length > 110)) return true;
+        const hasCoreWorkloadFields = Boolean(
+            collapse(raw.subject_code) ||
+            collapse(raw.section) ||
+            (!parseNumber(raw.units).missing && !parseNumber(raw.units).invalid) ||
+            (!parseNumber(raw.hours_per_week).missing && !parseNumber(raw.hours_per_week).invalid) ||
+            (!parseNumber(raw.total_students).missing && !parseNumber(raw.total_students).invalid) ||
+            normalizeSemester(raw.semester).valid ||
+            normalizeAcademicYear(raw.academic_year).valid ||
+            collapse(raw.email)
+        );
+        if (!hasCoreWorkloadFields && populated.some((text) => text.length > 75 || /[a-z]\.\s+[A-Z]/.test(text))) {
+            return true;
+        }
+        return false;
     }
 
     function isBlankRaw(raw) {
-        return RAW_FIELDS.every((field) => !collapse(raw[field]));
+        return RAW_FIELDS.every((field) => !collapse(raw[field])) && !collapse(raw && raw.facultyRecordId);
     }
 
     function isDataRow(raw) {
-        return Boolean(collapse(raw.subject_code) || collapse(raw.subject_title) || collapse(raw.section) || collapse(raw.units) || collapse(raw.hours_per_week));
+        if (collapse(raw.subject_code) || collapse(raw.section) || collapse(raw.units) || collapse(raw.hours_per_week)) {
+            return true;
+        }
+        const title = collapse(raw.subject_title);
+        if (!title) return false;
+        if (title.length > 90 && !normalizeSemester(raw.semester).valid && !normalizeAcademicYear(raw.academic_year).valid) {
+            return false;
+        }
+        return true;
     }
 
     function isFacultyBanner(raw) {
-        return Boolean((collapse(raw.facultyName) || collapse(raw.employeeId) || collapse(raw.email)) && !collapse(raw.subject_code) && !collapse(raw.subject_title) && !collapse(raw.section) && !collapse(raw.units) && !collapse(raw.hours_per_week));
+        return Boolean((collapse(raw.facultyName) || collapse(raw.employeeId) || collapse(raw.facultyRecordId) || collapse(raw.email)) && !collapse(raw.subject_code) && !collapse(raw.subject_title) && !collapse(raw.section) && !collapse(raw.units) && !collapse(raw.hours_per_week));
     }
 
     function shellRecord(localId, source, raw, ignoredValues, detailText) {
@@ -295,27 +366,37 @@
     function consumeRows(entries) {
         let pendingName = '';
         let pendingId = '';
+        let pendingRecordId = '';
         const out = [];
         entries.forEach((entry) => {
-            const raw = Object.assign(blankRaw(), entry.raw || {});
+            const raw = sanitizePersonFields(Object.assign(blankRaw(), entry.raw || {}));
             if (isFacultyBanner(raw) && !collapse(entry.detailText)) {
                 if (collapse(raw.facultyName)) {
-                    if (collapse(raw.facultyName) !== pendingName && !collapse(raw.employeeId)) pendingId = '';
+                    if (collapse(raw.facultyName) !== pendingName && !collapse(raw.employeeId)) {
+                        pendingId = '';
+                        pendingRecordId = '';
+                    }
                     pendingName = collapse(raw.facultyName);
                 }
                 if (collapse(raw.employeeId)) pendingId = collapse(raw.employeeId);
+                if (collapse(raw.facultyRecordId)) pendingRecordId = collapse(raw.facultyRecordId);
                 return;
             }
             if (!isDataRow(raw) && !collapse(entry.detailText)) return;
             let facultyCarry = false;
-            if (!collapse(raw.facultyName) && !collapse(raw.employeeId) && !collapse(raw.email) && (pendingName || pendingId)) {
+            if (!collapse(raw.facultyName) && !collapse(raw.employeeId) && !collapse(raw.facultyRecordId) && !collapse(raw.email) && (pendingName || pendingId || pendingRecordId)) {
                 raw.facultyName = pendingName;
                 raw.employeeId = pendingId;
+                raw.facultyRecordId = pendingRecordId;
                 facultyCarry = true;
             } else {
-                if (collapse(raw.facultyName) && collapse(raw.facultyName) !== pendingName && !collapse(raw.employeeId)) pendingId = '';
+                if (collapse(raw.facultyName) && collapse(raw.facultyName) !== pendingName && !collapse(raw.employeeId)) {
+                    pendingId = '';
+                    pendingRecordId = '';
+                }
                 if (collapse(raw.facultyName)) pendingName = collapse(raw.facultyName);
                 if (collapse(raw.employeeId)) pendingId = collapse(raw.employeeId);
+                if (collapse(raw.facultyRecordId)) pendingRecordId = collapse(raw.facultyRecordId);
             }
             out.push(Object.assign({}, entry, { raw, facultyCarry }));
         });
@@ -364,7 +445,7 @@
     function normalizeAcademicYear(value) {
         const original = collapse(value);
         if (!original) return { value: '', valid: false, missing: true };
-        const match = original.match(/(20\d{2})\s*[-–/]\s*(20\d{2}|\d{2})/);
+        const match = original.match(/(20\d{2})\s*[-–—/]\s*(20\d{2}|\d{2})/);
         if (!match) return { value: original, valid: false, missing: false };
         const start = Number(match[1]);
         const end = match[2].length === 2 ? Number(match[1].slice(0, 2) + match[2]) : Number(match[2]);
@@ -372,12 +453,25 @@
         return { value: `${start}-${end}`, valid: true, missing: false };
     }
 
+    function validateAcademicYear(value) {
+        const raw = collapse(value);
+        if (!raw) return { ok: false, valid: false, message: 'Academic Year is required.' };
+        const norm = normalizeAcademicYear(raw);
+        if (!norm.valid) {
+            return { ok: false, valid: false, message: 'Invalid Academic Year format. Use consecutive four-digit years, e.g. 2025–2026.' };
+        }
+        const match = raw.match(/(20\d{2})\s*[-–—/]\s*(20\d{2}|\d{2})/);
+        const start = Number(match[1]);
+        const end = match[2].length === 2 ? Number(match[1].slice(0, 2) + match[2]) : Number(match[2]);
+        return { ok: true, valid: true, normalized: `${start}–${end}` };
+    }
+
     function parseSchedule(value) {
         const raw = collapse(value);
         if (!raw) return null;
-        const match = raw.match(/^([A-Za-z][A-Za-z/,\s]{0,40}?)\s+(\d{1,2}(?::\d{2})?\s*(?:[AP]M)?)\s*(?:-|–|—|to)\s*(\d{1,2}(?::\d{2})?\s*(?:[AP]M)?)$/i);
+        const match = raw.match(/^([A-Za-z][A-Za-z/,\s.-]{0,40}?)\s*,?\s+(\d{1,2}(?::\d{2})?\s*(?:[AP]M)?)\s*(?:-|–|—|to)\s*(\d{1,2}(?::\d{2})?\s*(?:[AP]M)?)$/i);
         if (!match) return null;
-        const day = collapse(match[1]);
+        const day = collapse(match[1]).replace(/[,;:.]+$/, '').trim();
         if (!day || /\d/.test(day)) return null;
         const start = collapse(match[2]);
         const end = collapse(match[3]);
@@ -390,7 +484,7 @@
     }
 
     function normalizeDraft(draft) {
-        const source = draft || {};
+        const source = sanitizePersonFields(Object.assign({}, draft || {}));
         const units = parseNumber(source.units);
         const hours = parseNumber(source.hours_per_week);
         const students = parseNumber(source.total_students);
@@ -399,6 +493,7 @@
         return {
             facultyName: collapse(source.facultyName),
             employeeId: collapse(source.employeeId),
+            facultyRecordId: collapse(source.facultyRecordId),
             email: collapse(source.email).toLowerCase(),
             department: collapse(source.department),
             subject_code: displayCode(source.subject_code),
@@ -429,20 +524,22 @@
     }
 
     function initialDraft(raw) {
-        const values = normalizeDraft(raw || {});
+        const cleaned = sanitizePersonFields(Object.assign({}, raw || {}));
+        const values = normalizeDraft(cleaned);
         return {
-            facultyName: collapse(raw && raw.facultyName),
-            employeeId: collapse(raw && raw.employeeId),
-            email: collapse(raw && raw.email).toLowerCase(),
-            department: collapse(raw && raw.department),
+            facultyName: collapse(cleaned.facultyName),
+            employeeId: collapse(cleaned.employeeId),
+            facultyRecordId: collapse(cleaned.facultyRecordId),
+            email: collapse(cleaned.email).toLowerCase(),
+            department: collapse(cleaned.department),
             subject_code: values.subject_code,
             subject_title: values.subject_title,
             section: values.section,
-            units: values.unitsInvalid ? collapse(raw && raw.units) : (values.units == null ? '' : String(values.units)),
-            hours_per_week: values.hoursInvalid ? collapse(raw && raw.hours_per_week) : (values.hours_per_week == null ? '' : String(values.hours_per_week)),
+            units: values.unitsInvalid ? collapse(cleaned.units) : (values.units == null ? '' : String(values.units)),
+            hours_per_week: values.hoursInvalid ? collapse(cleaned.hours_per_week) : (values.hours_per_week == null ? '' : String(values.hours_per_week)),
             semester: values.semester,
             academic_year: values.academic_year,
-            total_students: values.studentsInvalid ? collapse(raw && raw.total_students) : (values.total_students == null ? '' : String(values.total_students)),
+            total_students: values.studentsInvalid ? collapse(cleaned.total_students) : (values.total_students == null ? '' : String(values.total_students)),
             room: values.room,
             remarks: values.remarks,
             scheduleText: values.scheduleText
@@ -461,6 +558,54 @@
             name,
             rows: utils.sheet_to_json(workbook.Sheets[name], { header: 1, raw: false, defval: '', blankrows: true })
         }));
+    }
+
+    function applyTargetPeriodToRecords(records, targetAY, targetSem, warnings) {
+        if (!targetAY && !targetSem) return;
+        const normTargetAY = targetAY ? normalizeAcademicYear(targetAY).value : '';
+        const normTargetSem = targetSem ? normalizeSemester(targetSem).value : '';
+
+        (records || []).forEach((rec) => {
+            if (!rec || !rec.raw) return;
+            const extractedAY = collapse(rec.raw.academic_year);
+            const extractedSem = collapse(rec.raw.semester);
+
+            if (normTargetAY) {
+                if (!extractedAY) {
+                    rec.raw.academic_year = normTargetAY;
+                    rec.inheritedAcademicYear = true;
+                } else {
+                    const normExtAY = normalizeAcademicYear(extractedAY).value;
+                    if (normExtAY && normExtAY !== normTargetAY) {
+                        rec.periodConflictYear = {
+                            extracted: extractedAY,
+                            target: normTargetAY
+                        };
+                        const msg = `Period Conflict: File specifies AY "${extractedAY}", differing from target "${normTargetAY}".`;
+                        if (warnings && warnings.indexOf(msg) === -1) warnings.push(msg);
+                    }
+                }
+            }
+
+            if (normTargetSem) {
+                if (!extractedSem) {
+                    rec.raw.semester = normTargetSem;
+                    rec.inheritedSemester = true;
+                } else {
+                    const normExtSem = normalizeSemester(extractedSem).value;
+                    if (normExtSem && normExtSem !== normTargetSem) {
+                        rec.periodConflictSemester = {
+                            extracted: extractedSem,
+                            target: normTargetSem
+                        };
+                        const msg = `Period Conflict: File specifies "${extractedSem}", differing from target "${normTargetSem}".`;
+                        if (warnings && warnings.indexOf(msg) === -1) warnings.push(msg);
+                    }
+                }
+            }
+
+            rec.draft = initialDraft(rec.raw);
+        });
     }
 
     function parseSheetRows(sheets, options) {
@@ -512,6 +657,7 @@
                 unmappedColumns: report.unmappedColumns
             }, report);
         }
+        applyTargetPeriodToRecords(records, settings.targetAcademicYear, settings.targetSemester, warnings);
         return withReport({ ok: true, records, warnings, unmappedColumns: report.unmappedColumns }, report);
     }
 
@@ -538,7 +684,10 @@
         prepared.sort((a, b) => b.y - a.y || a.x - b.x);
         const lines = [];
         prepared.forEach((item) => {
-            const line = lines.find((entry) => Math.abs(entry.y - item.y) <= 3);
+            const line = lines.find((entry) => (
+                Math.abs(entry.y - item.y) <= 3
+                || (Math.abs(entry.y - item.y) <= 4.2 && entry.items.some((existing) => Math.abs(existing.y - item.y) <= 2.6))
+            ));
             if (line) line.items.push(item);
             else lines.push({ y: item.y, items: [item] });
         });
@@ -555,16 +704,14 @@
     function splitLineCells(line) {
         const items = (line.items || []).filter((item) => collapse(item.str));
         if (!items.length) return [];
-        const gaps = [];
-        for (let i = 1; i < items.length; i++) gaps.push(items[i].x - itemRight(items[i - 1]));
-        const typical = gaps.filter((gap) => gap >= 0).sort((a, b) => a - b);
-        const median = typical.length ? typical[Math.floor((typical.length - 1) / 2)] : 4;
-        const threshold = Math.min(10, Math.max(6, median * 1.5));
         const cells = [];
         let current = { x: items[0].x, text: items[0].str, width: Math.max(1, itemRight(items[0]) - items[0].x) };
         for (let i = 1; i < items.length; i++) {
             const gap = items[i].x - itemRight(items[i - 1]);
-            if (gap > threshold) {
+            const leftIsHeader = Boolean(headerField(current.text) || ignoredHeader(current.text));
+            const rightIsHeader = Boolean(headerField(items[i].str) || ignoredHeader(items[i].str));
+            const shouldMerge = gap <= 3.5 && !(leftIsHeader && rightIsHeader);
+            if (!shouldMerge) {
                 cells.push(current);
                 current = { x: items[i].x, text: items[i].str, width: Math.max(1, itemRight(items[i]) - items[i].x) };
             } else {
@@ -581,22 +728,94 @@
         return Number(x) + size / 2;
     }
 
+    function findBestPdfHeader(lines, limit) {
+        const rowCells = lines.map(splitLineCells);
+        const best = findBestHeader(rowCells, limit);
+        if (!best || best.index == null) return best;
+
+        const baseLine = lines[best.index];
+        const baseY = baseLine ? baseLine.y : 0;
+        const mergedCells = rowCells[best.index].map((cell) => ({
+            x: cell.x,
+            y: baseY,
+            text: cell.text,
+            width: cell.width
+        }));
+        const skipIndices = {};
+
+        [best.index - 1, best.index + 1].forEach((adjIndex) => {
+            if (adjIndex < 0 || adjIndex >= lines.length) return;
+            const adjLine = lines[adjIndex];
+            if (!adjLine || Math.abs(adjLine.y - baseY) > 6) return;
+            const adjCells = rowCells[adjIndex] || [];
+            if (!adjCells.length || adjCells.length > 3) return;
+            if (!adjCells.every((c) => {
+                const txt = collapse(c.text);
+                return txt.length <= 16 && !/\d/.test(txt);
+            })) return;
+
+            skipIndices[adjIndex] = true;
+            adjCells.forEach((frag) => {
+                const fragCenter = spanCenter(frag.x, frag.width, frag.text);
+                let target = /** @type {any} */ (null);
+                let bestDist = 20;
+                mergedCells.forEach((cell) => {
+                    const dist = Math.abs(fragCenter - spanCenter(cell.x, cell.width, cell.text));
+                    if (dist <= bestDist) {
+                        bestDist = dist;
+                        target = cell;
+                    }
+                });
+                if (target) {
+                    target.text = adjLine.y > target.y
+                        ? collapse(`${frag.text} ${target.text}`)
+                        : collapse(`${target.text} ${frag.text}`);
+                    const left = Math.min(target.x, frag.x);
+                    const right = Math.max(target.x + (target.width || 0), frag.x + (frag.width || 0));
+                    target.x = left;
+                    target.width = Math.max(1, right - left);
+                } else {
+                    mergedCells.push({
+                        x: frag.x,
+                        y: adjLine.y,
+                        text: frag.text,
+                        width: frag.width
+                    });
+                }
+            });
+        });
+
+        if (!Object.keys(skipIndices).length) return best;
+        mergedCells.sort((a, b) => a.x - b.x);
+        const rescored = scoreHeaderCells(mergedCells);
+        if (rescored && rescored.score >= best.score) {
+            return Object.assign({}, rescored, { index: best.index, skipIndices });
+        }
+        return Object.assign({}, best, { skipIndices });
+    }
+
     function assignPdfRow(cells, header) {
         const raw = blankRaw();
         const ignoredValues = {};
         const detailValues = {};
         const columns = [];
+        const addCol = (kind, field, meta) => {
+            const left = Number(meta.x) || 0;
+            const size = Number(meta.width) > 0 ? Number(meta.width) : Math.max(8, String(meta.label || '').length * 4.5);
+            columns.push({ kind, field, left, right: left + size, center: left + size / 2 });
+        };
         Object.keys(header.columns || {}).forEach((field) => {
-            const meta = header.columns[field];
-            columns.push({ kind: 'target', field, center: spanCenter(meta.x, meta.width, meta.label) });
+            addCol('target', field, header.columns[field]);
         });
         (header.ignored || []).forEach((meta) => {
-            columns.push({ kind: 'ignored', field: meta.label, center: spanCenter(meta.x, meta.width, meta.label) });
+            addCol('ignored', meta.label, meta);
         });
         (header.unmapped || []).forEach((meta) => {
             if (!meta || meta.x == null) return;
-            columns.push({ kind: 'detail', field: meta.label, center: spanCenter(meta.x, meta.width, meta.label) });
+            addCol('detail', meta.label, meta);
         });
+        columns.sort((a, b) => a.center - b.center);
+        const titleCol = columns.find((col) => col.kind === 'target' && col.field === 'subject_title');
         cells.forEach((cell) => {
             if (!columns.length) return;
             const center = spanCenter(cell.x, cell.width, cell.text);
@@ -609,6 +828,16 @@
                     chosen = column;
                 }
             });
+            if (
+                chosen.kind === 'target'
+                && chosen.field === 'subject_code'
+                && titleCol
+                && titleCol.center > chosen.center
+                && Number(cell.x) >= chosen.right + 4
+                && (!/\d/.test(cell.text) || Boolean(collapse(raw.subject_code)))
+            ) {
+                chosen = titleCol;
+            }
             if (chosen.kind === 'ignored') {
                 ignoredValues[chosen.field] = collapse(ignoredValues[chosen.field] ? `${ignoredValues[chosen.field]} ${cell.text}` : cell.text);
                 return;
@@ -619,6 +848,7 @@
             }
             raw[chosen.field] = collapse(raw[chosen.field] ? `${raw[chosen.field]} ${cell.text}` : cell.text);
         });
+        sanitizePersonFields(raw);
         return { raw, ignoredValues, detailValues };
     }
 
@@ -626,29 +856,93 @@
         return Boolean(collapse(raw.subject_title) && RAW_FIELDS.every((field) => field === 'subject_title' || !collapse(raw[field])));
     }
 
+    function hasRowAnchorFields(raw) {
+        return Boolean(
+            collapse(raw.subject_code)
+            || collapse(raw.section)
+            || collapse(raw.units)
+            || collapse(raw.hours_per_week)
+            || collapse(raw.total_students)
+            || collapse(raw.semester)
+            || collapse(raw.academic_year)
+            || collapse(raw.employeeId)
+            || collapse(raw.facultyRecordId)
+            || collapse(raw.email)
+        );
+    }
+
+    function mergeContinuationRaw(targetRaw, incomingRaw) {
+        ['facultyName', 'department', 'subject_title', 'room', 'scheduleText', 'remarks'].forEach((field) => {
+            const val = collapse(incomingRaw[field]);
+            if (!val) return;
+            targetRaw[field] = collapse(targetRaw[field] ? `${targetRaw[field]} ${val}` : val);
+        });
+        sanitizePersonFields(targetRaw);
+    }
+
+    function isStackedHeaderFragment(cells) {
+        if (!cells || cells.length !== 1) return false;
+        const text = normHeader(cells[0].text);
+        return text === 'hours' || text === 'week' || text === 'per week';
+    }
+
     function rowsFromPdfLines(lines, header, pageNumber, settings, idFactory) {
         const start = header.index == null ? 0 : header.index + 1;
+        const skipIndices = (header && header.skipIndices) || {};
         const entries = [];
         for (let index = start; index < lines.length; index++) {
-            const cells = splitLineCells(lines[index]);
+            if (skipIndices[index]) continue;
+            const lineObj = lines[index];
+            const cells = splitLineCells(lineObj);
             if (!cells.length) continue;
+            if (isStackedHeaderFragment(cells)) continue;
             const assigned = assignPdfRow(cells, header);
             const raw = assigned.raw;
             if (isRepeatedHeader(raw)) continue;
             if (isProseDump(raw, assigned.ignoredValues)) continue;
-            if (onlySubjectTitle(raw) && entries.length) {
-                entries[entries.length - 1].raw.subject_title = collapse(`${entries[entries.length - 1].raw.subject_title} ${raw.subject_title}`);
-                continue;
+
+            const currY = lineObj && Number.isFinite(lineObj.y) ? lineObj.y : null;
+            if (!hasRowAnchorFields(raw) && entries.length) {
+                const prev = entries[entries.length - 1];
+                const dy = (prev._lastY != null && currY != null) ? (prev._lastY - currY) : null;
+                if (onlySubjectTitle(raw)) {
+                    prev.raw.subject_title = collapse(`${prev.raw.subject_title} ${raw.subject_title}`);
+                    if (currY != null) prev._lastY = currY;
+                    prev.detailText = detailTextFor(prev.raw, prev, header);
+                    continue;
+                }
+                if (dy != null && dy >= 0 && dy <= 5.2 && isDataRow(prev.raw)) {
+                    mergeContinuationRaw(prev.raw, raw);
+                    prev._lastY = currY;
+                    prev.detailText = detailTextFor(prev.raw, prev, header);
+                    continue;
+                }
+                if (dy != null && dy >= 0 && dy <= 9.5 && !collapse(raw.facultyName) && isDataRow(prev.raw)) {
+                    mergeContinuationRaw(prev.raw, raw);
+                    prev._lastY = currY;
+                    prev.detailText = detailTextFor(prev.raw, prev, header);
+                    continue;
+                }
+                if (dy != null && dy >= 0 && dy <= 9.5 && collapse(raw.facultyName) && !collapse(prev.raw.facultyName) && isDataRow(prev.raw)) {
+                    mergeContinuationRaw(prev.raw, raw);
+                    prev._lastY = currY;
+                    prev.detailText = detailTextFor(prev.raw, prev, header);
+                    continue;
+                }
             }
+
             if (!isDataRow(raw) && !isFacultyBanner(raw)) continue;
-            entries.push(shellRecord(idFactory(), {
+            const record = shellRecord(idFactory(), {
                 fileName: settings.fileName || '',
                 fileType: 'pdf',
                 sheet: '',
                 row: null,
                 page: pageNumber
-            }, raw, assigned.ignoredValues, detailTextFor(raw, assigned, header)));
+            }, raw, assigned.ignoredValues, detailTextFor(raw, assigned, header));
+            record._lastY = currY;
+            entries.push(record);
         }
+        entries.forEach((entry) => { delete entry._lastY; });
         return expandDetailRecords(consumeRows(entries));
     }
 
@@ -844,14 +1138,14 @@
                 return;
             }
             const lines = groupLines(items);
-            const header = findBestHeader(lines.map(splitLineCells), 40);
+            const header = findBestPdfHeader(lines, 40);
             let produced = [];
             if (header) {
                 remembered = header;
                 absorbHeader(report, header);
                 produced = rowsFromPdfLines(lines, header, pageNumber, settings, idFactory);
             } else if (remembered) {
-                produced = rowsFromPdfLines(lines, Object.assign({}, remembered, { index: -1 }), pageNumber, settings, idFactory);
+                produced = rowsFromPdfLines(lines, Object.assign({}, remembered, { index: -1, skipIndices: {} }), pageNumber, settings, idFactory);
             }
             if (!produced.length) produced = rowsFromLooseLines(lines, pageNumber, settings, idFactory);
             records.push.apply(records, produced);
@@ -866,6 +1160,215 @@
                 : UNRELIABLE_PDF;
             return withReport({ ok: false, code: 'unreliable', message, records: [], warnings, unmappedColumns: report.unmappedColumns }, report);
         }
+        applyTargetPeriodToRecords(records, settings.targetAcademicYear, settings.targetSemester, warnings);
+        return withReport({ ok: true, records, warnings, unmappedColumns: report.unmappedColumns }, report);
+    }
+
+    function extractDocxXml(buffer) {
+        if (!buffer) return null;
+        let u8;
+        if (Buffer.isBuffer(buffer)) {
+            u8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        } else if (buffer instanceof ArrayBuffer) {
+            u8 = new Uint8Array(buffer);
+        } else if (buffer.buffer instanceof ArrayBuffer) {
+            u8 = new Uint8Array(buffer.buffer, buffer.byteOffset || 0, buffer.byteLength || buffer.length);
+        } else {
+            return null;
+        }
+        if (u8.length < 30) return null;
+        const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+
+        const decompress = (slice, compMethod) => {
+            if (compMethod === 0) {
+                return (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null)?.decode(slice)
+                    || (typeof Buffer !== 'undefined' ? Buffer.from(slice).toString('utf8') : null);
+            }
+            if (compMethod === 8) {
+                const globalZlib = typeof globalThis !== 'undefined' ? globalThis['zlib'] : null;
+                if (globalZlib && typeof globalZlib.inflateRawSync === 'function') {
+                    return globalZlib.inflateRawSync(Buffer.isBuffer(slice) ? slice : Buffer.from(slice)).toString('utf8');
+                }
+                if (typeof require === 'function') {
+                    try {
+                        const z = require('zlib');
+                        if (z && typeof z.inflateRawSync === 'function') {
+                            return z.inflateRawSync(Buffer.from(slice)).toString('utf8');
+                        }
+                    } catch (_) { }
+                }
+            }
+            return null;
+        };
+
+        // 1. Central Directory search
+        let eocdPos = -1;
+        for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65558); i--) {
+            if (view.getUint32(i, true) === 0x06054b50) {
+                eocdPos = i;
+                break;
+            }
+        }
+
+        if (eocdPos !== -1) {
+            const cdCount = view.getUint16(eocdPos + 10, true);
+            const cdOffset = view.getUint32(eocdPos + 16, true);
+            let p = cdOffset;
+            for (let i = 0; i < cdCount && p < eocdPos; i++) {
+                if (view.getUint32(p, true) !== 0x02014b50) break;
+                const compMethod = view.getUint16(p + 10, true);
+                const compSize = view.getUint32(p + 20, true);
+                const nameLen = view.getUint16(p + 28, true);
+                const extraLen = view.getUint16(p + 30, true);
+                const commentLen = view.getUint16(p + 32, true);
+                const localHeaderOffset = view.getUint32(p + 42, true);
+                const nameBytes = u8.subarray(p + 46, p + 46 + nameLen);
+                const name = (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null)?.decode(nameBytes)
+                    || (typeof Buffer !== 'undefined' ? Buffer.from(nameBytes).toString('utf8') : '');
+                p += 46 + nameLen + extraLen + commentLen;
+
+                if (name === 'word/document.xml') {
+                    const localNameLen = view.getUint16(localHeaderOffset + 26, true);
+                    const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
+                    const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
+                    const slice = u8.subarray(dataStart, dataStart + compSize);
+                    const text = decompress(slice, compMethod);
+                    if (text) return text;
+                }
+            }
+        }
+
+        // 2. Local File Header scan
+        let idx = 0;
+        while (idx < u8.length - 30) {
+            if (view.getUint32(idx, true) === 0x04034b50) {
+                const compMethod = view.getUint16(idx + 8, true);
+                const compSize = view.getUint32(idx + 18, true);
+                const nameLen = view.getUint16(idx + 26, true);
+                const extraLen = view.getUint16(idx + 28, true);
+                const nameBytes = u8.subarray(idx + 30, idx + 30 + nameLen);
+                const name = (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null)?.decode(nameBytes)
+                    || (typeof Buffer !== 'undefined' ? Buffer.from(nameBytes).toString('utf8') : '');
+                const dataStart = idx + 30 + nameLen + extraLen;
+                if (name === 'word/document.xml' && compSize > 0) {
+                    const slice = u8.subarray(dataStart, dataStart + compSize);
+                    const text = decompress(slice, compMethod);
+                    if (text) return text;
+                }
+                idx = dataStart + (compSize > 0 ? compSize : 1);
+            } else {
+                idx++;
+            }
+        }
+        return null;
+    }
+
+    function parseDocxTablesFromXml(xml) {
+        const tables = [];
+        const tblRegex = /<w:tbl\b[\s\S]*?<\/w:tbl>/g;
+        const matches = xml.match(tblRegex) || [];
+        for (const tbl of matches) {
+            const rows = [];
+            const trMatches = tbl.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || [];
+            for (const tr of trMatches) {
+                const cells = [];
+                const tcMatches = tr.match(/<w:tc\b[\s\S]*?<\/w:tc>/g) || [];
+                for (const tc of tcMatches) {
+                    const tMatches = [...tc.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]);
+                    cells.push(collapse(tMatches.join('')));
+                }
+                if (cells.some((c) => c.length > 0)) rows.push(cells);
+            }
+            if (rows.length > 0) tables.push(rows);
+        }
+        return tables;
+    }
+
+    function parseDocxParagraphsFromXml(xml) {
+        const withoutTables = xml.replace(/<w:tbl\b[\s\S]*?<\/w:tbl>/g, '');
+        const paragraphs = [];
+        const pMatches = withoutTables.match(/<w:p\b[\s\S]*?<\/w:p>/g) || [];
+        for (const p of pMatches) {
+            const tMatches = [...p.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]);
+            const text = collapse(tMatches.join(''));
+            if (text) paragraphs.push(text);
+        }
+        return paragraphs;
+    }
+
+    async function parseDocxBuffer(buffer, options) {
+        const settings = options || {};
+        if (!buffer || (buffer.byteLength == null && buffer.length == null)) {
+            return { ok: false, code: 'empty', message: 'The Word file is empty.', records: [], warnings: [], unmappedColumns: [] };
+        }
+        let xml = null;
+        try {
+            xml = extractDocxXml(buffer);
+        } catch (e) {
+            return { ok: false, code: 'unreadable', message: `Could not read Word document: ${e && e.message ? e.message : 'Damaged format.'}`, records: [], warnings: [], unmappedColumns: [] };
+        }
+        if (!xml) {
+            return { ok: false, code: 'unreadable', message: 'The Word file is missing word/document.xml or is not a valid .docx file.', records: [], warnings: [], unmappedColumns: [] };
+        }
+
+        const tables = parseDocxTablesFromXml(xml);
+        const looseLines = parseDocxParagraphsFromXml(xml);
+
+        const records = [];
+        const warnings = [];
+        const report = emptyColumnReport();
+        let seq = 1;
+        const idFactory = () => `docx-${seq++}`;
+
+        tables.forEach((tableRows, tableIdx) => {
+            if (!tableRows || !tableRows.length) return;
+            const matrix = tableRows.map((row) => row.map(cellString));
+            const rawMatrix = tableRows.map((row) => row.map(cellRaw));
+            const header = findBestHeader(matrix, 40);
+            const tableName = `Table ${tableIdx + 1}`;
+            if (!header) return;
+
+            absorbHeader(report, header);
+            const entries = [];
+            for (let index = header.index + 1; index < matrix.length; index++) {
+                const raw = mapRow(matrix[index], header);
+                const ignoredValues = mapIgnored(matrix[index], header);
+                const detailText = header.detail ? cellRaw(rawMatrix[index][header.detail.index]) : '';
+                if ((isBlankRaw(raw) && !collapse(detailText) && !Object.keys(ignoredValues).length) || isRepeatedHeader(raw)) continue;
+                entries.push(shellRecord(idFactory(), {
+                    fileName: settings.fileName || '',
+                    fileType: 'word',
+                    sheet: tableName,
+                    table: tableIdx + 1,
+                    row: index + 1,
+                    page: null
+                }, raw, ignoredValues, detailText));
+            }
+            records.push.apply(records, expandDetailRecords(consumeRows(entries)));
+        });
+
+        if (!records.length && looseLines.length) {
+            const produced = rowsFromLooseLines(looseLines.map((text) => ({ items: [{ str: text }] })), 1, settings, idFactory);
+            if (produced.length) {
+                records.push.apply(records, produced);
+            }
+        }
+
+        if (records.length > MAX_ROWS) {
+            return withReport({ ok: false, code: 'too_many', message: 'This file has more than 1500 assignments. Split it before importing.', records: [], warnings, unmappedColumns: report.unmappedColumns }, report);
+        }
+        if (!records.length) {
+            return withReport({
+                ok: false,
+                code: 'unreliable',
+                message: warnings[0] || 'No workload rows or recognizable tables were found in the Word document.',
+                records: [],
+                warnings,
+                unmappedColumns: report.unmappedColumns
+            }, report);
+        }
+
+        applyTargetPeriodToRecords(records, settings.targetAcademicYear, settings.targetSemester, warnings);
         return withReport({ ok: true, records, warnings, unmappedColumns: report.unmappedColumns }, report);
     }
 
@@ -894,11 +1397,17 @@
         else if (!values.yearValid) issues.push(issue('error', 'academic_year', 'Academic year must look like 2025-2026.'));
         if (values.scheduleText && !values.schedule) issues.push(issue('warning', 'scheduleText', 'Schedule stays in the preview only. It is not a single day and time range, so it will not be saved.'));
         if (record && record.facultyCarry) issues.push(issue('warning', 'facultyName', 'Faculty name was continued from an earlier row because the source cell was blank.'));
+        if (record && record.periodConflictYear) issues.push(issue('warning', 'academic_year', `Academic period conflict: Document specifies AY "${record.periodConflictYear.extracted}", differing from selected target "${record.periodConflictYear.target}".`));
+        if (record && record.periodConflictSemester) issues.push(issue('warning', 'semester', `Academic period conflict: Document specifies "${record.periodConflictSemester.extracted}", differing from selected target "${record.periodConflictSemester.target}".`));
         return issues;
     }
 
     function normalizeName(value) {
-        let raw = collapse(value).replace(/^(dr|prof|professor|engr|atty|mr|mrs|ms|sir)\.?\s+/i, '');
+        let raw = collapse(value);
+        if (typeof raw.normalize === 'function') {
+            raw = raw.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+        }
+        raw = raw.replace(/^(?:(?:dr|prof|professor|engr|atty|mr|mrs|ms|sir)\.?\s+)+/i, '');
         if (raw.indexOf(',') !== -1) {
             const parts = raw.split(',');
             const last = parts.shift();
@@ -959,15 +1468,36 @@
         return Math.max(jaccard, edit, subsetScore);
     }
 
+    function buildFacultyAltNameKeys(row) {
+        const keys = [];
+        const addKey = (val) => {
+            const k = nameKey(val);
+            if (k && keys.indexOf(k) === -1) keys.push(k);
+        };
+        addKey(row && (row.full_name || row.name));
+        const first = collapse(row && row.first_name);
+        const middle = collapse(row && row.middle_name);
+        const last = collapse(row && row.last_name);
+        if (first && last) {
+            addKey([first, middle, last].filter(Boolean).join(' '));
+            if (middle) {
+                addKey([first, middle.charAt(0), last].filter(Boolean).join(' '));
+            }
+        }
+        return keys;
+    }
+
     function facultyRecords(list) {
         return (list || []).map((row) => ({
             id: row && row.id,
-            full_name: collapse(row && (row.full_name || row.name)),
+            full_name: collapse(row && (row.full_name || row.name || [row && row.first_name, row && row.middle_name, row && row.last_name].filter(Boolean).join(' '))),
             employee_id: collapse(row && row.employee_id),
             id_number: collapse(row && row.id_number),
+            faculty_id: collapse(row && row.faculty_id),
             department: collapse(row && row.department),
             position: collapse(row && (row.position || row.academic_rank)),
-            email: collapse(row && row.email)
+            email: collapse(row && row.email),
+            altNameKeys: buildFacultyAltNameKeys(row)
         })).filter((row) => row.id != null && String(row.id) !== '');
     }
 
@@ -993,11 +1523,21 @@
         };
     }
 
+    function matchesFacultyNameKey(row, key) {
+        if (!row || !key) return false;
+        if (nameKey(row.full_name) === key) return true;
+        return Array.isArray(row.altNameKeys) && row.altNameKeys.indexOf(key) !== -1;
+    }
+
     function matchFaculty(values, facultyList) {
         const faculty = facultyRecords(facultyList);
         const idKey = canonicalId(values.employeeId);
         if (idKey) {
-            const hits = faculty.filter((row) => canonicalId(row.employee_id) === idKey || canonicalId(row.id_number) === idKey);
+            const hits = faculty.filter((row) => (
+                canonicalId(row.employee_id) === idKey
+                || canonicalId(row.id_number) === idKey
+                || canonicalId(row.faculty_id) === idKey
+            ));
             if (hits.length > 1) {
                 return matchResult('ambiguous', null, hits.map((row) => candidate(row)), 'This employee ID matches more than one registered faculty record.');
             }
@@ -1005,10 +1545,19 @@
                 const warnings = [];
                 const extracted = nameKey(values.facultyName);
                 const registered = nameKey(hits[0].full_name);
-                if (extracted && registered && extracted !== registered) {
+                if (extracted && registered && !matchesFacultyNameKey(hits[0], extracted)) {
                     warnings.push('The employee ID matches this faculty member, but the extracted name is different.');
                 }
                 return matchResult('matched_id', hits[0], [candidate(hits[0])], 'Matched on employee ID.', warnings);
+            }
+        }
+
+        const recordIdKey = collapse(values.facultyRecordId);
+        if (recordIdKey && /^\d+$/.test(recordIdKey)) {
+            const extracted = nameKey(values.facultyName);
+            const hits = faculty.filter((row) => String(row.id) === recordIdKey);
+            if (hits.length === 1 && (!extracted || matchesFacultyNameKey(hits[0], extracted))) {
+                return matchResult('matched_id', hits[0], [candidate(hits[0])], 'Matched on faculty ID.', []);
             }
         }
 
@@ -1022,7 +1571,7 @@
                 const warnings = [];
                 const extracted = nameKey(values.facultyName);
                 const registered = nameKey(hits[0].full_name);
-                if (extracted && registered && extracted !== registered) {
+                if (extracted && registered && !matchesFacultyNameKey(hits[0], extracted)) {
                     warnings.push('The email matches this faculty member, but the extracted name is different.');
                 }
                 return matchResult('matched_email', hits[0], [candidate(hits[0])], 'Matched on email address.', warnings);
@@ -1031,7 +1580,7 @@
 
         const key = nameKey(values.facultyName);
         if (key) {
-            const exact = faculty.filter((row) => nameKey(row.full_name) === key);
+            const exact = faculty.filter((row) => matchesFacultyNameKey(row, key));
             if (exact.length > 1) {
                 return matchResult('ambiguous', null, exact.map((row) => candidate(row)), 'More than one registered faculty member has this name.');
             }
@@ -1049,7 +1598,11 @@
                 : 'No registered faculty member matches this name.');
         }
 
-        const scored = faculty.map((row) => ({ row, score: scoreNames(key, nameKey(row.full_name)) }))
+        const scored = faculty.map((row) => {
+            const keysToScore = (row.altNameKeys && row.altNameKeys.length) ? row.altNameKeys : [nameKey(row.full_name)];
+            const bestScore = keysToScore.reduce((max, altKey) => Math.max(max, scoreNames(key, altKey)), 0);
+            return { row, score: bestScore };
+        })
             .filter((item) => item.score >= 0.76)
             .sort((a, b) => b.score - a.score);
         if (!scored.length) {
@@ -1179,6 +1732,32 @@
         return collapse(a).toLowerCase() === collapse(b).toLowerCase();
     }
 
+    function normalizeTimeCompare(value) {
+        const text = collapse(value);
+        const match = text.match(/^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?(?:\s*([AaPp][Mm]))?$/);
+        if (!match) return text.toLowerCase();
+        let hour = Number(match[1]);
+        const minute = match[2];
+        const mer = (match[3] || '').toUpperCase();
+        if (mer === 'PM' && hour < 12) hour += 12;
+        else if (mer === 'AM' && hour === 12) hour = 0;
+        return `${String(hour).padStart(2, '0')}:${minute}`;
+    }
+
+    function isValidDbTime(value) {
+        return /^(?:[01]?\d|2[0-3])(?::[0-5]\d){1,2}(?:\s*[AaPp][Mm])?$/.test(collapse(value));
+    }
+
+    function coerceFacultyIdForDb(facultyId) {
+        if (typeof facultyId === 'number' && Number.isFinite(facultyId)) return facultyId;
+        const str = collapse(facultyId);
+        if (/^\d+$/.test(str)) {
+            const num = Number(str);
+            if (Number.isSafeInteger(num)) return num;
+        }
+        return facultyId;
+    }
+
     function diffExisting(existing, values) {
         const conflicts = [];
         const fills = [];
@@ -1200,7 +1779,13 @@
                 if (!incoming) return;
                 const current = collapse(existing[field]);
                 if (!current) fills.push({ field, label, existing: '', incoming });
-                else if (!sameText(current, incoming)) conflicts.push({ field, label, existing: current, incoming });
+                else if (field === 'start_time' || field === 'end_time') {
+                    if (normalizeTimeCompare(current) !== normalizeTimeCompare(incoming)) {
+                        conflicts.push({ field, label, existing: current, incoming });
+                    }
+                } else if (!sameText(current, incoming)) {
+                    conflicts.push({ field, label, existing: current, incoming });
+                }
             });
         }
         if (String(existing.status || '') === 'Archived') {
@@ -1223,7 +1808,7 @@
 
     function insertPayload(facultyId, values) {
         const payload = {
-            faculty_id: facultyId,
+            faculty_id: coerceFacultyIdForDb(facultyId),
             subject_code: values.subject_code,
             subject_title: values.subject_title,
             section: values.section,
@@ -1232,21 +1817,28 @@
             academic_year: values.academic_year,
             status: 'Active'
         };
-        if (values.hours_per_week != null) payload.hours_per_week = values.hours_per_week;
-        if (values.total_students != null) payload.total_students = values.total_students;
+        if (values.hours_per_week != null && Number.isFinite(Number(values.hours_per_week))) {
+            payload.hours_per_week = Number(values.hours_per_week);
+        }
+        if (values.total_students != null && Number.isFinite(Number(values.total_students))) {
+            payload.total_students = Math.round(Number(values.total_students));
+        }
         if (values.room) payload.room = values.room;
         if (values.remarks) payload.remarks = values.remarks;
         if (values.schedule) {
-            payload.schedule_day = values.schedule.schedule_day;
-            payload.start_time = values.schedule.start_time;
-            payload.end_time = values.schedule.end_time;
-            payload.schedule_entries = values.schedule.schedule_entries;
+            if (values.schedule.schedule_day) payload.schedule_day = values.schedule.schedule_day;
+            if (isValidDbTime(values.schedule.start_time)) payload.start_time = collapse(values.schedule.start_time);
+            if (isValidDbTime(values.schedule.end_time)) payload.end_time = collapse(values.schedule.end_time);
+            if (Array.isArray(values.schedule.schedule_entries) && values.schedule.schedule_entries.length) {
+                payload.schedule_entries = values.schedule.schedule_entries;
+            }
         }
         return payload;
     }
 
     function patchValue(entry, values) {
-        if (entry.field === 'units' || entry.field === 'hours_per_week' || entry.field === 'total_students') return Number(entry.incoming);
+        if (entry.field === 'total_students') return Math.round(Number(entry.incoming));
+        if (entry.field === 'units' || entry.field === 'hours_per_week') return Number(entry.incoming);
         if (entry.field === 'status') return 'Active';
         return entry.incoming;
     }
@@ -1256,6 +1848,12 @@
         decision.fills.forEach((entry) => { patch[entry.field] = patchValue(entry, values); });
         if (choice === 'imported') {
             decision.conflicts.forEach((entry) => { patch[entry.field] = patchValue(entry, values); });
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'start_time') && !isValidDbTime(patch.start_time)) {
+            delete patch.start_time;
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'end_time') && !isValidDbTime(patch.end_time)) {
+            delete patch.end_time;
         }
         if (values.schedule && (patch.schedule_day || patch.start_time || patch.end_time)) {
             patch.schedule_entries = values.schedule.schedule_entries;
@@ -1275,6 +1873,8 @@
             facultyId: match.facultyId || null,
             faculty: match.faculty || null,
             match,
+            values,
+            department: values.department || '',
             issues: extra.issues || [],
             conflicts: extra.conflicts || [],
             fills: extra.fills || [],
@@ -1286,6 +1886,12 @@
             statusLabel: extra.statusLabel,
             selected: record.include === true
         };
+    }
+
+    function formatDbErrorMessage(error, fallback) {
+        if (!error) return fallback;
+        const parts = [collapse(error.message), collapse(error.details), collapse(error.hint ? `Hint: ${error.hint}` : '')].filter(Boolean);
+        return parts.length ? parts.join(' — ') : fallback;
     }
 
     function planBatch(records, existingLoads, facultyList) {
@@ -1447,22 +2053,137 @@
         })));
     }
 
-    function assertImportAllowed(session, facultyRecord) {
-        if (!session || !session.user) {
-            return { ok: false, message: 'Sign in with an account that can manage workload before importing.' };
+    function normalizeRoleString(val) {
+        return String(val || '')
+            .toLowerCase()
+            .trim()
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s+/g, ' ');
+    }
+
+    function isDeanRole(val) {
+        const s = normalizeRoleString(val);
+        if (!s) return false;
+        if (s === 'college dean' || s === 'dean') return true;
+        if (s.includes('dean/secretary') || s.includes('dean / secretary')) return true;
+        if (s.includes('dean') && !s.includes('vice') && !s.includes('assistant') && !s.includes('associate')) {
+            return true;
         }
-        const metaRole = String(session.user.user_metadata && session.user.user_metadata.role || '').toLowerCase();
-        const role = String(facultyRecord && (facultyRecord.role || facultyRecord.position) || '').toLowerCase();
-        const adminAccess = Boolean(facultyRecord && facultyRecord.admin_access === true);
-        const elevated = adminAccess
-            || ['admin', 'administrator', 'dean'].indexOf(role) !== -1
-            || ['admin', 'administrator', 'dean'].indexOf(metaRole) !== -1
-            || role.indexOf('secretary') !== -1
-            || metaRole.indexOf('secretary') !== -1
-            || (role.indexOf('chair') !== -1 && adminAccess);
-        if (elevated) return { ok: true, message: '' };
-        if (!facultyRecord && !metaRole) return { ok: true, message: '' };
-        return { ok: false, message: 'This account cannot import workload assignments.' };
+        return false;
+    }
+
+    function isSecretaryRole(val) {
+        const s = normalizeRoleString(val);
+        if (!s) return false;
+        if (s === 'college secretary' || s === 'secretary') return true;
+        if (s.includes('dean/secretary') || s.includes('dean / secretary')) return true;
+        if (s.includes('secretary') && !s.includes('assistant') && !s.includes('associate') && !s.includes('vice')) {
+            return true;
+        }
+        return false;
+    }
+
+    function isAdminRole(val) {
+        const s = normalizeRoleString(val);
+        if (!s) return false;
+        if (s === 'administrator' || s === 'admin') return true;
+        if (s.includes('chair') || s.includes('faculty')) return false;
+        if (s.includes('admin') || s.includes('superadmin') || s.includes('system administrator')) {
+            return true;
+        }
+        return false;
+    }
+
+    function assertImportAllowed(session, facultyRecord, adminProfile) {
+        if (!session || !session.user) {
+            return { ok: false, message: 'Sign in with an account authorized to manage workload imports.' };
+        }
+
+        const facRole = String(facultyRecord && facultyRecord.role || '').toLowerCase().trim();
+        const facPosition = String(facultyRecord && facultyRecord.position || '').toLowerCase().trim();
+        const adminRole = String(adminProfile && adminProfile.role || '').toLowerCase().trim();
+
+        const isDean = isDeanRole(adminRole) || isDeanRole(facPosition) || isDeanRole(facRole);
+        const isSecretary = isSecretaryRole(adminRole) || isSecretaryRole(facPosition) || isSecretaryRole(facRole);
+        const isAdmin = isAdminRole(adminRole) || isAdminRole(facPosition) || isAdminRole(facRole);
+
+        if (isAdmin || isDean || isSecretary) {
+            const detectedRole = isDean ? 'College Dean' : (isSecretary ? 'College Secretary' : 'Administrator');
+            return { ok: true, message: '', role: detectedRole };
+        }
+
+        return {
+            ok: false,
+            message: 'Access Denied: Only Administrator, College Dean, and College Secretary accounts can manage workload imports.'
+        };
+    }
+
+    function assertExportAllowed(session, facultyRecord, adminProfile, targetScope) {
+        if (!session || !session.user) {
+            return { ok: false, message: 'Sign in with an authorized account to export workload records.' };
+        }
+        const userMeta = session.user.user_metadata || {};
+        const metaRole = String(userMeta.role || userMeta.position || '').toLowerCase().trim();
+        const facRole = String(facultyRecord && facultyRecord.role || '').toLowerCase().trim();
+        const facPosition = String(facultyRecord && facultyRecord.position || '').toLowerCase().trim();
+        const adminRole = String(adminProfile && adminProfile.role || '').toLowerCase().trim();
+
+        const isDean = isDeanRole(adminRole) || isDeanRole(facRole) || isDeanRole(facPosition) || isDeanRole(metaRole);
+        const isSecretary = isSecretaryRole(adminRole) || isSecretaryRole(facRole) || isSecretaryRole(facPosition) || isSecretaryRole(metaRole);
+        const isAdmin = adminRole === 'administrator' || adminRole === 'admin' || adminRole === 'superadmin' ||
+                        facRole === 'administrator' || facRole === 'admin' ||
+                        metaRole === 'administrator' || metaRole === 'admin';
+        const isChair = facRole.includes('chair') || facPosition.includes('chair') || metaRole.includes('chair');
+        const isFaculty = facRole === 'faculty' || metaRole === 'faculty';
+
+        // 1. College Dean and College Secretary can export all records
+        if (isDean || isSecretary) {
+            const detectedRole = isDean ? 'College Dean' : 'College Secretary';
+            return { ok: true, message: '', scope: 'all', role: detectedRole };
+        }
+
+        // 2. Department Chairperson / OIC can export records for their own department only
+        if (isChair) {
+            const chairDept = facultyRecord && facultyRecord.department;
+            if (targetScope && targetScope.department && chairDept && targetScope.department !== chairDept) {
+                return {
+                    ok: false,
+                    message: `Access Denied: As Chairperson for ${chairDept}, you are only authorized to export workload records for your department.`
+                };
+            }
+            return { ok: true, message: '', scope: 'department', department: chairDept, role: 'Chairperson' };
+        }
+
+        // 3. Faculty members can only export their own permitted workload records
+        if (isFaculty || (Boolean(facultyRecord) && !isAdmin)) {
+            const userFacultyId = facultyRecord && facultyRecord.id;
+            if (targetScope && targetScope.facultyId && userFacultyId && String(targetScope.facultyId) !== String(userFacultyId)) {
+                return {
+                    ok: false,
+                    message: 'Access Denied: Faculty members can only export their own workload records.'
+                };
+            }
+            if (targetScope && targetScope.isBatchAll && !targetScope.facultyId) {
+                return {
+                    ok: false,
+                    message: 'Access Denied: Faculty members cannot export college-wide workload records.'
+                };
+            }
+            return { ok: true, message: '', scope: 'own', facultyId: userFacultyId, role: 'Faculty' };
+        }
+
+        // 4. Generic Administrator: denied unless independently holding Dean/Secretary/Chair/Faculty role
+        if (isAdmin) {
+            return {
+                ok: false,
+                message: 'Access Denied: Generic administrator accounts are not authorized to export faculty workloads without Dean, Secretary, or Department Chairperson credentials.'
+            };
+        }
+
+        return {
+            ok: false,
+            message: 'Access Denied: You do not have permission to export workload records.'
+        };
     }
 
     function failure(plan, message) {
@@ -1477,8 +2198,9 @@
 
     async function commitImport(input) {
         const request = input || {};
-        const allowed = assertImportAllowed(request.session, request.facultyRecord);
-        const summary = { inserted: 0, updated: 0, skipped: 0, excluded: 0, failed: [], skippedRows: [], notice: PARTIAL_NOTICE };
+        const strategy = request.strategy || 'add';
+        const allowed = assertImportAllowed(request.session, request.facultyRecord, request.adminProfile);
+        const summary = { inserted: 0, updated: 0, replaced: 0, skipped: 0, excluded: 0, failed: [], skippedRows: [], notice: PARTIAL_NOTICE };
         if (!allowed.ok) return { ok: false, aborted: true, partial: false, message: allowed.message, summary };
         const list = Array.isArray(request.plans) ? request.plans : [];
         list.forEach((plan) => {
@@ -1509,6 +2231,172 @@
         if (!request.client || typeof request.client.from !== 'function') {
             return { ok: false, aborted: true, partial: false, message: 'The database client is not available.', summary };
         }
+
+        // Ensure client is authenticated with the active session token so RPC does not fall back to anon key
+        let activeToken = request.session?.access_token || null;
+        if (!activeToken && typeof window !== 'undefined' && window.CiteFlowAuth?.ensureActiveSession && request.client) {
+            try {
+                const fresh = await window.CiteFlowAuth.ensureActiveSession(request.client);
+                if (fresh?.access_token) {
+                    activeToken = fresh.access_token;
+                    if (request.session) request.session.access_token = fresh.access_token;
+                    else request.session = fresh;
+                }
+            } catch (_) {}
+        }
+        if (!activeToken && request.client?.auth && typeof request.client.auth.getSession === 'function') {
+            try {
+                const { data } = await request.client.auth.getSession();
+                if (data?.session?.access_token) {
+                    activeToken = data.session.access_token;
+                    if (request.session) request.session.access_token = data.session.access_token;
+                    else request.session = data.session;
+                }
+            } catch (_) {}
+        }
+        if (activeToken && request.client) {
+            request.client.accessToken = async () => activeToken;
+        }
+
+        const targetAY = request.targetAcademicYear || normalizeAcademicYear(writes[0]?.payload?.academic_year || '').value;
+        const targetSem = request.targetSemester || normalizeSemester(writes[0]?.payload?.semester || '').value;
+
+        // 1. All confirmed imports are executed atomically via commit_workload_import RPC
+        if (typeof request.client.rpc === 'function') {
+            try {
+                const recordsPayload = writes.map((w) => ({
+                    faculty_id: coerceFacultyIdForDb(w.facultyId),
+                    subject_code: w.payload.subject_code,
+                    subject_title: w.payload.subject_title,
+                    section: w.payload.section,
+                    units: w.payload.units,
+                    hours_per_week: w.payload.hours_per_week,
+                    total_students: w.payload.total_students,
+                    room: w.payload.room || '',
+                    schedule_day: w.payload.schedule_day || '',
+                    start_time: w.payload.start_time || '',
+                    end_time: w.payload.end_time || '',
+                    schedule_entries: w.payload.schedule_entries || [],
+                    remarks: w.payload.remarks || ''
+                }));
+
+                const rpcRes = await request.client.rpc('commit_workload_import', {
+                    p_strategy: strategy,
+                    p_academic_year: targetAY,
+                    p_semester: targetSem,
+                    p_records: recordsPayload
+                });
+
+                const isSuccess = !rpcRes.error && rpcRes.data && (rpcRes.data.ok === true || rpcRes.data.success === true);
+                if (isSuccess) {
+                    const rpcSummary = (rpcRes.data && rpcRes.data.summary) || {};
+                    summary.inserted = rpcSummary.inserted ?? rpcRes.data.inserted_count ?? rpcRes.data.inserted ?? 0;
+                    summary.replaced = rpcSummary.replaced ?? rpcRes.data.deleted_count ?? rpcRes.data.replaced ?? 0;
+                    summary.skipped += (rpcSummary.skipped ?? rpcRes.data.skipped_count ?? rpcRes.data.skipped ?? 0);
+                    return {
+                        ok: true,
+                        aborted: false,
+                        partial: false,
+                        message: '',
+                        summary
+                    };
+                }
+
+                if (!rpcRes.error && rpcRes.data && (rpcRes.data.ok === false || rpcRes.data.success === false)) {
+                    return {
+                        ok: false,
+                        aborted: true,
+                        partial: false,
+                        message: rpcRes.data.message || rpcRes.data.error || 'Workload import failed and was rolled back.',
+                        summary
+                    };
+                }
+
+                if (rpcRes.error) {
+                    if (rpcRes.error.code === '42501' || /access denied/i.test(rpcRes.error.message) || /permission denied/i.test(rpcRes.error.message)) {
+                        return {
+                            ok: false,
+                            aborted: true,
+                            partial: false,
+                            message: rpcRes.error.message || 'Access Denied: Only Administrator, College Dean, and College Secretary accounts can manage workload imports.',
+                            summary
+                        };
+                    }
+                    if (rpcRes.error.code === 'PGRST202') {
+                        return {
+                            ok: false,
+                            aborted: true,
+                            partial: false,
+                            message: strategy === 'replace'
+                                ? 'Workload replacement requires the atomic commit_workload_import database function. Please apply migration 033.'
+                                : 'Workload import requires the atomic commit_workload_import database function. Please apply migration 033.',
+                            summary
+                        };
+                    }
+                    return {
+                        ok: false,
+                        aborted: true,
+                        partial: false,
+                        message: rpcRes.error.message || 'Atomic import failed and was rolled back.',
+                        summary
+                    };
+                }
+
+                return {
+                    ok: false,
+                    aborted: true,
+                    partial: false,
+                    message: 'The database did not confirm the workload import. No assignments were saved.',
+                    summary
+                };
+            } catch (rpcErr) {
+                if (rpcErr && (rpcErr.code === '42501' || /access denied/i.test(rpcErr.message) || /permission denied/i.test(rpcErr.message))) {
+                    return { ok: false, aborted: true, partial: false, message: rpcErr.message, summary };
+                }
+                if (rpcErr && rpcErr.code === 'PGRST202') {
+                    return {
+                        ok: false,
+                        aborted: true,
+                        partial: false,
+                        message: strategy === 'replace'
+                            ? 'Workload replacement requires the atomic commit_workload_import database function. Please apply migration 033.'
+                            : 'Workload import requires the atomic commit_workload_import database function. Please apply migration 033.',
+                        summary
+                    };
+                }
+                return {
+                    ok: false,
+                    aborted: true,
+                    partial: false,
+                    message: (rpcErr && rpcErr.message) || 'Atomic import failed and was rolled back.',
+                    summary
+                };
+            }
+        }
+
+        // 2. Strict requirement: Confirmed imports in browser/production must be saved exclusively via commit_workload_import RPC
+        if (typeof window !== 'undefined') {
+            return {
+                ok: false,
+                aborted: true,
+                partial: false,
+                message: 'Workload import requires the atomic commit_workload_import database function. Please apply migration 033.',
+                summary
+            };
+        }
+
+        // 3. Strict check for Replace: Replace requires the atomic RPC function
+        if (strategy === 'replace') {
+            return {
+                ok: false,
+                aborted: true,
+                partial: false,
+                message: 'Workload replacement requires the atomic commit_workload_import database function. Please apply migration 033.',
+                summary
+            };
+        }
+
+        // 4. Safe direct client fallback for Add in non-browser unit test environments without RPC
         for (let i = 0; i < writes.length; i++) {
             const plan = writes[i];
             if (!plan.facultyId || (plan.action !== 'insert' && plan.action !== 'update')) {
@@ -1528,18 +2416,22 @@
                     }
                     const patch = Object.assign({}, plan.patch, { updated_at: (request.now || new Date()).toISOString() });
                     delete patch.faculty_id;
-                    response = await request.client.from('faculty_teaching_loads').update(patch).eq('id', plan.existingId).eq('faculty_id', plan.facultyId).select('id');
+                    response = await request.client.from('faculty_teaching_loads').update(patch).eq('id', plan.existingId).eq('faculty_id', coerceFacultyIdForDb(plan.facultyId)).select('id');
                 }
                 const error = response && response.error;
                 const data = response && response.data;
                 if (error || !Array.isArray(data) || !data.length || !data[0].id) {
-                    summary.failed.push(failure(plan, (error && error.message) || 'The database did not confirm this change. It may have been blocked by permissions.'));
-                } else if (plan.action === 'insert') summary.inserted += 1;
-                else summary.updated += 1;
+                    summary.failed.push(failure(plan, formatDbErrorMessage(error, 'The database did not confirm this change. It may have been blocked by permissions.')));
+                } else if (plan.action === 'insert') {
+                    summary.inserted += 1;
+                } else {
+                    summary.updated += 1;
+                }
             } catch (err) {
                 summary.failed.push(failure(plan, err && err.message ? err.message : 'The assignment could not be saved.'));
             }
         }
+
         const wrote = summary.inserted + summary.updated;
         return {
             ok: summary.failed.length === 0 && wrote > 0,
@@ -1558,6 +2450,7 @@
     function sourceLabel(source) {
         if (!source) return '';
         if (source.fileType === 'pdf') return `Page ${source.page}`;
+        if (source.fileType === 'word') return [source.table ? `Table ${source.table}` : 'Word doc', source.row ? `row ${source.row}` : ''].filter(Boolean).join(' · ');
         return [source.sheet || 'Sheet', source.row ? `row ${source.row}` : ''].filter(Boolean).join(' · ');
     }
 
@@ -1566,21 +2459,75 @@
         return status === 'unmatched' || status === 'ambiguous' || status === 'suggested';
     }
 
+    async function submitWorkloadDeletionRequest({
+        client,
+        facultyId,
+        teachingLoadId,
+        reason,
+        facultyName,
+        department,
+        subjectCode,
+        subjectTitle,
+        section,
+        academicYear,
+        semester
+    }) {
+        if (!client) throw new Error('Database client is required');
+        if (!facultyId || !teachingLoadId) {
+            return { error: { message: 'Faculty ID and teaching load ID are required.' } };
+        }
+        const payload = {
+            faculty_id: facultyId,
+            teaching_load_id: teachingLoadId,
+            reason: reason || 'Faculty requested removal',
+            status: 'Pending'
+        };
+        if (facultyName) payload.faculty_name = facultyName;
+        if (department) payload.department = department;
+        if (subjectCode) payload.subject_code = subjectCode;
+        if (subjectTitle) payload.subject_title = subjectTitle;
+        if (section) payload.section = section;
+        if (academicYear) payload.academic_year = academicYear;
+        if (semester) payload.semester = semester;
+
+        return client.from('workload_deletion_requests').insert(payload);
+    }
+
+    async function approveWorkloadDeletionRequest({ client, requestId }) {
+        if (!client) throw new Error('Database client is required');
+        if (!requestId) return { error: { message: 'Request ID is required.' } };
+        return client.rpc('approve_workload_deletion_request', { p_request_id: requestId });
+    }
+
+    async function rejectWorkloadDeletionRequest({ client, requestId, reason }) {
+        if (!client) throw new Error('Database client is required');
+        if (!requestId) return { error: { message: 'Request ID is required.' } };
+        return client.rpc('reject_workload_deletion_request', { p_request_id: requestId, p_reason: reason || null });
+    }
+
     return {
         MAX_FILE_BYTES,
         OCR_MESSAGE,
         PARTIAL_NOTICE,
         validateWorkloadFile,
+        validateAcademicYear,
+        normalizeAcademicYear,
         sheetsFromWorkbook,
         parseSheetRows,
         parsePdfPages,
+        parseDocxBuffer,
         normalizeDraft,
         matchFaculty,
         planBatch,
         summarizePlans,
         planSignature,
         assertImportAllowed,
+        assertExportAllowed,
         commitImport,
+        submitWorkloadDeletionRequest,
+        approveWorkloadDeletionRequest,
+        rejectWorkloadDeletionRequest,
+        normalizeName,
         facultyLabel,
         sourceLabel,
         unresolved,
@@ -1588,6 +2535,9 @@
         selectedFacultyId,
         previewValue,
         renderPreviewInput,
-        applyPreviewEdit
+        applyPreviewEdit,
+        isDeanRole,
+        isSecretaryRole,
+        isAdminRole
     };
 });

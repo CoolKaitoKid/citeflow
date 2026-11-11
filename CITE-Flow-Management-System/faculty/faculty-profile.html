@@ -1167,10 +1167,10 @@
                 </div>
 
                 <div class="card p-6 mb-7">
-                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
                         <div>
                             <h2 class="text-lg font-semibold text-slate-950">Teaching Loads</h2>
-                            <p class="text-sm text-slate-500">Add subjects, sections, schedules, rooms, and units.</p>
+                            <p class="text-sm text-slate-500">Assigned subjects grouped by Academic Year with complete workload details.</p>
                         </div>
 
                         <button onclick="openTeachingModal()" class="primary-btn flex items-center gap-2" data-theme-primary="true">
@@ -1181,7 +1181,29 @@
                             Add Teaching Load
                         </button>
                     </div>
-                    <div id="teachingList" class="space-y-3"></div>
+
+                    <div id="workloadFilterBar" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-3 items-end p-4 mb-6 rounded-2xl bg-slate-50/80 border border-slate-200/80">
+                        <div>
+                            <label for="workloadAcademicYearFilter" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Academic Year</label>
+                            <select id="workloadAcademicYearFilter" onchange="onWorkloadFilterChange()" class="field !py-2.5 !px-3.5 !rounded-xl text-sm font-medium text-slate-800">
+                                <option value="">All Academic Years</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="workloadSemesterFilter" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Semester</label>
+                            <select id="workloadSemesterFilter" onchange="onWorkloadFilterChange()" class="field !py-2.5 !px-3.5 !rounded-xl text-sm font-medium text-slate-800">
+                                <option value="">All Semesters</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center justify-between sm:justify-end gap-3 pt-1 sm:pt-0">
+                            <span id="workloadFilterSummary" class="text-xs font-semibold text-slate-500"></span>
+                            <button id="workloadResetFiltersBtn" type="button" onclick="resetWorkloadFilters()" class="hidden text-xs font-semibold text-[#621708] hover:text-[#8c2a10] px-3 py-2 rounded-xl border border-[#621708]/20 bg-white hover:bg-red-50/40 transition-colors">
+                                Reset Filters
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="teachingList" class="space-y-6"></div>
                 </div>
             </section>
         </div>
@@ -2247,6 +2269,64 @@
     </div>
 </div>
 
+<!-- WORKLOAD REMOVAL REQUEST MODAL -->
+<div id="workloadRemovalModal" onclick="if(event.target === this) closeWorkloadRemovalModal(null)" class="hidden fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm transition-opacity duration-200">
+    <div id="workloadRemovalCard" class="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-100 overflow-hidden transform transition-all duration-200 scale-95 opacity-0 relative">
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-red-50 text-[#621708] border border-red-200/60 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-clipboard-question text-lg"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold tracking-wider text-[#621708] uppercase">Teaching Load</p>
+                    <h2 class="text-lg font-bold text-slate-900 mt-0.5">Request Workload Removal</h2>
+                </div>
+            </div>
+            <button type="button" onclick="closeWorkloadRemovalModal(null)" class="icon-btn text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer" aria-label="Close dialog">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-4">
+            <!-- Approval Requirement Notice Callout -->
+            <div class="p-4 bg-amber-50/80 border border-amber-200/70 rounded-2xl flex items-start gap-3">
+                <div class="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                    <i class="fa-solid fa-circle-info text-xs"></i>
+                </div>
+                <div class="text-xs text-amber-900 leading-relaxed">
+                    <p class="font-semibold text-amber-950 mb-0.5">Administrative Approval Required</p>
+                    <p class="text-amber-900/90">Workload removal requires approval by the College Dean or College Secretary. Please enter the reason for requesting removal of this workload entry.</p>
+                </div>
+            </div>
+
+            <!-- Reason Textarea -->
+            <div>
+                <label for="workloadRemovalReason" class="field-label">
+                    Reason for Removal <span class="text-rose-500">*</span>
+                </label>
+                <textarea id="workloadRemovalReason" class="field" rows="4" placeholder="Please enter the reason for requesting removal of this workload entry (e.g., subject reassigned, dissolved section, scheduling change)..." oninput="document.getElementById('workloadRemovalError')?.classList.add('hidden')"></textarea>
+                <div id="workloadRemovalError" class="hidden text-xs text-rose-600 font-medium mt-1.5 flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-exclamation text-rose-500"></i>
+                    <span>Please enter a reason for requesting removal.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-3">
+            <button id="workloadRemovalCancelBtn" type="button" onclick="closeWorkloadRemovalModal(null)" class="secondary-btn cursor-pointer">
+                Cancel
+            </button>
+            <button id="workloadRemovalSubmitBtn" type="button" onclick="submitWorkloadRemovalModal()" class="primary-btn flex items-center gap-2 cursor-pointer" data-theme-primary="true">
+                <i class="fa-solid fa-paper-plane text-xs"></i>
+                <span>Submit Request</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- ACCOMPLISHMENT REPORT PREVIEW & GENERATION MODAL -->
 <div id="reportChooserModal" class="hidden fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-start justify-center z-[2500] p-2 sm:p-4 overflow-y-auto min-h-screen">
     <div class="bg-white rounded-2xl w-full max-w-[1100px] shadow-2xl overflow-hidden max-h-[94vh] flex flex-col my-3 sm:my-4 border border-slate-100">
@@ -2328,7 +2408,46 @@ window.supabaseClient = supabaseClient;
 
 let currentAuthUser = null;
 let currentFaculty = null;
+let isAuthSessionVerified = false;
 let teachingLoads = [];
+
+function showToast(msg, type = 'info') {
+    if (window.showToast && window.showToast !== showToast) {
+        window.showToast(msg, type);
+    } else if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+        window.CiteFlowModal.toast(msg, 4000, type === 'warn' ? 'warning' : type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.toast === 'function') {
+        window.CiteFlowUI.toast(msg, type);
+    } else if (window.CiteFlowUI && typeof window.CiteFlowUI.alert === 'function') {
+        window.CiteFlowUI.alert(msg, type);
+    } else {
+        const marks = {
+            success: { icon: "fa-circle-check", color: "#10b981" },
+            error: { icon: "fa-circle-xmark", color: "#f87171" },
+            warning: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            warn: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            info: { icon: "fa-circle-info", color: "#60a5fa" }
+        };
+        const normType = (type === 'warn' || type === 'warning') ? 'warning' : (['success', 'error', 'info'].includes(type) ? type : 'info');
+        const mark = marks[normType] || marks.info;
+        let toast = document.getElementById('citeflowGlobalToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'citeflowGlobalToast';
+            toast.className = 'citeflow-toast';
+            document.body.appendChild(toast);
+        }
+        const safe = document.createElement('div');
+        safe.textContent = String(msg ?? '').trim();
+        toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+        toast.classList.add('show');
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3500);
+    }
+}
+window.showToast = showToast;
 
 
 // Strips ALL CiteFlow metadata comments and stray encoded fragments from any description
@@ -2491,7 +2610,7 @@ function removeScheduleRow(button) {
     if (!container) return;
 
     if (container.querySelectorAll('.schedule-row').length <= 1) {
-        alert('At least one schedule is required.');
+        showToast('At least one schedule is required.', 'warning');
         return;
     }
 
@@ -2635,6 +2754,10 @@ function switchTab(tab) {
         initItineraryFormDefaults();
     }
 
+    if (tab === 'workload' && typeof loadWorkloadEntries === 'function') {
+        loadWorkloadEntries();
+    }
+
     if (tab === 'accomplishments') {
         if (!window.location.hash.startsWith('#accomplishments')) {
             history.replaceState(null, '', '#accomplishments');
@@ -2705,6 +2828,7 @@ function switchAccomplishmentSubView(subview) {
 
 async function loadFacultyProfile() {
     let authUser = null;
+    isAuthSessionVerified = false;
 
     if (window.CiteFlowAuthGuard?.ready) {
         try { await window.CiteFlowAuthGuard.ready; } catch (_) {}
@@ -2716,13 +2840,17 @@ async function loadFacultyProfile() {
             : (await supabaseClient.auth.getSession())?.data?.session;
         if (session?.user) {
             authUser = session.user;
+            isAuthSessionVerified = true;
         }
     } catch (_) {}
 
     if (!authUser) {
         try {
             const { data: authData } = await supabaseClient.auth.getUser();
-            if (authData?.user) authUser = authData.user;
+            if (authData?.user) {
+                authUser = authData.user;
+                isAuthSessionVerified = true;
+            }
         } catch (_) {}
     }
 
@@ -2751,40 +2879,138 @@ async function loadFacultyProfile() {
     currentAuthUser = authUser;
     let facultyRecord = null;
 
-    try {
-        const { data: byAuth } = await supabaseClient
-            .from('faculty')
-            .select('*')
-            .eq('auth_user_id', currentAuthUser.id)
-            .maybeSingle();
-        if (byAuth) facultyRecord = byAuth;
-    } catch (e) {
-        console.warn('Error querying faculty by auth_user_id:', e);
-    }
-
-    if (!facultyRecord && currentAuthUser.email) {
+    // 1. Query faculty by auth_user_id (ensures complete record with select('*'))
+    if (!facultyRecord && currentAuthUser?.id) {
         try {
-            const { data: byEmail } = await supabaseClient
+            const { data: byAuth } = await supabaseClient
                 .from('faculty')
                 .select('*')
-                .ilike('email', currentAuthUser.email)
+                .eq('auth_user_id', currentAuthUser.id)
                 .maybeSingle();
-            if (byEmail) {
-                facultyRecord = byEmail;
-                supabaseClient.from('faculty').update({ auth_user_id: currentAuthUser.id }).eq('id', byEmail.id).then();
+            if (byAuth) facultyRecord = byAuth;
+        } catch (e) {
+            console.warn('Error querying faculty by auth_user_id:', e);
+        }
+    }
+
+    // 2. Query faculty by CiteFlowAuthGuard resolved numeric ID only if verified for this user
+    if (!facultyRecord && window.CiteFlowAuthGuard?.faculty?.id && /^\d+$/.test(String(window.CiteFlowAuthGuard.faculty.id))) {
+        const guardFac = window.CiteFlowAuthGuard.faculty;
+        const isGuardVerified = (guardFac.auth_user_id && String(guardFac.auth_user_id) === String(currentAuthUser.id)) ||
+            (currentAuthUser.email && (!guardFac.auth_user_id || String(guardFac.auth_user_id) === String(currentAuthUser.id)) && String(guardFac.email || '').trim().toLowerCase() === currentAuthUser.email.trim().toLowerCase());
+        if (isGuardVerified) {
+            try {
+                const { data: byGuardId } = await supabaseClient
+                    .from('faculty')
+                    .select('*')
+                    .eq('id', Number(guardFac.id))
+                    .maybeSingle();
+                if (byGuardId) {
+                    const rowAuthId = byGuardId.auth_user_id;
+                    const rowEmail = String(byGuardId.email || '').trim().toLowerCase();
+                    const userEmail = String(currentAuthUser.email || '').trim().toLowerCase();
+                    if (rowAuthId === currentAuthUser.id || (!rowAuthId && userEmail && rowEmail === userEmail)) {
+                        facultyRecord = byGuardId;
+                    }
+                }
+            } catch (e) {
+                console.warn('Error querying faculty by guard id:', e);
+            }
+        }
+    }
+
+    // 3. Query faculty by exact verified email (only unclaimed records or records already owned by this user)
+    if (!facultyRecord && currentAuthUser?.email) {
+        try {
+            const cleanEmail = currentAuthUser.email.trim().toLowerCase();
+            if (cleanEmail && cleanEmail.includes('@')) {
+                const { data: byEmailList } = await supabaseClient
+                    .from('faculty')
+                    .select('*')
+                    .ilike('email', cleanEmail)
+                    .order('id', { ascending: false });
+
+                if (Array.isArray(byEmailList) && byEmailList.length > 0) {
+                    // Check if ANY record with this email belongs to a different user
+                    const claimedByOther = byEmailList.find(r => r.auth_user_id && String(r.auth_user_id) !== String(currentAuthUser.id));
+                    if (claimedByOther) {
+                        console.warn('Security alert: Faculty record with email', cleanEmail, 'is already claimed by another user ID.');
+                    } else {
+                        // Look for a record already linked to currentAuthUser.id, or an unclaimed record
+                        const alreadyLinked = byEmailList.find(r => r.auth_user_id && String(r.auth_user_id) === String(currentAuthUser.id));
+                        const unclaimed = byEmailList.find(r => !r.auth_user_id);
+                        const candidate = alreadyLinked || unclaimed;
+                        if (candidate) {
+                            const rowEmail = String(candidate.email || '').trim().toLowerCase();
+                            if (rowEmail === cleanEmail) {
+                                facultyRecord = candidate;
+                            }
+                        }
+                    }
+                }
             }
         } catch (e) {
             console.warn('Error querying faculty by email:', e);
         }
     }
 
+    // 4. Ensure database link is updated ONLY for unclaimed records matching the verified user
+    if (facultyRecord && /^\d+$/.test(String(facultyRecord.id))) {
+        facultyRecord.id = Number(facultyRecord.id);
+        // Security check: ONLY link if auth_user_id is currently NULL (never overwrite an existing auth_user_id)
+        // AND ONLY if authenticated session is verified by Supabase Auth (never from unverified localStorage)
+        if (isAuthSessionVerified && currentAuthUser?.id && !facultyRecord.auth_user_id) {
+            try {
+                const { error: linkErr } = await supabaseClient
+                    .from('faculty')
+                    .update({ auth_user_id: currentAuthUser.id, updated_at: new Date().toISOString() })
+                    .eq('id', facultyRecord.id)
+                    .is('auth_user_id', null);
+                if (!linkErr) {
+                    facultyRecord.auth_user_id = currentAuthUser.id;
+                } else {
+                    console.warn('Could not link auth_user_id on faculty record:', linkErr);
+                }
+            } catch (linkErr) {
+                console.warn('Could not link auth_user_id on faculty record:', linkErr);
+            }
+        }
+    }
+
+    // 5. User cache and employee identification resolution
+    const cachedUser = (() => {
+        try { return JSON.parse(localStorage.getItem('citeflow_user') || '{}'); } catch (_) { return {}; }
+    })();
+    const empId = cachedUser.employee_id || currentAuthUser?.user_metadata?.employee_id || null;
+
+    // 6. Defensive field restoration
+    if (facultyRecord) {
+        if ((!facultyRecord.first_name || !facultyRecord.last_name) && (facultyRecord.full_name || facultyRecord.name)) {
+            const parts = String(facultyRecord.full_name || facultyRecord.name).trim().split(/\s+/);
+            if (!facultyRecord.first_name && parts.length > 0) facultyRecord.first_name = parts[0];
+            if (!facultyRecord.last_name && parts.length > 1) facultyRecord.last_name = parts[parts.length - 1];
+            if (!facultyRecord.middle_name && parts.length > 2) facultyRecord.middle_name = parts.slice(1, -1).join(' ');
+        }
+        if (!facultyRecord.employee_id && empId) {
+            facultyRecord.employee_id = empId;
+        }
+        if (window.CiteFlowAuthGuard?.faculty) {
+            if (window.CiteFlowAuthGuard.faculty.admin_access !== undefined && facultyRecord.admin_access === undefined) {
+                facultyRecord.admin_access = window.CiteFlowAuthGuard.faculty.admin_access;
+            }
+        }
+    }
+
+    // 7. Fallback synthetic record only when no DB record exists
     if (!facultyRecord) {
         const meta = currentAuthUser.user_metadata || {};
-        const cachedUser = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
         const rawName = meta.full_name || cachedUser.name || 'Faculty User';
         const nameParts = rawName.split(' ');
+        const fallbackId = (window.CiteFlowAuthGuard?.faculty?.id && /^\d+$/.test(String(window.CiteFlowAuthGuard.faculty.id)))
+            ? Number(window.CiteFlowAuthGuard.faculty.id)
+            : currentAuthUser.id;
         facultyRecord = {
-            id: currentAuthUser.id,
+            id: fallbackId,
             auth_user_id: currentAuthUser.id,
             email: currentAuthUser.email,
             first_name: meta.first_name || nameParts[0] || 'Faculty',
@@ -2826,12 +3052,12 @@ async function loadFacultyProfile() {
     if (typeof window.updateFacultyNavProfile === 'function') {
         window.updateFacultyNavProfile(currentFaculty);
     }
-    await loadWorkloadEntries();
-    await loadResearch();
-    await loadAccomplishments();
-    await loadExtensionProjects();
-    await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
-    await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.');
+    try { await loadWorkloadEntries(); } catch (err) { console.error('Failed to load workload entries:', err); }
+    try { await loadResearch(); } catch (err) { console.error('Failed to load research:', err); }
+    try { await loadAccomplishments(); } catch (err) { console.error('Failed to load accomplishments:', err); }
+    try { await loadExtensionProjects(); } catch (err) { console.error('Failed to load extension projects:', err); }
+    try { await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.'); } catch (err) { console.error('Failed to load extension docs:', err); }
+    try { await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.'); } catch (err) { console.error('Failed to load other docs:', err); }
 }
 
 function renderProfile() {
@@ -2921,67 +3147,500 @@ function renderProfile() {
 }
 
 async function loadWorkloadEntries() {
-    if (!currentFaculty?.id) return;
+    let targetFacultyId = null;
+
+    // 1. Resolve numeric faculty.id through faculty.auth_user_id = currentAuthUser.id
+    if (supabaseClient && currentAuthUser?.id) {
+        try {
+            const { data: fac } = await supabaseClient
+                .from('faculty')
+                .select('id, auth_user_id')
+                .eq('auth_user_id', currentAuthUser.id)
+                .maybeSingle();
+            if (fac?.id && /^\d+$/.test(String(fac.id))) {
+                targetFacultyId = Number(fac.id);
+                if (currentFaculty) currentFaculty.id = targetFacultyId;
+            }
+        } catch (e) {
+            console.warn('Error resolving faculty ID by auth_user_id:', e);
+        }
+    }
+
+    // 2. If not resolved yet, check currentFaculty.id if already numeric AND verified to belong to current user
+    if (!targetFacultyId && currentFaculty?.id && /^\d+$/.test(String(currentFaculty.id))) {
+        const isVerifiedOwner = (currentFaculty.auth_user_id && String(currentFaculty.auth_user_id) === String(currentAuthUser?.id)) ||
+            (currentAuthUser?.email && (!currentFaculty.auth_user_id || String(currentFaculty.auth_user_id) === String(currentAuthUser?.id)) && String(currentFaculty.email || '').trim().toLowerCase() === currentAuthUser.email.trim().toLowerCase());
+        if (isVerifiedOwner) {
+            targetFacultyId = Number(currentFaculty.id);
+        }
+    }
+
+    // 3. If still not resolved, check CiteFlowAuthGuard resolved faculty ID only if verified for this user
+    if (!targetFacultyId && window.CiteFlowAuthGuard?.faculty?.id && /^\d+$/.test(String(window.CiteFlowAuthGuard.faculty.id))) {
+        const guardFac = window.CiteFlowAuthGuard.faculty;
+        const isGuardVerified = (guardFac.auth_user_id && String(guardFac.auth_user_id) === String(currentAuthUser?.id)) ||
+            (currentAuthUser?.email && (!guardFac.auth_user_id || String(guardFac.auth_user_id) === String(currentAuthUser?.id)) && String(guardFac.email || '').trim().toLowerCase() === currentAuthUser.email.trim().toLowerCase());
+        if (isGuardVerified) {
+            targetFacultyId = Number(guardFac.id);
+            if (currentFaculty) currentFaculty.id = targetFacultyId;
+        }
+    }
+
+    // 4. If still not resolved and email is available, query faculty by verified email and link auth_user_id ONLY if unclaimed
+    if (!targetFacultyId && supabaseClient && currentAuthUser?.email) {
+        try {
+            const cleanEmail = currentAuthUser.email.trim().toLowerCase();
+            if (cleanEmail && cleanEmail.includes('@')) {
+                const { data: facByEmailList } = await supabaseClient
+                    .from('faculty')
+                    .select('id, auth_user_id, email')
+                    .ilike('email', cleanEmail)
+                    .order('id', { ascending: false });
+                if (Array.isArray(facByEmailList) && facByEmailList.length > 0) {
+                    const claimedByOther = facByEmailList.find(r => r.auth_user_id && String(r.auth_user_id) !== String(currentAuthUser?.id));
+                    if (claimedByOther) {
+                        console.warn('Security alert: Faculty record with email', cleanEmail, 'is already claimed by another user ID.');
+                    } else {
+                        const alreadyLinked = facByEmailList.find(r => r.auth_user_id && String(r.auth_user_id) === String(currentAuthUser?.id));
+                        const unclaimed = facByEmailList.find(r => !r.auth_user_id);
+                        const match = alreadyLinked || unclaimed;
+                        if (match?.id && /^\d+$/.test(String(match.id))) {
+                            const emailMatches = String(match.email || '').trim().toLowerCase() === cleanEmail;
+                            if (emailMatches) {
+                                targetFacultyId = Number(match.id);
+                                if (currentFaculty) currentFaculty.id = targetFacultyId;
+                                if (isAuthSessionVerified && !match.auth_user_id && currentAuthUser?.id) {
+                                    try {
+                                        await supabaseClient
+                                            .from('faculty')
+                                            .update({ auth_user_id: currentAuthUser.id, updated_at: new Date().toISOString() })
+                                            .eq('id', targetFacultyId)
+                                            .is('auth_user_id', null);
+                                    } catch (linkErr) {
+                                        console.warn('Could not link auth_user_id on faculty record:', linkErr);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Error resolving faculty ID by email:', e);
+        }
+    }
+
+    if (!targetFacultyId || !/^\d+$/.test(String(targetFacultyId))) {
+        console.warn('Cannot load teaching loads: invalid or non-numeric faculty_id:', targetFacultyId);
+        teachingLoads = [];
+        renderWorkload();
+        return;
+    }
 
     const teachingResponse = await supabaseClient
         .from('faculty_teaching_loads')
         .select('*')
-        .eq('faculty_id', currentFaculty.id)
+        .eq('faculty_id', targetFacultyId)
         .neq('status', 'Archived')
         .order('created_at', { ascending: false });
 
-    teachingLoads = teachingResponse.data || [];
+    if (teachingResponse.error) {
+        console.error('Failed to load teaching loads:', teachingResponse.error);
+        teachingLoads = [];
+    } else {
+        teachingLoads = teachingResponse.data || [];
+    }
     renderWorkload();
 }
 
-function workloadItem(title, meta, units, type, id) {
+function hasWorkloadFieldValue(value) {
+    if (value === null || value === undefined) return false;
+    return String(value).trim() !== '';
+}
+
+function getExistingWorkloadSchedule(item) {
+    if (!item || typeof item !== 'object') return '';
+    const schedules = parseScheduleEntries(item.schedule_entries);
+    if (schedules.length) {
+        const formattedEntries = schedules
+            .map(schedule => {
+                const day = String(schedule?.day || '').trim();
+                const start = String(schedule?.start_time || '').trim();
+                const end = String(schedule?.end_time || '').trim();
+                const timeRange = [start, end].filter(Boolean).join('–');
+                return [day, timeRange].filter(Boolean).join(' ').trim();
+            })
+            .filter(Boolean);
+        if (formattedEntries.length) {
+            return formattedEntries.join(' / ');
+        }
+    }
+
+    const day = String(item.schedule_day || '').trim();
+    const start = String(item.start_time || '').trim();
+    const end = String(item.end_time || '').trim();
+    const timeRange = [start, end].filter(Boolean).join('–');
+    const directSchedule = [day, timeRange].filter(Boolean).join(' ').trim();
+    if (directSchedule) return directSchedule;
+
+    return String(item.schedule || '').trim();
+}
+
+function normalizeAcademicYearKey(value) {
+    return String(value || '').trim().replace(/\s*[–—-]\s*/g, '-');
+}
+
+function formatAcademicYearHeading(yearKey) {
+    if (!yearKey) return 'Unspecified Academic Year';
+    const display = String(yearKey).trim().replace(/(\d{4})\s*-\s*(\d{4})/, '$1–$2');
+    return /^academic\s+year/i.test(display) ? display : `Academic Year ${display}`;
+}
+
+function compareAcademicYearsDesc(a, b) {
+    const keyA = normalizeAcademicYearKey(a);
+    const keyB = normalizeAcademicYearKey(b);
+    if (!keyA && !keyB) return 0;
+    if (!keyA) return 1;
+    if (!keyB) return -1;
+
+    const yearsA = (keyA.match(/\d{4}/g) || []).map(Number);
+    const yearsB = (keyB.match(/\d{4}/g) || []).map(Number);
+
+    if (yearsA.length && yearsB.length) {
+        if (yearsB[0] !== yearsA[0]) return yearsB[0] - yearsA[0];
+        const endA = yearsA[1] || yearsA[0];
+        const endB = yearsB[1] || yearsB[0];
+        if (endB !== endA) return endB - endA;
+    } else if (yearsA.length) {
+        return -1;
+    } else if (yearsB.length) {
+        return 1;
+    }
+
+    return keyB.localeCompare(keyA);
+}
+
+function compareSemestersOrder(a, b) {
+    const rank = value => {
+        const s = String(value || '').trim().toLowerCase();
+        if (s.includes('1st') || s.includes('first')) return 1;
+        if (s.includes('2nd') || s.includes('second')) return 2;
+        if (s.includes('summer') || s.includes('midyear')) return 3;
+        return 4;
+    };
+    const rA = rank(a);
+    const rB = rank(b);
+    if (rA !== rB) return rA - rB;
+    return String(a || '').localeCompare(String(b || ''));
+}
+
+function dedupeWorkloadItems(items) {
+    const seen = new Set();
+    const result = [];
+    (items || []).forEach(item => {
+        if (!item || typeof item !== 'object') return;
+        const idKey = hasWorkloadFieldValue(item.id) ? `id:${String(item.id).trim()}` : '';
+        const compositeKey = [
+            normalizeAcademicYearKey(item.academic_year).toLowerCase(),
+            String(item.semester || '').trim().toLowerCase(),
+            String(item.subject_code || '').trim().toLowerCase(),
+            String(item.subject_title || '').trim().toLowerCase(),
+            String(item.section || '').trim().toLowerCase(),
+            getExistingWorkloadSchedule(item).toLowerCase()
+        ].join('|');
+        const key = idKey || `comp:${compositeKey}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        result.push(item);
+    });
+    return result;
+}
+
+function populateWorkloadFilterOptions(items) {
+    const yearSelect = document.getElementById('workloadAcademicYearFilter');
+    const semSelect = document.getElementById('workloadSemesterFilter');
+    if (!yearSelect || !semSelect) return;
+
+    const previousYear = yearSelect.value;
+    const previousSem = semSelect.value;
+
+    const yearMap = new Map();
+    const semMap = new Map();
+
+    (items || []).forEach(item => {
+        if (hasWorkloadFieldValue(item.academic_year)) {
+            const normYear = normalizeAcademicYearKey(item.academic_year);
+            if (normYear && !yearMap.has(normYear)) {
+                yearMap.set(normYear, String(item.academic_year).trim());
+            }
+        }
+        if (hasWorkloadFieldValue(item.semester)) {
+            const semRaw = String(item.semester).trim();
+            const semKey = semRaw.toLowerCase();
+            if (!semMap.has(semKey)) {
+                semMap.set(semKey, semRaw);
+            }
+        }
+    });
+
+    const sortedYearKeys = [...yearMap.keys()].sort(compareAcademicYearsDesc);
+    const sortedSemKeys = [...semMap.keys()].sort((a, b) => compareSemestersOrder(semMap.get(a), semMap.get(b)));
+
+    yearSelect.innerHTML = `<option value="">All Academic Years</option>` +
+        sortedYearKeys.map(key => `<option value="${esc(key)}">${esc(yearMap.get(key))}</option>`).join('');
+
+    semSelect.innerHTML = `<option value="">All Semesters</option>` +
+        sortedSemKeys.map(key => `<option value="${esc(semMap.get(key))}">${esc(semMap.get(key))}</option>`).join('');
+
+    if (previousYear && sortedYearKeys.includes(previousYear)) {
+        yearSelect.value = previousYear;
+    } else {
+        yearSelect.value = '';
+    }
+
+    if (previousSem && [...semMap.values()].some(v => v.toLowerCase() === previousSem.toLowerCase())) {
+        const match = [...semMap.values()].find(v => v.toLowerCase() === previousSem.toLowerCase());
+        semSelect.value = match || '';
+    } else {
+        semSelect.value = '';
+    }
+}
+
+function onWorkloadFilterChange() {
+    renderWorkload(true);
+}
+
+function resetWorkloadFilters() {
+    const yearSelect = document.getElementById('workloadAcademicYearFilter');
+    const semSelect = document.getElementById('workloadSemesterFilter');
+    if (yearSelect) yearSelect.value = '';
+    if (semSelect) semSelect.value = '';
+    renderWorkload(true);
+}
+
+function workloadSubjectCard(item) {
+    const hasCode = hasWorkloadFieldValue(item.subject_code);
+    const hasTitle = hasWorkloadFieldValue(item.subject_title);
+    const hasSection = hasWorkloadFieldValue(item.section);
+    const hasUnits = hasWorkloadFieldValue(item.units);
+    const hasHours = hasWorkloadFieldValue(item.hours_per_week);
+    const hasStudents = hasWorkloadFieldValue(item.total_students);
+    const hasSemester = hasWorkloadFieldValue(item.semester);
+    const hasAcademicYear = hasWorkloadFieldValue(item.academic_year);
+    const hasRoom = hasWorkloadFieldValue(item.room);
+    const scheduleText = getExistingWorkloadSchedule(item);
+    const hasSchedule = hasWorkloadFieldValue(scheduleText);
+    const hasRemarks = hasWorkloadFieldValue(item.remarks);
+
+    const detailFields = [];
+    if (hasCode) detailFields.push({ label: 'Subject Code', value: String(item.subject_code).trim() });
+    if (hasTitle) detailFields.push({ label: 'Subject Title', value: String(item.subject_title).trim() });
+    if (hasSection) detailFields.push({ label: 'Section', value: String(item.section).trim() });
+    if (hasUnits) detailFields.push({ label: 'Units', value: `${Number(item.units)}` });
+    if (hasHours) detailFields.push({ label: 'Hours per Week', value: `${Number(item.hours_per_week)}` });
+    if (hasStudents) detailFields.push({ label: 'Number of Students', value: `${Number(item.total_students)}` });
+    if (hasSemester) detailFields.push({ label: 'Semester', value: String(item.semester).trim() });
+    if (hasAcademicYear) detailFields.push({ label: 'Academic Year', value: String(item.academic_year).trim() });
+    if (hasRoom) detailFields.push({ label: 'Room', value: String(item.room).trim() });
+    if (hasSchedule) detailFields.push({ label: 'Schedule', value: scheduleText, wide: true });
+    if (hasRemarks) detailFields.push({ label: 'Remarks', value: String(item.remarks).trim(), wide: true });
+
+    const headingTitle = hasTitle
+        ? String(item.subject_title).trim()
+        : (hasCode ? String(item.subject_code).trim() : 'Subject Assignment');
+
     return `
-        <div class="border border-slate-200 rounded-2xl p-4 bg-white flex items-start justify-between gap-4">
-            <div>
-                <div class="font-semibold text-slate-900">${esc(title)}</div>
-                <div class="text-xs text-slate-500 mt-1">${esc(meta || 'No details provided')}</div>
-                <div class="mt-2 text-sm font-semibold text-[#621708]">${Number(units) || 0} units</div>
+        <article class="workload-subject-card border border-slate-200/90 hover:border-[#621708]/30 rounded-2xl p-5 bg-white shadow-sm hover:shadow-md transition-all">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-4 border-b border-slate-100">
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                        ${hasCode ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold tracking-wide bg-[#621708]/10 text-[#621708]">${esc(String(item.subject_code).trim())}</span>` : ''}
+                        ${hasSection ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Section ${esc(String(item.section).trim())}</span>` : ''}
+                        ${hasSemester ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200/60">${esc(String(item.semester).trim())}</span>` : ''}
+                    </div>
+                    <h4 class="text-base font-semibold text-slate-950 break-words">${esc(headingTitle)}</h4>
+                </div>
+
+                <div class="flex items-center gap-2.5 self-start shrink-0">
+                    ${hasUnits ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-[#621708] text-white">${esc(String(Number(item.units)))} ${Number(item.units) === 1 ? 'Unit' : 'Units'}</span>` : ''}
+                    ${hasWorkloadFieldValue(item.id) ? `
+                    <button onclick="archiveWorkload('teaching', '${esc(item.id)}')"
+                            class="icon-btn text-red-600 hover:bg-red-50 hover:border-red-200"
+                            title="Remove entry">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18"/>
+                            <path d="M8 6V4h8v2"/>
+                            <path d="m7 6 1 14h8l1-14"/>
+                        </svg>
+                    </button>
+                    ` : ''}
+                </div>
             </div>
 
-            <button onclick="archiveWorkload('${type}', '${id}')"
-                    class="icon-btn text-red-600 hover:bg-red-50 hover:border-red-200"
-                    title="Remove entry">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M3 6h18"/>
-                    <path d="M8 6V4h8v2"/>
-                    <path d="m7 6 1 14h8l1-14"/>
-                </svg>
-            </button>
-        </div>
+            ${detailFields.length ? `
+            <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-3 pt-4">
+                ${detailFields.map(field => `
+                    <div class="${field.wide ? 'sm:col-span-2' : ''}">
+                        <dt class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">${esc(field.label)}</dt>
+                        <dd class="text-sm font-medium text-slate-800 mt-0.5 break-words">${esc(field.value)}</dd>
+                    </div>
+                `).join('')}
+            </dl>
+            ` : ''}
+        </article>
     `;
 }
 
-function renderWorkload() {
-    const teachingTotal = sumUnits(teachingLoads);
-    const total = teachingTotal;
+function workloadItem(title, meta, units, type, id) {
+    return workloadSubjectCard({
+        id,
+        subject_title: title,
+        remarks: meta,
+        units
+    });
+}
 
-    document.getElementById('teachingTotal').textContent = teachingTotal;
-    document.getElementById('overallLoadTotal').textContent = total;
-
-    const status = document.getElementById('overallLoadStatus');
-
-    if (total > 27) {
-        status.textContent = 'Overload';
-        status.className = 'badge bg-red-50 text-red-700 border border-red-100';
-    } else {
-        status.textContent = 'Load';
-        status.className = 'badge bg-emerald-50 text-emerald-700 border border-emerald-100';
+function renderWorkload(preserveFilters = false) {
+    const uniqueLoads = dedupeWorkloadItems(teachingLoads);
+    if (!preserveFilters) {
+        populateWorkloadFilterOptions(uniqueLoads);
     }
 
-    document.getElementById('teachingList').innerHTML = teachingLoads.length
-        ? teachingLoads.map(item => workloadItem(
-            `${item.subject_code} - ${item.subject_title}`,
-            `${item.section} • ${formatSchedule(item)} • ${item.room || 'TBA'} • ${item.semester} ${item.academic_year} • ${Number(item.hours_per_week || item.units || 0)} hrs/week • ${Number(item.total_students || 0)} students`,
-            item.units,
-            'teaching',
-            item.id
-        )).join('')
-        : '<div class="text-sm text-slate-500">No teaching loads added yet.</div>';
+    const yearFilter = normalizeAcademicYearKey(document.getElementById('workloadAcademicYearFilter')?.value || '');
+    const semFilter = String(document.getElementById('workloadSemesterFilter')?.value || '').trim().toLowerCase();
+
+    const filteredLoads = uniqueLoads.filter(item => {
+        if (yearFilter && normalizeAcademicYearKey(item.academic_year) !== yearFilter) {
+            return false;
+        }
+        if (semFilter && String(item.semester || '').trim().toLowerCase() !== semFilter) {
+            return false;
+        }
+        return true;
+    });
+
+    const teachingTotal = sumUnits(filteredLoads);
+    const total = teachingTotal;
+
+    const teachingTotalEl = document.getElementById('teachingTotal');
+    if (teachingTotalEl) teachingTotalEl.textContent = teachingTotal;
+
+    const overallLoadEl = document.getElementById('overallLoadTotal') || document.getElementById('workloadTotal');
+    if (overallLoadEl) overallLoadEl.textContent = total;
+
+    const status = document.getElementById('overallLoadStatus') || document.getElementById('workloadStatusBadge');
+    if (status) {
+        if (total > 27) {
+            status.textContent = 'Overload';
+            status.className = 'badge bg-red-50 text-red-700 border border-red-100';
+        } else {
+            status.textContent = 'Load';
+            status.className = 'badge bg-emerald-50 text-emerald-700 border border-emerald-100';
+        }
+    }
+
+    const resetBtn = document.getElementById('workloadResetFiltersBtn');
+    if (resetBtn) {
+        resetBtn.classList.toggle('hidden', !yearFilter && !semFilter);
+    }
+
+    const summaryEl = document.getElementById('workloadFilterSummary');
+    if (summaryEl) {
+        summaryEl.textContent = uniqueLoads.length
+            ? `Showing ${filteredLoads.length} of ${uniqueLoads.length} subject${uniqueLoads.length === 1 ? '' : 's'}`
+            : '';
+    }
+
+    const listEl = document.getElementById('teachingList');
+    if (!listEl) return;
+
+    if (!uniqueLoads.length) {
+        listEl.innerHTML = `
+            <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center">
+                <p class="text-sm font-semibold text-slate-700">No teaching loads added yet.</p>
+                <p class="text-xs text-slate-500 mt-1">Assigned or added subjects will appear here as individual cards grouped by Academic Year.</p>
+            </div>
+        `;
+        return;
+    }
+
+    if (!filteredLoads.length) {
+        listEl.innerHTML = `
+            <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center">
+                <p class="text-sm font-semibold text-slate-700">No workload assignments match the selected filters.</p>
+                <p class="text-xs text-slate-500 mt-1">Try selecting a different Academic Year or Semester.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const groupsMap = new Map();
+    filteredLoads.forEach(item => {
+        const yearKey = hasWorkloadFieldValue(item.academic_year)
+            ? normalizeAcademicYearKey(item.academic_year)
+            : '';
+        if (!groupsMap.has(yearKey)) {
+            groupsMap.set(yearKey, []);
+        }
+        groupsMap.get(yearKey).push(item);
+    });
+
+    const sortedGroupKeys = [...groupsMap.keys()].sort(compareAcademicYearsDesc);
+
+    listEl.innerHTML = sortedGroupKeys.map(yearKey => {
+        const groupItems = groupsMap.get(yearKey) || [];
+        const groupUnits = sumUnits(groupItems);
+        const headingText = formatAcademicYearHeading(yearKey);
+
+        const semGroupsMap = new Map();
+        groupItems.forEach(item => {
+            const semKey = String(item.semester || '').trim() || 'Unspecified Semester';
+            if (!semGroupsMap.has(semKey)) {
+                semGroupsMap.set(semKey, []);
+            }
+            semGroupsMap.get(semKey).push(item);
+        });
+
+        const sortedSemKeys = [...semGroupsMap.keys()].sort((a, b) => compareSemestersOrder(a, b));
+
+        const semBlocksHtml = sortedSemKeys.map(semKey => {
+            const semItems = semGroupsMap.get(semKey) || [];
+            const semUnits = sumUnits(semItems);
+            return `
+                <div class="workload-sem-group space-y-3 pl-0 sm:pl-3 border-l-2 border-slate-200/80">
+                    <div class="flex items-center justify-between gap-2 py-1">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-block w-2 h-2 rounded-full bg-amber-600"></span>
+                            <h4 class="text-sm font-bold text-slate-800 tracking-tight">${esc(semKey)}</h4>
+                        </div>
+                        <span class="text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200/60 px-2.5 py-0.5 rounded-full">
+                            ${semItems.length} ${semItems.length === 1 ? 'Subject' : 'Subjects'} • ${semUnits} ${semUnits === 1 ? 'Unit' : 'Units'}
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        ${semItems.map(item => workloadSubjectCard(item)).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="workload-year-group space-y-4" data-academic-year="${esc(yearKey)}">
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-2 h-5 rounded-full bg-[#621708]"></span>
+                        <h3 class="text-base font-bold text-slate-900 tracking-tight">${esc(headingText)}</h3>
+                    </div>
+                    <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                        ${groupItems.length} ${groupItems.length === 1 ? 'Subject' : 'Subjects'} • ${groupUnits} ${groupUnits === 1 ? 'Unit' : 'Units'}
+                    </span>
+                </div>
+                <div class="space-y-4">
+                    ${semBlocksHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 async function openTeachingModal() {
@@ -3005,7 +3664,7 @@ function closeTeachingModal() {
 }
 
 async function saveTeachingLoad() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const scheduleEntries = getTeachingSchedules();
     const firstSchedule = scheduleEntries[0] || {};
@@ -3016,8 +3675,8 @@ async function saveTeachingLoad() {
         subject_title: document.getElementById('teachingSubjectTitle').value.trim(),
         section: document.getElementById('teachingSection').value.trim(),
         schedule_day: scheduleEntries.map(schedule => schedule.day).join(', '),
-        start_time: firstSchedule.start_time || '',
-        end_time: firstSchedule.end_time || '',
+        start_time: firstSchedule.start_time || null,
+        end_time: firstSchedule.end_time || null,
         schedule_entries: scheduleEntries,
         room: document.getElementById('teachingRoom').value.trim(),
         units: Number(document.getElementById('teachingUnits').value || 0),
@@ -3034,18 +3693,19 @@ async function saveTeachingLoad() {
     };
 
     if (!payload.subject_code || !payload.subject_title || !payload.section || !payload.academic_year || !scheduleEntries.length) {
-        return alert('Please complete the required teaching load fields and at least one schedule.');
+        return showToast('Please complete the required teaching load fields and at least one schedule.', 'warning');
     }
 
     const { error } = await supabaseClient.from('faculty_teaching_loads').insert(payload);
 
     if (error) {
         console.error(error);
-        return alert('Unable to save teaching load: ' + error.message);
+        return showToast('Unable to save teaching load: ' + error.message, 'error');
     }
 
     closeTeachingModal();
     clearTeachingForm();
+    showToast('Teaching load added successfully.', 'success');
     await loadWorkloadEntries();
 }
 
@@ -3062,18 +3722,138 @@ function clearTeachingForm() {
     resetTeachingSchedules();
 }
 
-async function archiveWorkload(type, id) {
-    if (!confirm('Remove this workload entry?')) return;
+let workloadRemovalResolve = null;
 
-    const { error } = await supabaseClient
-        .from('faculty_teaching_loads')
-        .update({ status: 'Archived', updated_at: new Date().toISOString() })
-        .eq('id', id);
+function promptWorkloadRemovalReason() {
+    const modal = document.getElementById('workloadRemovalModal');
+    const card = document.getElementById('workloadRemovalCard');
+    const reasonInput = document.getElementById('workloadRemovalReason');
+    const errorEl = document.getElementById('workloadRemovalError');
+    if (!modal || !card) return Promise.resolve(null);
 
-    if (error) {
-        return alert('Unable to remove workload entry: ' + error.message);
+    if (reasonInput) {
+        reasonInput.value = '';
+        if (!reasonInput._hasEnterListener) {
+            reasonInput._hasEnterListener = true;
+            reasonInput.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    submitWorkloadRemovalModal();
+                }
+            });
+        }
+    }
+    if (errorEl) errorEl.classList.add('hidden');
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    requestAnimationFrame(() => {
+        card.classList.remove('scale-95', 'opacity-0');
+        card.classList.add('scale-100', 'opacity-100');
+        if (reasonInput) reasonInput.focus();
+    });
+
+    return new Promise((resolve) => {
+        workloadRemovalResolve = resolve;
+    });
+}
+
+function closeWorkloadRemovalModal(result = null) {
+    const modal = document.getElementById('workloadRemovalModal');
+    const card = document.getElementById('workloadRemovalCard');
+    if (!modal || !card) {
+        if (workloadRemovalResolve) {
+            const cb = workloadRemovalResolve;
+            workloadRemovalResolve = null;
+            cb(result);
+        }
+        return;
     }
 
+    card.classList.remove('scale-100', 'opacity-100');
+    card.classList.add('scale-95', 'opacity-0');
+
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (workloadRemovalResolve) {
+            const cb = workloadRemovalResolve;
+            workloadRemovalResolve = null;
+            cb(result);
+        }
+    }, 160);
+}
+
+function submitWorkloadRemovalModal() {
+    const reasonInput = document.getElementById('workloadRemovalReason');
+    const errorEl = document.getElementById('workloadRemovalError');
+    const reason = reasonInput ? reasonInput.value.trim() : '';
+
+    if (!reason) {
+        if (errorEl) {
+            errorEl.classList.remove('hidden');
+        }
+        if (reasonInput) reasonInput.focus();
+        return;
+    }
+
+    closeWorkloadRemovalModal(reason);
+}
+
+// Global keyboard listeners for Workload Removal Modal
+document.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('workloadRemovalModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        closeWorkloadRemovalModal(null);
+    }
+});
+
+window.promptWorkloadRemovalReason = promptWorkloadRemovalReason;
+window.closeWorkloadRemovalModal = closeWorkloadRemovalModal;
+window.submitWorkloadRemovalModal = submitWorkloadRemovalModal;
+
+async function archiveWorkload(type, id) {
+    const isDeanOrSec = window.CiteFlowAuth && typeof window.CiteFlowAuth.isAdminPortalRole === 'function'
+        && window.CiteFlowAuth.isAdminPortalRole();
+
+    if (isDeanOrSec) {
+        if (!confirm('Remove this workload entry?')) return;
+
+        const { error } = await supabaseClient
+            .from('faculty_teaching_loads')
+            .update({ status: 'Archived', updated_at: new Date().toISOString() })
+            .eq('id', id);
+
+        if (error) {
+            return showToast('Unable to remove workload entry: ' + error.message, 'error');
+        }
+
+        showToast('Workload entry removed.', 'success');
+        await loadWorkloadEntries();
+        return;
+    }
+
+    // Faculty workflow: Workload removal requires administrative approval by Dean or Secretary
+    const reason = await promptWorkloadRemovalReason();
+    if (reason === null) return; // User cancelled
+
+    const { error } = await supabaseClient
+        .from('workload_deletion_requests')
+        .insert({
+            teaching_load_id: id,
+            faculty_id: currentFaculty?.id,
+            reason: reason.trim() || 'Faculty requested removal',
+            status: 'Pending'
+        });
+
+    if (error) {
+        return showToast('Unable to submit deletion request: ' + error.message, 'error');
+    }
+
+    showToast('Workload deletion request submitted successfully. It will be reviewed by the College Dean or Secretary.', 'success');
     await loadWorkloadEntries();
 }
 
@@ -3526,13 +4306,13 @@ function previewEditProfilePhoto() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-        alert('Please select a valid image file.');
+        showToast('Please select a valid image file.', 'warning');
         fileInput.value = '';
         return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-        alert('Profile picture must be 2 MB or smaller.');
+        showToast('Profile picture must be 2 MB or smaller.', 'warning');
         fileInput.value = '';
         return;
     }
@@ -3621,8 +4401,7 @@ function closeEditProfileModal() {
 }
 
 function notifyProfile(message, type) {
-    if (window.CiteFlowUI?.alert) return CiteFlowUI.alert(message, type);
-    if (typeof window.showNoticeModal === 'function') return window.showNoticeModal({ message, type });
+    showToast(message, type);
 }
 
 async function saveProfileChanges() {
@@ -3754,7 +4533,7 @@ function handleDocumentMediaSelected(input) {
     const files = Array.from(input.files);
     for (const f of files) {
         if (f.size > 25 * 1024 * 1024) {
-            CiteFlowUI.alert(`File "${f.name}" exceeds the 25 MB limit.`, 'warning');
+            showToast(`File "${f.name}" exceeds the 25 MB limit.`, 'warning');
             continue;
         }
         selectedDocumentFiles.push(f);
@@ -3830,7 +4609,7 @@ async function openEditDocumentModal(id) {
             doc = data;
         } catch (_) {}
     }
-    if (!doc) return CiteFlowUI?.alert ? CiteFlowUI.alert('Document not found.', 'warning') : alert('Document not found.');
+    if (!doc) return showToast('Document not found.', 'warning');
 
     unpackDocument(doc);
     window.currentEditingDocumentId = doc.id;
@@ -3896,14 +4675,14 @@ async function deleteDocumentRecord(id) {
         closeViewDocumentModal();
         await loadCategorizedDocuments('Extension Document', 'extensionList', 'No extension documents submitted yet.');
         await loadCategorizedDocuments('Other', 'othersList', 'No other documents submitted yet.');
-        CiteFlowUI.alert('Document deleted successfully.', 'success');
+        showToast('Document deleted successfully.', 'success');
     } catch (error) {
-        CiteFlowUI.alert('Unable to delete document: ' + error.message, 'error');
+        showToast('Unable to delete document: ' + error.message, 'error');
     }
 }
 
 async function saveDocumentUpload() {
-    if (!currentFaculty?.id) return CiteFlowUI.alert('Faculty profile is not loaded.', 'error');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const saveBtn = document.getElementById('saveDocumentBtn');
     const title = document.getElementById('documentTitle').value.trim();
@@ -3921,9 +4700,9 @@ async function saveDocumentUpload() {
     const selectedCount = selectedDocumentFiles.length;
     const hasAnyFile = existingCount > 0 || selectedCount > 0 || legacyFile;
 
-    if (!title) return CiteFlowUI.alert('Please enter a document title.', 'warning');
+    if (!title) return showToast('Please enter a document title.', 'warning');
     if (!editId && !hasAnyFile) {
-        return CiteFlowUI.alert('Please attach at least one document file.', 'warning');
+        return showToast('Please attach at least one document file.', 'warning');
     }
 
     saveBtn.disabled = true;
@@ -4052,9 +4831,9 @@ async function saveDocumentUpload() {
             });
         }
 
-        CiteFlowUI.alert(`Document ${editId ? 'updated' : 'uploaded'} successfully with ${uploadedMedia.length} attached file(s).`, 'success');
+        showToast(`Document ${editId ? 'updated' : 'uploaded'} successfully with ${uploadedMedia.length} attached file(s).`, 'success');
     } catch (error) {
-        CiteFlowUI.alert('Unable to save document: ' + error.message, 'error');
+        showToast('Unable to save document: ' + error.message, 'error');
     } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = window.currentEditingDocumentId ? 'Update Document' : 'Upload Document';
@@ -4157,23 +4936,23 @@ function closeExtensionProjectModal() {
 }
 
 async function saveExtensionProject() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
     const btn = document.getElementById('saveExtProjectBtn');
     const title = document.getElementById('extProjectTitle').value.trim();
-    if (!title) return alert('Please enter a project title.');
+    if (!title) return showToast('Please enter a project title.', 'warning');
 
     const startDate = document.getElementById('extProjectStartDate').value || null;
     const endDate = document.getElementById('extProjectEndDate').value || null;
     const status = document.getElementById('extProjectStatus').value;
 
     if (startDate && endDate && endDate < startDate) {
-        return CiteFlowUI.alert('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
+        return showToast('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
     }
 
     const todayStr = new Date().toISOString().split('T')[0];
     if (status === 'Ongoing' && endDate && endDate < todayStr) {
-        return CiteFlowUI.alert(
-            `Invalid End Date: This extension project is marked as "Ongoing", but the end date (${endDate}) has already passed.\n\nPlease update the status to "Completed" or extend the end date to a future date.`,
+        return showToast(
+            `Invalid End Date: This extension project is marked as "Ongoing", but the end date (${endDate}) has already passed. Please update the status or extend the end date.`,
             'warning'
         );
     }
@@ -4220,9 +4999,9 @@ async function saveExtensionProject() {
                 details: { Partner: payload.partner_organization, Beneficiaries: payload.beneficiary_count, SDGs: sdgs.join(', ') }
             });
         }
-        alert('Extension project saved successfully.');
+        showToast('Extension project saved successfully.', 'success');
     } catch (error) {
-        alert('Unable to save extension project: ' + error.message);
+        showToast('Unable to save extension project: ' + error.message, 'error');
     } finally {
         btn.disabled = false;
         btn.textContent = 'Save Project';
@@ -4235,9 +5014,9 @@ async function deleteExtensionProject(id) {
         const { error } = await supabaseClient.from('extension_projects').delete().eq('id', id);
         if (error) throw error;
         await loadExtensionProjects();
-        alert('Extension project deleted.');
+        showToast('Extension project deleted.', 'success');
     } catch (error) {
-        alert('Unable to delete: ' + error.message);
+        showToast('Unable to delete: ' + error.message, 'error');
     }
 }
 
@@ -4254,7 +5033,7 @@ async function checkExpiringDocuments() {
 // ═══════════════════════════════════════════════════
 
 async function generate201FileReport() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const btn = event?.target?.closest('button');
     if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
@@ -4569,7 +5348,7 @@ async function generate201FileReport() {
 
     } catch (error) {
         console.error('generate201FileReport error:', error);
-        alert('Unable to generate 201 File Report: ' + error.message);
+        showToast('Unable to generate 201 File Report: ' + error.message, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '201 File'; }
     }
@@ -4598,7 +5377,7 @@ function handleResearchMediaSelected(input) {
     const files = Array.from(input.files);
     for (const f of files) {
         if (f.size > 25 * 1024 * 1024) {
-            CiteFlowUI.alert(`File "${f.name}" exceeds the 25 MB limit.`, 'warning');
+            showToast(`File "${f.name}" exceeds the 25 MB limit.`, 'warning');
             continue;
         }
         selectedResearchFiles.push(f);
@@ -4679,7 +5458,7 @@ function addResearchLink() {
     try {
         new URL(validUrl);
     } catch (_) {
-        return CiteFlowUI.alert('Please enter a valid URL (e.g. https://example.com)', 'warning');
+        return showToast('Please enter a valid URL (e.g. https://example.com)', 'warning');
     }
 
     const label = labelInput ? labelInput.value.trim() : '';
@@ -4707,7 +5486,7 @@ function renderResearchLinksList() {
 }
 
 async function saveResearchUpload() {
-    if (!currentFaculty?.id) return CiteFlowUI.alert('Faculty profile is not loaded.', 'error');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const saveBtn = document.getElementById('saveResearchBtn');
     const title = document.getElementById('researchTitle').value.trim();
@@ -4717,18 +5496,18 @@ async function saveResearchUpload() {
     const endDate = document.getElementById('researchEndDate').value || null;
     const legacyPubUrl = document.getElementById('researchPublicationUrl')?.value?.trim() || '';
 
-    if (!title) return CiteFlowUI.alert('Please enter a research title.', 'warning');
+    if (!title) return showToast('Please enter a research title.', 'warning');
 
     // Validation 1: Date logic
     if (startDate && endDate && endDate < startDate) {
-        return CiteFlowUI.alert('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
+        return showToast('Invalid Dates: The End Date cannot be earlier than the Start Date.', 'warning');
     }
 
     // Validation 2: Ongoing status but past end date
     const todayStr = new Date().toISOString().split('T')[0];
     if (status === 'Ongoing' && endDate && endDate < todayStr) {
-        return CiteFlowUI.alert(
-            `Invalid End Date: This research project is marked as "Ongoing", but the scheduled end date (${endDate}) has already passed.\n\nPlease update the status to "Completed" or extend the end date.`,
+        return showToast(
+            `Invalid End Date: This research project is marked as "Ongoing", but the scheduled end date (${endDate}) has already passed. Please update the status or extend the end date.`,
             'warning'
         );
     }
@@ -4844,9 +5623,9 @@ async function saveResearchUpload() {
             });
         }
 
-        CiteFlowUI.alert(`Research record ${editId ? 'updated' : 'saved'} successfully with ${uploadedMedia.length} attached file(s).`, 'success');
+        showToast(`Research record ${editId ? 'updated' : 'saved'} successfully with ${uploadedMedia.length} attached file(s).`, 'success');
     } catch (error) {
-        CiteFlowUI.alert('Unable to save research record: ' + error.message, 'error');
+        showToast('Unable to save research record: ' + error.message, 'error');
     } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = window.currentEditingResearchId ? 'Update Research' : 'Save Research';
@@ -4963,9 +5742,9 @@ async function deleteResearchProject(id) {
         if (error) throw error;
         closeViewResearchModal();
         await loadResearch();
-        CiteFlowUI.alert('Research project deleted successfully.', 'success');
+        showToast('Research project deleted successfully.', 'success');
     } catch (error) {
-        CiteFlowUI.alert('Unable to delete research project: ' + error.message, 'error');
+        showToast('Unable to delete research project: ' + error.message, 'error');
     }
 }
 
@@ -5265,19 +6044,10 @@ async function deleteAccomplishmentRecord(id) {
 
         closeViewAccomplishmentModal();
         await loadAccomplishments();
-
-        if (typeof CiteFlowUI?.alert === 'function') {
-            CiteFlowUI.alert('Accomplishment deleted successfully.', 'success');
-        } else {
-            alert('Accomplishment deleted successfully.');
-        }
+        showToast('Accomplishment deleted successfully.', 'success');
     } catch (err) {
         console.error('Failed to delete accomplishment:', err);
-        if (typeof CiteFlowUI?.alert === 'function') {
-            CiteFlowUI.alert('Failed to delete: ' + err.message, 'error');
-        } else {
-            alert('Failed to delete: ' + err.message);
-        }
+        showToast('Failed to delete: ' + err.message, 'error');
     }
 }
 function openViewDocumentModal(id) {
@@ -5524,11 +6294,11 @@ function handleAccomplishmentPhotosSelected(input) {
     const newFiles = Array.from(input.files);
     for (const f of newFiles) {
         if (!f.type.startsWith('image/')) {
-            alert(`File "${f.name}" is not an image.`);
+            showToast(`File "${f.name}" is not an image.`, 'warning');
             continue;
         }
         if (f.size > 5 * 1024 * 1024) {
-            alert(`File "${f.name}" exceeds 5 MB limit.`);
+            showToast(`File "${f.name}" exceeds 5 MB limit.`, 'warning');
             continue;
         }
         selectedAccomplishmentFiles.push(f);
@@ -5651,7 +6421,7 @@ function openEditAccomplishmentModal(id) {
 }
 
 async function saveAccomplishment() {
-    if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
     const saveBtn = document.getElementById('saveAccomplishmentBtn');
     const title = document.getElementById('accomplishmentTitle').value.trim();
@@ -5661,8 +6431,8 @@ async function saveAccomplishment() {
     const venue = document.getElementById('accomplishmentVenue').value.trim();
     const durationHours = parseFloat(document.getElementById('accomplishmentDuration')?.value) || null;
 
-    if (!title) return alert('Please enter a title for the accomplishment.');
-    if (!dateAchieved) return alert('Please specify the date this was achieved.');
+    if (!title) return showToast('Please enter a title for the accomplishment.', 'warning');
+    if (!dateAchieved) return showToast('Please specify the date this was achieved.', 'warning');
 
     const isEdit = !!window.currentEditingAccomplishmentId;
     saveBtn.disabled = true;
@@ -5753,10 +6523,10 @@ async function saveAccomplishment() {
             });
         }
 
-        alert(isEdit ? 'Accomplishment updated successfully.' : 'Accomplishment saved successfully.');
+        showToast(isEdit ? 'Accomplishment updated successfully.' : 'Accomplishment saved successfully.', 'success');
     } catch (error) {
         console.error('Save Accomplishment Error:', error);
-        alert('Unable to save accomplishment: ' + error.message);
+        showToast('Unable to save accomplishment: ' + error.message, 'error');
     } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = isEdit ? 'Update Accomplishment' : 'Save Accomplishment';
@@ -6116,8 +6886,8 @@ async function downloadAccomplishmentPdf(event) {
     const templateType = document.getElementById('reportTemplateType')?.value || 'offline';
     const startDate = document.getElementById('reportStartDate')?.value;
     const endDate = document.getElementById('reportEndDate')?.value;
-    if (!startDate || !endDate) return alert('Please select a start and end date for the report.');
-    if (endDate < startDate) return alert('End date must be on or after the start date.');
+    if (!startDate || !endDate) return showToast('Please select a start and end date for the report.', 'warning');
+    if (endDate < startDate) return showToast('End date must be on or after the start date.', 'warning');
 
     const facultyName = currentFaculty?.full_name || currentFaculty?.name || 'Faculty Member';
     const filenameBase = templateType === 'offline'
@@ -6134,13 +6904,13 @@ async function downloadAccomplishmentPdf(event) {
     try {
         const reportHtml = await generateReportHtml(templateType, startDate, endDate);
         if (!reportHtml) {
-            return alert('No report content to download.');
+            return showToast('No report content to download.', 'warning');
         }
 
         await renderReportPdf(reportHtml, filenameBase, { returnBlob: false });
     } catch (err) {
         console.error('downloadAccomplishmentPdf error:', err);
-        alert('Failed to download PDF: ' + (err.message || err));
+        showToast('Failed to download PDF: ' + (err.message || err), 'error');
     } finally {
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -6239,7 +7009,7 @@ async function renderReportPdf(htmlContent, filenameBase, options2) {
         }
     } catch (err) {
         console.error('renderReportPdf error:', err);
-        alert('Unable to generate PDF: ' + (err.message || err));
+        showToast('Unable to generate PDF: ' + (err.message || err), 'error');
         return null;
     } finally {
         if (stage && stage.parentNode) {
@@ -6701,9 +7471,9 @@ async function submitReportForApproval() {
         const startDate = document.getElementById('reportStartDate').value;
         const endDate = document.getElementById('reportEndDate').value;
 
-        if (!startDate || !endDate) return alert('Please select a start and end date for the report.');
-        if (endDate < startDate) return alert('End date must be on or after the start date.');
-        if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+        if (!startDate || !endDate) return showToast('Please select a start and end date for the report.', 'warning');
+        if (endDate < startDate) return showToast('End date must be on or after the start date.', 'warning');
+        if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
         const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty Member';
 
@@ -6719,7 +7489,7 @@ async function submitReportForApproval() {
         if (btn) btn.innerHTML = '<span class="animate-pulse">Creating PDF...</span>';
         if (previewBtn) previewBtn.innerHTML = '<span class="animate-pulse">Creating PDF...</span>';
         const pdfBlob = await renderReportPdf(reportHtml, filenameBase, { returnBlob: true });
-        if (!pdfBlob) return alert('Failed to generate PDF.');
+        if (!pdfBlob) return showToast('Failed to generate PDF.', 'error');
 
         // Upload to Supabase storage
         if (btn) btn.innerHTML = '<span class="animate-pulse">Uploading...</span>';
@@ -6771,17 +7541,13 @@ async function submitReportForApproval() {
         if (insertError) throw new Error('Submission failed: ' + insertError.message);
 
         closeReportChooserModal();
-        if (typeof showToast === 'function') {
-            showToast('Report submitted successfully!', 'success');
-        } else {
-            alert('Report submitted successfully!');
-        }
+        showToast('Report submitted successfully!', 'success');
         await loadReportSubmissions();
         switchAccomplishmentSubView('subs');
 
     } catch (err) {
         console.error('submitReportForApproval error:', err);
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -6993,7 +7759,7 @@ async function resubmitReport(reportId) {
             .eq('id', reportId)
             .single();
 
-        if (fetchErr || !existing) return alert('Could not find the report submission.');
+        if (fetchErr || !existing) return showToast('Could not find the report submission.', 'error');
 
         // Pre-fill the report chooser modal with the original dates
         document.getElementById('reportTemplateType').value = existing.report_type || 'offline';
@@ -7025,7 +7791,7 @@ async function resubmitReport(reportId) {
         submitBtn.setAttribute('data-orig-onclick', origOnclick);
 
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -7043,8 +7809,8 @@ async function resubmitReportExec(reportId) {
         const startDate = document.getElementById('reportStartDate').value;
         const endDate = document.getElementById('reportEndDate').value;
 
-        if (!startDate || !endDate) return alert('Please select dates.');
-        if (!currentFaculty?.id) return alert('Faculty profile not loaded.');
+        if (!startDate || !endDate) return showToast('Please select dates.', 'warning');
+        if (!currentFaculty?.id) return showToast('Faculty profile not loaded.', 'error');
 
         const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty Member';
         const reportHtml = await generateReportHtml(templateType, startDate, endDate);
@@ -7125,16 +7891,12 @@ async function resubmitReportExec(reportId) {
             btn.setAttribute('onclick', origOnclick);
         }
 
-        if (typeof showToast === 'function') {
-            showToast('Report resubmitted for approval!', 'success');
-        } else {
-            alert('Report resubmitted successfully!');
-        }
+        showToast('Report resubmitted for approval!', 'success');
         await loadReportSubmissions();
 
     } catch (err) {
         console.error('resubmitReportExec error:', err);
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -7266,11 +8028,11 @@ function handleWfhEvidenceFilesSelected(input) {
 
     files.forEach(file => {
         if (!file.type.startsWith('image/')) {
-            alert(`File "${file.name}" is not an image.`);
+            showToast(`File "${file.name}" is not an image.`, 'warning');
             return;
         }
         if (file.size > 10 * 1024 * 1024) {
-            alert(`File "${file.name}" exceeds 10 MB limit.`);
+            showToast(`File "${file.name}" exceeds 10 MB limit.`, 'warning');
             return;
         }
 
@@ -7356,11 +8118,7 @@ function saveWfhDraft(notify = false) {
     try {
         localStorage.setItem(`citeflow_wfh_draft_${currentFaculty.id}`, JSON.stringify(draft));
         if (notify) {
-            if (typeof showToast === 'function') {
-                showToast('WFH Accomplishment draft saved locally!', 'success');
-            } else {
-                alert('WFH Accomplishment draft saved successfully!');
-            }
+            showToast('WFH Accomplishment draft saved locally!', 'success');
         }
     } catch (e) {
         console.warn('Unable to save WFH draft to localStorage:', e);
@@ -7833,25 +8591,25 @@ async function generateWfhReportHtml() {
 }
 
 async function downloadWfhPdf() {
-    if (!currentFaculty) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty) return showToast('Faculty profile is not loaded.', 'error');
 
     const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty_Member';
     const filenameClean = `WFH_Accomplishment_Report_${facultyName.replace(/[^a-zA-Z0-9-_]/g, '_')}`;
 
     try {
         const html = await generateWfhReportHtml();
-        if (!html) return alert('Failed to generate report.');
+        if (!html) return showToast('Failed to generate report.', 'error');
         await renderReportPdf(html, filenameClean, { returnBlob: false });
     } catch (err) {
         console.error('downloadWfhPdf error:', err);
-        alert('Failed to download WFH PDF: ' + err.message);
+        showToast('Failed to download WFH PDF: ' + err.message, 'error');
     }
 }
 
 async function printWfhReport() {
     try {
         const html = await generateWfhReportHtml();
-        if (!html) return alert('Failed to generate report.');
+        if (!html) return showToast('Failed to generate report.', 'error');
 
         let printContainer = document.getElementById('cite-wfh-print-container');
         if (!printContainer) {
@@ -7875,7 +8633,7 @@ async function printWfhReport() {
         }, 1500);
     } catch (err) {
         console.error('printWfhReport error:', err);
-        alert('Print failed: ' + err.message);
+        showToast('Print failed: ' + err.message, 'error');
     }
 }
 
@@ -7920,13 +8678,13 @@ async function submitWfhReport() {
     const origHtml = btn ? btn.innerHTML : 'Submit for Approval';
 
     try {
-        if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+        if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
         const reportingPeriod = document.getElementById('wfhReportingPeriod')?.value?.trim();
-        if (!reportingPeriod) return alert('Please enter a reporting period.');
+        if (!reportingPeriod) return showToast('Please enter a reporting period.', 'warning');
 
         if (!wfhDailyEntries.some(e => e.date || e.activities || e.output)) {
-            return alert('Please enter at least one daily accomplishment entry.');
+            return showToast('Please enter at least one daily accomplishment entry.', 'warning');
         }
 
         if (btn) {
@@ -8009,17 +8767,12 @@ async function submitWfhReport() {
             });
         }
 
-        if (typeof showToast === 'function') {
-            showToast('WFH Accomplishment Report submitted for approval!', 'success');
-        } else {
-            alert('WFH Accomplishment Report submitted for approval successfully!');
-        }
-
+        showToast('WFH Accomplishment Report submitted for approval!', 'success');
         await loadReportSubmissions();
 
     } catch (err) {
         console.error('submitWfhReport error:', err);
-        alert('Submission failed: ' + (err.message || err));
+        showToast('Submission failed: ' + (err.message || err), 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -8248,11 +9001,7 @@ function saveItineraryDraft(notify = false) {
     try {
         localStorage.setItem(`citeflow_itinerary_draft_${currentFaculty.id}`, JSON.stringify(draft));
         if (notify) {
-            if (typeof showToast === 'function') {
-                showToast('Itinerary of Travel draft saved locally!', 'success');
-            } else {
-                alert('Itinerary draft saved successfully!');
-            }
+            showToast('Itinerary of Travel draft saved locally!', 'success');
         }
     } catch (e) {
         console.warn('Unable to save Itinerary draft:', e);
@@ -8537,25 +9286,25 @@ async function generateItineraryHtml() {
 }
 
 async function downloadItineraryPdf() {
-    if (!currentFaculty) return alert('Faculty profile is not loaded.');
+    if (!currentFaculty) return showToast('Faculty profile is not loaded.', 'error');
 
     const facultyName = currentFaculty.full_name || currentFaculty.name || 'Faculty_Member';
     const filenameClean = `Itinerary_of_Travel_${facultyName.replace(/[^a-zA-Z0-9-_]/g, '_')}`;
 
     try {
         const html = await generateItineraryHtml();
-        if (!html) return alert('Failed to generate Itinerary document.');
+        if (!html) return showToast('Failed to generate Itinerary document.', 'error');
         await renderReportPdf(html, filenameClean, { returnBlob: false });
     } catch (err) {
         console.error('downloadItineraryPdf error:', err);
-        alert('Failed to download Itinerary PDF: ' + err.message);
+        showToast('Failed to download Itinerary PDF: ' + err.message, 'error');
     }
 }
 
 async function printItineraryReport() {
     try {
         const html = await generateItineraryHtml();
-        if (!html) return alert('Failed to generate Itinerary report.');
+        if (!html) return showToast('Failed to generate Itinerary report.', 'error');
 
         let printContainer = document.getElementById('cite-itinerary-print-container');
         if (!printContainer) {
@@ -8579,7 +9328,7 @@ async function printItineraryReport() {
         }, 1500);
     } catch (err) {
         console.error('printItineraryReport error:', err);
-        alert('Print failed: ' + err.message);
+        showToast('Print failed: ' + err.message, 'error');
     }
 }
 
@@ -8624,13 +9373,13 @@ async function submitItineraryReport() {
     const origHtml = btn ? btn.innerHTML : 'Submit for Approval';
 
     try {
-        if (!currentFaculty?.id) return alert('Faculty profile is not loaded.');
+        if (!currentFaculty?.id) return showToast('Faculty profile is not loaded.', 'error');
 
         const dateOfTravel = document.getElementById('itineraryDateOfTravel')?.value?.trim();
-        if (!dateOfTravel) return alert('Please enter the Date of Travel.');
+        if (!dateOfTravel) return showToast('Please enter the Date of Travel.', 'warning');
 
         if (!itineraryEntries.some(e => e.destination || e.trans || e.perDiem || e.others)) {
-            return alert('Please enter at least one itinerary destination entry.');
+            return showToast('Please enter at least one itinerary destination entry.', 'warning');
         }
 
         if (btn) {
@@ -8711,17 +9460,12 @@ async function submitItineraryReport() {
             });
         }
 
-        if (typeof showToast === 'function') {
-            showToast('Itinerary of Travel submitted for approval!', 'success');
-        } else {
-            alert('Itinerary of Travel submitted for approval successfully!');
-        }
-
+        showToast('Itinerary of Travel submitted for approval!', 'success');
         await loadReportSubmissions();
 
     } catch (err) {
         console.error('submitItineraryReport error:', err);
-        alert('Submission failed: ' + (err.message || err));
+        showToast('Submission failed: ' + (err.message || err), 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -8730,9 +9474,12 @@ async function submitItineraryReport() {
     }
 }
 
-window.addEventListener('load', async () => {
+let facultyProfileInitialized = false;
+async function initFacultyProfilePage() {
+    if (facultyProfileInitialized) return;
+    facultyProfileInitialized = true;
     if (typeof loadSidebar === 'function') {
-        await loadSidebar();
+        loadSidebar().catch(() => {});
     }
     document.getElementById('editPhotoFile')?.addEventListener('change', previewEditProfilePhoto);
     document.getElementById('researchAuthorInput')?.addEventListener('keydown', e => {
@@ -8761,7 +9508,14 @@ window.addEventListener('load', async () => {
     } else {
         switchTab('overview');
     }
-});
+}
+
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initFacultyProfilePage);
+    window.addEventListener('load', initFacultyProfilePage);
+} else {
+    initFacultyProfilePage();
+}
 
 window.addEventListener('hashchange', () => {
     const hashTab = (window.location.hash || '').replace('#', '').toLowerCase();

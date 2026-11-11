@@ -634,10 +634,45 @@
         });
     }
 
-    function toast(message, type) {
-        if (wf()?.showToast) wf().showToast(message, type || 'info');
-        else if (global.CiteFlowUI?.showMessage) global.CiteFlowUI.showMessage(message, type === 'error' ? 'error' : 'info');
-        else alert(message);
+    function toast(message, type = 'info') {
+        const normType = (type === 'warn' || type === 'warning') ? 'warning' : (['success', 'error', 'info'].includes(type) ? type : 'info');
+        if (typeof global.showToast === 'function') {
+            global.showToast(message, normType);
+            return;
+        }
+        if (global.CiteFlowUI?.toast) {
+            global.CiteFlowUI.toast(message, normType);
+            return;
+        }
+        if (wf()?.showToast) {
+            wf().showToast(message, normType);
+            return;
+        }
+        if (global.CiteFlowUI?.showMessage) {
+            global.CiteFlowUI.showMessage(message, normType === 'error' ? 'error' : 'info');
+            return;
+        }
+        const marks = {
+            success: { icon: "fa-circle-check", color: "#10b981" },
+            error: { icon: "fa-circle-xmark", color: "#f87171" },
+            warning: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            warn: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            info: { icon: "fa-circle-info", color: "#60a5fa" }
+        };
+        const mark = marks[normType] || marks.info;
+        let t = document.getElementById('citeflowGlobalToast');
+        if (!t) {
+            t = document.createElement('div');
+            t.id = 'citeflowGlobalToast';
+            t.className = 'citeflow-toast';
+            document.body.appendChild(t);
+        }
+        const safe = document.createElement('div');
+        safe.textContent = String(message ?? '').trim();
+        t.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+        t.classList.add('show');
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => t.classList.remove('show'), 3500);
     }
 
     function setMode(mode) {
@@ -4826,12 +4861,12 @@
 
             if (error) throw error;
 
-            alert(`Report status successfully updated to ${newStatus.replace('_', ' ')}.`);
+            toast(`Report status successfully updated to ${newStatus.replace('_', ' ')}.`, 'success');
             closeArReview();
             await loadAll(); // I-refresh ang listahan
         } catch (err) {
             console.error('Error updating AR status:', err);
-            alert('Failed to update report status: ' + (err.message || err));
+            toast('Failed to update report status: ' + (err.message || err), 'error');
         }
     }
 
