@@ -859,6 +859,7 @@ window.CiteFlowAuth = (function () {
         sex,
         academicRank,
         role,
+        designation,
         position,
         photoFile,
         facultyRecordId
@@ -919,11 +920,13 @@ window.CiteFlowAuth = (function () {
         else targetRole = 'Faculty';
 
         const isAdmin = targetRole === 'Admin';
+        const cleanDesignation = String(designation || '').trim().slice(0, 120);
 
         // 2. Update Supabase Auth User (Password & Metadata)
         const updateAuthPayload = {
             data: {
                 role: targetRole,
+                designation: cleanDesignation,
                 academic_rank: targetRank,
                 position: targetRank,
                 first_name: fn,
@@ -1029,6 +1032,20 @@ window.CiteFlowAuth = (function () {
             if (duplicateMessage) throw new Error(duplicateMessage);
             console.error("CiteFlowAuth: Faculty profile update failed:", profileError.message);
             throw new Error("Profile record save failed: " + profileError.message);
+        }
+
+        // Save designation separately so onboarding still succeeds on databases
+        // where migration 038 (faculty.designation) has not been applied yet.
+        try {
+            const { error: designationError } = await sb
+                .from('faculty')
+                .update({ designation: cleanDesignation || null })
+                .eq('email', user.email);
+            if (designationError) {
+                console.warn("CiteFlowAuth: designation save notice:", designationError.message);
+            }
+        } catch (err) {
+            console.warn("CiteFlowAuth: designation save notice:", err?.message || err);
         }
 
         // If Admin role, sync to admin_profiles

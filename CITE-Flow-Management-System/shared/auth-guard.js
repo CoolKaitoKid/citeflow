@@ -125,11 +125,11 @@
 
         const isAdminArea = currentPath.includes('/admin/') ||
             currentPath === '/dashboard' ||
-            ['faculty-profiles', 'workload-tracker', 'engagement-logs', 'document-vault', 'workflow-approval', 'reports-analytics', 'feedback-summary', 'user-management', 'admin-profile'].some(p => currentPath.endsWith(p) || currentPath.endsWith(p + '.html'));
+            ['faculty-profiles', 'workload-tracker', 'engagement-logs', 'document-vault', 'workflow-approval', 'reports-analytics', 'feedback-summary', 'user-management', 'admin-profile', 'form-e0-viewer'].some(p => currentPath.endsWith(p) || currentPath.endsWith(p + '.html'));
 
         const isFacultyArea = currentPath.includes('/faculty/') ||
             currentPath === '/faculty' ||
-            ['dashboard', 'faculty-profile', 'calendar', 'document', 'status-tracking', 'submissions', 'system-settings', 'mfo-report'].some(p => currentPath === `/faculty/${p}` || currentPath === `/faculty/${p}.html`);
+            ['dashboard', 'faculty-profile', 'calendar', 'document', 'status-tracking', 'submissions', 'system-settings', 'mfo-report', 'form-e0', 'form-e0-review'].some(p => currentPath === `/faculty/${p}` || currentPath === `/faculty/${p}.html`);
 
         const isChairpersonArea = currentPath.includes('/chairperson/');
         const isOnboardingArea = currentPath.includes('onboarding');
@@ -362,9 +362,9 @@
                     return;
                 }
             } else if (isFacultyArea) {
-                const isMfoReport = currentPath.includes('mfo-report');
-                // Administrators should be sent to the admin dashboard, unless viewing/reviewing an MFO report
-                if (isAdminRole && !isMfoReport) {
+                const isSharedFacultyReport = currentPath.includes('mfo-report') || currentPath.includes('form-e0');
+                // Administrators should be sent to the admin dashboard, unless viewing/reviewing an MFO or Form E-0 report
+                if (isAdminRole && !isSharedFacultyReport) {
                     window.location.replace(`${prefix}admin/dashboard.html`);
                     return;
                 }

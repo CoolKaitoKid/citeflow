@@ -22,7 +22,7 @@
     <script src="../shared/system-ui.js" defer></script>
     <script src="../shared/cite-settings.js" defer></script>
     <script src="../shared/mfo-consolidation.js?v=mfo-52" defer></script>
-    <script src="chairperson-review.js?v=sub-load-1" defer></script>
+    <script src="chairperson-review.js?v=sub-load-2" defer></script>
     <script src="faculty-nav.js?v=sub-load-1" defer></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/></noscript>
@@ -3601,6 +3601,63 @@ function renderTaskRow(model) {
    LIST PAGE
 ========================================================= */
 
+function renderFormE0HubCard() {
+    const e0 = state.myFormE0 || null;
+    const st = String(e0?.status || '').toLowerCase().trim();
+    let badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Not Started</span>`;
+    let btnLabel = 'Open Form E-0';
+    if (st === 'draft') {
+        badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">Draft &middot; Not Yet Submitted</span>`;
+        btnLabel = 'Continue & Submit Form E-0';
+    } else if (st === 'submitted') {
+        badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">Submitted &middot; Pending Chairperson</span>`;
+        btnLabel = 'View Submitted Form E-0';
+    } else if (st === 'chair_certified') {
+        badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">Chair Certified &middot; Pending Dean</span>`;
+        btnLabel = 'View Certified Form E-0';
+    } else if (st === 'approved') {
+        badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">Approved by Dean</span>`;
+        btnLabel = 'View Approved Form E-0';
+    } else if (st === 'revision') {
+        badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">Revision Requested</span>`;
+        btnLabel = 'Revise & Resubmit Form E-0';
+    }
+    const termMeta = e0?.academic_year
+        ? `<span class="text-xs text-slate-500 font-medium">${escapeHtml(e0.semester === '2' ? '2nd Semester' : e0.semester === 'summer' ? 'Summer' : '1st Semester')} &middot; SY ${escapeHtml(e0.academic_year)} &middot; ${Number(e0.grand_total_credits || 0).toFixed(1)} E9 credits</span>`
+        : '';
+    const revRemarks = st === 'revision' && (e0?.revision_remarks || e0?.chair_remarks)
+        ? `<div class="mt-2.5 px-3 py-2 rounded-xl bg-rose-50/70 border border-rose-200 text-xs text-rose-900">
+            <i class="fa-solid fa-rotate-left mr-1"></i><strong>Revision Requested:</strong> ${escapeHtml(e0.revision_remarks || e0.chair_remarks)}
+           </div>`
+        : '';
+
+    return `
+            <section class="surface rounded-2xl p-4 lg:p-5 mb-5 border border-slate-200 shadow-xs">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div class="flex items-start gap-3.5">
+                        <div class="w-11 h-11 rounded-xl bg-[#fbf1ef] text-[#621708] flex items-center justify-center text-lg border border-[#e8d0cb] shrink-0">
+                            <i class="fa-solid fa-file-invoice"></i>
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-[#621708]">CHED Statutory Report &middot; Every 1st Semester</span>
+                                ${badgeHtml}
+                            </div>
+                            <h3 class="text-base font-bold text-slate-900 mt-1">CHED Form E-0 (Individual Faculty Workload Report)</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">Generate, verify, and submit your official teaching loads, credit units, and non-teaching duties.</p>
+                            ${termMeta ? `<div class="mt-1">${termMeta}</div>` : ''}
+                            ${revRemarks}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 self-start md:self-center shrink-0">
+                        <a href="form-e0.html" class="px-4 py-2 text-xs font-bold rounded-xl bg-[#621708] hover:bg-[#450f05] text-white flex items-center gap-1.5 shadow-sm transition">
+                            <i class="fa-solid fa-pen-to-square"></i> ${escapeHtml(btnLabel)}
+                        </a>
+                    </div>
+                </div>
+            </section>`;
+}
+
 function renderListPage() {
 
     if (window.CiteFlowChairReview?.mode === 'chair' && window.CiteFlowChairReview.access) {
@@ -3643,6 +3700,9 @@ function renderListPage() {
             )}
 
             ${renderSummary(allAssigned)}
+
+            <!-- CHED Form E-0 Institutional Hub -->
+            ${renderFormE0HubCard()}
 
             <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div class="flex flex-wrap gap-2" role="tablist" aria-label="Submission sections">
@@ -6779,12 +6839,17 @@ async function fetchAllData() {
                 };
             });
 
+        const myFormE0Promise = Promise.resolve()
+            .then(() => db.from('form_e0_reports').select('*').eq('faculty_id', facultyId).order('updated_at', { ascending: false }).limit(1))
+            .catch(() => ({ data: [], error: null }));
+
         const [
             bundle,
             submissions,
             notifications,
             reportConfigs,
-            approvalHistory
+            approvalHistory,
+            myFormE0Res
         ] = await Promise.all([
             assignedPromise,
             db.from('wf_submissions').select('*').eq('faculty_id', facultyId),
@@ -6795,8 +6860,11 @@ async function fetchAllData() {
                 .order('created_at', { ascending: false })
                 .limit(100),
             db.from('wf_report_configs').select('*'),
-            db.from('wf_approval_history').select('*').eq('faculty_id', facultyId).order('created_at', { ascending: false })
+            db.from('wf_approval_history').select('*').eq('faculty_id', facultyId).order('created_at', { ascending: false }),
+            myFormE0Promise
         ]);
+
+        state.myFormE0 = Array.isArray(myFormE0Res?.data) && myFormE0Res.data[0] ? myFormE0Res.data[0] : null;
 
         if (bundle.error) {
             root.innerHTML = `
@@ -7115,7 +7183,7 @@ async function startSubmissionsPage() {
             if (typeof window.loadFacultyNavNotifications === 'function') {
                 window.loadFacultyNavNotifications();
             }
-        }, ['wf_tasks', 'wf_submissions', 'wf_task_assignments', 'wf_notifications', 'wf_approval_history', 'wf_submission_files', 'wf_delegated_access', 'wf_report_configs', 'faculty']);
+        }, ['wf_tasks', 'wf_submissions', 'wf_task_assignments', 'wf_notifications', 'wf_approval_history', 'wf_submission_files', 'wf_delegated_access', 'wf_report_configs', 'faculty', 'accomplishment_report_submissions', 'form_e0_reports']);
     }
 }
 

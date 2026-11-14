@@ -562,9 +562,10 @@
             <div>
                 <label class="field-label">Role</label>
                 <div class="cite-select-wrap">
-                    <select id="edit-role" class="field-input"><option value="Admin">Admin</option><option value="Chairperson">Chairperson</option><option value="Faculty">Faculty</option></select>
+                    <select id="edit-role" class="field-input"><option value="Admin">Admin</option><option value="Chairperson" hidden>Chairperson</option><option value="Faculty">Faculty</option></select>
                     <svg class="cite-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </div>
+                <p id="edit-role-hint" class="text-[11px] text-gray-400 mt-1">Department Chairpersons are assigned in Faculty Profiles &rsaquo; Department Chairpersons.</p>
             </div>
             <div>
                 <label class="field-label">Department</label>
@@ -1080,6 +1081,22 @@ function openEditUserModal(source,id){
     document.getElementById('edit-role').value=['Admin','Chairperson','Faculty'].includes(u.role)?u.role:'Faculty';
     document.getElementById('edit-department').value=['All','BSIT','BSIE','BIT','N/A','Administration','COTE'].includes(u.department)?u.department:'N/A';
     document.getElementById('edit-status').value=['Active','Inactive','On Leave','On Maternity Leave','On Study Leave','On Sabbatical Leave','On Vacation/Sick Leave'].includes(u.status)?u.status:'Active';
+
+    // Department Chairpersons are managed only in Faculty Profiles (one per department).
+    const isDeptChair = u.source === 'faculty' && u.role === 'Chairperson';
+    const roleSelectEl = document.getElementById('edit-role');
+    const deptSelectEl = document.getElementById('edit-department');
+    const roleHintEl = document.getElementById('edit-role-hint');
+    const chairOption = roleSelectEl.querySelector('option[value="Chairperson"]');
+    if (chairOption) chairOption.hidden = !isDeptChair;
+    roleSelectEl.disabled = isDeptChair;
+    deptSelectEl.disabled = isDeptChair;
+    if (roleHintEl) {
+        roleHintEl.innerHTML = isDeptChair
+            ? `Official <b>${esc(u.department || '')}</b> Chairperson. Assign a new chairperson in Faculty Profiles &rsaquo; Department Chairpersons before changing this role or department.`
+            : 'Department Chairpersons are assigned in Faculty Profiles &rsaquo; Department Chairpersons.';
+        roleHintEl.className = isDeptChair ? 'text-[11px] text-indigo-700 mt-1' : 'text-[11px] text-gray-400 mt-1';
+    }
     
     if (typeof refreshCompactSelect === 'function') {
         refreshCompactSelect(document.getElementById('edit-role'));
@@ -1440,12 +1457,25 @@ function toggleCredentialPasswordMask(){
     }
 }
 
+function showCopyFallbackModal(title, value){
+    if (window.CiteFlowUI?.dialog) {
+        window.CiteFlowUI.dialog({
+            title,
+            message: `Automatic copy is blocked by this browser. Select and copy the value below:\n\n${value}`,
+            type: 'info',
+            confirmText: 'Done'
+        });
+    } else {
+        showToast('Copy is blocked by this browser. Please copy the value manually.', 'warning');
+    }
+}
+
 async function copyCredentialPassword(){
     try {
         await navigator.clipboard.writeText(rawGeneratedPassword);
         showToast('Temporary password copied to clipboard.', 'success');
     } catch(e) {
-        prompt('Copy this password:', rawGeneratedPassword);
+        showCopyFallbackModal('Copy Temporary Password', rawGeneratedPassword);
     }
 }
 
@@ -1460,7 +1490,7 @@ async function copyText(id){
         await navigator.clipboard.writeText(t);
         showToast('Copied to clipboard.', 'success');
     }catch(e){
-        prompt('Copy this value:',t);
+        showCopyFallbackModal('Copy Value', t);
     }
 }
 
@@ -1556,6 +1586,8 @@ function refreshCompactSelect(select) {
             c !== 'compact-select-native' && c !== 'appearance-none'
         );
         trigger.className = ['compact-select-trigger', ...copied].join(' ');
+        trigger.style.opacity = select.disabled ? '0.6' : '';
+        trigger.style.pointerEvents = select.disabled ? 'none' : '';
     }
     if (triggerLabel) triggerLabel.textContent = selected ? selected.textContent : '';
     if (!panel) return;

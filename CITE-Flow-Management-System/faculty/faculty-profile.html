@@ -533,6 +533,11 @@
                     </div>
 
                     <div class="card p-5">
+                        <p class="text-xs text-slate-500">Designation</p>
+                        <p id="overviewDesignation" class="font-semibold text-slate-950 mt-1">—</p>
+                    </div>
+
+                    <div class="card p-5">
                         <p class="text-xs text-slate-500">Department</p>
                         <p id="overviewDepartment" class="font-semibold text-slate-950 mt-1">—</p>
                     </div>
@@ -1173,13 +1178,18 @@
                             <p class="text-sm text-slate-500">Assigned subjects grouped by Academic Year with complete workload details.</p>
                         </div>
 
-                        <button onclick="openTeachingModal()" class="primary-btn flex items-center gap-2" data-theme-primary="true">
+                        <div class="flex items-center gap-2">
+                            <a href="form-e0.html" class="secondary-btn flex items-center gap-2" style="color:#621708;border-color:#e8d0cb;background:#fbf1ef;" title="Open CHED Form E-0 Workload Report">
+                                <i class="fa-solid fa-file-invoice"></i> CHED Form E-0
+                            </a>
+                            <button onclick="openTeachingModal()" class="primary-btn flex items-center gap-2" data-theme-primary="true">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3">
                                 <path d="M12 5v14"/>
                                 <path d="M5 12h14"/>
                             </svg>
                             Add Teaching Load
                         </button>
+                        </div>
                     </div>
 
                     <div id="workloadFilterBar" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-3 items-end p-4 mb-6 rounded-2xl bg-slate-50/80 border border-slate-200/80">
@@ -1379,11 +1389,13 @@
             </div>
 
             <div>
-                <label class="field-label">Sex</label>
+                <label class="field-label">Sex / Gender</label>
                 <select id="editSex" class="field">
-                    <option value="">Select sex</option>
-                    <option>Male</option>
-                    <option>Female</option>
+                    <option value="">Select sex / gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="LGBTQ">LGBTQ</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
                 </select>
             </div>
 
@@ -1417,6 +1429,11 @@
                     <option>Professor I</option><option>Professor II</option><option>Professor III</option><option>Professor IV</option><option>Professor V</option>
                     <option>University Professor</option>
                 </select>
+            </div>
+
+            <div>
+                <label class="field-label">Designation</label>
+                <input id="editDesignation" class="field" maxlength="120" placeholder="e.g. Program Coordinator">
             </div>
 
             <div class="md:col-span-2">
@@ -3088,6 +3105,8 @@ function renderProfile() {
     document.getElementById('overviewBirthdate').textContent = formatLongDate(currentFaculty.birthdate);
     document.getElementById('overviewAge').textContent = calculateAge(currentFaculty.birthdate);
     document.getElementById('overviewRank').textContent = currentFaculty.academic_rank || currentFaculty.position || '—';
+    const overviewDesignationEl = document.getElementById('overviewDesignation');
+    if (overviewDesignationEl) overviewDesignationEl.textContent = currentFaculty.designation || currentAuthUser?.user_metadata?.designation || '—';
     document.getElementById('overviewDepartment').textContent = department;
     const whDisplay = (currentFaculty.shift && !['Morning', 'Afternoon', 'Night'].includes(currentFaculty.shift))
         ? currentFaculty.shift
@@ -4374,11 +4393,18 @@ function openEditProfileModal() {
     document.getElementById('editLastName').value = currentFaculty.last_name || '';
     document.getElementById('editFirstName').value = currentFaculty.first_name || '';
     document.getElementById('editMiddleName').value = currentFaculty.middle_name || '';
-    document.getElementById('editSex').value = currentFaculty.sex || '';
+    const rawSex = String(currentFaculty.sex || '').trim();
+    const lowerSex = rawSex.toLowerCase();
+    document.getElementById('editSex').value = lowerSex === 'male' ? 'Male'
+        : lowerSex === 'female' ? 'Female'
+        : lowerSex.startsWith('lgbt') ? 'LGBTQ'
+        : lowerSex.includes('prefer') ? 'Prefer not to say'
+        : rawSex;
     document.getElementById('editBirthdate').value = currentFaculty.birthdate ? currentFaculty.birthdate.split('T')[0] : '';
     document.getElementById('editDepartment').value = currentFaculty.department || 'BSIT';
     document.getElementById('editShift').value = currentFaculty.shift || '8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M.';
     document.getElementById('editAcademicRank').value = currentFaculty.academic_rank || 'Instructor I';
+    document.getElementById('editDesignation').value = currentFaculty.designation || currentAuthUser?.user_metadata?.designation || '';
     document.getElementById('editPhotoUrl').value = currentFaculty.profile_photo_url || '';
     document.getElementById('editMastersDegree').value = currentFaculty.masters_degree || '';
     document.getElementById('editDoctorateDegree').value = currentFaculty.doctorate_degree || '';
@@ -4475,9 +4501,30 @@ async function saveProfileChanges() {
     }
 
     Object.assign(currentFaculty, updates);
+    await saveFacultyDesignation(document.getElementById('editDesignation').value);
     renderProfile();
     closeEditProfileModal();
     notifyProfile('Profile updated successfully!', 'success');
+}
+
+// Designation is saved separately so the rest of the profile still saves on
+// databases where migration 038 (faculty.designation) has not been applied yet.
+async function saveFacultyDesignation(rawValue) {
+    const designation = String(rawValue || '').trim().slice(0, 120);
+    currentFaculty.designation = designation;
+    try {
+        const { error } = await supabaseClient
+            .from('faculty')
+            .update({ designation: designation || null })
+            .eq('id', currentFaculty.id);
+        if (error) console.warn('Designation save notice:', error.message);
+    } catch (err) {
+        console.warn('Designation save notice:', err?.message || err);
+    }
+    try {
+        await supabaseClient.auth.updateUser({ data: { designation } });
+        if (currentAuthUser?.user_metadata) currentAuthUser.user_metadata.designation = designation;
+    } catch (_) {}
 }
 function openDocumentUploadModal() {
     document.getElementById('documentUploadModal').classList.remove('hidden');

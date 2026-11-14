@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHED Form E-0 — Individual Faculty Workload Report</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+
+    <script src="../shared/supabase-config.js?v=auth-nav-session-1"></script>
+    <script src="../shared/auth.js?v=auth-mfo-rpc-1"></script>
+    <script src="../shared/workflow.js?v=auth-session-4"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-session-2"></script>
+    <script src="../shared/system-ui.js" defer></script>
+    <script src="../shared/cite-settings.js" defer></script>
+    <script src="../shared/form-e0-template.js?v=ctu-3" defer></script>
+    <script src="../shared/form-e0-engine.js?v=ctu-3" defer></script>
+    <script src="faculty-nav.js?v=sub-load-1" defer></script>
+    <script src="form-e0.js?v=ctu-4" defer></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <link rel="stylesheet" href="faculty-nav.css?v=chair-sidebar-only">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
+
+    <style>
+        :root {
+            --cite-theme: #621708;
+            --cite-theme-dark: #450f05;
+            --cite-theme-soft: #fbf1ef;
+            --cite-theme-border: #e8d0cb;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: #f3f4f7;
+            color: #111827;
+        }
+
+        /* Sticky Action Toolbar */
+        .e0-sticky-bar {
+            position: sticky;
+            top: 60px;
+            z-index: 40;
+            background: rgba(255, 255, 255, 0.94);
+            backdrop-filter: blur(12px);
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.06);
+            transition: all 0.2s ease;
+        }
+
+        .e0-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03), 0 10px 30px rgba(15, 23, 42, 0.04);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .field-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+            margin-bottom: 6px;
+        }
+
+        .input-field {
+            width: 100%;
+            height: 42px;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 0 14px;
+            font-size: 13.5px;
+            color: #0f172a;
+            outline: none;
+            background: #ffffff;
+            transition: all 0.18s ease;
+        }
+        .input-field:focus {
+            border-color: var(--cite-theme);
+            box-shadow: 0 0 0 4px rgba(98, 23, 8, 0.08);
+            background: #ffffff;
+        }
+        .input-field:disabled, .input-field[readonly] {
+            background: #f8fafc;
+            color: #64748b;
+            cursor: not-allowed;
+            border-color: #e2e8f0;
+        }
+
+        /* Segmented View Switcher */
+        .mode-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 18px;
+            font-size: 13px;
+            font-weight: 700;
+            border-radius: 12px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: none;
+        }
+        .mode-pill.active {
+            background: var(--cite-theme);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(98, 23, 8, 0.25);
+        }
+        .mode-pill:not(.active) {
+            background: transparent;
+            color: #64748b;
+        }
+        .mode-pill:not(.active):hover {
+            color: #0f172a;
+            background: rgba(241, 245, 249, 0.7);
+        }
+
+        /* Action Buttons */
+        .btn-action-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 40px;
+            padding: 0 18px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            background: var(--cite-theme);
+            color: #ffffff;
+            border: 1px solid var(--cite-theme);
+            box-shadow: 0 2px 6px rgba(98, 23, 8, 0.2);
+            transition: all 0.18s ease;
+            white-space: nowrap;
+        }
+        .btn-action-primary:hover:not(:disabled) {
+            background: var(--cite-theme-dark);
+            border-color: var(--cite-theme-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(98, 23, 8, 0.28);
+        }
+
+        .btn-action-secondary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            height: 40px;
+            padding: 0 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            background: #ffffff;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            transition: all 0.18s ease;
+            white-space: nowrap;
+        }
+        .btn-action-secondary:hover:not(:disabled) {
+            background: #f8fafc;
+            border-color: #94a3b8;
+            color: #0f172a;
+            transform: translateY(-1px);
+        }
+
+        /* Official Print Document Layout */
+        .doc-desk {
+            background: #e2e8f0;
+            padding: 28px 16px 36px;
+            border-radius: 20px;
+            border: 1px solid #cbd5e1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: auto;
+        }
+
+        .doc-sheet {
+            background: transparent;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        @media print {
+            body { background: #fff !important; }
+            #sidebar-container, #navbar-container, .no-print, header, nav, aside { display: none !important; }
+            main { margin-left: 0 !important; padding: 0 !important; max-width: 100% !important; }
+            .doc-desk { background: transparent !important; border: none !important; padding: 0 !important; overflow: visible !important; }
+            .doc-sheet { box-shadow: none !important; border-radius: 0 !important; padding: 0 !important; max-width: 100% !important; }
+            .page-break { page-break-before: always !important; }
+            #viewEditor { display: none !important; }
+            #viewPreview { display: block !important; }
+            .e0-sheet { zoom: 0.5 !important; gap: 0 !important; }
+            .e0-sheet-page { box-shadow: none !important; border: none !important; padding: 0 !important; border-radius: 0 !important; }
+            .e0-sheet-break { page-break-after: always; break-after: page; height: 0 !important; margin: 0 !important; border: 0 !important; }
+            .e0-val { background: transparent !important; }
+        }
+
+        /* Official form preview: HTML copy of the CTU Excel template */
+        .e0-sheet {
+            zoom: var(--e0-preview-zoom, 0.68);
+            color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .e0-sheet-page {
+            background: #ffffff;
+            padding: 28px 32px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
+        }
+        .e0-page-caption {
+            font-family: 'Inter', system-ui, sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #cbd5e1;
+        }
+        .e0-sheet-table td { box-sizing: border-box; }
+        .e0-sheet-break { height: 28px; width: 100%; }
+        .e0-val { background: #fffbe6; }
+        .doc-sheet.e0-host { max-width: none; width: auto; padding: 0; }
+
+        .e0-invalid { border-color: #e11d48 !important; box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.12) !important; }
+    </style>
+</head>
+<body class="cite-page bg-[#f3f4f7] overflow-x-hidden min-h-screen">
+
+<div class="flex min-h-screen w-full">
+    <!-- Required CITE-Flow sidebar container -->
+    <div id="sidebar-container"></div>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 min-w-0 md:ml-[220px] overflow-x-hidden">
+        <!-- Required CITE-Flow navbar container -->
+        <div id="navbar-container"></div>
+
+        <div class="px-4 sm:px-6 lg:px-8 py-6 pb-28 max-w-[1240px] mx-auto">
+
+            <!-- Title & Breadcrumb Header -->
+            <div class="mb-5 no-print">
+                <div class="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1.5">
+                    <a href="submissions.html" class="hover:text-[#621708] flex items-center gap-1 transition">
+                        <i class="fa-solid fa-arrow-left text-[11px]"></i> Submissions
+                    </a>
+                    <span>&bull;</span>
+                    <span class="text-[#621708] font-bold">CHED Statutory Compliance</span>
+                    <span>&bull;</span>
+                    <span class="text-slate-400">First Semester Report</span>
+                </div>
+
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                                CHED Form E-0
+                            </h1>
+                            <span id="statusBadge" class="text-xs font-extrabold px-3 py-1 rounded-full bg-slate-200 text-slate-700 uppercase tracking-wide">
+                                Draft
+                            </span>
+                        </div>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">
+                            Individual Faculty Workload Report &middot; Official statutory record of teaching and non-teaching load credits.
+                        </p>
+                        <a id="btnChairReview" href="form-e0-review.html" class="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-blue-800 hover:underline" style="display:none;">
+                            <i class="fa-solid fa-stamp"></i> Review department Form E-0 submissions (Department Chair)
+                        </a>
+                    </div>
+
+                    <!-- View Switcher (Segmented Control) -->
+                    <div class="bg-white p-1 rounded-14 border border-slate-200 shadow-xs flex items-center self-start lg:self-auto rounded-2xl">
+                        <button type="button" id="btnModeEditor" onclick="setMode('editor')" class="mode-pill active">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                            <span>Form Editor</span>
+                        </button>
+                        <button type="button" id="btnModePreview" onclick="setMode('preview')" class="mode-pill">
+                            <i class="fa-solid fa-file-lines"></i>
+                            <span>Official Form Preview</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sticky Toolbar for Actions -->
+            <div class="e0-sticky-bar p-3 sm:p-4 mb-6 no-print">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <!-- Left: Metadata Snapshot -->
+                    <div class="flex items-center gap-4 text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span class="font-bold text-slate-800" id="stickyPeriodLabel">1st Semester 2026-2027</span>
+                        </div>
+                        <div class="hidden sm:block text-slate-300">|</div>
+                        <div class="hidden sm:flex items-center gap-1.5 text-slate-500">
+                            <span>Total Workload:</span>
+                            <span class="font-black text-[#621708] text-sm" id="stickyGrandTotal">0.0 units</span>
+                        </div>
+                    </div>
+
+                    <!-- Right: Grouped Action Buttons -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Auto-fill -->
+                        <button type="button" id="btnAutoFill" onclick="autoSyncProfileAndLoads()" class="btn-action-secondary" title="Fill blank profile fields and pull this term's teaching load">
+                            <i class="fa-solid fa-arrows-rotate text-[#621708]"></i>
+                            <span>Auto-Fill Load</span>
+                        </button>
+
+                        <!-- Validate -->
+                        <button type="button" onclick="runValidation(true)" class="btn-action-secondary" title="Check the form for missing or inconsistent entries">
+                            <i class="fa-solid fa-list-check text-[#621708]"></i>
+                            <span>Check Form</span>
+                        </button>
+
+                        <!-- Excel Export -->
+                        <button type="button" onclick="exportExcel()" class="btn-action-secondary text-emerald-700 hover:text-emerald-800" title="Download in the CTU Form E-0 Excel layout">
+                            <i class="fa-solid fa-file-excel"></i>
+                            <span>Excel</span>
+                        </button>
+
+                        <!-- Print / PDF -->
+                        <button type="button" onclick="setMode('preview'); setTimeout(function(){ window.print(); }, 150);" class="btn-action-secondary" title="Print the 2-page form">
+                            <i class="fa-solid fa-print"></i>
+                            <span>Print</span>
+                        </button>
+
+                        <div class="h-6 w-px bg-slate-200 mx-1 hidden sm:block"></div>
+
+                        <!-- Withdraw (only while submitted and not yet acted on) -->
+                        <button type="button" id="btnWithdraw" onclick="withdrawSubmission()" class="btn-action-secondary text-amber-800" style="display:none;">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>Withdraw</span>
+                        </button>
+
+                        <!-- Save Draft -->
+                        <button type="button" id="btnSaveDraft" onclick="saveDraft()" class="btn-action-secondary">
+                            <i class="fa-regular fa-floppy-disk"></i>
+                            <span>Save Draft</span>
+                        </button>
+
+                        <!-- Submit Form -->
+                        <button type="button" id="btnSubmitForm" onclick="openSubmitModal()" class="btn-action-primary">
+                            <i class="fa-solid fa-paper-plane"></i>
+                            <span>Submit Form E-0</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Workflow notices -->
+            <div id="revisionBanner" class="e0-card p-4 mb-6 no-print border-amber-300 bg-amber-50" style="display:none;"></div>
+            <div id="lockNotice" class="e0-card p-4 mb-6 no-print border-blue-200 bg-blue-50 text-xs font-bold text-blue-900" style="display:none;"></div>
+            <div id="validationPanel" class="e0-card p-4 mb-6 no-print" style="display:none;"></div>
+
+            <!-- VIEW 1: INTERACTIVE FORM EDITOR -->
+            <div id="viewEditor" class="space-y-6">
+
+                <!-- SECTION A: Institutional & Faculty Identification -->
+                <section class="e0-card p-6 sm:p-7">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-xl bg-[#fbf1ef] text-[#621708] font-black text-sm flex items-center justify-center border border-[#e8d0cb] shadow-xs">
+                                A
+                            </span>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                    Institutional &amp; Faculty Identification
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Sections A1 &ndash; A8 &middot; Basic identity, term, and department assignments</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">Part 1</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+                        <div>
+                            <label class="field-label">A1. Semester</label>
+                            <select id="fieldSemester" class="input-field" onchange="onTermChange()">
+                                <option value="1">1st Semester</option>
+                                <option value="2">2nd Semester</option>
+                                <option value="SUMMER">Summer</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">School Year</label>
+                            <input type="text" id="fieldSchoolYear" class="input-field font-medium" placeholder="2026 TO 2027" onchange="onTermChange()">
+                        </div>
+                        <div>
+                            <label class="field-label">A2. College</label>
+                            <input type="text" id="fieldCollege" class="input-field font-medium" placeholder="Technology and Engineering" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">Department</label>
+                            <input type="text" id="fieldDepartment" class="input-field font-medium" placeholder="Information Technology" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">A3. Code Number (6-digit)</label>
+                            <input type="text" id="fieldDisciplineCode" class="input-field font-mono font-bold text-[#621708]" placeholder="464108" maxlength="6" list="disciplineCodeList" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">A4. Family Name</label>
+                            <input type="text" id="fieldLastName" class="input-field font-semibold" placeholder="Family name" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">First Name</label>
+                            <input type="text" id="fieldFirstName" class="input-field font-semibold" placeholder="First name" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">Middle Initial</label>
+                            <input type="text" id="fieldMiddleInitial" class="input-field font-semibold" placeholder="M.I." maxlength="4" onchange="markDirty()">
+                        </div>
+                        <div class="lg:col-span-2">
+                            <label class="field-label">A5. Institutional Email</label>
+                            <input type="email" id="fieldEmail" class="input-field font-medium" placeholder="name@ctu.edu.ph" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">A6. Contact Phone</label>
+                            <input type="text" id="fieldPhone" class="input-field font-medium" placeholder="09xxxxxxxxx" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">A7. Date of Birth</label>
+                            <input type="date" id="fieldBirthdate" class="input-field" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">Original Appointment Date</label>
+                            <input type="date" id="fieldOriginalAppointment" class="input-field" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">A8. Gender</label>
+                            <select id="fieldGender" class="input-field" onchange="markDirty()">
+                                <option value="">Select</option>
+                                <option value="MALE">Male</option>
+                                <option value="FEMALE">Female</option>
+                                <option value="LGBTQ">LGBTQ</option>
+                                <option value="PREFER NOT TO SAY">Prefer not to say</option>
+                            </select>
+                        </div>
+                    </div>
+                    <datalist id="disciplineCodeList">
+                        <option value="464101">Computer Science</option>
+                        <option value="464102">Computer Data Processing Management</option>
+                        <option value="464104">Computer Technology</option>
+                        <option value="464105">Information and Computer Science</option>
+                        <option value="464106">Computer Applications</option>
+                        <option value="464107">Information Management</option>
+                        <option value="464108">Information Technology</option>
+                    </datalist>
+                </section>
+
+                <!-- SECTION B: Details of Faculty Appointment -->
+                <section class="e0-card p-6 sm:p-7">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-xl bg-[#fbf1ef] text-[#621708] font-black text-sm flex items-center justify-center border border-[#e8d0cb] shadow-xs">
+                                B
+                            </span>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                    Details of Faculty Appointment
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Sections B1 &ndash; B10 &middot; Tenure, salary grade, rank, and active duty status</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">Part 1</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+                        <div>
+                            <label class="field-label">B1. Tenure Status</label>
+                            <select id="fieldTenure" class="input-field" onchange="markDirty()">
+                                <option value="">Select</option>
+                                <option value="1">1. Tenured</option>
+                                <option value="2">2. Not Tenured</option>
+                                <option value="3">3. No PS Item</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">B2. Employment Type</label>
+                            <select id="fieldEmploymentType" class="input-field" onchange="markDirty()">
+                                <option value="">Select</option>
+                                <option value="1">1. Full-time</option>
+                                <option value="2">2. Half-time</option>
+                                <option value="3">3. Part-time</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">B3. Own Plantilla Item?</label>
+                            <select id="fieldPlantilla" class="input-field font-semibold" onchange="markDirty()">
+                                <option value="YES">YES</option>
+                                <option value="NO">NO</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">B4. Basic Salary Charged To</label>
+                            <select id="fieldSalaryCharge" class="input-field" onchange="markDirty()">
+                                <option value="PS ITEM">PS ITEM</option>
+                                <option value="GAA LUMP SUM">GAA LUMP SUM</option>
+                                <option value="SUC INCOME">SUC INCOME</option>
+                                <option value="LGU">LGU</option>
+                            </select>
+                        </div>
+                        <div class="lg:col-span-2">
+                            <label class="field-label">B5. Generic Faculty Rank (Code)</label>
+                            <select id="fieldRankCode" class="input-field font-medium" onchange="markDirty()">
+                                <option value="">Select rank code</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">B6. SSL Salary Grade</label>
+                            <input type="number" id="fieldSalaryGrade" class="input-field font-semibold text-slate-900" placeholder="e.g. 22" min="1" max="33" step="1" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">B7. Annual Basic Salary (PHP)</label>
+                            <input type="number" id="fieldAnnualSalary" class="input-field font-mono" placeholder="Monthly x 12" min="0" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">Lecturer's Fee / Hour</label>
+                            <input type="number" id="fieldLecturerFee" class="input-field font-mono" placeholder="Part-time only" min="0" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">B8. Active Duty During Entire Sem?</label>
+                            <select id="fieldActiveDuty" class="input-field font-semibold" onchange="markDirty()">
+                                <option value="YES">YES</option>
+                                <option value="NO">NO</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 mt-5">
+                        <div class="p-4 rounded-2xl bg-slate-50/70 border border-slate-200">
+                            <div class="text-xs font-extrabold text-[#621708] uppercase tracking-wider mb-3">B9. On Leave Without Pay?</div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="field-label">Start Date</label>
+                                    <input type="date" id="fieldLeaveWithoutPayStart" class="input-field text-xs" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">End Date</label>
+                                    <input type="date" id="fieldLeaveWithoutPayEnd" class="input-field text-xs" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">Type (Code)</label>
+                                    <input type="text" id="fieldLeaveWithoutPayType" class="input-field text-xs" placeholder="Leave code" onchange="markDirty()">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-4 rounded-2xl bg-slate-50/70 border border-slate-200">
+                            <div class="text-xs font-extrabold text-[#621708] uppercase tracking-wider mb-3">B10. On Leave With Pay?</div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="field-label">Start Date</label>
+                                    <input type="date" id="fieldLeaveWithPayStart" class="input-field text-xs" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">End Date</label>
+                                    <input type="date" id="fieldLeaveWithPayEnd" class="input-field text-xs" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">Type (Code)</label>
+                                    <input type="text" id="fieldLeaveWithPayType" class="input-field text-xs" placeholder="Leave code" onchange="markDirty()">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION C: Academic Degrees Obtained -->
+                <section class="e0-card p-6 sm:p-7">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-xl bg-[#fbf1ef] text-[#621708] font-black text-sm flex items-center justify-center border border-[#e8d0cb] shadow-xs">
+                                C
+                            </span>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                    Academic Degrees Obtained
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Sections C1 &ndash; C15 &middot; Vertical articulation and earned degrees</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">Part 1</span>
+                    </div>
+
+                    <div class="space-y-5">
+                        <!-- Baccalaureate -->
+                        <div class="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-200">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-xs font-extrabold text-[#621708] uppercase tracking-wider flex items-center gap-2">
+                                    <i class="fa-solid fa-graduation-cap"></i> Baccalaureate Degree (C1 &ndash; C5)
+                                </h3>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                                <div class="md:col-span-2">
+                                    <label class="field-label">C1. Degree Title</label>
+                                    <input type="text" id="fieldBacTitle" class="input-field font-medium" placeholder="e.g. BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">C2. Status</label>
+                                    <select id="fieldBacStatus" class="input-field" onchange="markDirty()">
+                                        <option value="">Select</option>
+                                        <option value="1">1. Completed</option>
+                                        <option value="2">2. Still being pursued</option>
+                                        <option value="3">3. Started but uncompleted</option>
+                                        <option value="4">4. Not yet started</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="field-label">C3. Date Completed</label>
+                                    <input type="date" id="fieldBacDate" class="input-field" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">C5. Discipline Code</label>
+                                    <input type="text" id="fieldBacDiscipline" class="input-field font-mono font-bold text-[#621708]" placeholder="464108" maxlength="6" list="disciplineCodeList" onchange="markDirty()">
+                                </div>
+                                <div class="md:col-span-3">
+                                    <label class="field-label">C4. Where Obtained (Institution)</label>
+                                    <input type="text" id="fieldBacSchool" class="input-field font-medium" placeholder="Institution" onchange="markDirty()">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Master's Degree -->
+                        <div class="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-200">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-xs font-extrabold text-[#621708] uppercase tracking-wider flex items-center gap-2">
+                                    <i class="fa-solid fa-award"></i> Master's Degree (C6 &ndash; C10)
+                                </h3>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                                <div class="md:col-span-2">
+                                    <label class="field-label">Degree Title</label>
+                                    <input type="text" id="fieldMasterTitle" class="input-field font-medium" placeholder="Leave blank if none" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">C6. Status</label>
+                                    <select id="fieldMasterStatus" class="input-field" onchange="markDirty()">
+                                        <option value="">Select</option>
+                                        <option value="1">1. Completed</option>
+                                        <option value="2">2. Still being pursued</option>
+                                        <option value="3">3. Started but uncompleted</option>
+                                        <option value="4">4. Not yet started</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="field-label">C7. Date Completed</label>
+                                    <input type="date" id="fieldMasterDate" class="input-field" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">C10. Wrote Thesis?</label>
+                                    <select id="fieldMasterThesis" class="input-field font-semibold" onchange="markDirty()">
+                                        <option value="NO">NO</option>
+                                        <option value="YES">YES</option>
+                                    </select>
+                                </div>
+                                <div class="md:col-span-3">
+                                    <label class="field-label">C8. Where Obtained</label>
+                                    <input type="text" id="fieldMasterSchool" class="input-field font-medium" placeholder="Institution" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">C9. Discipline Code</label>
+                                    <input type="text" id="fieldMasterDiscipline" class="input-field font-mono font-bold text-[#621708]" placeholder="464108" maxlength="6" list="disciplineCodeList" onchange="markDirty()">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Doctoral Degree -->
+                        <div class="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-200">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-xs font-extrabold text-[#621708] uppercase tracking-wider flex items-center gap-2">
+                                    <i class="fa-solid fa-certificate"></i> Doctoral Degree (C11 &ndash; C15)
+                                </h3>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                                <div class="md:col-span-2">
+                                    <label class="field-label">Degree Title</label>
+                                    <input type="text" id="fieldDocTitle" class="input-field font-medium" placeholder="Leave blank if none" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">C11. Status</label>
+                                    <select id="fieldDocStatus" class="input-field" onchange="markDirty()">
+                                        <option value="">Select</option>
+                                        <option value="1">1. Completed</option>
+                                        <option value="2">2. Still being pursued</option>
+                                        <option value="3">3. Started but uncompleted</option>
+                                        <option value="4">4. Not yet started</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="field-label">C12. Date Completed</label>
+                                    <input type="date" id="fieldDocDate" class="input-field" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">C15. Wrote Dissertation?</label>
+                                    <select id="fieldDocDissertation" class="input-field font-semibold" onchange="markDirty()">
+                                        <option value="YES">YES</option>
+                                        <option value="NO">NO</option>
+                                    </select>
+                                </div>
+                                <div class="md:col-span-3">
+                                    <label class="field-label">C13. Where Obtained</label>
+                                    <input type="text" id="fieldDocSchool" class="input-field font-medium" placeholder="Institution" onchange="markDirty()">
+                                </div>
+                                <div>
+                                    <label class="field-label">C14. Discipline Code</label>
+                                    <input type="text" id="fieldDocDiscipline" class="input-field font-mono font-bold text-[#621708]" placeholder="464108" maxlength="6" list="disciplineCodeList" onchange="markDirty()">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION D & E: Discipline & Non-Teaching Load Credits -->
+                <section class="e0-card p-6 sm:p-7">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-xl bg-[#fbf1ef] text-[#621708] font-black text-sm flex items-center justify-center border border-[#e8d0cb] shadow-xs">
+                                D/E
+                            </span>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                    Discipline Classification &amp; Non-Teaching Load Credits
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Sections D1&ndash;D2 &amp; E1&ndash;E9 &middot; Officiated administrative and research assignments</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">Part 1</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div>
+                            <label class="field-label">D1. Primary Teaching Discipline (6-Digit Code)</label>
+                            <input type="text" id="fieldPrimaryDisciplineTeaching" class="input-field font-mono font-bold text-[#621708]" placeholder="464108" maxlength="6" list="disciplineCodeList" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">D2. Secondary Teaching Discipline (Optional)</label>
+                            <input type="text" id="fieldSecondaryDisciplineTeaching" class="input-field font-mono" placeholder="Optional 6-digit code" onchange="markDirty()">
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200 uppercase text-[11px] tracking-wider">
+                                <tr>
+                                    <th class="p-3 w-12 text-center">Code</th>
+                                    <th class="p-3">Category of Non-Teaching Duty</th>
+                                    <th class="p-3 w-32 text-center">Official Credits</th>
+                                    <th class="p-3 w-36">Start Date</th>
+                                    <th class="p-3 w-36">End Date</th>
+                                    <th class="p-3">Specific Details / Designation</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 bg-white">
+                                <tr>
+                                    <td class="p-3 text-center font-bold text-[#621708]">E1</td>
+                                    <td class="p-3 font-semibold text-slate-800">Official Administrative Duties</td>
+                                    <td class="p-2.5"><input type="number" id="fieldE1Credits" class="input-field text-center font-bold text-[#621708]" placeholder="0" step="0.5" oninput="recalculateTotals()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE1Start" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE1End" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="text" id="fieldE1Details" class="input-field" placeholder="e.g. Program Chairperson" onchange="markDirty()"></td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 text-center font-bold text-[#621708]">E2</td>
+                                    <td class="p-3 font-semibold text-slate-800">Official Research Load</td>
+                                    <td class="p-2.5"><input type="number" id="fieldE2Credits" class="input-field text-center font-bold text-[#621708]" placeholder="0.0" step="0.5" oninput="recalculateTotals()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE2Start" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE2End" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="text" id="fieldE2Details" class="input-field" placeholder="Research Project Title" onchange="markDirty()"></td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 text-center font-bold text-[#621708]">E3</td>
+                                    <td class="p-3 font-semibold text-slate-800">Official Extension Service</td>
+                                    <td class="p-2.5"><input type="number" id="fieldE3Credits" class="input-field text-center font-bold text-[#621708]" placeholder="0.0" step="0.5" oninput="recalculateTotals()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE3Start" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE3End" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="text" id="fieldE3Details" class="input-field" placeholder="Extension Project Title" onchange="markDirty()"></td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 text-center font-bold text-[#621708]">E4</td>
+                                    <td class="p-3 font-semibold text-slate-800">Official Production / Income-Generation</td>
+                                    <td class="p-2.5"><input type="number" id="fieldE4Credits" class="input-field text-center font-bold text-[#621708]" placeholder="0.0" step="0.5" oninput="recalculateTotals()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE4Start" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE4End" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="text" id="fieldE4Details" class="input-field" placeholder="Production assignment" onchange="markDirty()"></td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 text-center font-bold text-[#621708]">E5</td>
+                                    <td class="p-3 font-semibold text-slate-800">Official Study Load</td>
+                                    <td class="p-2.5"><input type="number" id="fieldE5Credits" class="input-field text-center font-bold text-[#621708]" placeholder="0.0" step="0.5" oninput="recalculateTotals()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE5Start" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE5End" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="text" id="fieldE5Details" class="input-field" placeholder="Fellowship / Scholarship" onchange="markDirty()"></td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 text-center font-bold text-[#621708]">E6</td>
+                                    <td class="p-3 font-semibold text-slate-800">Other Credits (Sabbatical, Leave with pay)</td>
+                                    <td class="p-2.5"><input type="number" id="fieldE6Credits" class="input-field text-center font-bold text-[#621708]" placeholder="0.0" step="0.5" oninput="recalculateTotals()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE6Start" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="date" id="fieldE6End" class="input-field" onchange="markDirty()"></td>
+                                    <td class="p-2.5"><input type="text" id="fieldE6Details" class="input-field" placeholder="Reason / Details" onchange="markDirty()"></td>
+                                </tr>
+                                <!-- Subtotals -->
+                                <tr class="bg-slate-50/90 font-bold border-t border-slate-200">
+                                    <td class="p-3 text-center text-[#621708]">E7</td>
+                                    <td class="p-3 text-slate-700">SUBTOTAL NON-TEACHING CREDITS</td>
+                                    <td class="p-3 text-center text-sm font-black text-slate-900" id="displayE7Total">0.0</td>
+                                    <td colspan="3" class="p-3 text-slate-400 font-normal">Sum of E1 to E6</td>
+                                </tr>
+                                <tr class="bg-slate-50/90 font-bold">
+                                    <td class="p-3 text-center text-[#621708]">E8</td>
+                                    <td class="p-3 text-slate-700">SUBTOTAL TEACHING CREDITS</td>
+                                    <td class="p-3 text-center text-sm font-black text-[#621708]" id="displayE8Total">0.0</td>
+                                    <td colspan="3" class="p-3 text-slate-400 font-normal" id="displayE8Basis">Total teaching hours per week (D6), as on the CTU form</td>
+                                </tr>
+                                <tr class="bg-[#fbf1ef] font-black border-t-2 border-[#e8d0cb]">
+                                    <td class="p-3.5 text-center text-[#621708] text-sm">E9</td>
+                                    <td class="p-3.5 text-sm text-[#621708] uppercase tracking-wide">GRAND TOTAL WORKLOAD CREDITS</td>
+                                    <td class="p-3.5 text-center text-base font-black text-[#621708]" id="displayE9Total">0.0</td>
+                                    <td colspan="3" class="p-3.5 text-slate-600 font-medium text-xs">Total Non-Teaching (E7) + Total Teaching (E8)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- PART 2 — SECTION A: Schedule of Classes -->
+                <section class="e0-card p-6 sm:p-7">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-xl bg-[#fbf1ef] text-[#621708] font-black text-sm flex items-center justify-center border border-[#e8d0cb] shadow-xs">
+                                2A
+                            </span>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                    Schedule of Classes (Teaching Load)
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-0.5">List all subjects in all levels for the current semester</p>
+                            </div>
+                        </div>
+                        <button type="button" id="btnAddClass" onclick="addClassRow()" class="btn-action-secondary text-xs" style="height:34px;">
+                            <i class="fa-solid fa-plus text-[#621708]"></i> Add Class
+                        </button>
+                    </div>
+
+                    <p class="text-xs text-slate-500 mb-3">
+                        One row per subject. Enter the lecture and lab parts separately (e.g. CC111 = 2 lec units / 2 hrs + 1 lab unit / 3 hrs).
+                        A subject with any lab part prints as <b>LAB</b>. Put the lecture and lab times on separate lines.
+                    </p>
+
+                    <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                        <table class="w-full text-xs text-left" id="classesTable">
+                            <thead class="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200 uppercase text-[11px] tracking-wider">
+                                <tr>
+                                    <th class="p-3 w-10 text-center">#</th>
+                                    <th class="p-3">Subject No. &amp; Title</th>
+                                    <th class="p-3">Class Code</th>
+                                    <th class="p-3">Days</th>
+                                    <th class="p-3">Time</th>
+                                    <th class="p-3">Room</th>
+                                    <th class="p-3">Level</th>
+                                    <th class="p-3 text-center">Lec Units</th>
+                                    <th class="p-3 text-center">Lab Units</th>
+                                    <th class="p-3 text-center">Lec Hrs</th>
+                                    <th class="p-3 text-center">Lab Hrs</th>
+                                    <th class="p-3 text-center">Students</th>
+                                    <th class="p-3 text-center">Lec/Lab</th>
+                                    <th class="p-3 w-12 text-center"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="classesTbody" class="divide-y divide-slate-100 bg-white">
+                                <!-- Populated dynamically by form-e0.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- PART 2 — SECTION B: Consultation Hours -->
+                <section class="e0-card p-6 sm:p-7">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-xl bg-[#fbf1ef] text-[#621708] font-black text-sm flex items-center justify-center border border-[#e8d0cb] shadow-xs">
+                                2B
+                            </span>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                    Consultation Hours
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Specify consultation time per day (Monday to Saturday)</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">Part 2</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
+                        <div>
+                            <label class="field-label">B1. Monday</label>
+                            <input type="text" id="consultMon" class="input-field font-medium text-xs" placeholder="e.g. 8:00 - 10:00" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">B2. Tuesday</label>
+                            <input type="text" id="consultTue" class="input-field font-medium text-xs" placeholder="Time slot" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">B3. Wednesday</label>
+                            <input type="text" id="consultWed" class="input-field font-medium text-xs" placeholder="Time slot" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">B4. Thursday</label>
+                            <input type="text" id="consultThu" class="input-field font-medium text-xs" placeholder="Time slot" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">B5. Friday</label>
+                            <input type="text" id="consultFri" class="input-field font-medium text-xs" placeholder="Time slot" onchange="markDirty()">
+                        </div>
+                        <div>
+                            <label class="field-label">B6. Saturday</label>
+                            <input type="text" id="consultSat" class="input-field font-medium text-xs" placeholder="Optional" onchange="markDirty()">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PART 2 — SECTIONS C & D: Chairperson Summary Matrices -->
+                <section class="e0-card p-6 sm:p-7">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 font-black text-sm flex items-center justify-center border border-indigo-200 shadow-xs">
+                                2C/D
+                            </span>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                    Chairperson Summary Matrices
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Filled up by Department Chair &middot; Automatically calculated in real-time</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-bold px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            Auto-Computed
+                        </span>
+                    </div>
+
+                    <!-- Matrix C: Subject & Credit Units -->
+                    <div class="mb-6">
+                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                            <i class="fa-solid fa-table-cells text-indigo-600"></i> Matrix C: "Subject Units" and "Credit Units" by Educational Level
+                        </h3>
+                        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table class="w-full text-xs text-left" id="matrixUnitsTable">
+                                <thead class="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200 uppercase text-[10.5px]">
+                                    <tr>
+                                        <th class="p-3">Level of Teaching</th>
+                                        <th class="p-3 text-center">Lec Subject Units</th>
+                                        <th class="p-3 text-center">Lab Subject Units</th>
+                                        <th class="p-3 text-center font-black">Total Subject Units</th>
+                                        <th class="p-3 text-center">Lec Credit Units</th>
+                                        <th class="p-3 text-center">Lab Credit Units</th>
+                                        <th class="p-3 text-center font-black text-[#621708]">Total Credit Units</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="matrixUnitsTbody" class="divide-y divide-slate-100 bg-white">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Matrix D: Hours Per Week & Student-Contact Hours -->
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                            <i class="fa-solid fa-clock text-indigo-600"></i> Matrix D: Hours Per Week and Student-Contact Hours Per Week
+                        </h3>
+                        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table class="w-full text-xs text-left" id="matrixHoursTable">
+                                <thead class="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200 uppercase text-[10.5px]">
+                                    <tr>
+                                        <th class="p-3">Level of Teaching</th>
+                                        <th class="p-3 text-center">Lec Hours/Wk</th>
+                                        <th class="p-3 text-center">Lab Hours/Wk</th>
+                                        <th class="p-3 text-center font-black">Total Hours/Wk</th>
+                                        <th class="p-3 text-center">Lec Contact Hrs</th>
+                                        <th class="p-3 text-center">Lab Contact Hrs</th>
+                                        <th class="p-3 text-center font-black text-[#621708]">Total Contact Hrs</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="matrixHoursTbody" class="divide-y divide-slate-100 bg-white">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Proxy Submission Block (Chairpersons Only) -->
+                <div id="proxySection" class="e0-card p-5 bg-amber-50/70 border-amber-200 space-y-3" style="display:none;">
+                    <div class="flex items-center gap-2.5">
+                        <input type="checkbox" id="chkProxyChair" class="w-4 h-4 text-[#621708] rounded border-amber-300" onchange="toggleProxyNotice()">
+                        <label for="chkProxyChair" class="text-xs font-bold text-amber-950 cursor-pointer">
+                            Signing on behalf of absent faculty member (Faculty member is abroad or on official leave)
+                        </label>
+                    </div>
+                    <div id="proxyReasonWrap" style="display:none;" class="pt-2">
+                        <label class="field-label text-amber-900">Reason for proxy submission by Department Chair:</label>
+                        <input type="text" id="proxyReasonInput" class="input-field bg-white" placeholder="e.g. Faculty member currently abroad on official fellowship leave.">
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- VIEW 2: OFFICIAL CHED FORM PREVIEW -->
+            <div id="viewPreview" class="space-y-4" style="display:none;">
+                <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-white rounded-2xl border border-slate-200 shadow-xs no-print">
+                    <p class="text-xs text-slate-600 font-medium">
+                        <span class="inline-block w-3 h-3 rounded-xs bg-[#fffbe6] border border-amber-300 align-middle mr-1"></span>
+                        Highlighted cells reflect your live Form E-0 entries. Excel export uses the exact same CTU College of Technology and Engineering template.
+                    </p>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Zoom</span>
+                        <button type="button" onclick="setPreviewZoom(-0.08)" class="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700" title="Zoom out">&minus;</button>
+                        <button type="button" id="previewZoomLabel" onclick="setPreviewZoom(0)" class="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700" title="Reset to fit">68%</button>
+                        <button type="button" onclick="setPreviewZoom(0.08)" class="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700" title="Zoom in">+</button>
+                    </div>
+                </div>
+                <div class="doc-desk">
+                    <div class="doc-sheet e0-host" id="officialFormDoc">
+                        <!-- Populated by form-e0.js renderOfficialPreview() (CTU Excel layout) -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+</div>
+
+<!-- SUBMISSION CONFIRMATION MODAL -->
+<div id="submitModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4" style="display:none;">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+        <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-[#fbf1ef] text-[#621708] flex items-center justify-center text-lg border border-[#e8d0cb]">
+                <i class="fa-solid fa-file-signature"></i>
+            </div>
+            <div>
+                <h3 class="text-base font-extrabold text-slate-900">Submit Form E-0</h3>
+                <p class="text-xs text-slate-500">Individual Faculty Workload Report</p>
+            </div>
+        </div>
+
+        <p class="text-xs text-slate-600 leading-relaxed">
+            By submitting, you certify that all entered appointments, academic qualifications, teaching loads, and non-teaching duties for this semester are accurate and true.
+        </p>
+
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+            <div class="flex justify-between text-slate-500">
+                <span>Signatory:</span>
+                <span class="font-bold text-slate-900" id="modalSignatoryName">-</span>
+            </div>
+            <div class="flex justify-between text-slate-500">
+                <span>Submission Date:</span>
+                <span class="font-bold text-slate-900" id="modalSignatoryDate">-</span>
+            </div>
+            <div class="flex justify-between text-slate-500">
+                <span>Grand Total Workload:</span>
+                <span class="font-black text-[#621708]" id="modalGrandTotalCredits">0.0 credits</span>
+            </div>
+        </div>
+
+        <div id="modalWarnings" class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-2" style="display:none;">
+            <div class="font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Please double-check:</div>
+            <ul class="list-disc pl-5 space-y-1"></ul>
+            <label class="flex items-center gap-2 font-semibold pt-1">
+                <input type="checkbox" id="modalAckWarnings"> I reviewed these and the entries are correct.
+            </label>
+        </div>
+
+        <div class="flex items-center justify-end gap-2.5 pt-2">
+            <button type="button" onclick="closeSubmitModal()" class="btn-action-secondary text-xs" style="height:38px;">Cancel</button>
+            <button type="button" id="btnConfirmSubmit" onclick="confirmSubmitForm()" class="btn-action-primary text-xs" style="height:38px;">Confirm &amp; Submit</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

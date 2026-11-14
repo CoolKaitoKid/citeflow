@@ -1488,6 +1488,7 @@
                         <option value="task">Tasks</option>
                         <option value="report">Reports</option>
                         <option value="accomplishment">Accomplishments</option>
+                        <option value="form_e0">CHED Form E-0</option>
                     </select>
                     <select id="queueDeptFilter" onchange="renderSubmissionQueue()" class="field-input text-xs" style="width:140px;">
                         <option value="">All Departments</option>
@@ -2585,7 +2586,7 @@
                     <label class="inline-flex items-center gap-2"><input id="deptBIT" type="checkbox" class="accent-[#621708]"> BIT</label>
                 </div>
                 <p class="text-xs text-gray-400 mt-1.5">
-                    Choose the department(s) this person may review. Use this for the regular Chairperson and for a temporary OIC covering another department.
+                    Choose the department(s) this person may review. Use this for a temporary OIC covering a department. The official Chairperson of each department (one per BSIT, BSIE, BIT) is assigned in Faculty Profiles &rsaquo; Department Chairpersons and already has review access.
                 </p>
 
                 <button onclick="grantAccess()" class="btn btn-primary w-full justify-center mt-4">
@@ -4663,6 +4664,13 @@ function renderDetailSubmissionList(rows) {
         const isMfo = typeof isMfoSubmission === 'function' ? isMfoSubmission(task, s) : false;
         const mfoBadge = isMfo ? `<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-weight:600;font-size:11px;padding:2px 8px;border-radius:9999px;">MFO Report</span>` : '';
         const mfoCard = (hasSubmission && isMfo && typeof mfoReportLinkHtml === 'function') ? mfoReportLinkHtml(task, s) : '';
+        const isFormE0 = typeof isFormE0Submission === 'function' ? isFormE0Submission(task, s) : false;
+        const formE0Card = (hasSubmission && isFormE0 && typeof formE0ReportLinkHtml === 'function') ? formE0ReportLinkHtml(task, s) : '';
+        const formE0Btn = (hasSubmission && isFormE0) ? `
+            <a href="form-e0-viewer.html?faculty_id=${encodeURIComponent(s.faculty_id)}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:6px">
+                <i class="fa-solid fa-file-invoice"></i> Open Form E-0
+            </a>
+        ` : '';
         const mfoBtn = (hasSubmission && isMfo) ? `
             <a href="mfo-viewer.html?submission=${encodeURIComponent(s.submission_id)}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:6px">
                 <i class="fa-solid fa-file-invoice"></i> Open MFO Report
@@ -4671,6 +4679,7 @@ function renderDetailSubmissionList(rows) {
         const reviewButtons = hasSubmission ? `
             <button onclick="openReviewModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-primary btn-sm">Review / View Submission</button>
             ${mfoBtn}
+            ${formE0Btn}
             <button onclick="openTimelineModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-ghost btn-sm">Timeline</button>
             <button onclick="openCommentsModal('${s.task_id}', '${s.faculty_id}')" class="btn btn-ghost btn-sm">Comments</button>
         ` : `
@@ -7524,6 +7533,37 @@ function isMfoSubmission(task, sub) {
     return /\bmfo\b|major final output/i.test(haystack);
 }
 
+function isFormE0Submission(task, sub) {
+    const haystack = [task?.title, task?.instructions, task?.category, sub?.document_category].filter(Boolean).join(' ');
+    return /\bform\s*e-?0\b|workload report/i.test(haystack);
+}
+
+function formE0ReportLinkHtml(task, sub) {
+    if (!sub?.faculty_id) return '';
+    if (!isFormE0Submission(task, sub)) return '';
+    const url = `form-e0-viewer.html?faculty_id=${encodeURIComponent(sub.faculty_id)}`;
+    return `
+        <div style="margin-bottom:12px;padding:14px 16px;border-radius:12px;background:linear-gradient(135deg,color-mix(in srgb, var(--cite-theme, #621708) 6%, white) 0%,color-mix(in srgb, var(--cite-theme, #621708) 12%, white) 100%);border:1.5px solid color-mix(in srgb, var(--cite-theme, #621708) 28%, white);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="width:38px;height:38px;border-radius:10px;background:var(--cite-theme,#621708);color:var(--cite-theme-text,#fff);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">
+                    <i class="fa-solid fa-file-invoice"></i>
+                </div>
+                <div>
+                    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--cite-theme-ink,#621708);margin-bottom:2px">
+                        CHED Form E-0
+                    </div>
+                    <div style="font-size:13px;font-weight:600;color:#1e293b">${escapeHtml(task?.title || 'Individual Faculty Workload Report')}</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:1px">${escapeHtml(sub.faculty_name || '')} &middot; Workload Report</div>
+                </div>
+            </div>
+            <a href="${url}" target="_blank" rel="noopener"
+               style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;background:var(--cite-theme,#621708);color:var(--cite-theme-text,#fff);font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background 0.2s">
+                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:11px"></i>
+                Open Form E-0 Review
+            </a>
+        </div>`;
+}
+
 function mfoReportLinkHtml(task, sub) {
     if (!sub?.submission_id) return '';
     if (!isMfoSubmission(task, sub)) return '';
@@ -7737,6 +7777,9 @@ async function fetchAllData(isRetry) {
     if (typeof loadAccomplishmentReportSubmissions === 'function') {
         loadAccomplishmentReportSubmissions().catch((error) => console.error('AR load error:', error));
     }
+    if (typeof loadFormE0Submissions === 'function') {
+        loadFormE0Submissions().catch((error) => console.error('Form E-0 load error:', error));
+    }
     if (!isChairpersonQueueActor()) {
         scheduleBackgroundWorkflowMaintenance();
     }
@@ -7772,7 +7815,7 @@ function startWorkflowRealtime() {
         'wf_submissions', 'wf_approval_history', 'wf_notifications', 'wf_task_assignments',
         'wf_tasks', 'wf_submission_files', 'wf_activity_log', 'wf_comments',
         'wf_delegated_access', 'wf_report_configs', 'wf_report_targets', 'faculty',
-        'accomplishment_report_submissions'
+        'accomplishment_report_submissions', 'form_e0_reports'
     ]);
 }
 
@@ -8578,6 +8621,11 @@ function updateQueueBadgeCount() {
             pendingCount++;
         }
     });
+    (_formE0Submissions || []).forEach(s => {
+        if (['submitted', 'chair_certified'].includes(String(s.status || '').toLowerCase())) {
+            pendingCount++;
+        }
+    });
     const badge = document.getElementById('queueNeedsReviewBadge');
     if (badge) {
         badge.textContent = pendingCount;
@@ -8712,8 +8760,57 @@ function renderSubmissionQueue() {
         };
     });
 
+    // 4. Collect submitted / chair-certified CHED Form E-0 workload reports
+    const formE0QueueItems = (_formE0Submissions || []).map(e0 => {
+        const fac = _arFacultyMap[e0.faculty_id] || (workflowState.facultyDirectory || []).find(f => String(f.id) === String(e0.faculty_id)) || {};
+        const facultyName = fac.full_name || fac.name || e0.faculty_printed_name || 'Faculty';
+        const rawDept = String(fac.department || e0.department_name || '').trim();
+        const dept = /information technology/i.test(rawDept) ? 'BSIT'
+            : /industrial engineering/i.test(rawDept) ? 'BSIE'
+            : /industrial technology/i.test(rawDept) ? 'BIT'
+            : rawDept.toUpperCase();
+
+        const st = String(e0.status || '').toLowerCase();
+        let bucket = 'other';
+        if (['submitted', 'chair_certified'].includes(st)) bucket = 'review';
+        else if (st === 'revision') bucket = 'returned';
+        else if (st === 'approved') bucket = 'approved';
+
+        let statusLabel = 'Submitted';
+        if (st === 'submitted') statusLabel = 'Awaiting Chair / Dean';
+        else if (st === 'chair_certified') statusLabel = 'Chair Certified · Ready for Dean';
+        else if (st === 'approved') statusLabel = 'Approved by Dean';
+        else if (st === 'revision') statusLabel = 'Revision Requested';
+
+        const semLabel = e0.semester === '2' ? '2nd Sem' : e0.semester === 'summer' ? 'Summer' : '1st Sem';
+        const termLabel = e0.academic_year ? `${semLabel} ${e0.academic_year}` : semLabel;
+        const submittedTs = e0.submitted_at ? new Date(e0.submitted_at).getTime() : (e0.updated_at ? new Date(e0.updated_at).getTime() : 0);
+
+        return {
+            source: 'form_e0',
+            id: `form_e0_${e0.id}`,
+            formE0Id: e0.id,
+            facultyId: e0.faculty_id,
+            title: `CHED Form E-0 — ${termLabel}`,
+            categoryInfo: {
+                type: 'form_e0',
+                iconClass: 'fa-solid fa-file-invoice text-[#621708]',
+                iconBg: 'bg-[#fbf1ef] border-[#e8d0cb]',
+                breadcrumb: `CHED Form E-0 · ${Number(e0.grand_total_credits || 0).toFixed(1)} E9 credits`,
+                isMfo: false
+            },
+            bucket,
+            statusLabel,
+            rawStatus: st === 'chair_certified' ? 'chair_approved' : st,
+            facultyName,
+            department: dept,
+            submittedAt: e0.submitted_at || e0.updated_at,
+            submittedTs: isNaN(submittedTs) ? 0 : submittedTs
+        };
+    });
+
     // Combine all collections
-    let combined = [...taskQueueItems, ...arQueueItems, ...consolidatedMfoQueueItems];
+    let combined = [...taskQueueItems, ...arQueueItems, ...consolidatedMfoQueueItems, ...formE0QueueItems];
 
     // Filter by Queue Bucket (Needs Review, Returned, Approved, All)
     if (queueBucket !== 'all') {
@@ -8793,13 +8890,18 @@ function renderSubmissionQueue() {
         } else if (item.source === 'consolidated_mfo') {
             const previewUrl = `../faculty/mfo-report.html?view=consolidated&task=${encodeURIComponent(item.taskId)}&dept=${encodeURIComponent(item.department)}&packet=${encodeURIComponent(item.programPacketId)}&version=${encodeURIComponent(item.programPacket?.current_version || 1)}`;
             linkHtml = `<a href="${previewUrl}" target="_blank" rel="noopener" class="cite-row-link" title="Open Official Department Consolidated MFO Report"><i class="fa-solid fa-file-invoice text-[10px]"></i> MFO (v${item.programPacket?.current_version || 1})</a>`;
+        } else if (item.source === 'form_e0') {
+            const e0Url = `form-e0-viewer.html?id=${encodeURIComponent(item.formE0Id)}`;
+            linkHtml = `<a href="${e0Url}" target="_blank" rel="noopener" class="cite-row-link" title="Open Official CHED Form E-0 Sheet"><i class="fa-solid fa-file-invoice text-[10px]"></i> Form E-0</a>`;
         }
 
         const actionHtml = item.source === 'task'
             ? `<button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openReviewModal('${item.taskId}', '${item.facultyId}')">Review</button>`
             : (item.source === 'consolidated_mfo'
                 ? `<button type="button" class="btn btn-ghost btn-sm font-medium text-rose-700 hover:text-rose-900" onclick="openConsolidatedMfoReviewModal('${item.programPacketId}')">Review MFO</button>`
-                : `<button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openArReviewModal(${item.arId})">Review</button>`);
+                : (item.source === 'form_e0'
+                    ? `<a href="form-e0-viewer.html?id=${encodeURIComponent(item.formE0Id)}" class="btn btn-ghost btn-sm font-medium text-[#621708]">Review Form E-0</a>`
+                    : `<button type="button" class="btn btn-ghost btn-sm font-medium" onclick="openArReviewModal(${item.arId})">Review</button>`));
 
         return `
             <tr class="cite-sub-row">
@@ -9990,8 +10092,33 @@ init = async function unifiedInit() {
 // =========================================================================
 
 let _arSubmissions = [];
+let _formE0Submissions = [];
 let _arFacultyMap = {};
 let _arCurrentReport = null;
+
+async function loadFormE0Submissions() {
+    if (!supabaseClient) return;
+    const { data, error } = await supabaseClient
+        .from('form_e0_reports')
+        .select('*')
+        .neq('status', 'draft')
+        .order('submitted_at', { ascending: false });
+    if (error) {
+        console.warn('loadFormE0Submissions:', error);
+        return;
+    }
+    _formE0Submissions = data || [];
+    const missingIds = [...new Set(_formE0Submissions.map(s => s.faculty_id).filter(id => id && !_arFacultyMap[id]))];
+    if (missingIds.length) {
+        const { data: faculties } = await supabaseClient
+            .from('faculty')
+            .select('id, full_name, name, department, email')
+            .in('id', missingIds);
+        (faculties || []).forEach(f => { _arFacultyMap[f.id] = f; });
+    }
+    renderSubmissionQueue();
+    updateQueueBadgeCount();
+}
 
 async function loadAccomplishmentReportSubmissions() {
     const WF = window.CiteFlowWorkflow;

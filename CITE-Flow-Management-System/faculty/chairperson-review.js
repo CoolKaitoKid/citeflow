@@ -26,7 +26,8 @@
         revisionId: null,
         actionMode: 'revision',
         arSubmissions: [],
-        filterType: 'all', // 'all' | 'mfo' | 'ar' | 'tasks'
+        formE0Reports: [],
+        filterType: 'all', // 'all' | 'form_e0' | 'mfo' | 'ar' | 'tasks'
         notSubmittedFilter: 'all', // 'all' | 'open' | 'overdue'
         reportFilterFreq: 'all', // 'all' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual'
         expandedCycles: {}, // map of `${groupId}_${cycleId}` -> boolean
@@ -121,32 +122,48 @@
         return codes.map((c) => c.toUpperCase()).join(', ') || '—';
     }
 
+    function normalizeDepartmentAlias(value) {
+        const raw = String(value || '').trim().toLowerCase();
+        if (!raw) return '';
+        if (raw === 'bsit' || raw.includes('information technology')) return 'bsit';
+        if (raw === 'bsie' || raw.includes('industrial engineering')) return 'bsie';
+        if (raw === 'bit' || raw.includes('industrial technology')) return 'bit';
+        return raw;
+    }
+
     function sameDept(target) {
         const helper = wf();
         const actor = global.currentFaculty;
-        const left = helper?.facultyDepartmentCode?.(actor) || String(actor?.department || actor?.department_code || '').trim().toLowerCase();
-        const right = helper?.facultyDepartmentCode?.(target) || String(target?.department || target?.department_code || '').trim().toLowerCase();
+        const left = normalizeDepartmentAlias(helper?.facultyDepartmentCode?.(actor) || actor?.department || actor?.department_code || '');
+        const right = normalizeDepartmentAlias(helper?.facultyDepartmentCode?.(target) || target?.department || target?.department_code || '');
         return !!left && !!right && left === right;
     }
 
     function isFacultyInChairScope(target) {
         if (!target) return false;
         const helper = wf();
+        const normDept = normalizeDepartmentAlias(target?.department || target?.department_code || '');
+        const normalizedTarget = normDept
+            ? { ...target, department: normDept, department_code: normDept }
+            : target;
         if (helper?.canBrowseAsChairperson) {
-            return helper.canBrowseAsChairperson(global.currentFaculty, target, effectiveGrants());
+            return helper.canBrowseAsChairperson(global.currentFaculty, normalizedTarget, effectiveGrants());
         }
-        const authorized = authorizedDepartmentCodes();
-        const dept = helper?.facultyDepartmentCode?.(target) || String(target?.department || target?.department_code || '').trim().toLowerCase();
+        const authorized = authorizedDepartmentCodes().map(normalizeDepartmentAlias);
+        const dept = normalizeDepartmentAlias(helper?.facultyDepartmentCode?.(normalizedTarget) || normalizedTarget?.department || normalizedTarget?.department_code || '');
         if (authorized.length) return authorized.includes(dept);
-        return sameDept(target);
+        return sameDept(normalizedTarget);
     }
 
     function targetFaculty(row) {
-        return facultyMap().get(String(row.faculty_id)) || {
+        const mapped = facultyMap().get(String(row.faculty_id));
+        if (mapped) return mapped;
+        const fallbackDept = normalizeDepartmentAlias(row.department || row.department_name || '');
+        return {
             id: row.faculty_id,
-            department: row.department,
-            department_code: row.department,
-            full_name: row.faculty_name
+            department: fallbackDept,
+            department_code: fallbackDept,
+            full_name: row.faculty_name || row.faculty_printed_name
         };
     }
 
@@ -341,6 +358,56 @@
         return rows;
     }
 
+    function formatFormE0SemesterLabel(sem) {
+        const s = String(sem || '').trim().toLowerCase();
+        if (s === '1' || s === '1st' || s.startsWith('1st') || s.includes('first')) return '1st Semester';
+        if (s === '2' || s === '2nd' || s.startsWith('2nd') || s.includes('second')) return '2nd Semester';
+        if (s.includes('sum') || s.includes('mid')) return 'Summer';
+        return sem ? String(sem) : '1st Semester';
+    }
+
+    function mapFormE0Row(e0, people) {
+        const person = people.get(String(e0.faculty_id));
+        const builtFromParts = [e0.faculty_first_name, e0.faculty_middle_initial ? `${e0.faculty_middle_initial}.` : '', e0.faculty_last_name]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+        const printedName = String(e0.faculty_printed_name || '').trim();
+        const facultyName = person?.full_name || person?.name || builtFromParts || printedName || 'Faculty';
+        const deptCode = normalizeDepartmentAlias(person?.department || person?.department_code || e0.department_name || '');
+        const semLabel = formatFormE0SemesterLabel(e0.semester);
+        const ayLabel = String(e0.academic_year || '').trim();
+        const periodText = ayLabel ? `${semLabel} · SY ${ayLabel}` : semLabel;
+        const isOwnReport = global.currentFaculty?.id != null && String(e0.faculty_id) === String(global.currentFaculty.id);
+        return {
+            ...e0,
+            id: e0.id,
+            is_form_e0: true,
+            is_ar: false,
+            is_mfo: false,
+            is_own_report: isOwnReport,
+            faculty_name: facultyName,
+            faculty_printed_name: printedName,
+            email: e0.email || person?.email || '',
+            department: deptCode || (person?.department || person?.department_code || ''),
+            task_title: 'CHED Form E-0 — Individual Faculty Workload Report',
+            period_text: periodText,
+            submitted_at: e0.submitted_at || e0.updated_at || e0.created_at || null,
+            task: null,
+            config: null,
+            files: []
+        };
+    }
+
+    function scopedDraftFormE0Rows() {
+        if (!review.access) return [];
+        const people = facultyMap();
+        return (review.formE0Reports || [])
+            .filter((e0) => String(e0?.status || 'draft').toLowerCase().trim() === 'draft')
+            .map((e0) => mapFormE0Row(e0, people))
+            .filter((row) => !row.is_own_report && isFacultyInChairScope(targetFaculty(row)));
+    }
+
     function buildRows() {
         const helper = wf();
         const people = facultyMap();
@@ -354,6 +421,7 @@
             const isMfo = !!mfoPacket || submissionIsMfo({ ...sub, task, config });
             return {
                 ...sub,
+                is_form_e0: false,
                 is_ar: false,
                 is_mfo: isMfo,
                 mfo_packet: mfoPacket || null,
@@ -381,6 +449,7 @@
             return {
                 ...ar,
                 id: ar.id,
+                is_form_e0: false,
                 is_ar: true,
                 faculty_name: person?.full_name || person?.name || 'Faculty',
                 department: person?.department || person?.department_code || '',
@@ -396,11 +465,28 @@
             return isFacultyInChairScope(target);
         });
 
-        return [...taskRows, ...arRows].sort((a, b) => new Date(b.submitted_at || b.created_at || 0) - new Date(a.submitted_at || a.created_at || 0));
+        const formE0Rows = (review.formE0Reports || [])
+            .filter((e0) => String(e0?.status || 'draft').toLowerCase().trim() !== 'draft')
+            .map((e0) => mapFormE0Row(e0, people))
+            .filter((row) => {
+                if (!review.access) return false;
+                return isFacultyInChairScope(targetFaculty(row));
+            });
+
+        return [...taskRows, ...arRows, ...formE0Rows].sort((a, b) => new Date(b.submitted_at || b.created_at || 0) - new Date(a.submitted_at || a.created_at || 0));
     }
 
      function isPending(row) {
         if (!row) return false;
+
+        // 0. Handling for CHED Form E-0 statutory workload reports
+        if (row.is_form_e0) {
+            if (!review.access) return false;
+            if (row.is_own_report) return false; // Chairperson's own Form E-0 goes straight to the Dean
+            const st = String(row.status || '').toLowerCase().trim();
+            if (st !== 'submitted') return false;
+            return isFacultyInChairScope(targetFaculty(row));
+        }
 
         // 1. Handling para sa Accomplishment Reports (AR)
         if (row.is_ar) {
@@ -440,6 +526,10 @@
         return inDept && helper.isPendingChairpersonReview(row, row.config, row.task);
     }
     function isApproved(row) {
+        if (row.is_form_e0) {
+            const st = String(row.status || '').toLowerCase().trim();
+            return st === 'chair_certified' || st === 'approved';
+        }
         if (row.is_ar) {
             return row.status === 'chair_approved' || row.status === 'dean_approved';
         }
@@ -455,6 +545,9 @@
     }
 
     function isRevision(row) {
+        if (row.is_form_e0) {
+            return String(row.status || '').toLowerCase().trim() === 'revision';
+        }
         if (row.is_ar) {
             return row.status === 'revision';
         }
@@ -464,6 +557,9 @@
     }
 
     function isDeclined(row) {
+        if (row.is_form_e0) {
+            return String(row.status || '').toLowerCase().trim() === 'rejected';
+        }
         if (row.is_ar) {
             return row.status === 'rejected';
         }
@@ -474,17 +570,27 @@
 
     function filteredRows() {
         let rows = buildRows();
-        if (review.filterType === 'ar') {
+        if (review.filterType === 'form_e0') {
+            rows = rows.filter((r) => r.is_form_e0);
+        } else if (review.filterType === 'ar') {
             rows = rows.filter((r) => r.is_ar);
         } else if (review.filterType === 'mfo') {
-            rows = rows.filter((r) => r.is_mfo || submissionIsMfo(r));
+            rows = rows.filter((r) => !r.is_form_e0 && (r.is_mfo || submissionIsMfo(r)));
         } else if (review.filterType === 'tasks') {
-            rows = rows.filter((r) => !r.is_ar && !r.is_mfo && !submissionIsMfo(r));
+            rows = rows.filter((r) => !r.is_form_e0 && !r.is_ar && !r.is_mfo && !submissionIsMfo(r));
         }
 
         const q = String(review.search || '').trim().toLowerCase();
         const searched = q
-            ? rows.filter((row) => [row.faculty_name, row.task_title, row.department, row.status, row.period_text || '']
+            ? rows.filter((row) => [
+                row.faculty_name,
+                row.faculty_printed_name || '',
+                row.email || '',
+                row.task_title,
+                row.department,
+                row.status,
+                row.period_text || ''
+            ]
                 .join(' ')
                 .toLowerCase()
                 .includes(q))
@@ -499,7 +605,7 @@
     }
 
     function setFilterType(type) {
-        review.filterType = ['all', 'mfo', 'ar', 'tasks'].includes(type) ? type : 'all';
+        review.filterType = ['all', 'form_e0', 'mfo', 'ar', 'tasks'].includes(type) ? type : 'all';
         render();
     }
 
@@ -829,7 +935,162 @@
             </article>`;
     }
 
+    function renderFormE0Card(row) {
+        const st = String(row.status || 'submitted').toLowerCase().trim();
+        const actionable = isPending(row);
+        const totalCredits = Number(row.grand_total_credits || 0).toFixed(1);
+        const teachingCredits = Number(row.subtotal_teaching || 0).toFixed(1);
+        const nonTeachingCredits = Number(row.subtotal_non_teaching || 0).toFixed(1);
+
+        let stageLabel = 'Pending Chairperson Certification';
+        let stageCls = 'bg-amber-50 text-amber-800 border-amber-200';
+        if (st === 'chair_certified') {
+            stageLabel = 'Chair Certified · At Dean';
+            stageCls = 'bg-blue-50 text-blue-800 border-blue-200';
+        } else if (st === 'approved') {
+            stageLabel = 'Approved by Dean';
+            stageCls = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+        } else if (st === 'revision') {
+            stageLabel = 'Revision Requested';
+            stageCls = 'bg-purple-50 text-purple-800 border-purple-200';
+        } else if (row.is_own_report) {
+            stageLabel = 'Submitted to Dean (Chair Report)';
+            stageCls = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+        }
+
+        const printedDiffers = row.faculty_printed_name
+            && row.faculty_printed_name.toLowerCase() !== String(row.faculty_name || '').toLowerCase();
+
+        const remarksText = row.revision_remarks || row.chair_remarks || '';
+        const remarksBanner = st === 'revision' && remarksText
+            ? `<div class="mt-2.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                <i class="fa-solid fa-rotate-left mr-1"></i><strong>Revision Remarks:</strong> ${esc(remarksText)}
+               </div>`
+            : (row.chair_certified_by_name
+                ? `<div class="mt-2 text-xs text-emerald-700 font-medium">
+                    <i class="fa-solid fa-stamp mr-1"></i>Certified on line E2 by <strong>${esc(row.chair_certified_by_name)}</strong>${row.chair_certified_at ? ` (${esc(formatWhen(row.chair_certified_at))})` : ''}
+                   </div>`
+                : '');
+
+        const reviewHref = `form-e0-review.html?id=${encodeURIComponent(row.id)}`;
+        const actions = actionable
+            ? `
+                <a href="${reviewHref}" class="chair-btn-secondary inline-flex items-center">
+                    <i class="fa-solid fa-file-invoice mr-1.5"></i> Review Form E-0
+                </a>
+                <button type="button" class="chair-btn-approve" onclick="CiteFlowChairReview.certifyFormE0('${row.id}')">
+                    <i class="fa-solid fa-stamp mr-1"></i> Certify Correct
+                </button>
+                <button type="button" class="chair-btn-revision" onclick="CiteFlowChairReview.requestFormE0Revision('${row.id}')">
+                    <i class="fa-solid fa-rotate-left mr-1"></i> Request Revision
+                </button>
+            `
+            : `
+                <a href="${reviewHref}" class="chair-btn-secondary inline-flex items-center">
+                    <i class="fa-solid fa-file-invoice mr-1.5"></i> Open Form E-0
+                </a>
+            `;
+
+        return `
+            <article class="surface rounded-[16px] p-5 border-l-4 border-l-[#621708]">
+                <div class="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2 mb-1">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#fff0eb] text-[#621708] border border-[#fbdacf]">
+                                CHED Form E-0
+                            </span>
+                            <span class="text-xs text-slate-500 font-semibold">${esc(row.period_text || '')}</span>
+                        </div>
+                        <h3 class="font-bold text-slate-900 text-base">${esc(row.task_title)}</h3>
+                        <p class="text-sm text-slate-600 mt-0.5">
+                            <span class="font-semibold text-slate-800">${esc(row.faculty_name)}</span>${printedDiffers ? ` <span class="text-xs text-slate-500">(${esc(row.faculty_printed_name)})</span>` : ''} &middot; ${esc((row.department || chairDepartment() || '—').toUpperCase())}
+                        </p>
+                    </div>
+                    <span class="text-[11px] font-bold px-2.5 py-1 rounded-full border ${stageCls}">${esc(stageLabel)}</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-2">
+                    <span><i class="fa-solid fa-calculator mr-1 text-[#621708]"></i><strong>E9 Total Workload:</strong> ${esc(totalCredits)} credits <span class="text-slate-400">(${esc(teachingCredits)} teaching + ${esc(nonTeachingCredits)} non-teaching)</span></span>
+                    <span><i class="fa-regular fa-clock mr-1"></i><strong>Submitted:</strong> ${esc(formatWhen(row.submitted_at))}</span>
+                </div>
+                ${remarksBanner}
+                <div class="mt-3 p-3.5 rounded-xl bg-[#fbf1ef]/60 border border-[#e8d0cb] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg bg-[#621708] text-white flex items-center justify-center font-bold text-sm shrink-0">
+                            <i class="fa-solid fa-file-invoice"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-wide text-[#621708]">CTU Official 2-Page CHED Form E-0 Sheet</p>
+                            <p class="text-xs text-slate-600">Inspect schedule matrix, degrees, automatic validation checks, print, or export Excel.</p>
+                        </div>
+                    </div>
+                    <a href="${reviewHref}" class="chair-btn-secondary text-xs shrink-0 inline-flex items-center">
+                        Open Official Preview &rarr;
+                    </a>
+                </div>
+                <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100">${actions}</div>
+            </article>`;
+    }
+
+    function renderDraftFormE0Section() {
+        const drafts = scopedDraftFormE0Rows();
+        if (!drafts.length) return '';
+        const q = String(review.search || '').trim().toLowerCase();
+        const matching = q
+            ? drafts.filter((r) => [
+                r.faculty_name,
+                r.faculty_printed_name || '',
+                r.email || '',
+                r.task_title,
+                r.department,
+                r.period_text || ''
+            ].join(' ').toLowerCase().includes(q))
+            : drafts;
+        if (!matching.length) return '';
+
+        // Surface unsubmitted Form E-0 drafts when filtering Form E-0, viewing Not Submitted / All, or searching
+        const shouldShow = review.filterType === 'form_e0'
+            || review.tab === 'not_submitted'
+            || review.tab === 'department'
+            || (review.tab === 'pending' && q.length > 0);
+        if (!shouldShow) return '';
+
+        const cards = matching.map((row) => {
+            const printedDiffers = row.faculty_printed_name
+                && row.faculty_printed_name.toLowerCase() !== String(row.faculty_name || '').toLowerCase();
+            const totalCredits = Number(row.grand_total_credits || 0).toFixed(1);
+            return `
+                <div class="p-4 rounded-xl bg-amber-50/70 border border-amber-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2 mb-1">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                                Draft Form E-0 (Not Yet Submitted)
+                            </span>
+                            <span class="text-xs text-slate-500 font-semibold">${esc(row.period_text || '')}</span>
+                        </div>
+                        <p class="text-sm font-bold text-slate-900">
+                            ${esc(row.faculty_name)}${printedDiffers ? ` <span class="font-normal text-xs text-slate-500">(${esc(row.faculty_printed_name)})</span>` : ''} &middot; ${esc((row.department || chairDepartment() || '—').toUpperCase())}
+                        </p>
+                        <p class="text-xs text-slate-600 mt-0.5">
+                            Saved as draft (${esc(totalCredits)} E9 credits, last updated ${esc(formatWhen(row.updated_at || row.created_at))}). This faculty member has not clicked <strong>Submit Form E-0</strong> yet.
+                        </p>
+                    </div>
+                    <a href="form-e0-review.html?id=${encodeURIComponent(row.id)}" class="chair-btn-secondary text-xs shrink-0 inline-flex items-center">
+                        <i class="fa-regular fa-eye mr-1.5"></i> Preview Draft
+                    </a>
+                </div>`;
+        }).join('');
+
+        return `
+            <div class="mt-4 space-y-2.5">
+                <p class="text-xs font-bold uppercase tracking-wider text-amber-800">
+                    <i class="fa-solid fa-pen-ruler mr-1"></i>Form E-0 Drafts In Progress (${matching.length})
+                </p>
+                ${cards}
+            </div>`;
+    }
+
     function submissionIsMfo(row) {
+        if (row?.is_form_e0 || row?.is_ar) return false;
         const helper = wf();
         if (helper?.resolveDocumentCategory?.(row?.config) === 'MFO') return true;
         if (helper?.resolveDocumentCategory?.(row?.task) === 'MFO') return true;
@@ -846,6 +1107,9 @@
     }
 
     function renderCard(row) {
+        if (row.is_form_e0) {
+            return renderFormE0Card(row);
+        }
         if (row.is_ar) {
             return renderArCard(row);
         }
@@ -1216,9 +1480,10 @@
         const declinedRows = allSubmissionsRows.filter(isDeclined);
         const nonSubmittedRows = buildNonSubmittedRows();
 
-        const mfoRowsCount = allSubmissionsRows.filter((r) => r.is_mfo || submissionIsMfo(r)).length;
+        const formE0RowsCount = allSubmissionsRows.filter((r) => r.is_form_e0).length;
+        const mfoRowsCount = allSubmissionsRows.filter((r) => !r.is_form_e0 && (r.is_mfo || submissionIsMfo(r))).length;
         const arRowsCount = allSubmissionsRows.filter((r) => r.is_ar).length;
-        const taskRowsCount = allSubmissionsRows.filter((r) => !r.is_ar && !r.is_mfo && !submissionIsMfo(r)).length;
+        const taskRowsCount = allSubmissionsRows.filter((r) => !r.is_form_e0 && !r.is_ar && !r.is_mfo && !submissionIsMfo(r)).length;
 
         // Determine content based on active tab
         let contentHtml = '';
@@ -1247,12 +1512,13 @@
                 );
             }
 
-            contentHtml = filteredNonSubmitted.length
+            const draftE0Html = renderDraftFormE0Section();
+            contentHtml = (filteredNonSubmitted.length
                 ? `<div class="space-y-4">${filteredNonSubmitted.map(renderNonSubmittedCard).join('')}</div>`
                 : emptyState(
                     review.notSubmittedFilter === 'overdue' ? 'No Overdue Non-Submissions' : 'All Department Submissions Accounted For',
                     'All assigned faculty members in your department have completed their submissions for this category.'
-                );
+                )) + draftE0Html;
         } else {
             const tabLabels = {
                 pending: 'Pending Chairperson Approval',
@@ -1264,18 +1530,22 @@
             tabHeading = tabLabels[review.tab] || 'Department Submissions';
             tabSubtitle = review.tab === 'pending'
                 ? 'Only submissions that currently require your approval decision.'
-                : 'Review, preview, and download submitted documents and MFO reports.';
+                : 'Review, preview, and download submitted documents, CHED Form E-0, and MFO reports.';
 
             const visible = filteredRows();
+            const draftE0Html = renderDraftFormE0Section();
             contentHtml = `
                 <div class="space-y-4">
                     ${queueBlockerBanner()}
                     ${visible.length
                         ? visible.map(renderCard).join('')
-                        : emptyState(
-                            review.tab === 'pending' ? 'No submissions currently require your approval.' : 'No submissions in this view.',
-                            'New faculty submissions that need Chairperson review will appear here automatically.'
-                        )}
+                        : (draftE0Html
+                            ? ''
+                            : emptyState(
+                                review.tab === 'pending' ? 'No submissions currently require your approval.' : 'No submissions in this view.',
+                                'New faculty submissions that need Chairperson review will appear here automatically.'
+                            ))}
+                    ${draftE0Html}
                 </div>
             `;
         }
@@ -1400,6 +1670,7 @@
                     <div class="flex flex-wrap items-center gap-2 mb-4">
                         <span class="text-xs font-semibold text-slate-500 mr-1">Filter:</span>
                         <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'all' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('all')">All Submissions (${allSubmissionsRows.length})</button>
+                        <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'form_e0' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('form_e0')">Form E-0 Reports (${formE0RowsCount})</button>
                         <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'mfo' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('mfo')">MFO Reports (${mfoRowsCount})</button>
                         <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'ar' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('ar')">Accomplishment Reports (${arRowsCount})</button>
                         <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.filterType === 'tasks' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setFilterType('tasks')">Task Submissions (${taskRowsCount})</button>
@@ -1473,6 +1744,7 @@
         if (!review.access) {
             review.submissions = [];
             review.arSubmissions = [];
+            review.formE0Reports = [];
             review.files = [];
             review.filesError = null;
             review.fileActions = {};
@@ -1488,8 +1760,12 @@
         }
 
         const client = db();
+        const safeFormE0Promise = Promise.resolve()
+            .then(() => client.from('form_e0_reports').select('*').order('updated_at', { ascending: false }))
+            .catch((err) => ({ data: [], error: err }));
+
         const [
-            facultyRes, tasksRes, assignmentsRes, grantsRes, configsRes, arRes, mfoPacketsRes
+            facultyRes, tasksRes, assignmentsRes, grantsRes, configsRes, arRes, mfoPacketsRes, formE0Res
         ] = await Promise.all([
             client.from('faculty').select('id, full_name, name, department, role, position, auth_user_id, email, status'),
             client.from('wf_tasks').select('*'),
@@ -1497,10 +1773,12 @@
             client.from('wf_delegated_access').select('*'),
             client.from('wf_report_configs').select('*'),
             client.from('accomplishment_report_submissions').select('*').order('submitted_at', { ascending: false }),
-            client.from('mfo_packets').select('*').order('created_at', { ascending: false })
+            client.from('mfo_packets').select('*').order('created_at', { ascending: false }),
+            safeFormE0Promise
         ]);
 
         if (Array.isArray(mfoPacketsRes?.data)) review.mfoPackets = mfoPacketsRes.data;
+        if (Array.isArray(formE0Res?.data)) review.formE0Reports = formE0Res.data;
 
         let submissionsRes = await client.rpc('wf_list_chairperson_submissions');
         console.info('[Chairperson Queue] wf_list_chairperson_submissions response:', {
@@ -2196,10 +2474,16 @@
     function closeConsolidatedMfo(force) {
         if (typeof document === 'undefined') return;
         if (!force && review.activeConsolidatedHasUnsavedChanges) {
-            if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-                const leave = window.confirm('You have unsaved edits in this consolidated report draft. Close without saving?');
-                if (!leave) return;
-            }
+            confirmChairAction({
+                title: 'Discard Unsaved Edits?',
+                message: 'You have unsaved edits in this consolidated report draft. Close without saving?',
+                type: 'warning',
+                confirmText: 'Close Without Saving',
+                cancelText: 'Keep Editing'
+            }).then((leave) => {
+                if (leave) closeConsolidatedMfo(true);
+            });
+            return;
         }
         review.activeConsolidatedMfoTaskId = null;
         review.activeConsolidatedHasUnsavedChanges = false;
@@ -4842,8 +5126,214 @@
     }
 
 
+    function confirmChairAction({ title = 'Confirm Action', message = '', type = 'info', confirmText = 'Confirm', cancelText = 'Cancel' } = {}) {
+        if (global.CiteFlowUI?.dialog) {
+            return global.CiteFlowUI.dialog({ title, message, type, confirmText, cancelText });
+        }
+        if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+            return Promise.resolve(true);
+        }
+        return new Promise((resolve) => {
+            let root = document.getElementById('chairCustomDialogRoot');
+            if (!root) {
+                root = document.createElement('div');
+                root.id = 'chairCustomDialogRoot';
+                document.body.appendChild(root);
+            }
+            const tone = type === 'warning'
+                ? { badge: 'bg-amber-50 text-amber-600 border-amber-200', btn: 'bg-amber-600 hover:bg-amber-700 text-white', icon: 'fa-triangle-exclamation' }
+                : type === 'error'
+                    ? { badge: 'bg-rose-50 text-rose-600 border-rose-200', btn: 'bg-rose-600 hover:bg-rose-700 text-white', icon: 'fa-circle-xmark' }
+                    : { badge: 'bg-[#fbf1ef] text-[#621708] border-[#e8d0cb]', btn: 'bg-[#621708] hover:bg-[#4a1005] text-white', icon: 'fa-stamp' };
+            root.innerHTML = `
+                <div class="fixed inset-0 z-[99998] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" id="chairCustomDialogBackdrop">
+                    <div class="bg-white rounded-[2rem] shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+                        <div class="p-6 sm:p-7">
+                            <div class="flex items-start gap-4">
+                                <div class="w-11 h-11 rounded-2xl border ${tone.badge} flex items-center justify-center shrink-0 text-lg">
+                                    <i class="fa-solid ${tone.icon}"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <h3 class="text-base font-extrabold text-slate-900">${esc(title)}</h3>
+                                    <p class="text-sm text-slate-600 mt-1.5 leading-relaxed whitespace-pre-line">${esc(message)}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                            <button type="button" id="chairCustomDialogCancel" class="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-bold">${esc(cancelText)}</button>
+                            <button type="button" id="chairCustomDialogConfirm" class="px-4 py-2 rounded-xl text-xs font-bold ${tone.btn}">${esc(confirmText)}</button>
+                        </div>
+                    </div>
+                </div>`;
+            const finish = (val) => { root.innerHTML = ''; resolve(val); };
+            document.getElementById('chairCustomDialogConfirm')?.addEventListener('click', () => finish(true));
+            document.getElementById('chairCustomDialogCancel')?.addEventListener('click', () => finish(false));
+            document.getElementById('chairCustomDialogBackdrop')?.addEventListener('click', (e) => {
+                if (e.target.id === 'chairCustomDialogBackdrop') finish(false);
+            });
+        });
+    }
+
+    function promptFormE0RevisionModal(facultyName) {
+        if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+            return Promise.resolve(null);
+        }
+        return new Promise((resolve) => {
+            let root = document.getElementById('chairCustomPromptRoot');
+            if (!root) {
+                root = document.createElement('div');
+                root.id = 'chairCustomPromptRoot';
+                document.body.appendChild(root);
+            }
+            root.innerHTML = `
+                <div class="fixed inset-0 z-[99998] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" id="chairE0RevPromptBackdrop">
+                    <div class="bg-white rounded-[2rem] shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden">
+                        <div class="p-6 sm:p-7 space-y-4">
+                            <div class="flex items-start gap-4">
+                                <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0 text-lg">
+                                    <i class="fa-solid fa-rotate-left"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <h3 class="text-base font-extrabold text-slate-900">Request Form E-0 Revision</h3>
+                                    <p class="text-xs text-slate-500 mt-1">
+                                        Return ${facultyName ? `<strong>${esc(facultyName)}</strong>'s` : 'this'} CHED Form E-0 so the faculty member can revise and resubmit it.
+                                    </p>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="chairE0RevRemarksInput" class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                                    Revision Remarks <span class="text-rose-600">*</span>
+                                </label>
+                                <textarea id="chairE0RevRemarksInput" rows="4"
+                                    placeholder="Specify what should be corrected on this Form E-0 (e.g., consultation hours, degree completion status, or class schedule)..."
+                                    class="w-full rounded-2xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm text-slate-800 focus:bg-white focus:border-[#621708] outline-none"></textarea>
+                                <p id="chairE0RevRemarksError" class="hidden text-xs font-semibold text-rose-600 mt-1.5">
+                                    Please enter revision remarks before returning this Form E-0.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                            <button type="button" id="chairE0RevPromptCancel" class="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-bold">Cancel</button>
+                            <button type="button" id="chairE0RevPromptSubmit" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold">Return for Revision</button>
+                        </div>
+                    </div>
+                </div>`;
+            const input = document.getElementById('chairE0RevRemarksInput');
+            const errEl = document.getElementById('chairE0RevRemarksError');
+            const finish = (val) => { root.innerHTML = ''; resolve(val); };
+            document.getElementById('chairE0RevPromptSubmit')?.addEventListener('click', () => {
+                const val = String(input?.value || '').trim();
+                if (!val) {
+                    errEl?.classList.remove('hidden');
+                    input?.focus();
+                    return;
+                }
+                finish(val);
+            });
+            input?.addEventListener('input', () => errEl?.classList.add('hidden'));
+            document.getElementById('chairE0RevPromptCancel')?.addEventListener('click', () => finish(null));
+            document.getElementById('chairE0RevPromptBackdrop')?.addEventListener('click', (e) => {
+                if (e.target.id === 'chairE0RevPromptBackdrop') finish(null);
+            });
+            setTimeout(() => input?.focus(), 30);
+        });
+    }
+
+    async function certifyFormE0(reportId) {
+        const e0 = (review.formE0Reports || []).find((item) => String(item.id) === String(reportId));
+        if (!e0) return;
+        const row = mapFormE0Row(e0, facultyMap());
+        if (!isPending(row)) {
+            toast('This Form E-0 report is not currently awaiting Chairperson certification.', 'warn');
+            return;
+        }
+        const confirmed = await confirmChairAction({
+            title: 'Certify CHED Form E-0 (Department Chair)',
+            message: `Certify ${row.faculty_name}'s CHED Form E-0 (${row.period_text}) as correct?\n\nYour name and date will be recorded on line E2 (Department Chair), and the report will move to the College Dean for final approval.`,
+            type: 'info',
+            confirmText: 'Certify Correct',
+            cancelText: 'Cancel'
+        });
+        if (!confirmed) return;
+
+        try {
+            const client = db();
+            if (!client) throw new Error('Database client unavailable.');
+            const chairName = global.currentFaculty?.full_name || global.currentFaculty?.name || 'Department Chair';
+            const { error } = await client
+                .from('form_e0_reports')
+                .update({
+                    status: 'chair_certified',
+                    chair_certified_at: new Date().toISOString(),
+                    chair_certified_by_name: chairName
+                })
+                .eq('id', row.id);
+            if (error) throw error;
+
+            toast('CHED Form E-0 certified! Forwarded to the College Dean for final approval.', 'success');
+            await loadData();
+            render();
+            if (typeof global.fetchAllData === 'function') await global.fetchAllData();
+        } catch (err) {
+            console.error('[Form E-0 Certify]', err);
+            toast('Failed to certify Form E-0: ' + (err?.message || err), 'error');
+        }
+    }
+
+    async function requestFormE0Revision(reportId) {
+        const e0 = (review.formE0Reports || []).find((item) => String(item.id) === String(reportId));
+        if (!e0) return;
+        const row = mapFormE0Row(e0, facultyMap());
+        if (!isPending(row)) {
+            toast('This Form E-0 report is not currently awaiting Chairperson certification.', 'warn');
+            return;
+        }
+        const reason = await promptFormE0RevisionModal(row.faculty_name);
+        if (!reason) return;
+
+        try {
+            const client = db();
+            if (!client) throw new Error('Database client unavailable.');
+            const chairName = global.currentFaculty?.full_name || global.currentFaculty?.name || 'Department Chair';
+            let res = await client
+                .from('form_e0_reports')
+                .update({
+                    status: 'revision',
+                    revision_remarks: reason,
+                    revision_requested_at: new Date().toISOString(),
+                    revision_requested_by_name: chairName
+                })
+                .eq('id', row.id);
+            if (res.error && /column|schema cache|PGRST204/i.test(`${res.error.code || ''} ${res.error.message || ''}`)) {
+                res = await client
+                    .from('form_e0_reports')
+                    .update({
+                        status: 'revision',
+                        chair_remarks: reason
+                    })
+                    .eq('id', row.id);
+            }
+            if (res.error) throw res.error;
+
+            toast('Revision requested on Form E-0. The faculty member can now update and resubmit.', 'warn');
+            await loadData();
+            render();
+            if (typeof global.fetchAllData === 'function') await global.fetchAllData();
+        } catch (err) {
+            console.error('[Form E-0 Revision]', err);
+            toast('Failed to request Form E-0 revision: ' + (err?.message || err), 'error');
+        }
+    }
+
         async function updateArStatus(reportId, newStatus) {
-        if (!confirm(`Are you sure you want to mark this accomplishment report as "${newStatus.replace('_', ' ').toUpperCase()}"?`)) {
+        const confirmed = await confirmChairAction({
+            title: 'Update Accomplishment Report Status',
+            message: `Mark this accomplishment report as "${newStatus.replace('_', ' ').toUpperCase()}"?`,
+            type: 'info',
+            confirmText: 'Confirm',
+            cancelText: 'Cancel'
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -4863,7 +5353,8 @@
 
             toast(`Report status successfully updated to ${newStatus.replace('_', ' ')}.`, 'success');
             closeArReview();
-            await loadAll(); // I-refresh ang listahan
+            await loadData();
+            render();
         } catch (err) {
             console.error('Error updating AR status:', err);
             toast('Failed to update report status: ' + (err.message || err), 'error');
@@ -4877,7 +5368,14 @@
         const fac = people.get(String(ar.faculty_id));
         const facName = fac?.full_name || fac?.name || ar.faculty_name || 'Faculty';
 
-        if (!confirm(`Are you sure you want to certify the accomplishment report for ${facName}?`)) return;
+        const confirmed = await confirmChairAction({
+            title: 'Certify Accomplishment Report',
+            message: `Certify the accomplishment report submitted by ${facName}?`,
+            type: 'info',
+            confirmText: 'Certify & Approve',
+            cancelText: 'Cancel'
+        });
+        if (!confirmed) return;
 
         try {
             await wf().reviewAccomplishmentReport(db(), {
@@ -4936,8 +5434,16 @@
             return;
         }
 
+        const actionTitle = action === 'approve' ? 'Certify Accomplishment Report' : action === 'revision' ? 'Request Revision' : 'Decline Accomplishment Report';
         const actionText = action === 'approve' ? 'certify' : action === 'revision' ? 'request revision for' : 'decline';
-        if (!confirm(`Are you sure you want to ${actionText} this accomplishment report?`)) return;
+        const confirmed = await confirmChairAction({
+            title: actionTitle,
+            message: `Are you sure you want to ${actionText} this accomplishment report?`,
+            type: action === 'approve' ? 'info' : 'warning',
+            confirmText: action === 'approve' ? 'Certify & Approve' : action === 'revision' ? 'Request Revision' : 'Decline',
+            cancelText: 'Cancel'
+        });
+        if (!confirmed) return;
 
         try {
             await wf().reviewAccomplishmentReport(db(), {
@@ -5063,6 +5569,9 @@
         openArRevision,
         openArDecline,
         submitArReview,
+        certifyFormE0,
+        requestFormE0Revision,
+        scopedDraftFormE0Rows,
         previewFile: previewByKey,
         downloadFile: downloadByKey,
         closeFilePreview,

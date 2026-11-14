@@ -60,7 +60,8 @@
         { value: 'Syllabus', label: 'Syllabus' },
         { value: 'IPCR', label: 'IPCR' },
         { value: 'TOS', label: 'Table of Specifications (TOS)' },
-        { value: 'MFO', label: 'MFO (Accomplishment Report)' }
+        { value: 'MFO', label: 'MFO (Accomplishment Report)' },
+        { value: 'Form E-0', label: 'Form E-0 (Workload Report)' }
     ];
 
     const QUICK_SUBMISSION_CATEGORY_VALUES = ['Syllabus', 'DTR', 'TOS', 'IPCR', 'LDP'];
@@ -106,6 +107,7 @@
 
         if (lower.includes('table of specifications')) return 'TOS';
         if (lower.includes('major final output')) return 'MFO';
+        if (lower.includes('form e-0') || lower.includes('form e0') || lower.includes('workload report')) return 'Form E-0';
 
         const tokens = tokenizeCategorySource(raw);
         for (const cat of DOCUMENT_CATEGORIES) {
