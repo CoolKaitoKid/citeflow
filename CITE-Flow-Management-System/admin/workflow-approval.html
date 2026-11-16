@@ -10497,7 +10497,7 @@ function openConsolidatedMfoReviewModal(programPacketId) {
     // Action buttons based on review state
     const actionsDiv = document.getElementById('consolidatedMfoReviewActions');
     if (actionsDiv) {
-        const collegeBtn = `<button type="button" onclick="openCollegeMfoConsolidationModal('${packet.task_id}')" class="btn btn-ghost text-[#621708] border border-[#e8d0cb] bg-[#fbf1ef] mr-auto" title="Compile MFO reports across all COTE programs (BSIT, BSIE, BIT)">
+        const collegeBtn = `<button type="button" onclick="closeConsolidatedMfoReviewModal(); openCollegeMfoConsolidationModal('${escapeHtml(String(packet.task_id || ''))}');" class="btn btn-ghost text-[#621708] border border-[#e8d0cb] bg-[#fbf1ef] mr-auto" title="Compile MFO reports across all COTE programs (BSIT, BSIE, BIT)">
             <i class="fa-solid fa-layer-group mr-1.5"></i> Consolidate All Programs (College MFO)
         </button>`;
         let btns = collegeBtn + '<button type="button" onclick="closeConsolidatedMfoReviewModal()" class="btn btn-ghost">Close</button>';
@@ -10624,9 +10624,30 @@ async function executeConsolidatedMfoDeanReview(action) {
     }
 }
 
+function resolveConsolidatedMfoPacketState(pkt) {
+    if (!pkt) return 'not_submitted';
+    const raw = String(pkt.packet_state || pkt.status || '').trim().toLowerCase();
+    if (raw === 'approved') return 'approved';
+    if (['submitted', 'resubmitted', 'pending', 'underreview', 'in_review'].includes(raw)) return 'pending';
+    if (raw === 'revision') return 'revision';
+    if (['declined', 'rejected'].includes(raw)) return 'declined';
+    return 'not_submitted';
+}
+
+function getAllProgramMfoPackets() {
+    if (Array.isArray(workflowState?.mfoProgramPackets) && workflowState.mfoProgramPackets.length) {
+        return workflowState.mfoProgramPackets;
+    }
+    if (Array.isArray(window._mfoProgramPackets)) {
+        return window._mfoProgramPackets;
+    }
+    return [];
+}
+
 function getAllMfoTasksForCollegeConsolidation() {
-    const allTasks = Array.isArray(tasks) ? tasks : [];
-    const mfoTasks = allTasks.filter(t => isMfoReportTask(t) && !t.is_deleted);
+    const allTasks = Array.isArray(workflowState?.tasks) ? workflowState.tasks : [];
+    const packetTaskIds = new Set(getAllProgramMfoPackets().map(p => String(p.task_id || '')).filter(Boolean));
+    const mfoTasks = allTasks.filter(t => t && !t.is_deleted && (isMfoSubmission(t) || packetTaskIds.has(String(t.id))));
     mfoTasks.sort((a, b) => {
         const da = new Date(a.due_at || a.deadline_at || a.created_at || 0).getTime();
         const dbTime = new Date(b.due_at || b.deadline_at || b.created_at || 0).getTime();
@@ -10639,10 +10660,13 @@ function renderCollegeMfoProgramCards(taskId) {
     const cardsEl = document.getElementById('collegeMfoProgramCards');
     if (!cardsEl) return;
     const programs = ['BSIT', 'BSIE', 'BIT'];
-    const allPackets = Array.isArray(window._mfoProgramPackets) ? window._mfoProgramPackets : [];
+    const allPackets = getAllProgramMfoPackets();
     const matchedPackets = taskId
         ? allPackets.filter(p => String(p.task_id) === String(taskId))
         : allPackets;
+    const facDir = Array.isArray(workflowState?.facultyDirectory) && workflowState.facultyDirectory.length
+        ? workflowState.facultyDirectory
+        : (Array.isArray(workflowState?.faculty) ? workflowState.faculty : []);
 
     cardsEl.innerHTML = programs.map(dept => {
         const pkt = matchedPackets.find(p => String(p.department || p.program || '').trim().toUpperCase() === dept) || null;
@@ -10655,8 +10679,10 @@ function renderCollegeMfoProgramCards(taskId) {
         } else if (state === 'revision') {
             badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200"><i class="fa-solid fa-rotate-left mr-1"></i>For Revision</span>`;
         }
-        const chairName = pkt?.chairperson_name || 'Department Chairperson';
-        const facCount = Number(pkt?.included_faculty_count || (Array.isArray(pkt?.included_faculty_ids) ? pkt.included_faculty_ids.length : 0) || 0);
+        const chairObj = pkt?.chairperson_faculty_id
+            ? facDir.find(f => String(f.id) === String(pkt.chairperson_faculty_id))
+            : null;
+        const chairName = chairObj?.full_name || chairObj?.name || pkt?.chairperson_name || `${dept} Chairperson`;
         const actionHtml = pkt
             ? `<div class="flex items-center gap-2 shrink-0">
                 ${state !== 'approved' ? `<button type="button" onclick="sendCollegeMfoProgramReminder('${escapeHtml(dept)}', '${escapeHtml(taskId || '')}')" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100" title="Send Reminder to ${escapeHtml(dept)} Chairperson"><i class="fa-solid fa-bell mr-1"></i>Nudge</button>` : ''}
@@ -10671,7 +10697,7 @@ function renderCollegeMfoProgramCards(taskId) {
                         ${badgeHtml}
                     </div>
                     <div class="text-[11px] text-slate-500 truncate mt-0.5">
-                        ${pkt ? `${escapeHtml(chairName)} &middot; ${facCount} faculty included` : 'Compiled directly from submitted faculty MFO reports'}
+                        ${pkt ? `${escapeHtml(chairName)} &middot; Version ${Number(pkt.current_version || 1)}` : 'Compiled directly from submitted faculty MFO reports'}
                     </div>
                 </div>
                 ${actionHtml}
@@ -10687,7 +10713,9 @@ async function sendCollegeMfoProgramReminder(dept, taskId) {
     const taskObj = mfoTasks.find(t => String(t.id) === cleanTaskId) || mfoTasks[0] || null;
     const taskTitle = taskObj?.title || 'Quarterly Consolidated MFO Report';
 
-    const allFac = Array.isArray(workflowState?.faculty) ? workflowState.faculty : [];
+    const allFac = Array.isArray(workflowState?.facultyDirectory) && workflowState.facultyDirectory.length
+        ? workflowState.facultyDirectory
+        : (Array.isArray(workflowState?.faculty) ? workflowState.faculty : []);
     const deptChairs = allFac.filter(f => {
         const fDept = String(f.department || f.department_code || '').trim().toUpperCase();
         if (fDept !== cleanDept) return false;
@@ -10720,7 +10748,7 @@ async function sendCollegeMfoProgramReminder(dept, taskId) {
 async function remindUnsubmittedCollegeMfoPrograms() {
     const taskId = String(document.getElementById('collegeMfoTaskSelect')?.value || '').trim();
     const programs = ['BSIT', 'BSIE', 'BIT'];
-    const allPackets = Array.isArray(window._mfoProgramPackets) ? window._mfoProgramPackets : [];
+    const allPackets = getAllProgramMfoPackets();
     const matchedPackets = taskId ? allPackets.filter(p => String(p.task_id) === String(taskId)) : allPackets;
     const unsubmitted = programs.filter(dept => {
         const pkt = matchedPackets.find(p => String(p.department || p.program || '').trim().toUpperCase() === dept);
@@ -10741,35 +10769,40 @@ async function remindUnsubmittedCollegeMfoPrograms() {
 
 async function approveAllSubmittedCollegeMfoPrograms() {
     const taskId = String(document.getElementById('collegeMfoTaskSelect')?.value || '').trim();
-    const allPackets = Array.isArray(window._mfoProgramPackets) ? window._mfoProgramPackets : [];
+    const allPackets = getAllProgramMfoPackets();
     const matchedPackets = (taskId ? allPackets.filter(p => String(p.task_id) === String(taskId)) : allPackets)
         .filter(p => resolveConsolidatedMfoPacketState(p) !== 'approved');
 
     const nowIso = new Date().toISOString();
+    const engine = window.CiteFlowMfoConsolidation;
     let approvedCount = 0;
 
     try {
         for (const pkt of matchedPackets) {
-            const nextSummary = {
-                ...(pkt.summary_json && typeof pkt.summary_json === 'object' ? pkt.summary_json : {}),
-                dean_review_action: 'approved',
-                dean_review_remarks: 'Approved & finalized via College-Wide MFO Consolidation.',
-                dean_reviewed_by: ADMIN_NAME || 'Dean / Admin',
-                dean_reviewed_at: nowIso
-            };
+            if (engine?.applyConsolidatedMfoDeanReview) {
+                const res = await engine.applyConsolidatedMfoDeanReview({
+                    db,
+                    programPacket: pkt,
+                    action: 'approved',
+                    remarks: 'Approved & finalized via College-Wide MFO Consolidation.',
+                    actorFaculty: currentActorFaculty || null,
+                    actorName: currentActorFaculty?.full_name || ADMIN_NAME || "Dean's Office"
+                });
+                if (res?.ok) {
+                    pkt.packet_state = 'approved';
+                    approvedCount += 1;
+                    continue;
+                }
+            }
             const { error } = await db
                 .from('mfo_program_packets')
                 .update({
-                    status: 'approved',
                     packet_state: 'approved',
-                    summary_json: nextSummary,
                     updated_at: nowIso
                 })
                 .eq('id', pkt.id);
             if (!error) {
-                pkt.status = 'approved';
                 pkt.packet_state = 'approved';
-                pkt.summary_json = nextSummary;
                 approvedCount += 1;
             }
         }
