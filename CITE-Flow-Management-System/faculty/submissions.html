@@ -15,6 +15,8 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="../shared/supabase-config.js?v=auth-nav-session-1"></script>
     <script src="../shared/auth.js?v=auth-mfo-rpc-1"></script>
     <script src="../shared/workflow.js?v=auth-session-4"></script>
@@ -1748,7 +1750,7 @@ let currentFilter = 'all';
 let currentCategoryFilter = '';
 let currentSection = 'tasks';
 let currentTaskKind = 'onetime';
-let currentReportFrequency = 'monthly';
+let currentReportFrequency = 'twice_a_month';
 
 let isFetchingData = false;
 let pendingDataRefresh = false;
@@ -2984,11 +2986,1032 @@ function taskIsRecurring(task) {
     return !!(task && (task.is_recurring || task.report_config_id || task.generated_for_period));
 }
 
+function isDtrTask(task) {
+    if (!task) return false;
+    const cat = String(
+        window.CiteFlowWorkflow?.resolveDocumentCategory?.(task)
+        || task?.document_category
+        || task?.category
+        || ''
+    ).trim().toUpperCase();
+    return cat === 'DTR' || /\bdtr\b|daily time record|cs\s*form\s*(no\.?\s*)?48/i.test(task?.title || '');
+}
+
+const _dtrEditorOpenByTask = {};
+
+function getDtrStorageKey(taskId) {
+    const facId = resolveCurrentFaculty()?.id || 'anon';
+    return `citeflow_dtr_draft_${facId}_${taskId || 'default'}`;
+}
+
+function loadDtrDraftState(taskId) {
+    const now = new Date();
+    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const defaultCutoff = now.getDate() <= 15 ? '1-15' : '16-end';
+    let saved = null;
+    try {
+        const raw = localStorage.getItem(getDtrStorageKey(taskId));
+        if (raw) saved = JSON.parse(raw);
+    } catch (_) {}
+    return {
+        cutoff: saved?.cutoff || defaultCutoff,
+        month: saved?.month || defaultMonth,
+        shiftMode: saved?.shiftMode || 'day_and_evening',
+        eveningHours: saved?.eveningHours || '5:00 P.M. – 9:00 P.M. (Mon–Sat)',
+        includeSaturday: saved?.includeSaturday !== undefined ? Boolean(saved.includeSaturday) : true,
+        days: (saved?.days && typeof saved.days === 'object') ? saved.days : {}
+    };
+}
+
+function saveDtrDraftState(taskId, draft) {
+    try {
+        localStorage.setItem(getDtrStorageKey(taskId), JSON.stringify(draft));
+    } catch (_) {}
+}
+
+function syncDtrControlsToDraft(taskId) {
+    const draft = loadDtrDraftState(taskId);
+    const cutoffEl = document.getElementById('dtrCutoffSelect');
+    const monthEl = document.getElementById('dtrMonthInput');
+    const shiftEl = document.getElementById('dtrShiftPresetSelect');
+    const eveningEl = document.getElementById('dtrEveningHoursInput');
+    const satEl = document.getElementById('dtrIncludeSatCheckbox');
+    if (cutoffEl) draft.cutoff = cutoffEl.value;
+    if (monthEl) draft.month = monthEl.value;
+    if (shiftEl) draft.shiftMode = shiftEl.value;
+    if (eveningEl) draft.eveningHours = eveningEl.value;
+    if (satEl) draft.includeSaturday = Boolean(satEl.checked);
+    saveDtrDraftState(taskId, draft);
+    return draft;
+}
+
+function onDtrSettingChange(taskId) {
+    syncDtrControlsToDraft(taskId);
+    const bodyEl = document.getElementById('dtrInteractiveRowsBody');
+    if (bodyEl) {
+        bodyEl.innerHTML = buildDtrInteractiveRowsHtml(taskId);
+    }
+}
+
+function onDtrDayCellInput(taskId, day, field, value) {
+    const draft = loadDtrDraftState(taskId);
+    if (!draft.days[day]) draft.days[day] = {};
+    draft.days[day][field] = value;
+    saveDtrDraftState(taskId, draft);
+}
+
+function autoFillDtrCutoffDays(taskId) {
+    const draft = syncDtrControlsToDraft(taskId);
+    const [yrStr, moStr] = String(draft.month || '').split('-');
+    const year = parseInt(yrStr, 10) || new Date().getFullYear();
+    const monthIndex = (parseInt(moStr, 10) || (new Date().getMonth() + 1)) - 1;
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const startDay = draft.cutoff === '16-end' ? 16 : 1;
+    const endDay = draft.cutoff === '1-15' ? 15 : daysInMonth;
+
+    for (let d = 1; d <= 31; d++) {
+        if (d < startDay || d > endDay || d > daysInMonth) {
+            continue;
+        }
+        const dow = new Date(year, monthIndex, d).getDay(); // 0=Sun, 6=Sat
+        if (dow === 0 || (dow === 6 && !draft.includeSaturday)) {
+            draft.days[d] = {
+                amIn: '', amOut: '',
+                pmIn: '', pmOut: '',
+                eveIn: '', eveOut: '',
+                utHrs: '', utMin: ''
+            };
+            continue;
+        }
+        if (draft.shiftMode === 'day_only') {
+            draft.days[d] = {
+                amIn: '8:00', amOut: '12:00',
+                pmIn: '1:00', pmOut: '5:00',
+                eveIn: '', eveOut: '',
+                utHrs: '', utMin: ''
+            };
+        } else if (draft.shiftMode === 'evening_only') {
+            draft.days[d] = {
+                amIn: '', amOut: '',
+                pmIn: '1:00', pmOut: '5:00',
+                eveIn: '5:00', eveOut: '9:00',
+                utHrs: '', utMin: ''
+            };
+        } else {
+            draft.days[d] = {
+                amIn: '8:00', amOut: '12:00',
+                pmIn: '1:00', pmOut: '5:00',
+                eveIn: '5:00', eveOut: '9:00',
+                utHrs: '', utMin: ''
+            };
+        }
+    }
+    saveDtrDraftState(taskId, draft);
+    _dtrEditorOpenByTask[taskId] = true;
+    renderDetailPage();
+    toastMessage('Auto-filled active cutoff days with your regular and evening class schedule.', 'success');
+}
+
+function clearDtrCutoffDays(taskId) {
+    const draft = syncDtrControlsToDraft(taskId);
+    draft.days = {};
+    saveDtrDraftState(taskId, draft);
+    renderDetailPage();
+    toastMessage('Cleared DTR daily time entries.', 'info');
+}
+
+function toggleDtrInteractiveEditor(taskId) {
+    _dtrEditorOpenByTask[taskId] = !_dtrEditorOpenByTask[taskId];
+    renderDetailPage();
+}
+
+function buildDtrInteractiveRowsHtml(taskId) {
+    const draft = loadDtrDraftState(taskId);
+    const [yrStr, moStr] = String(draft.month || '').split('-');
+    const year = parseInt(yrStr, 10) || new Date().getFullYear();
+    const monthIndex = (parseInt(moStr, 10) || (new Date().getMonth() + 1)) - 1;
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const startDay = draft.cutoff === '16-end' ? 16 : 1;
+    const endDay = draft.cutoff === '1-15' ? 15 : daysInMonth;
+    const safeTaskId = escapeHtml(taskId || '');
+
+    let html = '';
+    for (let d = startDay; d <= endDay; d++) {
+        const dateObj = new Date(year, monthIndex, d);
+        const dow = dateObj.toLocaleString('en-US', { weekday: 'short' });
+        const isSun = dateObj.getDay() === 0;
+        const row = draft.days?.[d] || {};
+        const cellCls = 'w-full px-1.5 py-1 text-[11px] text-center rounded border border-slate-200 bg-white focus:border-[#621708] focus:outline-none';
+        html += `
+            <tr class="${isSun ? 'bg-slate-50/80 text-slate-400' : 'hover:bg-slate-50/60'} border-b border-slate-100">
+                <td class="py-1.5 px-2 font-bold text-xs whitespace-nowrap">${d} <span class="font-normal text-[10px] text-slate-400">(${dow})</span></td>
+                <td class="p-1"><input type="text" value="${escapeHtml(row.amIn || '')}" placeholder="8:00" oninput="onDtrDayCellInput('${safeTaskId}', ${d}, 'amIn', this.value)" class="${cellCls}" /></td>
+                <td class="p-1"><input type="text" value="${escapeHtml(row.amOut || '')}" placeholder="12:00" oninput="onDtrDayCellInput('${safeTaskId}', ${d}, 'amOut', this.value)" class="${cellCls}" /></td>
+                <td class="p-1"><input type="text" value="${escapeHtml(row.pmIn || '')}" placeholder="1:00" oninput="onDtrDayCellInput('${safeTaskId}', ${d}, 'pmIn', this.value)" class="${cellCls}" /></td>
+                <td class="p-1"><input type="text" value="${escapeHtml(row.pmOut || '')}" placeholder="5:00" oninput="onDtrDayCellInput('${safeTaskId}', ${d}, 'pmOut', this.value)" class="${cellCls}" /></td>
+                <td class="p-1 bg-indigo-50/30"><input type="text" value="${escapeHtml(row.eveIn || '')}" placeholder="5:00" oninput="onDtrDayCellInput('${safeTaskId}', ${d}, 'eveIn', this.value)" class="${cellCls} border-indigo-200" /></td>
+                <td class="p-1 bg-indigo-50/30"><input type="text" value="${escapeHtml(row.eveOut || '')}" placeholder="9:00" oninput="onDtrDayCellInput('${safeTaskId}', ${d}, 'eveOut', this.value)" class="${cellCls} border-indigo-200" /></td>
+                <td class="p-1"><input type="text" value="${escapeHtml(row.utHrs || '')}" placeholder="0" oninput="onDtrDayCellInput('${safeTaskId}', ${d}, 'utHrs', this.value)" class="${cellCls}" /></td>
+                <td class="p-1"><input type="text" value="${escapeHtml(row.utMin || '')}" placeholder="0" oninput="onDtrDayCellInput('${safeTaskId}', ${d}, 'utMin', this.value)" class="${cellCls}" /></td>
+            </tr>
+        `;
+    }
+    return html;
+}
+
+function renderDtrBiMonthlyScheduleCard(task) {
+    const taskId = String(task?.id || '');
+    const safeTaskId = escapeHtml(taskId);
+    const draft = loadDtrDraftState(taskId);
+    const isEditorOpen = Boolean(_dtrEditorOpenByTask[taskId]);
+    const filledDaysCount = Object.values(draft.days || {}).filter(r => r && (r.amIn || r.pmIn || r.eveIn)).length;
+
+    return `
+        <div class="surface rounded-2xl p-5 lg:p-6 border border-slate-200/80 shadow-xs">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-3">
+                    <div class="icon-box text-[#621708] bg-[#621708]/5 border-[#621708]/15">
+                        <i class="fa-solid fa-clock text-sm"></i>
+                    </div>
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="text-base font-bold text-slate-900">Bi-Monthly DTR &amp; Evening Class Schedule</h3>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fff0eb] text-[#621708] border border-[#f5d0c5]">CS Form No. 48</span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${filledDaysCount > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}">
+                                ${filledDaysCount > 0 ? `${filledDaysCount} day${filledDaysCount === 1 ? '' : 's'} filled` : 'Blank template ready'}
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-500">Fill out your Bi-Monthly cutoff (1–15 or 16–End), download as PDF, or attach &amp; submit directly to Chairperson/Dean.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1" for="dtrCutoffSelect">Bi-Monthly Cutoff Period</label>
+                    <select id="dtrCutoffSelect" onchange="onDtrSettingChange('${safeTaskId}')" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-800">
+                        <option value="1-15" ${draft.cutoff === '1-15' ? 'selected' : ''}>1st Cutoff (Days 1–15)</option>
+                        <option value="16-end" ${draft.cutoff === '16-end' ? 'selected' : ''}>2nd Cutoff (Days 16–End of Month)</option>
+                        <option value="full" ${draft.cutoff === 'full' ? 'selected' : ''}>Full Month (Days 1–31 Reference)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1" for="dtrMonthInput">DTR Month &amp; Year</label>
+                    <input type="month" id="dtrMonthInput" value="${escapeHtml(draft.month)}" onchange="onDtrSettingChange('${safeTaskId}')" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-800" />
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1" for="dtrShiftPresetSelect">Official Schedule Mode</label>
+                    <select id="dtrShiftPresetSelect" onchange="onDtrSettingChange('${safeTaskId}')" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-800">
+                        <option value="day_and_evening" ${draft.shiftMode === 'day_and_evening' ? 'selected' : ''}>Day &amp; Evening Class Schedule (8:00 AM–5:00 PM + Evening Classes)</option>
+                        <option value="evening_only" ${draft.shiftMode === 'evening_only' ? 'selected' : ''}>Evening Class Schedule Only (1:00 PM–9:00 PM / 5:00 PM–9:00 PM)</option>
+                        <option value="day_only" ${draft.shiftMode === 'day_only' ? 'selected' : ''}>Regular Day Schedule (8:00 AM–12:00 PM, 1:00 PM–5:00 PM)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1" for="dtrEveningHoursInput">Evening Class Schedule Hours</label>
+                    <input type="text" id="dtrEveningHoursInput" value="${escapeHtml(draft.eveningHours)}" oninput="onDtrSettingChange('${safeTaskId}')" placeholder="e.g., 5:00 P.M. – 9:00 P.M. (Mon–Fri)" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-800" />
+                </div>
+            </div>
+
+            <!-- Interactive Time Log Controls -->
+            <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="autoFillDtrCutoffDays('${safeTaskId}')" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold inline-flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Fill Cutoff Time Logs
+                    </button>
+                    <button type="button" onclick="toggleDtrInteractiveEditor('${safeTaskId}')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold inline-flex items-center gap-1.5 transition">
+                        <i class="fa-solid ${isEditorOpen ? 'fa-chevron-up' : 'fa-table-list'}"></i> ${isEditorOpen ? 'Hide Time Log Editor' : 'Edit Daily Time Logs'}
+                    </button>
+                    ${filledDaysCount > 0 ? `
+                    <button type="button" onclick="clearDtrCutoffDays('${safeTaskId}')" class="px-2.5 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 text-xs font-semibold transition">
+                        Clear
+                    </button>` : ''}
+                </div>
+                <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer">
+                    <input type="checkbox" id="dtrIncludeSatCheckbox" ${draft.includeSaturday ? 'checked' : ''} onchange="onDtrSettingChange('${safeTaskId}')" class="rounded border-slate-300 text-[#621708] focus:ring-[#621708]" />
+                    Include Saturday Evening/Day Classes
+                </label>
+            </div>
+
+            ${isEditorOpen ? `
+            <div class="mt-3 rounded-xl border border-slate-200 overflow-hidden">
+                <div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-slate-600">
+                    <span>Interactive Bi-Monthly DTR Log (Active Cutoff Days)</span>
+                    <span class="text-indigo-600"><i class="fa-solid fa-moon mr-1"></i>Blue columns = Evening Class Schedule</span>
+                </div>
+                <div class="overflow-x-auto max-h-80">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-100 text-[10px] font-bold uppercase text-slate-600 sticky top-0">
+                            <tr>
+                                <th class="py-2 px-2 border-b border-slate-200">Day</th>
+                                <th class="py-2 px-1 text-center border-b border-slate-200">AM In</th>
+                                <th class="py-2 px-1 text-center border-b border-slate-200">AM Out</th>
+                                <th class="py-2 px-1 text-center border-b border-slate-200">PM In</th>
+                                <th class="py-2 px-1 text-center border-b border-slate-200">PM Out</th>
+                                <th class="py-2 px-1 text-center border-b border-indigo-200 bg-indigo-50/60 text-indigo-900">Eve In</th>
+                                <th class="py-2 px-1 text-center border-b border-indigo-200 bg-indigo-50/60 text-indigo-900">Eve Out</th>
+                                <th class="py-2 px-1 text-center border-b border-slate-200">UT Hr</th>
+                                <th class="py-2 px-1 text-center border-b border-slate-200">UT Min</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dtrInteractiveRowsBody">
+                            ${buildDtrInteractiveRowsHtml(taskId)}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            ` : ''}
+
+            <!-- Action Buttons: Direct Submit, Save as PDF, Print -->
+            <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                <span class="text-[11px] text-slate-500"><i class="fa-solid fa-bolt text-amber-500 mr-1"></i><strong>Smooth Transaction:</strong> Attach &amp; submit your generated DTR PDF in one click, or save a PDF copy.</span>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="printBiMonthlyDtrWithEveningSchedule('${safeTaskId}')" class="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs transition">
+                        <i class="fa-solid fa-print"></i> Print Preview
+                    </button>
+                    <button type="button" onclick="downloadBiMonthlyDtrPdf('${safeTaskId}')" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-xs transition">
+                        <i class="fa-solid fa-file-pdf text-rose-400"></i> Save as PDF
+                    </button>
+                    <button type="button" onclick="submitGeneratedBiMonthlyDtr('${safeTaskId}')" class="px-3.5 py-2 rounded-xl bg-[#621708] hover:bg-[#4a1106] text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-xs transition">
+                        <i class="fa-solid fa-paper-plane"></i> Attach &amp; Submit DTR
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getDtrComputedPayload(taskId) {
+    const fac = resolveCurrentFaculty() || {};
+    const draft = syncDtrControlsToDraft(taskId);
+    const [yrStr, moStr] = String(draft.month || '').split('-');
+    const year = parseInt(yrStr, 10) || new Date().getFullYear();
+    const monthIndex = (parseInt(moStr, 10) || (new Date().getMonth() + 1)) - 1;
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const monthName = new Date(year, monthIndex, 1).toLocaleString('en-US', { month: 'long' });
+
+    const startDay = draft.cutoff === '16-end' ? 16 : 1;
+    const endDay = draft.cutoff === '1-15' ? 15 : daysInMonth;
+    const periodLabel = draft.cutoff === '1-15'
+        ? `${monthName} 1–15, ${year} (1st Bi-Monthly Cutoff)`
+        : (draft.cutoff === '16-end'
+            ? `${monthName} 16–${daysInMonth}, ${year} (2nd Bi-Monthly Cutoff)`
+            : `${monthName} 1–${daysInMonth}, ${year}`);
+
+    const regularHoursLabel = draft.shiftMode === 'evening_only'
+        ? '1:00 P.M. – 5:00 P.M.'
+        : '8:00 A.M. – 12:00 P.M. / 1:00 P.M. – 5:00 P.M.';
+
+    const rankText = fac.academic_rank || 'Faculty';
+    const roleText = fac.role || 'Faculty';
+    const desigText = fac.designation && fac.designation !== 'N/A' ? fac.designation : '';
+    const subtitleParts = [rankText, roleText !== rankText ? roleText : '', desigText].filter(Boolean);
+
+    const rows = [];
+    let totalUtHrs = 0;
+    let totalUtMin = 0;
+
+    for (let d = 1; d <= 31; d++) {
+        const inCutoff = d >= startDay && d <= endDay && d <= daysInMonth;
+        const dateObj = d <= daysInMonth ? new Date(year, monthIndex, d) : null;
+        const dow = dateObj ? dateObj.toLocaleString('en-US', { weekday: 'short' }) : '';
+        const entry = inCutoff ? (draft.days?.[d] || {}) : {};
+        const hrs = parseInt(entry.utHrs, 10);
+        const mins = parseInt(entry.utMin, 10);
+        if (Number.isFinite(hrs)) totalUtHrs += hrs;
+        if (Number.isFinite(mins)) totalUtMin += mins;
+
+        rows.push({
+            day: d,
+            dow,
+            inCutoff,
+            amIn: entry.amIn || '',
+            amOut: entry.amOut || '',
+            pmIn: entry.pmIn || '',
+            pmOut: entry.pmOut || '',
+            eveIn: entry.eveIn || '',
+            eveOut: entry.eveOut || '',
+            utHrs: entry.utHrs || '',
+            utMin: entry.utMin || ''
+        });
+    }
+
+    if (totalUtMin >= 60) {
+        totalUtHrs += Math.floor(totalUtMin / 60);
+        totalUtMin = totalUtMin % 60;
+    }
+
+    const cleanName = String(fac.full_name || 'Faculty').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const fileName = `CS_Form_48_DTR_${cleanName}_${draft.month}_${draft.cutoff}.pdf`;
+
+    return {
+        fac,
+        draft,
+        year,
+        monthName,
+        daysInMonth,
+        startDay,
+        endDay,
+        periodLabel,
+        regularHoursLabel,
+        subtitleText: subtitleParts.join(' · ') || 'Faculty',
+        rows,
+        totalUtHrs: totalUtHrs > 0 ? String(totalUtHrs) : '',
+        totalUtMin: totalUtMin > 0 ? String(totalUtMin) : '',
+        fileName
+    };
+}
+
+function buildBiMonthlyDtrPdfDoc(taskId) {
+    const jspdfNs = window.jspdf;
+    if (!jspdfNs || !jspdfNs.jsPDF) {
+        throw new Error('PDF generator library is still loading. Please try again in a moment.');
+    }
+    const payload = getDtrComputedPayload(taskId);
+    const { fac, draft, periodLabel, regularHoursLabel, subtitleText, rows, totalUtHrs, totalUtMin } = payload;
+
+    const doc = new jspdfNs.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 36;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text('Civil Service Form No. 48', margin, 32);
+    doc.text('CITE-Flow Bi-Monthly DTR (Day & Evening Schedule)', pageWidth - margin, 32, { align: 'right' });
+
+    doc.setFontSize(13);
+    doc.text('DAILY TIME RECORD', pageWidth / 2, 50, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text('-----o0o-----', pageWidth / 2, 61, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11.5);
+    const facName = String(fac.full_name || 'FACULTY MEMBER').toUpperCase();
+    doc.text(facName, pageWidth / 2, 78, { align: 'center' });
+    doc.setLineWidth(0.8);
+    doc.line(margin + 60, 82, pageWidth - margin - 60, 82);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(`(Name) · ${subtitleText}`, pageWidth / 2, 93, { align: 'center' });
+
+    // Schedule Metadata Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(margin, 102, pageWidth - margin * 2, 34, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(`Bi-Monthly Period: ${periodLabel}`, margin + 8, 115);
+    doc.text(`Department: ${fac.department || 'COTE'}`, pageWidth / 2 + 20, 115);
+    doc.text(`Regular Hours: ${regularHoursLabel}`, margin + 8, 128);
+    doc.text(`Evening Class Schedule: ${draft.shiftMode === 'day_only' ? 'N/A' : draft.eveningHours}`, pageWidth / 2 + 20, 128);
+
+    const tableBody = rows.map(r => [
+        `${r.day}${r.dow ? ` (${r.dow})` : ''}`,
+        r.amIn, r.amOut,
+        r.pmIn, r.pmOut,
+        r.eveIn, r.eveOut,
+        r.utHrs, r.utMin
+    ]);
+
+    doc.autoTable({
+        startY: 144,
+        margin: { left: margin, right: margin },
+        head: [
+            [
+                { content: 'Day', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+                { content: 'A.M.', colSpan: 2, styles: { halign: 'center' } },
+                { content: 'P.M.', colSpan: 2, styles: { halign: 'center' } },
+                { content: 'Evening Class Schedule', colSpan: 2, styles: { halign: 'center', fillColor: [238, 242, 255], textColor: [49, 46, 129] } },
+                { content: 'Undertime', colSpan: 2, styles: { halign: 'center' } }
+            ],
+            ['Arrival', 'Departure', 'Arrival', 'Departure', 'Arrival', 'Departure', 'Hours', 'Minutes']
+        ],
+        body: tableBody,
+        foot: [[
+            { content: 'TOTAL', colSpan: 7, styles: { halign: 'right', fontStyle: 'bold' } },
+            { content: totalUtHrs, styles: { halign: 'center', fontStyle: 'bold' } },
+            { content: totalUtMin, styles: { halign: 'center', fontStyle: 'bold' } }
+        ]],
+        theme: 'grid',
+        styles: {
+            font: 'helvetica',
+            fontSize: 7.5,
+            cellPadding: 2.2,
+            lineColor: [17, 24, 39],
+            lineWidth: 0.4,
+            textColor: [17, 24, 39],
+            halign: 'center'
+        },
+        headStyles: {
+            fillColor: [241, 245, 249],
+            textColor: [17, 24, 39],
+            fontStyle: 'bold',
+            fontSize: 7.5
+        },
+        footStyles: {
+            fillColor: [241, 245, 249],
+            textColor: [17, 24, 39],
+            fontStyle: 'bold',
+            fontSize: 7.5
+        },
+        columnStyles: {
+            0: { cellWidth: 58, fontStyle: 'bold' }
+        },
+        didParseCell(data) {
+            if (data.section === 'body') {
+                const r = rows[data.row.index];
+                if (r && !r.inCutoff) {
+                    data.cell.styles.fillColor = [248, 250, 252];
+                    data.cell.styles.textColor = [148, 163, 184];
+                }
+            }
+        }
+    });
+
+    const finalY = (doc.lastAutoTable?.finalY || 680) + 14;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    const certText = 'I CERTIFY on my honor that the above is a true and correct report of the hours of work performed (including official Evening Class Schedule), record of which was made daily at the time of arrival and departure from office.';
+    const splitCert = doc.splitTextToSize(certText, pageWidth - margin * 2);
+    doc.text(splitCert, margin, finalY);
+
+    const sigY = finalY + 38;
+    doc.setLineWidth(0.7);
+    doc.line(margin, sigY, margin + 210, sigY);
+    doc.line(pageWidth - margin - 230, sigY, pageWidth - margin, sigY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(String(fac.full_name || 'Faculty Signature'), margin + 105, sigY + 11, { align: 'center' });
+    doc.text('Verified as to the prescribed office / evening class hours', pageWidth - margin - 115, sigY + 11, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('Faculty Member', margin + 105, sigY + 21, { align: 'center' });
+    doc.text('Department Chairperson / Dean', pageWidth - margin - 115, sigY + 21, { align: 'center' });
+
+    return { doc, payload };
+}
+
+function downloadBiMonthlyDtrPdf(taskId) {
+    try {
+        const { doc, payload } = buildBiMonthlyDtrPdfDoc(taskId);
+        doc.save(payload.fileName);
+        toastMessage(`Saved ${payload.fileName}`, 'success');
+    } catch (err) {
+        console.error(err);
+        toastMessage(err?.message || 'Unable to generate PDF.', 'error');
+    }
+}
+window.downloadBiMonthlyDtrPdf = downloadBiMonthlyDtrPdf;
+
+async function submitGeneratedBiMonthlyDtr(taskId) {
+    try {
+        const task = getTaskById(taskId);
+        const faculty = resolveCurrentFaculty();
+        const submission = faculty ? getSubmission(taskId, faculty.id) : null;
+        if (isFileManagementLocked(submission, task)) {
+            toastMessage(fileLockMessage(submission, task), 'error');
+            return;
+        }
+        const { doc, payload } = buildBiMonthlyDtrPdfDoc(taskId);
+        const blob = doc.output('blob');
+        const pdfFile = new File([blob], payload.fileName, { type: 'application/pdf' });
+
+        // Attach to task draft uploads and submit immediately through workflow
+        const existingDrafts = getDraftFiles(taskId).filter(f => f.name !== payload.fileName);
+        draftUploads[taskId] = existingDrafts.concat([pdfFile]);
+        selectedTaskId = String(taskId);
+        renderDetailPage();
+        await submitTask(taskId);
+    } catch (err) {
+        console.error(err);
+        toastMessage(err?.message || 'Unable to attach and submit DTR.', 'error');
+    }
+}
+window.submitGeneratedBiMonthlyDtr = submitGeneratedBiMonthlyDtr;
+
+function printBiMonthlyDtrWithEveningSchedule(taskId) {
+    const payload = getDtrComputedPayload(taskId);
+    const { fac, draft, periodLabel, regularHoursLabel, subtitleText, rows, totalUtHrs, totalUtMin } = payload;
+
+    let rowsHtml = '';
+    rows.forEach(r => {
+        const mutedStyle = r.inCutoff ? '' : 'background:#f8fafc;color:#94a3b8;';
+        rowsHtml += `
+            <tr style="${mutedStyle}">
+                <td style="text-align:center;font-weight:700;">${r.day}${r.dow ? ` <span style="font-weight:400;font-size:9px;">(${r.dow})</span>` : ''}</td>
+                <td style="text-align:center;">${escapeHtml(r.amIn)}</td><td style="text-align:center;">${escapeHtml(r.amOut)}</td>
+                <td style="text-align:center;">${escapeHtml(r.pmIn)}</td><td style="text-align:center;">${escapeHtml(r.pmOut)}</td>
+                <td style="text-align:center;">${escapeHtml(r.eveIn)}</td><td style="text-align:center;">${escapeHtml(r.eveOut)}</td>
+                <td style="text-align:center;">${escapeHtml(r.utHrs)}</td><td style="text-align:center;">${escapeHtml(r.utMin)}</td>
+            </tr>
+        `;
+    });
+
+    const safeTaskId = escapeHtml(taskId || '');
+    const html = [
+        '<!DOCTYPE html>',
+        '<' + 'html>',
+        '<' + 'head>',
+        '<meta charset="utf-8">',
+        `<title>CS Form No. 48 - Bi-Monthly DTR (${escapeHtml(fac.full_name || 'Faculty')})</title>`,
+        '<' + 'style>',
+        '  body { font-family: Arial, sans-serif; color: #111827; margin: 18px; font-size: 11px; }',
+        '  .dtr-sheet { max-width: 720px; margin: 0 auto; border: 1.5px solid #111827; padding: 16px 20px; }',
+        '  .header-meta { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; }',
+        '  h1 { text-align: center; font-size: 15px; margin: 6px 0 2px; letter-spacing: 0.04em; }',
+        '  .sub { text-align: center; font-size: 10px; margin-bottom: 10px; }',
+        '  .name-box { text-align: center; border-bottom: 1.5px solid #111827; font-weight: 700; font-size: 13px; padding-bottom: 2px; margin: 8px 40px 2px; text-transform: uppercase; }',
+        '  .name-caption { text-align: center; font-size: 9.5px; margin-bottom: 10px; }',
+        '  .schedule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 10.5px; margin-bottom: 10px; padding: 6px 10px; background: #f8fafc; border: 1px solid #cbd5e1; }',
+        '  table { width: 100%; border-collapse: collapse; font-size: 10px; }',
+        '  th, td { border: 1px solid #111827; padding: 3px 4px; height: 15px; }',
+        '  th { background: #f1f5f9; font-weight: 700; text-align: center; }',
+        '  .cert { margin-top: 10px; font-size: 10px; line-height: 1.35; }',
+        '  .sig-row { display: flex; justify-content: space-between; gap: 24px; margin-top: 22px; text-align: center; }',
+        '  .sig-col { flex: 1; border-top: 1px solid #111827; padding-top: 3px; font-size: 10px; }',
+        '  @media print { .no-print { display: none !important; } body { margin: 0; } }',
+        '</' + 'style>',
+        '</' + 'head>',
+        '<' + 'body>',
+        '  <div class="no-print" style="max-width:720px;margin:0 auto 12px;display:flex;justify-content:flex-end;gap:8px;">',
+        `    <button onclick="if(window.opener && window.opener.downloadBiMonthlyDtrPdf){ window.opener.downloadBiMonthlyDtrPdf('${safeTaskId}'); }" style="background:#0f172a;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-weight:700;cursor:pointer;">Save as PDF (Download)</button>`,
+        '    <button onclick="window.print()" style="background:#621708;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-weight:700;cursor:pointer;">Print DTR</button>',
+        '  </div>',
+        '  <div class="dtr-sheet">',
+        '    <div class="header-meta">',
+        '      <span>Civil Service Form No. 48</span>',
+        '      <span>CITE-Flow Bi-Monthly DTR (Day &amp; Evening Schedule)</span>',
+        '    </div>',
+        '    <h1>DAILY TIME RECORD</h1>',
+        '    <div class="sub">-----o0o-----</div>',
+        `    <div class="name-box">${escapeHtml(fac.full_name || 'FACULTY MEMBER')}</div>`,
+        `    <div class="name-caption">(Name) &middot; ${escapeHtml(subtitleText)}</div>`,
+        '    <div class="schedule-grid">',
+        `      <div><strong>Bi-Monthly Period:</strong> ${escapeHtml(periodLabel)}</div>`,
+        `      <div><strong>Department:</strong> ${escapeHtml(fac.department || 'COTE')}</div>`,
+        `      <div><strong>Regular Hours:</strong> ${escapeHtml(regularHoursLabel)}</div>`,
+        `      <div><strong>Evening Class Schedule:</strong> ${escapeHtml(draft.shiftMode === 'day_only' ? 'N/A' : draft.eveningHours)}</div>`,
+        '    </div>',
+        '    <table>',
+        '      <thead>',
+        '        <tr>',
+        '          <th rowspan="2" style="width:68px;">Day</th>',
+        '          <th colspan="2">A.M.</th>',
+        '          <th colspan="2">P.M.</th>',
+        '          <th colspan="2">Evening Class Schedule</th>',
+        '          <th colspan="2">Undertime</th>',
+        '        </tr>',
+        '        <tr>',
+        '          <th>Arrival</th><th>Departure</th>',
+        '          <th>Arrival</th><th>Departure</th>',
+        '          <th>Arrival</th><th>Departure</th>',
+        '          <th>Hours</th><th>Minutes</th>',
+        '        </tr>',
+        '      </thead>',
+        `      <tbody>${rowsHtml}</tbody>`,
+        '      <tfoot>',
+        '        <tr>',
+        '          <th colspan="7" style="text-align:right;padding-right:8px;">TOTAL</th>',
+        `          <th>${escapeHtml(totalUtHrs)}</th><th>${escapeHtml(totalUtMin)}</th>`,
+        '        </tr>',
+        '      </tfoot>',
+        '    </table>',
+        '    <div class="cert">',
+        '      I CERTIFY on my honor that the above is a true and correct report of the hours of work performed (including official Evening Class Schedule), record of which was made daily at the time of arrival and departure from office.',
+        '    </div>',
+        '    <div class="sig-row">',
+        `      <div class="sig-col"><strong>${escapeHtml(fac.full_name || 'Faculty Signature')}</strong><br/>Faculty Member</div>`,
+        '      <div class="sig-col"><strong>Verified as to the prescribed office / evening class hours</strong><br/>Department Chairperson / Dean</div>',
+        '    </div>',
+        '  </div>',
+        '</' + 'body>',
+        '</' + 'html>'
+    ].join('\n');
+
+    const win = window.open('', '_blank', 'width=850,height=920');
+    if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+    } else {
+        toastMessage('Please allow pop-ups to open the printable Bi-Monthly DTR.', 'warn');
+    }
+}
+window.printBiMonthlyDtrWithEveningSchedule = printBiMonthlyDtrWithEveningSchedule;
+
+function resolveInstitutionalFormType(task) {
+    if (!task) return '';
+    const category = String(
+        window.CiteFlowWorkflow?.resolveDocumentCategory?.(task)
+        || task?.document_category
+        || task?.category
+        || ''
+    ).trim().toUpperCase();
+    const title = String(task?.title || '');
+    if (category === 'IPCR' || /\bipcr\b|individual performance commitment/i.test(title)) return 'IPCR';
+    if (category === 'LDP' || /\bldp\b|learning development plan/i.test(title)) return 'LDP';
+    if (category === 'IDP' || /\bidp\b|institutional development plan/i.test(title)) return 'IDP';
+    return '';
+}
+
+function isInstitutionalFormTask(task) {
+    return Boolean(resolveInstitutionalFormType(task));
+}
+
+function getInstitutionalFormStorageKey(taskId, formType) {
+    const fId = String(resolveCurrentFaculty()?.id || 'anon');
+    return `citeflow_inst_form_v1_${formType}_${fId}_${String(taskId || 'default')}`;
+}
+
+function getDefaultInstitutionalFormRows(formType, faculty) {
+    const rank = faculty?.academic_rank || faculty?.position || 'Instructor I';
+    const dept = faculty?.department || 'BSIT';
+    if (formType === 'IPCR') {
+        return [
+            { area: 'Instruction (Core Function)', target: 'Deliver 100% of assigned course syllabi, instructional materials, and timely grade sheets for ' + dept + '.', accomplishment: 'Completed 100% of instructional delivery, course syllabi, and student evaluations on schedule.', q: '5', e: '5', t: '5', remarks: 'Exceeded target' },
+            { area: 'Research & Innovation', target: 'Produce at least 1 research proposal / paper or capstone mentorship output per semester.', accomplishment: 'Mentored student capstone/research groups and completed departmental research deliverables.', q: '5', e: '4', t: '5', remarks: 'Completed on time' },
+            { area: 'Extension & Community Involvement', target: 'Participate in at least 1 college/department extension or technical training program.', accomplishment: 'Served as resource person / facilitator in CITE community extension & seminar activities.', q: '4', e: '5', t: '5', remarks: 'Verified with certificates' },
+            { area: 'Support / Institutional Compliance', target: 'Submit required statutory reports (Form E-0, MFO, Bi-Monthly DTR) accurately before deadline.', accomplishment: 'Submitted all required statutory and departmental compliance deliverables via CITE-Flow.', q: '5', e: '5', t: '5', remarks: '100% compliant' }
+        ];
+    }
+    if (formType === 'LDP') {
+        return [
+            { competency: 'Advanced Pedagogical & Outcome-Based Education (OBE) Delivery', activity: 'Attend CHED / University Faculty Development Workshop on OBE Assessment & Digital Pedagogy', timeframe: '1st – 2nd Semester (Current AY)', resources: 'University Faculty Development Fund / CITE Seminar Budget', indicator: 'Certificate of Completion & updated OBE course syllabus (' + rank + ')' },
+            { competency: 'Specialized Technical & Industry Certification (' + dept + ')', activity: 'Complete industry-recognized certification or specialized technical training in ' + dept, timeframe: 'Mid-Year / Semestral Break', resources: 'Continuing Professional Development (CPD) Grant', indicator: 'Industry Certification / Training Portfolio uploaded to Document Vault' },
+            { competency: 'Research Publication & Intellectual Property Capacity', activity: 'Participate in Research Ethics, Grant Writing, and Peer-Reviewed Publication Bootcamps', timeframe: 'Annual Cycle', resources: 'University Research & Extension Office Support', indicator: '1 submitted manuscript or registered utility model / software copyright' }
+        ];
+    }
+    return [
+        { kra: 'KRA 1: Instructional Excellence & Curriculum Modernization', objective: 'Align ' + dept + ' course offerings and laboratory modules with industry and CHED PSG standards.', strategy: 'Periodic curriculum review, laboratory syllabus upgrading, and peer teaching mentorship.', timeline: 'Annual (' + new Date().getFullYear() + ')', budget: 'College Operational & Lab Upgrading Allocation', output: '100% updated course & laboratory syllabi across ' + dept },
+        { kra: 'KRA 2: Faculty Qualification & Professional Upgrading', objective: 'Increase percentage of faculty with advanced degrees, CPD units, and industry certifications.', strategy: 'Support faculty graduate studies, technical seminars, and LDP implementation.', timeline: 'Annual (' + new Date().getFullYear() + ')', budget: 'Faculty Development Fund', output: 'Updated Faculty Qualification Matrix & Seminar Feedback records' },
+        { kra: 'KRA 3: Research, Innovation & Community Extension', objective: 'Strengthen applied technology research and sustainable community extension programs in CITE.', strategy: 'Collaborative faculty-student research projects and partner-community technology transfer.', timeline: 'Annual (' + new Date().getFullYear() + ')', budget: 'Research & Extension Institutional Fund', output: 'Completed Quarterly MFO & Extension Accomplishment Reports' }
+    ];
+}
+
+function loadInstitutionalFormDraft(taskId, formType) {
+    const faculty = resolveCurrentFaculty() || {};
+    const defaultRows = getDefaultInstitutionalFormRows(formType, faculty);
+    try {
+        const raw = localStorage.getItem(getInstitutionalFormStorageKey(taskId, formType));
+        if (!raw) return { rows: defaultRows, summaryNotes: '' };
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.rows) && parsed.rows.length) {
+            return { rows: parsed.rows, summaryNotes: String(parsed.summaryNotes || '') };
+        }
+    } catch (_) {}
+    return { rows: defaultRows, summaryNotes: '' };
+}
+
+function saveInstitutionalFormDraftFromDom(taskId) {
+    const task = state.tasks.find(t => String(t.id) === String(taskId));
+    const formType = resolveInstitutionalFormType(task);
+    if (!formType) return null;
+    const container = document.getElementById(`inst-form-builder-${taskId}`);
+    if (!container) return loadInstitutionalFormDraft(taskId, formType);
+
+    const rowEls = Array.from(container.querySelectorAll('[data-inst-row]'));
+    const rows = rowEls.map(rowEl => {
+        if (formType === 'IPCR') {
+            return {
+                area: rowEl.querySelector('[data-field="area"]')?.value || '',
+                target: rowEl.querySelector('[data-field="target"]')?.value || '',
+                accomplishment: rowEl.querySelector('[data-field="accomplishment"]')?.value || '',
+                q: rowEl.querySelector('[data-field="q"]')?.value || '5',
+                e: rowEl.querySelector('[data-field="e"]')?.value || '5',
+                t: rowEl.querySelector('[data-field="t"]')?.value || '5',
+                remarks: rowEl.querySelector('[data-field="remarks"]')?.value || ''
+            };
+        }
+        if (formType === 'LDP') {
+            return {
+                competency: rowEl.querySelector('[data-field="competency"]')?.value || '',
+                activity: rowEl.querySelector('[data-field="activity"]')?.value || '',
+                timeframe: rowEl.querySelector('[data-field="timeframe"]')?.value || '',
+                resources: rowEl.querySelector('[data-field="resources"]')?.value || '',
+                indicator: rowEl.querySelector('[data-field="indicator"]')?.value || ''
+            };
+        }
+        return {
+            kra: rowEl.querySelector('[data-field="kra"]')?.value || '',
+            objective: rowEl.querySelector('[data-field="objective"]')?.value || '',
+            strategy: rowEl.querySelector('[data-field="strategy"]')?.value || '',
+            timeline: rowEl.querySelector('[data-field="timeline"]')?.value || '',
+            budget: rowEl.querySelector('[data-field="budget"]')?.value || '',
+            output: rowEl.querySelector('[data-field="output"]')?.value || ''
+        };
+    });
+    const summaryNotes = container.querySelector('[data-field="summaryNotes"]')?.value || '';
+    const payload = { rows, summaryNotes, updatedAt: new Date().toISOString() };
+    try {
+        localStorage.setItem(getInstitutionalFormStorageKey(taskId, formType), JSON.stringify(payload));
+    } catch (_) {}
+    return payload;
+}
+window.saveInstitutionalFormDraftFromDom = saveInstitutionalFormDraftFromDom;
+
+function autoFillInstitutionalForm(taskId) {
+    const task = state.tasks.find(t => String(t.id) === String(taskId));
+    const formType = resolveInstitutionalFormType(task);
+    if (!formType) return;
+    const faculty = resolveCurrentFaculty() || {};
+    const freshRows = getDefaultInstitutionalFormRows(formType, faculty);
+    const e0Credits = state.myFormE0?.grand_total_credits ? `${Number(state.myFormE0.grand_total_credits).toFixed(1)} Form E-0 load credits` : 'assigned teaching & administrative load';
+    const summaryNotes = formType === 'IPCR'
+        ? `Auto-populated from CITE-Flow profile (${faculty.name || 'Faculty'}, ${faculty.academic_rank || faculty.position || 'Instructor'}, ${faculty.department || 'CITE'}) with ${e0Credits}.`
+        : formType === 'LDP'
+        ? `Aligned with ${faculty.department || 'CITE'} faculty competency targets and CHED continuing professional development standards.`
+        : `Aligned with College of Information Technology and Engineering (CITE) institutional development priorities for ${faculty.department || 'CITE'}.`;
+    try {
+        localStorage.setItem(getInstitutionalFormStorageKey(taskId, formType), JSON.stringify({ rows: freshRows, summaryNotes }));
+    } catch (_) {}
+    renderDetailPage();
+    toastMessage(`${formType} form auto-filled from your faculty profile & workload records.`);
+}
+window.autoFillInstitutionalForm = autoFillInstitutionalForm;
+
+function buildInstitutionalFormPdfDoc(taskId) {
+    const task = state.tasks.find(t => String(t.id) === String(taskId)) || { id: taskId, title: 'Institutional Report' };
+    const formType = resolveInstitutionalFormType(task) || 'IPCR';
+    const draft = saveInstitutionalFormDraftFromDom(taskId) || loadInstitutionalFormDraft(taskId, formType);
+    const faculty = resolveCurrentFaculty() || {};
+    const facultyName = faculty.name || [faculty.first_name, faculty.last_name].filter(Boolean).join(' ') || 'Faculty Member';
+    const rankLabel = [faculty.academic_rank || faculty.position || 'Faculty', faculty.designation || ''].filter(Boolean).join(' / ');
+    const department = faculty.department || 'CITE';
+    const periodLabel = getReportingPeriodText(task) || String(new Date().getFullYear());
+
+    const JsPDFCtor = window.jspdf?.jsPDF || window.jsPDF;
+    if (!JsPDFCtor) {
+        toastMessage('PDF generator is still loading. Please try again.');
+        return null;
+    }
+
+    const doc = new JsPDFCtor({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(98, 23, 8);
+    doc.text('COLLEGE OF INFORMATION TECHNOLOGY AND ENGINEERING (CITE)', pageWidth / 2, 34, { align: 'center' });
+
+    const titleMap = {
+        IPCR: 'INDIVIDUAL PERFORMANCE COMMITMENT AND REVIEW (IPCR)',
+        LDP: 'FACULTY LEARNING AND DEVELOPMENT PLAN (LDP)',
+        IDP: 'INSTITUTIONAL DEVELOPMENT PLAN (IDP) — DEPARTMENT MATRIX'
+    };
+    doc.setFontSize(14);
+    doc.setTextColor(15, 23, 42);
+    doc.text(titleMap[formType] || task.title, pageWidth / 2, 54, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`Faculty: ${facultyName.toUpperCase()}   |   Rank / Designation: ${rankLabel}   |   Department: ${department}   |   Period: ${periodLabel}`, pageWidth / 2, 72, { align: 'center' });
+
+    let head = [];
+    let body = [];
+    if (formType === 'IPCR') {
+        head = [['MFO / Performance Area', 'Success Indicators (Targets + Measures)', 'Actual Accomplishments', 'Q', 'E', 'T', 'Ave', 'Remarks']];
+        body = (draft.rows || []).map(r => {
+            const q = Number(r.q) || 5;
+            const e = Number(r.e) || 5;
+            const t = Number(r.t) || 5;
+            const ave = ((q + e + t) / 3).toFixed(2);
+            return [r.area || '', r.target || '', r.accomplishment || '', String(q), String(e), String(t), ave, r.remarks || ''];
+        });
+    } else if (formType === 'LDP') {
+        head = [['Target Competency / Area', 'Learning & Development Intervention', 'Target Timeframe', 'Resources Needed', 'Success Indicator / Expected Output']];
+        body = (draft.rows || []).map(r => [r.competency || '', r.activity || '', r.timeframe || '', r.resources || '', r.indicator || '']);
+    } else {
+        head = [['Key Result Area (KRA)', 'Institutional Objective', 'Action Strategy / Initiative', 'Timeline', 'Resource / Budget Source', 'Expected Institutional Output']];
+        body = (draft.rows || []).map(r => [r.kra || '', r.objective || '', r.strategy || '', r.timeline || '', r.budget || '', r.output || '']);
+    }
+
+    if (typeof doc.autoTable === 'function') {
+        doc.autoTable({
+            startY: 88,
+            head,
+            body,
+            theme: 'grid',
+            styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 6, textColor: [15, 23, 42], lineColor: [203, 213, 225], lineWidth: 0.6 },
+            headStyles: { fillColor: [98, 23, 8], textColor: [255, 255, 255], fontStyle: 'bold' }
+        });
+    }
+
+    const finalY = (doc.lastAutoTable?.finalY || 260) + 20;
+    if (draft.summaryNotes) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text('Summary Notes / Context:', 40, finalY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(draft.summaryNotes), 40, finalY + 14, { maxWidth: pageWidth - 80 });
+    }
+
+    const sigY = Math.min(doc.internal.pageSize.getHeight() - 45, finalY + (draft.summaryNotes ? 58 : 34));
+    doc.setDrawColor(71, 85, 105);
+    doc.line(60, sigY, 260, sigY);
+    doc.line(pageWidth - 260, sigY, pageWidth - 60, sigY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text(facultyName.toUpperCase(), 160, sigY - 5, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text('Faculty Member (Signature over Printed Name)', 160, sigY + 12, { align: 'center' });
+    doc.text('Reviewed & Approved by: Department Chairperson / Dean', pageWidth - 160, sigY + 12, { align: 'center' });
+
+    const safeName = facultyName.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'Faculty';
+    const safePeriod = periodLabel.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'Cycle';
+    const fileName = `${formType}_${safeName}_${safePeriod}.pdf`;
+
+    return { doc, fileName, formType, facultyName, periodLabel, draft };
+}
+
+function downloadInstitutionalFormPdf(taskId) {
+    const built = buildInstitutionalFormPdfDoc(taskId);
+    if (!built) return;
+    built.doc.save(built.fileName);
+    toastMessage(`Saved ${built.fileName} to your device.`);
+}
+window.downloadInstitutionalFormPdf = downloadInstitutionalFormPdf;
+
+async function submitGeneratedInstitutionalForm(taskId) {
+    const built = buildInstitutionalFormPdfDoc(taskId);
+    if (!built) return;
+    const pdfBlob = built.doc.output('blob');
+    const pdfFile = new File([pdfBlob], built.fileName, { type: 'application/pdf', lastModified: Date.now() });
+    const existing = draftUploads[taskId] || [];
+    const filtered = existing.filter(f => !String(f.name || '').startsWith(`${built.formType}_`));
+    draftUploads[taskId] = [...filtered, pdfFile];
+    renderDetailPage();
+    await submitTask(taskId);
+}
+window.submitGeneratedInstitutionalForm = submitGeneratedInstitutionalForm;
+
+function printInstitutionalFormPreview(taskId) {
+    const built = buildInstitutionalFormPdfDoc(taskId);
+    if (!built) return;
+    const blobUrl = built.doc.output('bloburl');
+    window.open(blobUrl, '_blank');
+}
+window.printInstitutionalFormPreview = printInstitutionalFormPreview;
+
+function renderInstitutionalFormBuilderCard(task) {
+    const formType = resolveInstitutionalFormType(task);
+    if (!formType) return '';
+    const draft = loadInstitutionalFormDraft(task.id, formType);
+    const metaByType = {
+        IPCR: {
+            badge: 'Semi-Annual Performance Review · CSC SPMS Format',
+            title: 'Guided IPCR Builder (Individual Performance Commitment & Review)',
+            desc: 'Fill out your targets, actual accomplishments, and self-ratings (Quality, Efficiency, Timeliness), then save as PDF or attach & submit in one click.'
+        },
+        LDP: {
+            badge: 'Annual Faculty Development · Competency Matrix',
+            title: 'Guided LDP Builder (Learning & Development Plan)',
+            desc: 'Document your target competencies, planned training/seminars, resources needed, and expected outputs, then generate an official PDF.'
+        },
+        IDP: {
+            badge: 'Annual Institutional Planning · CITE KRA Matrix',
+            title: 'Guided IDP Builder (Institutional Development Plan)',
+            desc: 'Outline your Key Result Areas (KRAs), institutional objectives, action strategies, and expected deliverables, then generate & submit your PDF.'
+        }
+    }[formType];
+
+    const rowsHtml = (draft.rows || []).map((r, idx) => {
+        if (formType === 'IPCR') {
+            return `
+                <tr data-inst-row="${idx}" class="border-b border-slate-200/80">
+                    <td class="p-2 align-top"><input data-field="area" type="text" value="${escapeHtml(r.area || '')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800"></td>
+                    <td class="p-2 align-top"><textarea data-field="target" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700">${escapeHtml(r.target || '')}</textarea></td>
+                    <td class="p-2 align-top"><textarea data-field="accomplishment" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700">${escapeHtml(r.accomplishment || '')}</textarea></td>
+                    <td class="p-2 align-top w-14"><input data-field="q" type="number" min="1" max="5" value="${escapeHtml(r.q || '5')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-12 px-1.5 py-1.5 rounded-lg border border-slate-200 text-xs text-center font-bold"></td>
+                    <td class="p-2 align-top w-14"><input data-field="e" type="number" min="1" max="5" value="${escapeHtml(r.e || '5')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-12 px-1.5 py-1.5 rounded-lg border border-slate-200 text-xs text-center font-bold"></td>
+                    <td class="p-2 align-top w-14"><input data-field="t" type="number" min="1" max="5" value="${escapeHtml(r.t || '5')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-12 px-1.5 py-1.5 rounded-lg border border-slate-200 text-xs text-center font-bold"></td>
+                    <td class="p-2 align-top"><input data-field="remarks" type="text" value="${escapeHtml(r.remarks || '')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700"></td>
+                </tr>`;
+        }
+        if (formType === 'LDP') {
+            return `
+                <tr data-inst-row="${idx}" class="border-b border-slate-200/80">
+                    <td class="p-2 align-top"><textarea data-field="competency" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800">${escapeHtml(r.competency || '')}</textarea></td>
+                    <td class="p-2 align-top"><textarea data-field="activity" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700">${escapeHtml(r.activity || '')}</textarea></td>
+                    <td class="p-2 align-top"><input data-field="timeframe" type="text" value="${escapeHtml(r.timeframe || '')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700"></td>
+                    <td class="p-2 align-top"><input data-field="resources" type="text" value="${escapeHtml(r.resources || '')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700"></td>
+                    <td class="p-2 align-top"><textarea data-field="indicator" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700">${escapeHtml(r.indicator || '')}</textarea></td>
+                </tr>`;
+        }
+        return `
+            <tr data-inst-row="${idx}" class="border-b border-slate-200/80">
+                <td class="p-2 align-top"><textarea data-field="kra" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800">${escapeHtml(r.kra || '')}</textarea></td>
+                <td class="p-2 align-top"><textarea data-field="objective" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700">${escapeHtml(r.objective || '')}</textarea></td>
+                <td class="p-2 align-top"><textarea data-field="strategy" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700">${escapeHtml(r.strategy || '')}</textarea></td>
+                <td class="p-2 align-top"><input data-field="timeline" type="text" value="${escapeHtml(r.timeline || '')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700"></td>
+                <td class="p-2 align-top"><input data-field="budget" type="text" value="${escapeHtml(r.budget || '')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700"></td>
+                <td class="p-2 align-top"><textarea data-field="output" rows="2" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700">${escapeHtml(r.output || '')}</textarea></td>
+            </tr>`;
+    }).join('');
+
+    const headersHtml = formType === 'IPCR'
+        ? `<th class="p-2.5 text-left">MFO / Area</th><th class="p-2.5 text-left">Success Indicators</th><th class="p-2.5 text-left">Actual Accomplishments</th><th class="p-2.5 text-center">Q</th><th class="p-2.5 text-center">E</th><th class="p-2.5 text-center">T</th><th class="p-2.5 text-left">Remarks</th>`
+        : formType === 'LDP'
+        ? `<th class="p-2.5 text-left">Competency / Area</th><th class="p-2.5 text-left">L&D Intervention</th><th class="p-2.5 text-left">Timeframe</th><th class="p-2.5 text-left">Resources</th><th class="p-2.5 text-left">Expected Output</th>`
+        : `<th class="p-2.5 text-left">KRA</th><th class="p-2.5 text-left">Objective</th><th class="p-2.5 text-left">Strategy</th><th class="p-2.5 text-left">Timeline</th><th class="p-2.5 text-left">Budget</th><th class="p-2.5 text-left">Expected Output</th>`;
+
+    return `
+        <div id="inst-form-builder-${escapeHtml(String(task.id))}" class="surface rounded-2xl p-5 lg:p-6 border border-[#621708]/20 bg-gradient-to-br from-[#fffaf8] to-white shadow-xs">
+            <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
+                <div>
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#621708]/10 text-[#621708]">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> ${escapeHtml(metaByType.badge)}
+                    </span>
+                    <h3 class="text-base font-bold text-slate-900 mt-2">${escapeHtml(metaByType.title)}</h3>
+                    <p class="text-xs text-slate-600 mt-0.5">${escapeHtml(metaByType.desc)}</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="autoFillInstitutionalForm('${escapeHtml(String(task.id))}')" class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs transition">
+                        <i class="fa-solid fa-bolt text-amber-600"></i> Auto-Fill from Profile
+                    </button>
+                    <button type="button" onclick="downloadInstitutionalFormPdf('${escapeHtml(String(task.id))}')" class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-[#621708] border border-[#621708]/25 font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs transition">
+                        <i class="fa-solid fa-file-pdf"></i> Save as PDF
+                    </button>
+                    <button type="button" onclick="printInstitutionalFormPreview('${escapeHtml(String(task.id))}')" class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs transition">
+                        <i class="fa-solid fa-print"></i> Print Preview
+                    </button>
+                    <button type="button" onclick="submitGeneratedInstitutionalForm('${escapeHtml(String(task.id))}')" class="px-3.5 py-1.5 rounded-xl bg-[#621708] hover:bg-[#4b1106] text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-xs transition">
+                        <i class="fa-solid fa-paper-plane"></i> Attach & Submit ${escapeHtml(formType)} PDF
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table class="w-full text-xs border-collapse">
+                    <thead class="bg-slate-900 text-white uppercase tracking-wider text-[10px]">
+                        <tr>${headersHtml}</tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+
+            <div class="mt-3">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Summary Notes / Context (Optional)</label>
+                <input data-field="summaryNotes" type="text" value="${escapeHtml(draft.summaryNotes || '')}" oninput="saveInstitutionalFormDraftFromDom('${escapeHtml(String(task.id))}')" placeholder="Add optional notes or context to include on the generated PDF..." class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-700">
+            </div>
+        </div>
+    `;
+}
+
 function submissionFrequency(task) {
     const config = getTaskReportConfig(task);
     const fromConfig = String(config?.frequency || '').toLowerCase();
-    if (['monthly', 'quarterly', 'semi_annual', 'annual'].includes(fromConfig)) {
-        return fromConfig;
+    if (['twice_a_month', 'bi_monthly', 'bimonthly'].includes(fromConfig)) {
+        return 'twice_a_month';
+    }
+    if (['semester', 'by_semester'].includes(fromConfig)) {
+        return 'semester';
     }
     const category = String(
         window.CiteFlowWorkflow?.resolveDocumentCategory?.(task)
@@ -2998,10 +4021,15 @@ function submissionFrequency(task) {
         || ''
     ).trim().toUpperCase();
 
-    if (category === 'DTR' || /\bdtr\b|daily time record/i.test(task?.title || '')) return 'monthly';
+    if (category === 'DTR' || /\bdtr\b|daily time record/i.test(task?.title || '')) return 'twice_a_month';
+    if (['monthly', 'quarterly', 'semi_annual', 'annual'].includes(fromConfig)) {
+        return fromConfig;
+    }
     if (category === 'MFO' || isMfoTask(task)) return 'quarterly';
-    if (category === 'IPCR' || /\bipcr\b/i.test(task?.title || '')) return 'semi_annual';
-    if (category === 'LDP' || /\bldp\b/i.test(task?.title || '')) return 'annual';
+    if (/\bform\s*e-?0\b|individual faculty workload/i.test(task?.title || '')) return 'semester';
+    if (category === 'IPCR' || /\bipcr\b|individual performance commitment/i.test(task?.title || '')) return 'semi_annual';
+    if (category === 'LDP' || /\bldp\b|learning development plan/i.test(task?.title || '')) return 'annual';
+    if (category === 'IDP' || /\bidp\b|institutional development plan/i.test(task?.title || '')) return 'annual';
     return '';
 }
 
@@ -3011,8 +4039,43 @@ function modelPlacement(model) {
     return { section: 'tasks' };
 }
 
+let currentPeriodScope = 'all';
+
+function setPeriodScope(scope) {
+    currentPeriodScope = scope === 'current' ? 'current' : 'all';
+    renderListPage();
+}
+window.setPeriodScope = setPeriodScope;
+
+function isModelCurrentPeriod(model) {
+    const task = model?.task;
+    if (!task) return true;
+    // Always keep anything already submitted, pending, or returned for revision
+    if (model?.sub?.submitted_at || ['pending', 'revision'].includes(submissionFilterBucket(model))) {
+        return true;
+    }
+    if (!taskIsRecurring(task)) return true;
+    const dueStr = getTaskDeadline(task) || task.reporting_period_end || task.created_at;
+    if (!dueStr) return true;
+    const dueMs = new Date(dueStr).getTime();
+    if (!Number.isFinite(dueMs)) return true;
+    const nowMs = Date.now();
+    // Current period = due within the last 45 days or in the future
+    const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
+    return dueMs >= (nowMs - fortyFiveDaysMs);
+}
+
+function formatTaskDisplayTitle(task) {
+    const rawTitle = String(task?.title || 'Untitled Task');
+    if (isDtrTask(task) && !/cutoff|bi-monthly|1-15|16-/i.test(rawTitle)) {
+        return `${rawTitle} (Bi-Monthly: 1–15 & 16–End)`;
+    }
+    return rawTitle;
+}
+
 const SUBMISSION_STATUS_FILTERS = [
     { id: 'all', label: 'All' },
+    { id: 'not_submitted', label: 'Not Submitted' },
     { id: 'pending', label: 'Pending' },
     { id: 'revision', label: 'For Revision' },
     { id: 'approved', label: 'Approved' },
@@ -3040,7 +4103,7 @@ function submissionFilterBucket(model) {
         return 'pending';
     }
 
-    return '';
+    return 'not_submitted';
 
 }
 
@@ -3048,6 +4111,9 @@ function submissionFilterBucket(model) {
 function modelMatchesCurrentSection(model) {
 
     const place = modelPlacement(model);
+    if (currentPeriodScope === 'current' && !isModelCurrentPeriod(model)) {
+        return false;
+    }
 
     return currentSection === 'reports'
         ? place.section === 'reports' && place.frequency === currentReportFrequency
@@ -3084,6 +4150,7 @@ function statusFilterCounts(models) {
 
     const counts = {
         all: models.length,
+        not_submitted: 0,
         pending: 0,
         revision: 0,
         approved: 0,
@@ -3092,11 +4159,30 @@ function statusFilterCounts(models) {
 
     models.forEach(model => {
         const bucket = submissionFilterBucket(model);
-        if (bucket) counts[bucket] += 1;
+        if (bucket && counts[bucket] !== undefined) counts[bucket] += 1;
     });
 
     return counts;
 
+}
+
+function reportFrequencyCounts() {
+    const counts = {
+        twice_a_month: 0,
+        monthly: 0,
+        quarterly: 0,
+        semester: 1, // Form E-0 is always available by semester
+        semi_annual: 0,
+        annual: 0
+    };
+    getAssignedModels().forEach(model => {
+        if (currentPeriodScope === 'current' && !isModelCurrentPeriod(model)) return;
+        const place = modelPlacement(model);
+        if (place.section === 'reports' && counts[place.frequency] !== undefined) {
+            counts[place.frequency] += 1;
+        }
+    });
+    return counts;
 }
 
 
@@ -3484,7 +4570,7 @@ function renderTaskRow(model) {
                                 truncate
                             "
                         >
-                            ${escapeHtml(task.title)}
+                            ${escapeHtml(formatTaskDisplayTitle(task))}
                         </h3>
 
                         <p
@@ -3680,6 +4766,9 @@ function renderListPage() {
     const statusCounts =
         statusFilterCounts(scoped);
 
+    const freqCounts =
+        reportFrequencyCounts();
+
     const statusActive =
         activeStatusFilter() !== 'all';
 
@@ -3701,9 +4790,6 @@ function renderListPage() {
 
             ${renderSummary(allAssigned)}
 
-            <!-- CHED Form E-0 Institutional Hub -->
-            ${renderFormE0HubCard()}
-
             <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div class="flex flex-wrap gap-2" role="tablist" aria-label="Submission sections">
                     <button type="button" class="tab-pill px-4 py-2 rounded-xl text-sm font-bold ${currentSection === 'tasks' ? 'active' : 'text-slate-600 bg-white border border-slate-200 shadow-sm'}" onclick="setSubmissionSection('tasks')">
@@ -3711,6 +4797,15 @@ function renderListPage() {
                     </button>
                     <button type="button" class="tab-pill px-4 py-2 rounded-xl text-sm font-bold ${currentSection === 'reports' ? 'active' : 'text-slate-600 bg-white border border-slate-200 shadow-sm'}" onclick="setSubmissionSection('reports')">
                         <i class="fa-solid fa-file-lines mr-2"></i>Accomplishment Reports
+                    </button>
+                </div>
+
+                <div class="inline-flex items-center p-1 rounded-xl bg-white border border-slate-200 shadow-xs" role="group" aria-label="Period scope filter">
+                    <button type="button" onclick="setPeriodScope('current')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${currentPeriodScope === 'current' ? 'bg-[#621708] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                        <i class="fa-solid fa-calendar-day mr-1.5"></i>Current Period
+                    </button>
+                    <button type="button" onclick="setPeriodScope('all')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${currentPeriodScope === 'all' ? 'bg-[#621708] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                        <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>All Cycles
                     </button>
                 </div>
             </div>
@@ -3725,14 +4820,17 @@ function renderListPage() {
                         </h2>
                         <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
                             ${currentSection === 'reports'
-                                ? 'DTR is monthly. MFO is quarterly. IPCR is semi-annual. LDP is annual.'
+                                ? 'DTR is bi-monthly (1–15 & 16–end). MFO is quarterly. Form E-0 is by semester. IPCR is semi-annual. LDP & IDP are annual.'
                                 : 'Assigned tasks and course deliverables.'}
                         </p>
                     </div>
 
-                    <span class="self-start sm:self-auto px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold">
-                        ${visible.length} item${visible.length === 1 ? '' : 's'}
-                    </span>
+                    <div class="flex items-center gap-2 self-start sm:self-auto">
+                        ${currentPeriodScope === 'current' ? `<span class="px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">Active Cycle Focus</span>` : ''}
+                        <span class="px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold">
+                            ${(visible.length + (currentSection === 'reports' && currentReportFrequency === 'semester' ? 1 : 0))} item${(visible.length + (currentSection === 'reports' && currentReportFrequency === 'semester' ? 1 : 0)) === 1 ? '' : 's'}
+                        </span>
+                    </div>
 
                 </div>
 
@@ -3740,10 +4838,30 @@ function renderListPage() {
                 <div class="flex flex-col gap-3.5 mb-5">
                     ${currentSection === 'reports' ? `
                         <div class="flex flex-wrap items-center gap-2" role="tablist">
-                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold ${currentReportFrequency === 'monthly' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('monthly')">Monthly</button>
-                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold ${currentReportFrequency === 'quarterly' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('quarterly')">Quarterly</button>
-                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold ${currentReportFrequency === 'semi_annual' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('semi_annual')">Semi-Annual</button>
-                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold ${currentReportFrequency === 'annual' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('annual')">Annual</button>
+                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 ${currentReportFrequency === 'twice_a_month' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('twice_a_month')">
+                                <span>Bi-Monthly (DTR)</span>
+                                <span class="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${currentReportFrequency === 'twice_a_month' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'}">${freqCounts.twice_a_month}</span>
+                            </button>
+                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 ${currentReportFrequency === 'monthly' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('monthly')">
+                                <span>Monthly</span>
+                                <span class="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${currentReportFrequency === 'monthly' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'}">${freqCounts.monthly}</span>
+                            </button>
+                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 ${currentReportFrequency === 'quarterly' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('quarterly')">
+                                <span>Quarterly (MFO)</span>
+                                <span class="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${currentReportFrequency === 'quarterly' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'}">${freqCounts.quarterly}</span>
+                            </button>
+                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 ${currentReportFrequency === 'semester' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('semester')">
+                                <span>By Semester (Form E-0)</span>
+                                <span class="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${currentReportFrequency === 'semester' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'}">${freqCounts.semester}</span>
+                            </button>
+                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 ${currentReportFrequency === 'semi_annual' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('semi_annual')">
+                                <span>Semi-Annual (IPCR)</span>
+                                <span class="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${currentReportFrequency === 'semi_annual' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'}">${freqCounts.semi_annual}</span>
+                            </button>
+                            <button type="button" class="tab-pill px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 ${currentReportFrequency === 'annual' ? 'active' : 'text-slate-600 bg-slate-50 border border-slate-200'}" onclick="setReportFrequency('annual')">
+                                <span>Annual (LDP / IDP)</span>
+                                <span class="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${currentReportFrequency === 'annual' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'}">${freqCounts.annual}</span>
+                            </button>
                         </div>
                     ` : ''}
                     <div class="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
@@ -3759,27 +4877,37 @@ function renderListPage() {
                 </div>
 
                 <div class="space-y-2.5">
+                    ${currentSection === 'reports' && currentReportFrequency === 'semester' ? renderFormE0HubCard() : ''}
                     ${
                         visible.length
                             ? visible.map(renderTaskRow).join('')
                             : (
-                                statusActive && scoped.length
-                                    ? renderEmptyList(
-                                        {
-                                            pending: 'Nothing pending review',
-                                            revision: 'Nothing waiting for revision',
-                                            approved: 'No approved submissions',
-                                            rejected: 'No rejected submissions'
-                                        }[activeStatusFilter()] || 'No matching items',
-                                        'Choose another status, or select All, to see other items.'
-                                    )
-                                    : renderEmptyList(
-                                        currentSection === 'reports'
-                                            ? 'Nothing due in this frequency'
-                                            : 'No tasks assigned',
-                                        currentSection === 'reports'
-                                            ? 'Reports such as monthly DTR or quarterly MFO appear here after they are generated.'
-                                            : 'Assigned work will appear here once assigned to you.'
+                                currentSection === 'reports' && currentReportFrequency === 'semester'
+                                    ? ''
+                                    : (
+                                        statusActive && scoped.length
+                                            ? renderEmptyList(
+                                                {
+                                                    not_submitted: 'No unsubmitted items in this view',
+                                                    pending: 'Nothing pending review',
+                                                    revision: 'Nothing waiting for revision',
+                                                    approved: 'No approved submissions',
+                                                    rejected: 'No rejected submissions'
+                                                }[activeStatusFilter()] || 'No matching items',
+                                                'Choose another status, or select All, to see other items.'
+                                            )
+                                            : renderEmptyList(
+                                                currentSection === 'reports'
+                                                    ? 'Nothing due in this frequency'
+                                                    : 'No tasks assigned',
+                                                currentPeriodScope === 'current'
+                                                    ? 'No active-period items match this filter. Switch to "All Cycles" above to view historical recurring periods.'
+                                                    : (
+                                                        currentSection === 'reports'
+                                                            ? 'Reports such as bi-monthly DTR, quarterly MFO, semi-annual IPCR, or annual LDP/IDP appear here after they are generated or started.'
+                                                            : 'Assigned work will appear here once assigned to you.'
+                                                    )
+                                            )
                                     )
                             )
                     }
@@ -3972,7 +5100,7 @@ function setTaskKind(kind) {
 
 function setReportFrequency(frequency) {
     currentSection = 'reports';
-    currentReportFrequency = frequency || 'monthly';
+    currentReportFrequency = frequency || 'twice_a_month';
     renderListPage();
 }
 
@@ -3990,19 +5118,27 @@ function renderSubmissionShortcuts() {
             <div class="flex flex-wrap items-center gap-1.5">
                 <button type="button" class="quick-chip-btn" ${quickSubmitInProgress ? 'disabled' : ''} onclick="openQuickSubmission('DTR')">
                     <i class="fa-solid fa-calendar-day text-blue-600"></i>
-                    <span>DTR</span>
+                    <span>DTR (Bi-Monthly)</span>
                 </button>
                 <button type="button" class="quick-chip-btn" onclick="openMfoReport(${matchingMfo?.task?.id ? `'${escapeHtml(matchingMfo.task.id)}'` : ''})">
                     <i class="fa-solid fa-file-lines text-purple-600"></i>
                     <span>${escapeHtml(mfoLabel)}</span>
                 </button>
+                <a href="form-e0.html" class="quick-chip-btn">
+                    <i class="fa-solid fa-file-invoice text-[#621708]"></i>
+                    <span>Form E-0 (By Semester)</span>
+                </a>
                 <button type="button" class="quick-chip-btn" ${quickSubmitInProgress ? 'disabled' : ''} onclick="openQuickSubmission('IPCR')">
                     <i class="fa-solid fa-chart-line text-emerald-600"></i>
-                    <span>IPCR</span>
+                    <span>IPCR (Semi-Annual)</span>
                 </button>
                 <button type="button" class="quick-chip-btn" ${quickSubmitInProgress ? 'disabled' : ''} onclick="openQuickSubmission('LDP')">
                     <i class="fa-solid fa-graduation-cap text-amber-600"></i>
                     <span>LDP</span>
+                </button>
+                <button type="button" class="quick-chip-btn" ${quickSubmitInProgress ? 'disabled' : ''} onclick="openQuickSubmission('IDP')">
+                    <i class="fa-solid fa-building-columns text-indigo-600"></i>
+                    <span>IDP</span>
                 </button>
             </div>
             <span class="text-xs text-slate-400 ml-1 hidden sm:inline">Periodic accomplishment submissions</span>
@@ -4047,7 +5183,8 @@ function getQuickHubCategories() {
         { value: 'DTR', label: 'DTR', shortLabel: 'DTR' },
         { value: 'TOS', label: 'Table of Specifications (TOS)', shortLabel: 'TOS' },
         { value: 'IPCR', label: 'IPCR', shortLabel: 'IPCR' },
-        { value: 'LDP', label: 'LDP', shortLabel: 'LDP' }
+        { value: 'LDP', label: 'LDP', shortLabel: 'LDP' },
+        { value: 'IDP', label: 'IDP', shortLabel: 'IDP' }
     ];
 
 }
@@ -4348,7 +5485,7 @@ function renderQuickSubmissionHub() {
                     Quick Submission
                 </h2>
                 <p class="text-sm text-gray-500 mt-1">
-                    Start Syllabus, DTR, TOS, IPCR, or LDP from here. Each one uses the same review workflow.
+                    Start Syllabus, DTR (Bi-Monthly), TOS, IPCR (Semi-Annual), LDP, or IDP from here. Each one uses the same review workflow.
                 </p>
             </div>
 
@@ -4894,6 +6031,9 @@ function renderDetailPage() {
                             : ''
                     }
 
+                    ${isDtrTask(task) ? renderDtrBiMonthlyScheduleCard(task) : ''}
+                    ${isInstitutionalFormTask(task) ? renderInstitutionalFormBuilderCard(task) : ''}
+
                     ${
                         task.submission_instructions
                             ? `
@@ -5123,7 +6263,20 @@ function renderDetailPage() {
                                 Unsubmit returns this work to an editable draft. It will no longer appear in the review queue until you submit again.
                             </p>
                             `
-                            : ''
+                            : (
+                                filesLocked
+                                    ? `
+                                    <button
+                                        type="button"
+                                        disabled
+                                        title="Final approval by Admin/Dean is complete. This submission can no longer be unsubmitted."
+                                        class="button mt-3 w-full bg-slate-100 text-slate-400 py-2.5 rounded-xl font-bold text-sm border border-slate-200 flex items-center justify-center gap-2 opacity-60 cursor-not-allowed"
+                                    >
+                                        <i class="fa-solid fa-rotate-left text-xs mr-1"></i> Unsubmit
+                                    </button>
+                                    `
+                                    : ''
+                            )
                     }
 
                     ${

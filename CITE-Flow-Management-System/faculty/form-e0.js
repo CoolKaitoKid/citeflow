@@ -1662,36 +1662,66 @@
     }
 
     async function withdrawSubmission() {
-        if (String(activeReport?.status) !== 'submitted') return;
+        const currentStatus = String(activeReport?.status || '').toLowerCase();
+        if (currentStatus !== 'submitted' && currentStatus !== 'chair_certified') return;
+
+        const isChairCertified = currentStatus === 'chair_certified';
         const confirmed = await showModalDialog({
-            title: 'Withdraw Submission?',
-            message: 'Return this Form E-0 to Draft status so you can edit and resubmit it before the Department Chairperson certifies it?',
+            title: isChairCertified ? 'Unsubmit Chair-Certified Form E-0?' : 'Unsubmit Form E-0?',
+            message: isChairCertified
+                ? 'This Form E-0 has already been certified by the Department Chairperson and is awaiting Dean approval.\n\nUnsubmitting will return it to Draft status and reset the Chairperson certification so you can make changes and resubmit for re-certification.'
+                : 'Return this Form E-0 to Draft status so you can edit and resubmit it?',
             type: 'warning',
-            confirmText: 'Withdraw to Draft',
+            confirmText: isChairCertified ? 'Unsubmit & Reset Certification' : 'Unsubmit to Draft',
             cancelText: 'Cancel'
         });
         if (!confirmed) return;
 
-        const { data, error } = await getDb()
+        const db = getDb();
+        let updatePayload = {
+            status: 'draft',
+            submitted_at: null,
+            chair_certified_at: null,
+            chair_certified_by: null,
+            chair_certified_by_name: null
+        };
+
+        let { data, error } = await db
             .from('form_e0_reports')
-            .update({ status: 'draft', submitted_at: null })
+            .update(updatePayload)
             .eq('id', activeReport.id)
             .select()
             .single();
+
+        if (error && /column|schema|cache/i.test(error.message || '')) {
+            const retry = await db
+                .from('form_e0_reports')
+                .update({ status: 'draft', submitted_at: null })
+                .eq('id', activeReport.id)
+                .select()
+                .single();
+            data = retry.data;
+            error = retry.error;
+        }
+
         if (error) {
             await showModalDialog({
-                title: 'Withdraw Failed',
-                message: error.message || 'Unable to withdraw this submission.',
+                title: 'Unsubmit Failed',
+                message: error.message || 'Unable to unsubmit this Form E-0 right now.',
                 type: 'error',
                 confirmText: 'OK'
             });
             return;
         }
-        activeReport = Object.assign(activeReport, data);
+        activeReport = Object.assign(activeReport, data, {
+            status: 'draft',
+            submitted_at: null,
+            chair_certified_at: null
+        });
         updateStatusBadge(activeReport.status);
         applyLockState();
         renderOfficialPreview();
-        showToast('Submission withdrawn. You can edit the form again.', 'success');
+        showToast('Form E-0 returned to Draft. You can edit and resubmit it anytime.', 'success');
     }
 
     function applyLockState() {
@@ -1706,17 +1736,31 @@
             const el = document.getElementById(id);
             if (el) el.style.display = locked ? 'none' : '';
         });
+        const st = String(activeReport?.status || '').toLowerCase();
         const withdraw = document.getElementById('btnWithdraw');
-        if (withdraw) withdraw.style.display = String(activeReport?.status) === 'submitted' ? '' : 'none';
+        if (withdraw) {
+            const showUnsubmit = st === 'submitted' || st === 'chair_certified' || st === 'approved';
+            withdraw.style.display = showUnsubmit ? '' : 'none';
+            const isApproved = st === 'approved';
+            withdraw.disabled = isApproved;
+            if (isApproved) {
+                withdraw.classList.add('opacity-50', 'cursor-not-allowed');
+                withdraw.classList.remove('hover:bg-amber-100');
+                withdraw.title = 'Final approval by the Dean/Admin is complete. This Form E-0 can no longer be unsubmitted.';
+            } else {
+                withdraw.classList.remove('opacity-50', 'cursor-not-allowed');
+                withdraw.classList.add('hover:bg-amber-100');
+                withdraw.title = 'Return this Form E-0 to Draft status to make edits';
+            }
+        }
         const lockNote = document.getElementById('lockNotice');
         if (lockNote) {
-            const st = String(activeReport?.status || '');
             lockNote.style.display = locked ? 'block' : 'none';
             lockNote.innerHTML = st === 'approved'
                 ? '<i class="fa-solid fa-lock mr-1"></i> Approved by the Dean. This record is final.'
                 : (st === 'chair_certified'
-                    ? '<i class="fa-solid fa-lock mr-1"></i> Certified by the Department Chair and waiting for the Dean.'
-                    : '<i class="fa-solid fa-lock mr-1"></i> Submitted. Waiting for the Department Chair. Use "Withdraw" to edit.');
+                    ? '<i class="fa-solid fa-lock mr-1"></i> Certified by the Department Chair and waiting for the Dean. Click "Unsubmit" in the toolbar if you need to make changes.'
+                    : '<i class="fa-solid fa-lock mr-1"></i> Submitted and waiting for the Department Chair. Click "Unsubmit" in the toolbar to edit.');
         }
         renderClassesTable();
     }

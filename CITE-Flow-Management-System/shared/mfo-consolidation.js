@@ -2394,6 +2394,187 @@
         };
     }
 
+    /**
+     * Compiles MFO reports across all college programs (BSIT, BSIE, BIT) for the
+     * Secretary / Admin / College Dean level consolidation.
+     *
+     * @param {object} params
+     * @returns {object} College-wide consolidated report model
+     */
+    function buildCollegeMfoConsolidation(params) {
+        const p = params || {};
+        const taskId = String(p.taskId || '').trim();
+        if (!taskId) throw new Error('taskId is required for College-Wide MFO consolidation.');
+
+        const targetDepts = Array.isArray(p.departments) && p.departments.length
+            ? p.departments.map(normalizeDepartment).filter(Boolean)
+            : ['bsit', 'bsie', 'bit'];
+
+        const programPackets = Array.isArray(p.programPackets) ? p.programPackets : [];
+        const snapshots = Array.isArray(p.snapshots) ? p.snapshots : [];
+        const submissions = Array.isArray(p.submissions) ? p.submissions : [];
+        const packets = Array.isArray(p.packets) ? p.packets : [];
+        const facultyList = Array.isArray(p.facultyList) ? p.facultyList : [];
+        const assignments = Array.isArray(p.assignments) ? p.assignments : [];
+        const childRows = p.childRows && typeof p.childRows === 'object' ? p.childRows : {};
+        const programRowsByDept = p.programRowsByDept && typeof p.programRowsByDept === 'object' ? p.programRowsByDept : {};
+
+        const mergedSections = {};
+        const mergedActiveSections = {};
+        MFO_SECTIONS.forEach((sec) => {
+            mergedSections[sec.code] = [];
+            mergedSections[sec.table] = [];
+            mergedActiveSections[sec.code] = [];
+            mergedActiveSections[sec.table] = [];
+        });
+
+        const mergedPi1 = [];
+        const mergedPi2 = [];
+        const mergedContributingFaculty = [];
+        const mergedUnsubmittedFaculty = [];
+        const otherAccomplishmentsParts = [];
+        const programBreakdown = {};
+        let totalItemsCount = 0;
+        let activeItemsCount = 0;
+
+        targetDepts.forEach((dept) => {
+            const deptUpper = dept.toUpperCase();
+            const progPkt = programPackets.find((pkt) =>
+                pkt && String(pkt.task_id) === taskId && normalizeDepartment(pkt.department) === dept
+            ) || null;
+
+            // Check if a frozen snapshot payload exists for this department's program packet
+            let snapPayload = null;
+            if (progPkt?.id) {
+                const matchingSnaps = snapshots.filter((s) => s && String(s.program_packet_id) === String(progPkt.id));
+                const chosenSnap = matchingSnaps.find((s) => s?.payload && (s.payload.sections || s.payload.all_sections || s.payload.frozenPayload?.sections))
+                    || matchingSnaps[0] || null;
+                if (chosenSnap?.payload) {
+                    snapPayload = chosenSnap.payload.frozenPayload?.sections ? chosenSnap.payload.frozenPayload : chosenSnap.payload;
+                }
+            }
+            if (!snapPayload && progPkt?.notes) {
+                try {
+                    const parsed = typeof progPkt.notes === 'string' && progPkt.notes.trim().startsWith('{')
+                        ? JSON.parse(progPkt.notes)
+                        : (typeof progPkt.notes === 'object' ? progPkt.notes : null);
+                    if (parsed && (parsed.sections || parsed.frozenPayload?.sections)) {
+                        snapPayload = parsed.frozenPayload || parsed;
+                    }
+                } catch (_) {}
+            }
+
+            const deptProgRows = programRowsByDept[dept] || programRowsByDept[deptUpper] || { pi1: [], pi2: [] };
+            const deptModel = buildDepartmentMfoConsolidation({
+                taskId,
+                department: dept,
+                submissions,
+                packets,
+                facultyList,
+                assignments,
+                childRows,
+                programPacket: progPkt,
+                programRows: deptProgRows,
+                options: p.options
+            });
+
+            const useSnapSections = snapPayload && (snapPayload.sections || snapPayload.all_sections);
+            const rawActive = useSnapSections ? (snapPayload.sections || snapPayload.all_sections || {}) : deptModel.activeSections;
+            const rawAll = useSnapSections ? (snapPayload.all_sections || snapPayload.sections || {}) : deptModel.sections;
+
+            let deptRowCount = 0;
+            MFO_SECTIONS.forEach((sec) => {
+                const activeList = Array.isArray(rawActive[sec.table] || rawActive[sec.code])
+                    ? deepClone(rawActive[sec.table] || rawActive[sec.code])
+                    : [];
+                const allList = Array.isArray(rawAll[sec.table] || rawAll[sec.code])
+                    ? deepClone(rawAll[sec.table] || rawAll[sec.code])
+                    : activeList;
+
+                const tagRow = (row) => {
+                    const copy = { ...row, department: row.department || deptUpper };
+                    if (copy.contributing_faculty_name && !copy.contributing_faculty_name.includes(`(${deptUpper})`)) {
+                        copy.contributing_faculty_Label = `${copy.contributing_faculty_name} (${deptUpper})`;
+                    }
+                    return copy;
+                };
+
+                const taggedActive = activeList.map(tagRow);
+                const taggedAll = allList.map(tagRow);
+
+                deptRowCount += taggedActive.length;
+                activeItemsCount += taggedActive.length;
+                totalItemsCount += taggedAll.length;
+
+                mergedActiveSections[sec.code].push(...taggedActive);
+                mergedActiveSections[sec.table].push(...taggedActive);
+                mergedSections[sec.code].push(...taggedAll);
+                mergedSections[sec.table].push(...taggedAll);
+            });
+
+            const pi1Source = (snapPayload?.program_rows?.pi1 || snapPayload?.program_portion?.pi1_rows || deptModel.programPortion?.pi1_rows || deptProgRows.pi1 || []);
+            const pi2Source = (snapPayload?.program_rows?.pi2 || snapPayload?.program_portion?.pi2_rows || deptModel.programPortion?.pi2_rows || deptProgRows.pi2 || []);
+            if (Array.isArray(pi1Source)) {
+                pi1Source.forEach((r) => mergedPi1.push({ ...r, program: r.program || deptUpper, department: deptUpper }));
+            }
+            if (Array.isArray(pi2Source)) {
+                pi2Source.forEach((r) => mergedPi2.push({ ...r, program: r.program || deptUpper, department: deptUpper }));
+            }
+
+            const contribList = Array.isArray(snapPayload?.contributing_faculty) && snapPayload.contributing_faculty.length
+                ? snapPayload.contributing_faculty
+                : (deptModel.contributingFaculty || []);
+            contribList.forEach((c) => mergedContributingFaculty.push({ ...c, department: c.department || deptUpper }));
+
+            const unsubList = Array.isArray(snapPayload?.unsubmitted_faculty) && snapPayload.unsubmitted_faculty.length
+                ? snapPayload.unsubmitted_faculty
+                : (deptModel.unsubmittedFaculty || []);
+            unsubList.forEach((u) => mergedUnsubmittedFaculty.push({ ...u, department: u.department || deptUpper }));
+
+            const deptNarrative = String(snapPayload?.user_remarks || progPkt?.other_accomplishments || '').trim();
+            if (deptNarrative) {
+                otherAccomplishmentsParts.push(`[${deptUpper}] ${deptNarrative}`);
+            }
+
+            programBreakdown[deptUpper] = {
+                department: deptUpper,
+                programPacketId: progPkt?.id || null,
+                packetState: String(progPkt?.packet_state || (contribList.length ? 'live_compiled' : 'not_started')).toLowerCase(),
+                version: progPkt?.current_version || 1,
+                submittedFacultyCount: contribList.length,
+                unsubmittedFacultyCount: unsubList.length,
+                consolidatedRowCount: deptRowCount
+            };
+        });
+
+        return {
+            taskId,
+            department: 'ALL',
+            departments: targetDepts.map((d) => d.toUpperCase()),
+            isCollegeConsolidation: true,
+            programBreakdown,
+            contributingFaculty: mergedContributingFaculty,
+            unsubmittedFaculty: mergedUnsubmittedFaculty,
+            sections: mergedSections,
+            activeSections: mergedActiveSections,
+            programRows: { pi1: mergedPi1, pi2: mergedPi2 },
+            programPortion: {
+                pi1: mergedPi1,
+                pi2: mergedPi2,
+                pi1_rows: mergedPi1,
+                pi2_rows: mergedPi2,
+                other_accomplishments: otherAccomplishmentsParts.join('\n\n')
+            },
+            summary: {
+                expected: mergedContributingFaculty.length + mergedUnsubmittedFaculty.length,
+                submitted: mergedContributingFaculty.length,
+                unsubmitted: mergedUnsubmittedFaculty.length,
+                totalItemsCount,
+                activeItemsCount
+            }
+        };
+    }
+
     /* ------------------------------------------------------------------ */
     /* Exported Module API                                                */
     /* ------------------------------------------------------------------ */
@@ -2409,6 +2590,7 @@
         mergeNotesMetadata,
         verifyChairpersonDepartmentAccess,
         buildDepartmentMfoConsolidation,
+        buildCollegeMfoConsolidation,
         toggleAccomplishmentExclusion,
         detectConsolidatedDraftStaleness,
         regenerateDepartmentDraft,

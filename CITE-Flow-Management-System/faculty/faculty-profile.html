@@ -533,6 +533,11 @@
                     </div>
 
                     <div class="card p-5">
+                        <p class="text-xs text-slate-500">Role</p>
+                        <p id="overviewRole" class="font-semibold text-slate-950 mt-1">—</p>
+                    </div>
+
+                    <div class="card p-5">
                         <p class="text-xs text-slate-500">Designation</p>
                         <p id="overviewDesignation" class="font-semibold text-slate-950 mt-1">—</p>
                     </div>
@@ -1415,8 +1420,14 @@
             </div>
 
             <div>
-                <label class="field-label">Official Working Hours</label>
-                <input id="editShift" class="field" placeholder="8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M.">
+                <label class="field-label">Official Working Hours (Day &amp; Evening Class Schedule)</label>
+                <input id="editShift" list="officialShiftScheduleOptions" class="field" placeholder="8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M. | Evening: 5:00 P.M. – 9:00 P.M.">
+                <datalist id="officialShiftScheduleOptions">
+                    <option value="8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M."></option>
+                    <option value="8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M. | Evening Class: 5:00 P.M. – 9:00 P.M."></option>
+                    <option value="1:00 P.M. – 5:00 P.M. | Evening Class: 5:00 P.M. – 9:00 P.M."></option>
+                    <option value="Evening Class Schedule: 5:00 P.M. – 9:00 P.M. (Mon–Sat)"></option>
+                </datalist>
             </div>
 
             <div>
@@ -1429,6 +1440,11 @@
                     <option>Professor I</option><option>Professor II</option><option>Professor III</option><option>Professor IV</option><option>Professor V</option>
                     <option>University Professor</option>
                 </select>
+            </div>
+
+            <div>
+                <label class="field-label">Role</label>
+                <input id="editRole" class="field bg-slate-100 cursor-not-allowed" readonly value="Faculty" title="System access role">
             </div>
 
             <div>
@@ -3105,6 +3121,8 @@ function renderProfile() {
     document.getElementById('overviewBirthdate').textContent = formatLongDate(currentFaculty.birthdate);
     document.getElementById('overviewAge').textContent = calculateAge(currentFaculty.birthdate);
     document.getElementById('overviewRank').textContent = currentFaculty.academic_rank || currentFaculty.position || '—';
+    const overviewRoleEl = document.getElementById('overviewRole');
+    if (overviewRoleEl) overviewRoleEl.textContent = role || 'Faculty';
     const overviewDesignationEl = document.getElementById('overviewDesignation');
     if (overviewDesignationEl) overviewDesignationEl.textContent = currentFaculty.designation || currentAuthUser?.user_metadata?.designation || '—';
     document.getElementById('overviewDepartment').textContent = department;
@@ -4404,6 +4422,8 @@ function openEditProfileModal() {
     document.getElementById('editDepartment').value = currentFaculty.department || 'BSIT';
     document.getElementById('editShift').value = currentFaculty.shift || '8:00 A.M. – 12:00 NOON | 1:00 P.M. – 5:00 P.M.';
     document.getElementById('editAcademicRank').value = currentFaculty.academic_rank || 'Instructor I';
+    const editRoleEl = document.getElementById('editRole');
+    if (editRoleEl) editRoleEl.value = currentFaculty.role || currentFaculty.position || 'Faculty';
     document.getElementById('editDesignation').value = currentFaculty.designation || currentAuthUser?.user_metadata?.designation || '';
     document.getElementById('editPhotoUrl').value = currentFaculty.profile_photo_url || '';
     document.getElementById('editMastersDegree').value = currentFaculty.masters_degree || '';
@@ -5166,8 +5186,14 @@ async function generate201FileReport() {
                         <tr>
                             <td style="padding:5px 8px; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1;">Department / College</td>
                             <td style="padding:5px 8px; border:1px solid #cbd5e1;">${esc(deptName)} • CITE</td>
-                            <td style="padding:5px 8px; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1;">Academic Rank / Role</td>
-                            <td style="padding:5px 8px; border:1px solid #cbd5e1;">${esc(f.academic_rank || 'Instructor I')} / ${esc(f.position || f.role || 'Faculty')}</td>
+                            <td style="padding:5px 8px; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1;">Academic Rank</td>
+                            <td style="padding:5px 8px; border:1px solid #cbd5e1;">${esc(f.academic_rank || 'Instructor I')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:5px 8px; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1;">Role</td>
+                            <td style="padding:5px 8px; border:1px solid #cbd5e1;">${esc(f.role || f.position || 'Faculty')}</td>
+                            <td style="padding:5px 8px; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1;">Designation</td>
+                            <td style="padding:5px 8px; border:1px solid #cbd5e1;">${esc(f.designation || currentAuthUser?.user_metadata?.designation || 'N/A')}</td>
                         </tr>
                         <tr>
                             <td style="padding:5px 8px; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1;">Email Address</td>

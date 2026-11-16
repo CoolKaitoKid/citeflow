@@ -1413,6 +1413,111 @@
         const engine = global.CiteFlowMfoConsolidation || (typeof require !== 'undefined' ? require('../shared/mfo-consolidation.js') : null);
         const workflowHelper = global.CiteFlowWorkflow || (typeof require !== 'undefined' ? require('../shared/workflow.js') : null);
 
+        // 5b. College-Wide Consolidation (Secretary / Admin / Dean level across all programs: BSIT, BSIE, BIT)
+        const isCollegeScope = ['all', 'cote', 'college', 'all_programs'].includes(targetDept.toLowerCase());
+        if (isCollegeScope) {
+            state.isCollegeConsolidated = true;
+            const deanName = currentFaculty?.full_name || currentFaculty?.name || state.user?.user_metadata?.full_name || 'College Dean / Secretary';
+            state.chairFaculty = {
+                id: currentFaculty?.id || null,
+                full_name: deanName,
+                name: deanName,
+                employee_id: currentFaculty?.employee_id || null,
+                academic_rank: currentFaculty?.academic_rank || currentFaculty?.position || 'College Dean',
+                position: currentFaculty?.designation || currentFaculty?.role || 'College Dean',
+                department: 'COTE (BSIT, BSIE, BIT)',
+                department_code: 'COTE'
+            };
+            state.faculty = state.chairFaculty;
+
+            const [progPktsRes, subRes, facultyRes, packetsRes] = await Promise.all([
+                withTimeout(client.from('mfo_program_packets').select('*').eq('task_id', state.task.id), 4000, { data: [] }),
+                withTimeout(client.from('wf_submissions').select('*').eq('task_id', state.task.id), 4000, { data: [] }),
+                withTimeout(client.from('faculty').select('*'), 4000, { data: [] }),
+                withTimeout(client.from('mfo_packets').select('*').eq('task_id', state.task.id), 4000, { data: [] })
+            ]);
+
+            const progPackets = progPktsRes?.data || [];
+            const progPacketIds = progPackets.map((p) => p.id).filter(Boolean);
+            const allSubmissions = subRes?.data || [];
+            const allFaculty = facultyRes?.data || [];
+            const taskPackets = packetsRes?.data || [];
+            const packetIds = taskPackets.map((p) => p.id).filter(Boolean);
+
+            let progSnapshots = [];
+            const programRowsByDept = {};
+            if (progPacketIds.length > 0) {
+                const [snapsRes, pi1Res, pi2Res] = await Promise.all([
+                    withTimeout(client.from('mfo_snapshots').select('*').in('program_packet_id', progPacketIds).order('created_at', { ascending: false }), 4000, { data: [] }),
+                    withTimeout(client.from('mfo_pi1_licensure').select('*').in('program_packet_id', progPacketIds).order('sort_order'), 3000, { data: [] }),
+                    withTimeout(client.from('mfo_pi2_employment').select('*').in('program_packet_id', progPacketIds).order('sort_order'), 3000, { data: [] })
+                ]);
+                progSnapshots = snapsRes?.data || [];
+                const pi1List = pi1Res?.data || [];
+                const pi2List = pi2Res?.data || [];
+                progPackets.forEach((pp) => {
+                    const d = String(pp.department || '').trim().toLowerCase();
+                    if (!d) return;
+                    programRowsByDept[d] = {
+                        pi1: pi1List.filter((r) => String(r.program_packet_id) === String(pp.id)),
+                        pi2: pi2List.filter((r) => String(r.program_packet_id) === String(pp.id))
+                    };
+                });
+            }
+
+            const childRows = {};
+            const sectionsToLoad = engine?.MFO_SECTIONS || SECTIONS;
+            if (packetIds.length > 0) {
+                await Promise.all(sectionsToLoad.map(async (sec) => {
+                    try {
+                        const res = await withTimeout(client.from(sec.table).select('*').in('packet_id', packetIds), 4000, { data: [] });
+                        if (res?.data) childRows[sec.table] = res.data;
+                    } catch (e) {
+                        warn(`child rows ${sec.table}`, e);
+                    }
+                }));
+                try {
+                    const filesRes = await withTimeout(client.from('wf_submission_files').select('*').in('mfo_packet_id', packetIds), 4000, { data: [] });
+                    state.files = filesRes?.data || [];
+                    await hydrateFileDisplayUrls(state.files);
+                } catch (e) {
+                    warn('submission files', e);
+                }
+            }
+
+            if (engine?.buildCollegeMfoConsolidation) {
+                const collegeModel = engine.buildCollegeMfoConsolidation({
+                    taskId: state.task.id,
+                    departments: ['bsit', 'bsie', 'bit'],
+                    programPackets: progPackets,
+                    snapshots: progSnapshots,
+                    submissions: allSubmissions,
+                    packets: taskPackets,
+                    facultyList: allFaculty,
+                    childRows,
+                    programRowsByDept
+                });
+                state.rows = collegeModel.activeSections || collegeModel.sections || {};
+                state.programRows = collegeModel.programPortion || collegeModel.programRows || { pi1: [], pi2: [] };
+                state.contributingFacultyList = collegeModel.contributingFaculty || [];
+                const contribIds = new Set((state.contributingFacultyList || []).map(f => String(f.id || f.faculty_id || '')));
+                state.unsubmittedFacultyList = (allFaculty || []).filter(f => {
+                    const d = String(f.department || f.department_code || '').trim().toLowerCase();
+                    if (!['bsit', 'bsie', 'bit'].includes(d)) return false;
+                    return !contribIds.has(String(f.id));
+                });
+                state.programPacket = {
+                    department: 'COTE (BSIT, BSIE, BIT)',
+                    other_accomplishments: collegeModel.programPortion?.other_accomplishments || ''
+                };
+            }
+
+            state.period = periodFromTask(state.task, state.config);
+            autoMarkBlankSectionsAsNa();
+            renderPreview();
+            return;
+        }
+
         // Load active delegated access grants for authorization and consolidation
         let grants = [];
         try {
@@ -1678,6 +1783,7 @@
         if (consolidation?.frozenPayload?.sections) {
             state.rows = consolidation.frozenPayload.sections;
             state.contributingFacultyList = consolidation.contributingFaculty || [];
+            state.unsubmittedFacultyList = consolidation.unsubmittedFaculty || [];
             if (consolidation.programPortion) {
                 state.programRows = consolidation.programPortion;
             }
@@ -4560,21 +4666,158 @@
             ${reportDocumentation(rows)}`;
     }
 
+    function openConsolidatedEvidenceModal() {
+        state.evidenceModalOpen = true;
+        renderPreview();
+    }
+
+    function closeConsolidatedEvidenceModal() {
+        state.evidenceModalOpen = false;
+        renderPreview();
+    }
+
+    async function sendConsolidatedUnsubmittedReminders() {
+        const unsubmitted = Array.isArray(state.unsubmittedFacultyList) ? state.unsubmittedFacultyList : [];
+        if (!unsubmitted.length) {
+            toast('All faculty in this consolidation scope have already submitted their MFO reports.', 'info');
+            return;
+        }
+        const actorName = state.chairFaculty?.full_name || state.chairFaculty?.name || 'Department Chairperson / Admin';
+        const taskTitle = state.task?.title || 'Quarterly MFO Accomplishment Report';
+        try {
+            const client = db();
+            if (client) {
+                const payloads = unsubmitted.slice(0, 50).map((f) => ({
+                    recipient_faculty_id: f.id || f.faculty_id,
+                    recipient_user_id: f.auth_user_id || null,
+                    title: `Reminder: ${taskTitle}`,
+                    message: `${actorName} sent a reminder to submit your ${taskTitle} so it can be included in the consolidated MFO report.`,
+                    type: 'reminder',
+                    task_id: state.task?.id || null,
+                    is_read: false,
+                    created_at: new Date().toISOString()
+                }));
+                await client.from('wf_notifications').insert(payloads);
+            }
+        } catch (err) {
+            warn('consolidated reminder insert', err);
+        }
+        toast(`Sent MFO submission reminders to ${unsubmitted.length} unsubmitted faculty member${unsubmitted.length === 1 ? '' : 's'}.`, 'success');
+    }
+
+    function renderConsolidatedEvidenceModal() {
+        if (!state.evidenceModalOpen) return '';
+        const files = Array.isArray(state.files) ? state.files : [];
+        const contributors = Array.isArray(state.contributingFacultyList) ? state.contributingFacultyList : [];
+        const unsubmitted = Array.isArray(state.unsubmittedFacultyList) ? state.unsubmittedFacultyList : [];
+
+        const contributorCards = contributors.length
+            ? contributors.map((c) => {
+                const cName = c.name || c.full_name || c.faculty_name || 'Faculty Member';
+                const cDept = String(c.department || c.program || '').toUpperCase();
+                const cFiles = files.filter((f) =>
+                    (c.packetId && String(f.mfo_packet_id) === String(c.packetId)) ||
+                    (c.submissionId && String(f.submission_id) === String(c.submissionId)) ||
+                    (c.id && String(f.faculty_id) === String(c.id))
+                );
+                const filesHtml = cFiles.length
+                    ? cFiles.map((f) => {
+                        const url = f._displayUrl || f.file_url || f.public_url || '';
+                        const fName = f.file_name || f.name || 'Evidence File';
+                        const sec = f.section_code ? `<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">${esc(f.section_code)}</span>` : '';
+                        return `
+                            <div class="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <i class="fa-solid fa-file-lines text-[#621708]"></i>
+                                    ${sec}
+                                    <span class="truncate font-medium text-slate-800">${esc(fName)}</span>
+                                </div>
+                                ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener" class="px-2.5 py-1 rounded-md bg-white border border-slate-200 text-[#621708] font-bold text-[11px] hover:bg-slate-100 shrink-0">Open <i class="fa-solid fa-arrow-up-right-from-square text-[9px] ml-0.5"></i></a>` : '<span class="text-[11px] text-slate-400">Stored</span>'}
+                            </div>`;
+                    }).join('')
+                    : `<p class="text-xs text-slate-400 italic">Submitted MFO rows verified (${Number(c.itemCount || c.row_count || 0)} entries); no separate attachment files.</p>`;
+
+                return `
+                    <div class="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="font-bold text-slate-900 text-sm">${esc(cName)} ${cDept ? `<span class="text-xs font-semibold text-slate-500">&middot; ${esc(cDept)}</span>` : ''}</div>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">${cFiles.length} file${cFiles.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <div class="space-y-1.5">${filesHtml}</div>
+                    </div>`;
+            }).join('')
+            : `<p class="text-xs text-slate-500 p-3 rounded-xl bg-slate-50 border border-slate-200">No contributing faculty packets loaded yet for this cycle.</p>`;
+
+        const allFilesFallback = (!contributors.length && files.length)
+            ? `<div class="space-y-1.5 mt-3">${files.map((f) => {
+                const url = f._displayUrl || f.file_url || f.public_url || '';
+                return `<div class="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+                    <span class="truncate font-medium">${esc(f.file_name || 'Evidence File')}</span>
+                    ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener" class="text-[#621708] font-bold">Open</a>` : ''}
+                </div>`;
+            }).join('')}</div>`
+            : '';
+
+        return `
+            <div class="mfo-review-overlay" onclick="if(event.target===this) CiteFlowMfoFaculty.closeConsolidatedEvidenceModal()">
+                <div class="mfo-review-dialog" style="max-width:740px; width:94vw;" role="dialog" aria-modal="true" aria-label="Consolidated Source Evidence & Contributors">
+                    <div class="mfo-review-header flex items-center justify-between">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900">Source Evidence &amp; Contributing Faculty</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">${contributors.length} contributing faculty &middot; ${files.length} supporting evidence file${files.length === 1 ? '' : 's'} &middot; ${unsubmitted.length} unsubmitted</p>
+                        </div>
+                        <button type="button" class="text-slate-400 hover:text-slate-700 p-1" onclick="CiteFlowMfoFaculty.closeConsolidatedEvidenceModal()">
+                            <i class="fa-solid fa-xmark text-base"></i>
+                        </button>
+                    </div>
+                    <div class="mfo-review-body space-y-3" style="max-height:65vh; overflow-y:auto;">
+                        ${unsubmitted.length ? `
+                            <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3">
+                                <div class="text-xs text-amber-900">
+                                    <strong>${unsubmitted.length} faculty member${unsubmitted.length === 1 ? '' : 's'}</strong> have not yet submitted their MFO packet for this cycle.
+                                </div>
+                                <button type="button" onclick="CiteFlowMfoFaculty.sendConsolidatedUnsubmittedReminders()" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0">
+                                    <i class="fa-solid fa-bell mr-1"></i> Send Reminder
+                                </button>
+                            </div>
+                        ` : ''}
+                        ${contributorCards}
+                        ${allFilesFallback}
+                    </div>
+                    <div class="mfo-review-footer">
+                        <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closeConsolidatedEvidenceModal()">Close</button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
     function renderPreview() {
         const root = document.getElementById('mfoApp');
         if (!root || !state.faculty) return;
         const profile = profileBase();
+        const evidenceCount = Array.isArray(state.files) ? state.files.length : 0;
+        const unsubmittedCount = Array.isArray(state.unsubmittedFacultyList) ? state.unsubmittedFacultyList.length : 0;
         root.innerHTML = `<div class="mfo-doc-toolbar mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div><div class="cite-kicker">${state.isConsolidated ? 'Department Consolidated MFO Report' : (state.reviewerMode ? 'Submitted report (read-only)' : 'Completed report')}</div>
+            <div><div class="cite-kicker">${state.isCollegeConsolidated ? 'College-Wide Consolidated MFO Report (All Programs: BSIT · BSIE · BIT)' : (state.isConsolidated ? 'Department Consolidated MFO Report' : (state.reviewerMode ? 'Submitted report (read-only)' : 'Completed report'))}</div>
             <h1 class="cite-title">MFO Accomplishment Report</h1>
             <p class="cite-subtitle">${esc(statusLabel())}${state.isConsolidated ? ` · ${esc(state.chairFaculty?.full_name || '')} (${esc(profile.department || '')})` : (state.reviewerMode ? ` · ${esc(state.faculty.full_name || '')}` : (state.previewPdfUrl ? ' · generated PDF' : ' · reflects the last saved values.'))}</p></div>
-            <div class="flex flex-col sm:flex-row gap-2">
+            <div class="flex flex-wrap items-center gap-2">
                 ${state.isConsolidated
                     ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = '${state.isFinalApprover ? '../admin/workflow-approval.html' : 'submissions.html#chair-review'}';">← Back</button>`
                     : (state.reviewerMode
                         ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = '${state.reviewerIsAdmin ? '../admin/workflow-approval.html' : 'submissions.html#chair-review'}';">← Back</button>`
                         : '<button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.closePreview()">← Back to editor</button>')
                 }
+                ${state.isConsolidated ? `
+                    <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.openConsolidatedEvidenceModal()">
+                        <i class="fa-solid fa-folder-open mr-1"></i> Source Evidence (${evidenceCount})
+                    </button>
+                    ${unsubmittedCount > 0 ? `
+                        <button type="button" class="cite-action" onclick="CiteFlowMfoFaculty.sendConsolidatedUnsubmittedReminders()">
+                            <i class="fa-solid fa-bell mr-1 text-amber-600"></i> Remind Unsubmitted (${unsubmittedCount})
+                        </button>
+                    ` : ''}
+                ` : ''}
                 ${(state.reviewerMode || (state.isConsolidated && state.isFinalApprover)) && reviewerCanAct() ? `
                 <button type="button" class="cite-action-primary" onclick="CiteFlowMfoFaculty.openReviewerModal('approved')">
                     ${(state.reviewerIsAdmin || state.isFinalApprover) ? '<i class="fa-solid fa-check mr-1"></i> Final Approve' : '<i class="fa-solid fa-check mr-1"></i> Approve'}
@@ -4589,15 +4832,19 @@
             </div>
         </div>
         ${state.sourceWarning ? `
-            <div class="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
-                <i class="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i>
-                <span>${esc(state.sourceWarning)}</span>
+            <div class="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i>
+                    <span>${esc(state.sourceWarning)}</span>
+                </div>
+                ${unsubmittedCount > 0 ? `<button type="button" onclick="CiteFlowMfoFaculty.sendConsolidatedUnsubmittedReminders()" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0"><i class="fa-solid fa-bell mr-1"></i>Remind Unsubmitted (${unsubmittedCount})</button>` : ''}
             </div>
         ` : ''}
         ${state.previewPdfUrl
             ? `<iframe class="mfo-pdf-frame" title="Generated MFO PDF" src="${esc(state.previewPdfUrl)}"></iframe>`
             : renderReportDocument()}
-        ${renderReviewerModal()}`;
+        ${renderReviewerModal()}
+        ${renderConsolidatedEvidenceModal()}`;
         window.scrollTo({ top: 0, behavior: 'auto' });
         if (!state.previewPdfUrl) hydrateReportPhotos();
         placeOverlays();
@@ -4836,6 +5083,9 @@
         autoMarkAllBlankAsNa() { autoMarkBlankSectionsAsNa(); render(); toast('All empty sections set to N/A.'); },
         undoAllBlankNa() { undoBlankSectionsNa(); render(); toast('Reverted N/A on blank sections.'); },
         initConsolidatedMode,
+        openConsolidatedEvidenceModal,
+        closeConsolidatedEvidenceModal,
+        sendConsolidatedUnsubmittedReminders,
         _state: state,
         _profileBase: profileBase,
         _reportProfileModel: reportProfileModel,

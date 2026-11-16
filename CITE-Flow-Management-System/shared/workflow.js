@@ -57,6 +57,7 @@
     const DOCUMENT_CATEGORIES = [
         { value: 'DTR', label: 'DTR' },
         { value: 'LDP', label: 'LDP' },
+        { value: 'IDP', label: 'IDP' },
         { value: 'Syllabus', label: 'Syllabus' },
         { value: 'IPCR', label: 'IPCR' },
         { value: 'TOS', label: 'Table of Specifications (TOS)' },
@@ -64,7 +65,7 @@
         { value: 'Form E-0', label: 'Form E-0 (Workload Report)' }
     ];
 
-    const QUICK_SUBMISSION_CATEGORY_VALUES = ['Syllabus', 'DTR', 'TOS', 'IPCR', 'LDP'];
+    const QUICK_SUBMISSION_CATEGORY_VALUES = ['Syllabus', 'DTR', 'TOS', 'IPCR', 'LDP', 'IDP'];
 
     const DOCUMENT_CATEGORY_VALUES = DOCUMENT_CATEGORIES.map((item) => item.value);
 
@@ -108,6 +109,9 @@
         if (lower.includes('table of specifications')) return 'TOS';
         if (lower.includes('major final output')) return 'MFO';
         if (lower.includes('form e-0') || lower.includes('form e0') || lower.includes('workload report')) return 'Form E-0';
+        if (lower.includes('learning development plan')) return 'LDP';
+        if (lower.includes('institutional development plan') || lower.includes('individual development plan')) return 'IDP';
+        if (lower.includes('individual performance commitment')) return 'IPCR';
 
         const tokens = tokenizeCategorySource(raw);
         for (const cat of DOCUMENT_CATEGORIES) {

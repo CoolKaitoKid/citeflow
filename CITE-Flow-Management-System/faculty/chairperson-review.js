@@ -28,6 +28,7 @@
         arSubmissions: [],
         formE0Reports: [],
         filterType: 'all', // 'all' | 'form_e0' | 'mfo' | 'ar' | 'tasks'
+        periodScope: 'all', // 'all' | 'current'
         notSubmittedFilter: 'all', // 'all' | 'open' | 'overdue'
         reportFilterFreq: 'all', // 'all' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual'
         expandedCycles: {}, // map of `${groupId}_${cycleId}` -> boolean
@@ -179,11 +180,27 @@
         return (review.faculty || []).filter(isFacultyInChairScope);
     }
 
+    function isTaskInPeriodScope(task, submittedTaskIds) {
+        if (!task) return true;
+        if (review.periodScope !== 'current') return true;
+        if (submittedTaskIds && submittedTaskIds.has(String(task.id))) return true;
+        const dueStr = task.deadline_at || task.due_at || task.reporting_period_end || task.created_at;
+        if (!dueStr) return true;
+        const dueMs = new Date(dueStr).getTime();
+        if (!Number.isFinite(dueMs)) return true;
+        const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
+        return dueMs >= (Date.now() - fortyFiveDaysMs);
+    }
+
     function scopedAssignments() {
         const people = facultyMap();
+        const tasks = taskMap();
+        const submittedTaskIds = new Set(scopedSubmissions().map((s) => String(s.task_id)));
         return (review.assignments || []).filter((a) => {
             const person = people.get(String(a.faculty_id));
-            return isFacultyInChairScope(person || { id: a.faculty_id, department: a.department });
+            if (!isFacultyInChairScope(person || { id: a.faculty_id, department: a.department })) return false;
+            const task = tasks.get(String(a.task_id));
+            return isTaskInPeriodScope(task, submittedTaskIds);
         });
     }
 
@@ -202,11 +219,12 @@
     }
 
     function scopedTasks() {
-        const assignedTaskIds = new Set(scopedAssignments().map((a) => String(a.task_id)));
         const submittedTaskIds = new Set(scopedSubmissions().map((s) => String(s.task_id)));
+        const assignedTaskIds = new Set(scopedAssignments().map((a) => String(a.task_id)));
         const authorized = new Set(authorizedDepartmentCodes());
 
         return (review.tasks || []).filter((task) => {
+            if (!isTaskInPeriodScope(task, submittedTaskIds)) return false;
             const idStr = String(task.id);
             if (assignedTaskIds.has(idStr) || submittedTaskIds.has(idStr)) return true;
             const taskDept = String(task.department_code || task.department || '').trim().toLowerCase();
@@ -607,6 +625,75 @@
     function setFilterType(type) {
         review.filterType = ['all', 'form_e0', 'mfo', 'ar', 'tasks'].includes(type) ? type : 'all';
         render();
+    }
+
+    function setPeriodScope(scope) {
+        review.periodScope = scope === 'current' ? 'current' : 'all';
+        render();
+    }
+
+    async function sendFacultyReminder(facultyId, taskId) {
+        const person = facultyMap().get(String(facultyId));
+        const task = taskMap().get(String(taskId));
+        const facultyName = person?.full_name || person?.name || 'Faculty Member';
+        const taskTitle = task?.title || 'Assigned Deliverable';
+        const chairName = global.currentFaculty?.full_name || global.currentFaculty?.name || 'Department Chairperson';
+        const dept = chairDepartmentDisplay();
+
+        try {
+            const client = db();
+            if (client) {
+                await client.from('wf_notifications').insert([{
+                    recipient_faculty_id: facultyId,
+                    recipient_user_id: person?.auth_user_id || null,
+                    title: `Reminder: ${taskTitle}`,
+                    message: `${chairName} (${dept} Chairperson) sent a friendly reminder to submit "${taskTitle}".`,
+                    type: 'reminder',
+                    task_id: taskId || null,
+                    is_read: false,
+                    created_at: new Date().toISOString()
+                }]);
+            }
+        } catch (err) {
+            console.warn('[Chairperson Reminder] Notification insert fallback:', err);
+        }
+        toast(`Reminder sent to ${facultyName} for "${taskTitle}".`, 'success');
+    }
+
+    async function sendBulkUnsubmittedReminders() {
+        const rows = buildNonSubmittedRows();
+        const targets = review.notSubmittedFilter === 'overdue'
+            ? rows.filter((r) => r.is_overdue)
+            : (review.notSubmittedFilter === 'open' ? rows.filter((r) => !r.is_overdue) : rows);
+        if (!targets.length) {
+            toast('No unsubmitted rows in the current filter to remind.', 'info');
+            return;
+        }
+        const chairName = global.currentFaculty?.full_name || global.currentFaculty?.name || 'Department Chairperson';
+        const dept = chairDepartmentDisplay();
+        const uniqueFaculty = new Set(targets.map((r) => String(r.faculty_id)));
+        try {
+            const client = db();
+            if (client) {
+                const payloads = targets.slice(0, 50).map((r) => {
+                    const person = facultyMap().get(String(r.faculty_id));
+                    return {
+                        recipient_faculty_id: r.faculty_id,
+                        recipient_user_id: person?.auth_user_id || null,
+                        title: `Reminder: ${r.task_title}`,
+                        message: `${chairName} (${dept} Chairperson) sent a reminder to complete your pending submission for "${r.task_title}".`,
+                        type: 'reminder',
+                        task_id: r.task_id || null,
+                        is_read: false,
+                        created_at: new Date().toISOString()
+                    };
+                });
+                await client.from('wf_notifications').insert(payloads);
+            }
+        } catch (err) {
+            console.warn('[Chairperson Bulk Reminder] Notification insert fallback:', err);
+        }
+        toast(`Sent ${targets.length} reminder${targets.length === 1 ? '' : 's'} across ${uniqueFaculty.size} faculty member${uniqueFaculty.size === 1 ? '' : 's'}.`, 'success');
     }
 
     function setNotSubmittedFilter(filter) {
@@ -1223,6 +1310,9 @@
                     <button type="button" class="chair-btn-secondary" onclick="CiteFlowChairReview.openTaskDetails('${row.task_id}')">
                         <i class="fa-solid fa-circle-info mr-1.5"></i> View Task Details
                     </button>
+                    <button type="button" class="chair-btn-secondary text-amber-800 border-amber-200 bg-amber-50/70 hover:bg-amber-100" onclick="CiteFlowChairReview.sendFacultyReminder('${row.faculty_id}', '${row.task_id}')">
+                        <i class="fa-solid fa-bell mr-1.5"></i> Send Reminder
+                    </button>
                     ${isMfo ? `
                         <button type="button" class="chair-btn-primary text-xs inline-flex items-center" onclick="CiteFlowChairReview.openConsolidatedMfo('${row.task_id}')" title="Open Department Consolidated MFO Report">
                             <i class="fa-solid fa-layer-group mr-1.5"></i> Consolidate MFO
@@ -1552,12 +1642,22 @@
 
         root.innerHTML = `
             <div class="fade-in">
-                <header class="mb-6">
-                    <div class="flex items-center flex-wrap gap-2.5 mt-1">
-                        <h1 class="cite-title">Chairperson Review</h1>
-                        <span class="cite-live"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>Live</span>
+                <header class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <div class="flex items-center flex-wrap gap-2.5 mt-1">
+                            <h1 class="cite-title">Chairperson Review</h1>
+                            <span class="cite-live"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>Live</span>
+                        </div>
+                        <p class="cite-subtitle">${esc(deptDisplay)} Department. Submission analytics and departmental workflow management.</p>
                     </div>
-                    <p class="cite-subtitle">${esc(deptDisplay)} Department. Submission analytics and departmental workflow management.</p>
+                    <div class="inline-flex items-center p-1 rounded-xl bg-white border border-slate-200 shadow-xs self-start sm:self-auto" role="group" aria-label="Chairperson period scope">
+                        <button type="button" onclick="CiteFlowChairReview.setPeriodScope('current')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${review.periodScope === 'current' ? 'bg-[#621708] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                            <i class="fa-solid fa-calendar-day mr-1.5"></i>Current Period
+                        </button>
+                        <button type="button" onclick="CiteFlowChairReview.setPeriodScope('all')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${review.periodScope === 'all' ? 'bg-[#621708] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                            <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>All Cycles
+                        </button>
+                    </div>
                 </header>
 
                 <!-- Overview Stat Cards (Standardized Metrics) -->
@@ -1651,11 +1751,16 @@
 
                 <!-- Sub-filters Bar -->
                 ${review.tab === 'not_submitted' ? `
-                    <div class="flex flex-wrap items-center gap-2 mb-4">
-                        <span class="text-xs font-semibold text-slate-500 mr-1">Status:</span>
-                        <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.notSubmittedFilter === 'all' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setNotSubmittedFilter('all')">All Not Submitted (${counts.not_submitted})</button>
-                        <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.notSubmittedFilter === 'open' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setNotSubmittedFilter('open')">Open Deadlines (${counts.not_submitted_open})</button>
-                        <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.notSubmittedFilter === 'overdue' ? 'bg-rose-700 text-white shadow-sm' : 'bg-white text-rose-700 border border-rose-200 hover:bg-rose-50'}" onclick="CiteFlowChairReview.setNotSubmittedFilter('overdue')">Overdue (${counts.not_submitted_overdue})</button>
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs font-semibold text-slate-500 mr-1">Status:</span>
+                            <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.notSubmittedFilter === 'all' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setNotSubmittedFilter('all')">All Not Submitted (${counts.not_submitted})</button>
+                            <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.notSubmittedFilter === 'open' ? 'bg-[#621708] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}" onclick="CiteFlowChairReview.setNotSubmittedFilter('open')">Open Deadlines (${counts.not_submitted_open})</button>
+                            <button type="button" class="px-3 py-1 rounded-full text-xs font-semibold transition-all ${review.notSubmittedFilter === 'overdue' ? 'bg-rose-700 text-white shadow-sm' : 'bg-white text-rose-700 border border-rose-200 hover:bg-rose-50'}" onclick="CiteFlowChairReview.setNotSubmittedFilter('overdue')">Overdue (${counts.not_submitted_overdue})</button>
+                        </div>
+                        <button type="button" onclick="CiteFlowChairReview.sendBulkUnsubmittedReminders()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 inline-flex items-center gap-1.5 shadow-2xs transition">
+                            <i class="fa-solid fa-bell text-amber-600"></i> Remind All in View
+                        </button>
                     </div>
                 ` : (review.tab === 'reports' ? `
                     <div class="flex flex-wrap items-center gap-2 mb-4">
@@ -5509,6 +5614,9 @@
         setMode,
         setTab,
         setFilterType,
+        setPeriodScope,
+        sendFacultyReminder,
+        sendBulkUnsubmittedReminders,
         setNotSubmittedFilter,
         setReportFilterFreq,
         toggleCycle,
