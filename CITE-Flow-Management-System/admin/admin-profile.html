@@ -2014,6 +2014,43 @@ if (!window._nativeAlert) {
 window.alert = function(msg) {
     showToast(String(msg ?? ''), 'info');
 };
+if (!window._nativeConfirm) {
+    window._nativeConfirm = window.confirm ? window.confirm.bind(window) : () => true;
+}
+
+async function showAdminConfirm(message, title = 'Confirmation', options = {}) {
+    if (window.CiteFlowUI && typeof window.CiteFlowUI.dialog === 'function') {
+        return await window.CiteFlowUI.dialog({
+            message,
+            title: title || 'Confirmation',
+            cancelText: options.cancelText || 'Cancel',
+            confirmText: options.confirmText || 'Confirm',
+            type: options.type || 'warning'
+        });
+    }
+    if (window.CiteFlowUI && typeof window.CiteFlowUI.confirm === 'function') {
+        return await window.CiteFlowUI.confirm(message, title);
+    }
+    if (typeof window.showNoticeModal === 'function') {
+        return await window.showNoticeModal({
+            message,
+            title: title || 'Confirmation',
+            cancelText: options.cancelText || 'Cancel',
+            confirmText: options.confirmText || 'Confirm',
+            type: options.type || 'warning'
+        });
+    }
+    if (typeof window.showDialog === 'function') {
+        return await window.showDialog({
+            message,
+            title: title || 'Confirmation',
+            cancelText: options.cancelText || 'Cancel',
+            confirmText: options.confirmText || 'Confirm',
+            type: options.type || 'warning'
+        });
+    }
+    return window._nativeConfirm ? window._nativeConfirm(message) : confirm(message);
+}
 
 /* ── Utility helpers ─────────────────────────────────────────────── */
 
@@ -3116,7 +3153,8 @@ function clearTeachingForm() {
 }
 
 async function archiveWorkload(type, id) {
-    if (!confirm('Remove this workload entry?')) return;
+    const ok = await showAdminConfirm('Are you sure you want to remove this workload entry?', 'Remove Workload Entry', { confirmText: 'Remove' });
+    if (!ok) return;
 
     const { error } = await supabaseClient
         .from('faculty_teaching_loads')
@@ -4051,9 +4089,7 @@ function editCurrentViewDocument() {
 
 async function deleteDocumentRecord(id) {
     if (!id) return;
-    const ok = await (window.CiteFlowUI?.confirm
-        ? CiteFlowUI.confirm('Are you sure you want to delete this document? This action cannot be undone.', 'Delete Document')
-        : Promise.resolve(confirm('Are you sure you want to delete this document?')));
+    const ok = await showAdminConfirm('Are you sure you want to delete this document? This action cannot be undone.', 'Delete Document', { confirmText: 'Delete' });
     if (!ok) return;
 
     try {
@@ -4402,7 +4438,8 @@ async function saveExtensionProject() {
 }
 
 async function deleteExtensionProject(id) {
-    if (!confirm('Are you sure you want to delete this extension project?')) return;
+    const ok = await showAdminConfirm('Are you sure you want to delete this extension project? This action cannot be undone.', 'Delete Extension Project', { confirmText: 'Delete' });
+    if (!ok) return;
     try {
         const { error } = await supabaseClient.from('admin_extension_projects').delete().eq('id', id);
         if (error) throw error;
@@ -4418,7 +4455,8 @@ async function deleteExtensionProject(id) {
 // ═══════════════════════════════════════════════════
 
 async function verifyDocument(docId) {
-    if (!confirm('Mark this document as verified?')) return;
+    const ok = await showAdminConfirm('Mark this document as verified?', 'Verify Document', { confirmText: 'Verify' });
+    if (!ok) return;
     try {
         const adminName = currentFaculty.full_name || currentFaculty.name || 'Admin';
         const { error } = await supabaseClient
@@ -4455,7 +4493,8 @@ async function verifyDocument(docId) {
 }
 
 async function rejectDocumentVerification(docId) {
-    if (!confirm('Reject verification for this document?')) return;
+    const ok = await showAdminConfirm('Reject verification for this document?', 'Reject Verification', { confirmText: 'Reject' });
+    if (!ok) return;
     try {
         const adminName = currentFaculty.full_name || currentFaculty.name || 'Admin';
         const { error } = await supabaseClient
@@ -5049,9 +5088,7 @@ function openEditResearchModal(id) {
 }
 
 async function deleteResearchProject(id) {
-    const ok = await (window.CiteFlowUI?.confirm
-        ? CiteFlowUI.confirm('Are you sure you want to delete this research project? This action cannot be undone.', 'Delete Research Project')
-        : Promise.resolve(confirm('Are you sure you want to delete this research project?')));
+    const ok = await showAdminConfirm('Are you sure you want to delete this research project? This action cannot be undone.', 'Delete Research Project', { confirmText: 'Delete' });
     if (!ok) return;
 
     try {
@@ -5315,7 +5352,8 @@ function editCurrentViewAccomplishment() {
 async function deleteAccomplishmentRecord(id) {
     const targetId = id || window.currentViewingAccomplishmentId;
     if (!targetId) return;
-    if (!confirm('Are you sure you want to delete this accomplishment record? This action cannot be undone.')) return;
+    const ok = await showAdminConfirm('Are you sure you want to delete this accomplishment record? This action cannot be undone.', 'Delete Accomplishment', { confirmText: 'Delete' });
+    if (!ok) return;
 
     try {
         const { error } = await supabaseClient
@@ -6828,7 +6866,8 @@ function renderReportSubmissionsTable(submissions) {
  * Resubmit a report that was returned for revision.
  */
 async function resubmitReport(reportId) {
-    if (!confirm('This will regenerate and resubmit your report. Continue?')) return;
+    const ok = await showAdminConfirm('This will regenerate and resubmit your report. Continue?', 'Resubmit Report', { confirmText: 'Continue' });
+    if (!ok) return;
 
     try {
         // Fetch the existing submission to get its config

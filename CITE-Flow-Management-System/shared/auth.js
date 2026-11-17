@@ -533,6 +533,25 @@ window.CiteFlowAuth = (function () {
                 || null;
         }
 
+        // Check if faculty account is archived
+        const isArchived = String(facultyProfile?.status || '').toLowerCase() === 'archived';
+        const isUserAdminCheck = Boolean(adminProfile)
+            || role === 'admin'
+            || role === 'administrator'
+            || isAdminPortalRole(role, facultyProfile);
+
+        if (isArchived && !isUserAdminCheck) {
+            console.warn('CiteFlowAuth: Login blocked because faculty account is archived.');
+            try { await sb.auth.signOut(); } catch (_) {}
+            try {
+                if (typeof localStorage !== 'undefined') {
+                    localStorage.removeItem('citeflow_user');
+                    localStorage.removeItem('citeflow_faculty_record');
+                }
+            } catch (_) {}
+            throw new Error("This faculty account has been archived. Please contact the College Dean or Administrator.");
+        }
+
         // Helper to resolve relative file paths for both Live Server & Express
         const isInsideSubfolder = window.location.pathname.toLowerCase().includes('/admin/') || window.location.pathname.toLowerCase().includes('/faculty/');
         const prefix = isInsideSubfolder ? '../' : '';

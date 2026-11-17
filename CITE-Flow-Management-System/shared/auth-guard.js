@@ -221,7 +221,7 @@
 
             const facultyLookup = await sb
                 .from('faculty')
-                .select('id, role, position, admin_access, profile_completed, must_change_password, first_login_completed_at, department, full_name, email, auth_user_id')
+                .select('id, role, position, admin_access, profile_completed, must_change_password, first_login_completed_at, department, full_name, email, auth_user_id, status')
                 .or(`auth_user_id.eq.${user.id},email.ilike.${user.email}`);
 
             const facultyAuthFailed = facultyLookup.error && (
@@ -318,6 +318,20 @@
                 isDean,
                 isSecretary
             });
+
+            // Revoke access if the faculty account has been archived
+            const isFacultyArchived = String(facultyRecord?.status || '').toLowerCase() === 'archived';
+            if (isFacultyArchived && !isAdminRole && !isDean && !isSecretary) {
+                console.warn('Auth Guard: Faculty account is archived. Revoking session.');
+                try { await sb.auth.signOut(); } catch (_) {}
+                if (typeof localStorage !== 'undefined') {
+                    localStorage.removeItem('citeflow_user');
+                    localStorage.removeItem('citeflow_faculty_record');
+                }
+                finish(AuthState.UNAUTHENTICATED);
+                window.location.replace(`${prefix}login.html?archived=1`);
+                return;
+            }
 
             if (isOnboardingArea) {
                 if (onboardingDone) {
