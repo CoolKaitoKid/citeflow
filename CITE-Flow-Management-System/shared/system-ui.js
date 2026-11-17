@@ -259,6 +259,31 @@
                 color: var(--cite-theme-text) !important;
             }
             .cite-kicker { color: var(--cite-theme-ink) !important; }
+            .citeflow-toast {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%) translateY(20px);
+                background: #1e293b;
+                color: #ffffff;
+                padding: 11px 22px;
+                border-radius: 14px;
+                font-size: 0.875rem;
+                font-weight: 500;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+                z-index: 100001;
+                opacity: 0;
+                transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                pointer-events: none;
+                font-family: system-ui, -apple-system, sans-serif;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .citeflow-toast.show {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
         `;
 
         let styleEl = document.getElementById('citeflow-theme-style');
@@ -525,6 +550,52 @@
         });
     }
 
+    /* ── Global CITE-Flow Toast Notification System ─────────────────────── */
+    function systemToastMark(type) {
+        const marks = {
+            success: { icon: "fa-circle-check", color: "#10b981" },
+            error: { icon: "fa-circle-xmark", color: "#f87171" },
+            warning: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            warn: { icon: "fa-triangle-exclamation", color: "#fbbf24" },
+            info: { icon: "fa-circle-info", color: "#60a5fa" }
+        };
+        return marks[type] || marks.info;
+    }
+
+    function showSystemToast(message, type = 'info', duration = 3500) {
+        const text = String(message ?? '').trim();
+        if (!text) return;
+
+        if (typeof type === 'number') {
+            const temp = duration;
+            duration = type;
+            type = typeof temp === 'string' ? temp : 'info';
+        }
+        const normType = (type === 'warn' || type === 'warning') ? 'warning' : (['success', 'error', 'info'].includes(type) ? type : 'info');
+
+        if (window.CiteFlowModal && typeof window.CiteFlowModal.toast === 'function') {
+            window.CiteFlowModal.toast(text, duration, normType);
+            return;
+        }
+
+        const mark = systemToastMark(normType);
+        let toast = document.getElementById('citeflowGlobalToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'citeflowGlobalToast';
+            toast.className = 'citeflow-toast';
+            document.body.appendChild(toast);
+        }
+        const safe = document.createElement('div');
+        safe.textContent = text;
+        toast.innerHTML = `<i class="fa-solid ${mark.icon}" style="color:${mark.color};"></i> <span>${safe.innerHTML}</span>`;
+        toast.classList.add('show');
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => {
+            toast.classList.remove('show');
+        }, duration);
+    }
+
     window.CiteFlowUI = {
         setTheme: function (hexColor) {
             saveTheme(hexColor);
@@ -551,6 +622,7 @@
             return clean.split('/').pop() || clean;
         },
         dialog: showDialog,
+        toast: showSystemToast,
         alert: function (message, type, title) {
             return showDialog({ message, type, title });
         },
@@ -571,14 +643,20 @@
         }
     };
 
+    window.showToast = showSystemToast;
     window.showNoticeModal = showDialog;
     window.showSuccessModal = (msg, title) => showDialog({ message: msg, title: title || 'Success', type: 'success' });
     window.showErrorModal = (msg, title) => showDialog({ message: msg, title: title || 'Error', type: 'error' });
     window.showWarningModal = (msg, title) => showDialog({ message: msg, title: title || 'Notice', type: 'warning' });
 
-    // Polyfill window.alert to render our custom modal dialog consistently across all pages!
+    // Polyfill window.alert to render toast for short user-facing messages or dialog for long notices
     if (typeof window !== 'undefined') {
         window.alert = function (msg) {
+            if (typeof msg === 'string' && msg.length < 220 && !msg.includes('\n')) {
+                const type = detectDialogType('', msg);
+                showSystemToast(msg, type);
+                return;
+            }
             return showDialog(msg);
         };
     }

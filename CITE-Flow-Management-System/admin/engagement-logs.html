@@ -1370,12 +1370,20 @@ function formatDetailsText(details) {
     return detailEntries(details).map((entry) => `${entry.label}: ${entry.value}`).join('\n');
 }
 
-function showCiteMessage(message, type, title) {
-    console.error(message);
+function showCiteMessage(message, type = 'error', title) {
+    if (window.showToast) {
+        window.showToast(message, type === 'error' ? 'error' : (type === 'success' ? 'success' : 'info'));
+        return;
+    }
+    if (window.CiteFlowUI?.toast) {
+        CiteFlowUI.toast(message, type);
+        return;
+    }
     if (window.CiteFlowUI?.alert) {
         CiteFlowUI.alert(message, type || 'error', title);
         return;
     }
+    console.error(message);
 }
 
 function detailField(label, value, wide) {
@@ -1518,7 +1526,7 @@ async function saveLogEntry(e) {
         showCiteMessage('The entry was saved, but the list could not refresh. Reload the page to see it.', 'warning', 'Saved');
         return;
     }
-    CiteFlowUI.alert('Engagement log entry saved.', 'success', 'Saved');
+    showCiteMessage('Engagement log entry saved.', 'success', 'Saved');
 }
 
 function toggleExportMenu(event) {
@@ -1721,7 +1729,7 @@ function drawOfficialPdfHeader(doc, banners) {
 
 async function exportPdf(rows, includeDetails) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
-        CiteFlowUI.alert('The PDF exporter is not available. Refresh the page and try again.', 'error');
+        showCiteMessage('The PDF exporter is not available. Refresh the page and try again.', 'error');
         return;
     }
     const banners = await loadPdfBanners();
@@ -1745,7 +1753,7 @@ async function exportPdf(rows, includeDetails) {
         doc.setTextColor(71, 85, 105);
         doc.text('No engagement records found for the selected filters.', 10, startY + 8 + (filterLines.length * 4) + 6);
     } else if (typeof doc.autoTable !== 'function') {
-        CiteFlowUI.alert('The PDF exporter is not available. Refresh the page and try again.', 'error');
+        showCiteMessage('The PDF exporter is not available. Refresh the page and try again.', 'error');
         return;
     } else {
         const head = ['Date', 'Time', 'Faculty', 'Department', 'Category', 'Activity Type', 'Activity Title', 'Status', 'Source Module', 'Details'];

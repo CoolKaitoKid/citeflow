@@ -661,9 +661,21 @@
 
     const PANEL_CSS = `
 .nav-notif-dropdown{width:min(400px,calc(100vw - 20px));background:#fff;border:1px solid #ece7e4;border-radius:16px;box-shadow:0 16px 40px rgba(60,24,16,.16);overflow:hidden}
+@media (max-width: 640px) {
+  .nav-notif-dropdown {
+    position: fixed !important;
+    top: 60px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    margin: 0 auto !important;
+    z-index: 99999 !important;
+  }
+}
 .nav-notif-dropdown .nav-notif-header{display:block;padding:14px 16px 12px;border-bottom:1px solid #f1eeec;background:#fff}
 .nav-notif-dropdown .nav-notif-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#1c1917;font-size:15px;font-weight:700;letter-spacing:-.01em}
-.nav-notif-dropdown .nav-notif-mark,.nav-notif-dropdown .nav-notif-header button.nav-notif-mark{border:0;background:transparent;color:var(--cite-theme-ink,#621708);font-size:12px;font-weight:700;cursor:pointer;padding:0}
+.nav-notif-dropdown .nav-notif-mark,.nav-notif-dropdown .nav-notif-header button.nav-notif-mark{border:0;background:transparent;color:var(--cite-theme-ink,#621708);font-size:12px;font-weight:700;cursor:pointer;padding:8px 12px;margin:-6px -8px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}
 .nav-notif-dropdown .nav-notif-mark:hover{color:var(--cite-theme-hover,#4a1006)}
 .nav-notif-dropdown .nav-notif-filters{display:inline-flex;margin-top:12px;background:#f4f1ef;border-radius:999px;padding:3px;gap:2px}
 .nav-notif-dropdown .nav-notif-filter{border:0;background:transparent;color:#57534e;font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer;line-height:1.2}

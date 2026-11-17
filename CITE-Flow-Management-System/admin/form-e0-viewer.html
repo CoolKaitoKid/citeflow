@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHED Form E-0 Review &amp; Approval — CITE-Flow</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+
+    <script src="../shared/supabase-config.js"></script>
+    <script src="../shared/auth.js"></script>
+    <script src="../shared/workflow.js"></script>
+    <script src="../shared/auth-guard.js?v=auth-nav-2"></script>
+    <script src="../shared/cite-settings.js"></script>
+    <script src="../shared/form-e0-template.js?v=ctu-3"></script>
+    <script src="../shared/form-e0-engine.js?v=ctu-3"></script>
+    <script src="../shared/form-e0-review.js?v=ctu-4"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    <link rel="stylesheet" href="../nav.css">
+    <link rel="stylesheet" href="../shared/skeleton.css">
+    <link rel="stylesheet" href="../shared/cite-workbench.css">
+
+    <style>
+        :root {
+            --cite-theme: #621708;
+            --cite-theme-dark: #450f05;
+            --cite-theme-soft: #fbf1ef;
+            --cite-theme-border: #e8d0cb;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: #f1f5f9;
+        }
+
+        .doc-sheet {
+            background: #e2e8f0;
+            border: 1px solid #cbd5e1;
+            border-radius: 20px;
+            margin: 0 auto;
+            padding: 28px 16px;
+            overflow-x: auto;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* HTML copy of the CTU Form E-0 Excel template */
+        .e0-sheet { zoom: 0.68; color: #000; display: flex; flex-direction: column; align-items: center; }
+        .e0-sheet-page { background: #fff; padding: 28px 32px; border-radius: 6px; border: 1px solid #cbd5e1; box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14); }
+        .e0-page-caption { font-family: 'Inter', system-ui, sans-serif; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px dashed #cbd5e1; }
+        .e0-sheet-table td { box-sizing: border-box; }
+        .e0-sheet-break { height: 28px; width: 100%; }
+
+        @media print {
+            body { background: #fff !important; }
+            #sidebar-container, #navbar-container, .no-print { display: none !important; }
+            main { margin-left: 0 !important; padding: 0 !important; max-width: 100% !important; }
+            .doc-sheet { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; max-width: 100% !important; overflow: visible !important; }
+            .e0-sheet { zoom: 0.5 !important; }
+            .e0-sheet-page { box-shadow: none !important; border: none !important; padding: 0 !important; }
+            .e0-sheet-break { page-break-after: always; break-after: page; height: 0 !important; margin: 0 !important; border: 0 !important; }
+        }
+    </style>
+</head>
+<body class="cite-page bg-slate-50 min-h-screen">
+<div class="flex min-h-screen w-full">
+    <div id="sidebar-container"></div>
+    <main class="main-content flex-1 min-w-0 overflow-x-hidden p-6 pb-24">
+        <div id="navbar-container"></div>
+
+        <div class="max-w-[1200px] mx-auto space-y-5">
+            <!-- Header bar -->
+            <div class="flex flex-col gap-3 no-print">
+                <div>
+                    <a href="form-e0-viewer.html" class="text-xs font-bold text-[#621708] flex items-center gap-1 hover:underline mb-1">
+                        <i class="fa-solid fa-list"></i> All Form E-0 submissions
+                    </a>
+                    <a href="workflow-approval.html" class="text-xs font-semibold text-slate-500 flex items-center gap-1 hover:underline mb-1">
+                        <i class="fa-solid fa-arrow-left"></i> Back to Workflow Approval
+                    </a>
+                    <h1 class="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                        CHED Form E-0 Workload Review
+                        <span id="viewerStatusPill" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 uppercase"></span>
+                    </h1>
+                    <p class="text-xs text-slate-500 mt-0.5" id="viewerSubtitle">Individual Faculty Workload Report &middot; Faculty &rarr; Department Chair &rarr; Dean</p>
+                </div>
+            </div>
+
+            <!-- Queue (no report selected) -->
+            <div id="reviewQueue" class="no-print" style="display:none;"></div>
+
+            <!-- Single report -->
+            <div id="reviewDetail" class="space-y-4" style="display:none;">
+                <div id="reviewActions" class="flex flex-wrap items-center gap-2 no-print"></div>
+                <div id="reviewChecks" class="no-print"></div>
+                <div id="viewerDocMount" class="doc-sheet">
+                    <div class="p-12 text-center text-slate-400">Loading Form E-0 document data...</div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="../nav.js?v=admin-hook-1"></script>
+<script src="../shared/system-ui.js"></script>
+</body>
+</html>

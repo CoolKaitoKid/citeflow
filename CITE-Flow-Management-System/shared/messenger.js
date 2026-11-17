@@ -1337,6 +1337,9 @@ window.CiteFlowMessenger = (function () {
                         </div>
                         <div class="msgr-exp-chat-active" id="msgrExpChatActive" style="display:none;">
                             <div class="msgr-chat-header">
+                                <button type="button" class="msgr-back-btn" id="msgrExpBackBtn" title="Back to conversations">
+                                    <i class="fa-solid fa-arrow-left"></i>
+                                </button>
                                 <div class="msgr-avatar" id="msgrExpChatAvatar"></div>
                                 <div class="msgr-chat-title">
                                     <div class="name" id="msgrExpChatName">Chat</div>
@@ -1487,6 +1490,16 @@ window.CiteFlowMessenger = (function () {
         document.getElementById("msgrCloseBtn")?.addEventListener("click", closePanel);
         document.getElementById("msgrBackdrop")?.addEventListener("click", closePanel);
         document.getElementById("msgrBackBtn")?.addEventListener("click", closeActiveChat);
+        document.getElementById("msgrExpBackBtn")?.addEventListener("click", () => {
+            document.getElementById("msgrExpanded")?.classList.remove("chat-open");
+            const expPlaceholder = document.getElementById("msgrExpChatPlaceholder");
+            const expActive = document.getElementById("msgrExpChatActive");
+            if (expPlaceholder) expPlaceholder.style.display = "flex";
+            if (expActive) expActive.style.display = "none";
+            State.activeConversationId = null;
+            State.activeConversationMeta = null;
+            renderExpandedConvoList();
+        });
 
         // Docked chat details toggle
         document.getElementById("msgrChatInfoBtn")?.addEventListener("click", (e) => {
@@ -2309,6 +2322,7 @@ window.CiteFlowMessenger = (function () {
 
         if (placeholderEl) placeholderEl.style.display = "none";
         if (activeEl) activeEl.style.display = "flex";
+        document.getElementById("msgrExpanded")?.classList.add("chat-open");
         if (expNameEl) expNameEl.textContent = displayName;
         if (expSubEl) expSubEl.textContent = subText;
         setHeaderAvatar("msgrExpChatAvatar", conv.is_group ? null : otherAvatarUrl, displayName, conv.is_group, peerOnline);
@@ -4249,7 +4263,10 @@ window.CiteFlowMessenger = (function () {
         function closeExpandedView() {
         State.isExpanded = false;
         const expEl = document.getElementById("msgrExpanded");
-        if (expEl) expEl.style.display = "none";
+        if (expEl) {
+            expEl.style.display = "none";
+            expEl.classList.remove("chat-open");
+        }
         document.body.style.overflow = "";
         stopLocalTypingImmediately();
         State.activeConversationId = null;

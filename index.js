@@ -66,7 +66,8 @@ const adminPages = [
   "feedback-summary",
   "system-settings",
   "user-management",
-  "admin-profile"        
+  "admin-profile",
+  "form-e0-viewer"
 ];
 
 adminPages.forEach(page => {
@@ -96,7 +97,9 @@ const facultyPages = [
   "status-tracking",
   "submissions",
   "system-settings",
-  "mfo-report"
+  "mfo-report",
+  "form-e0",
+  "form-e0-review"
 ];
 
 facultyPages.forEach(page => {

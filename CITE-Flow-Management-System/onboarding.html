@@ -874,14 +874,21 @@
                             </div>
                         </div>
 
-                        <div class="input-group col-span-2">
+                        <div class="input-group">
                             <label class="input-label" for="userRole">Role <span style="color:#ef4444;">*</span></label>
                             <div class="input-wrapper">
                                 <select id="userRole" class="form-control no-icon" required>
                                     <option value="Faculty" selected>Faculty</option>
-                                    <option value="Chairperson">Chairperson</option>
+                                    <option value="Chairperson" hidden>Chairperson</option>
                                     <option value="Admin">Admin</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label class="input-label" for="designation">Designation</label>
+                            <div class="input-wrapper">
+                                <input type="text" id="designation" class="form-control no-icon" maxlength="120" placeholder="e.g. Program Coordinator" autocomplete="organization-title">
                             </div>
                         </div>
 
@@ -906,6 +913,7 @@
                                     <option value="">Select gender...</option>
                                     <option value="Male">Male</option>
                                     <option value="Female">Female</option>
+                                    <option value="LGBTQ">LGBTQ</option>
                                     <option value="Prefer not to say">Prefer not to say</option>
                                 </select>
                             </div>
@@ -1004,6 +1012,7 @@
             const department = document.getElementById('department');
             const academicRank = document.getElementById('academicRank');
             const userRole = document.getElementById('userRole');
+            const designation = document.getElementById('designation');
             const position = document.getElementById('position') || academicRank;
             const phone = document.getElementById('phone');
             const birthdate = document.getElementById('birthdate');
@@ -1061,6 +1070,7 @@
                 populateNameFields(meta.full_name || meta.name || '', meta.first_name || '', meta.last_name || '');
                 employeeId.value = meta.employee_id || meta.id_number || 'ASSIGNED-BY-ADMIN';
                 if (meta.department) department.value = meta.department;
+                if (designation && meta.designation) designation.value = meta.designation;
 
                 // Academic Rank initialization
                 const initRank = profile?.academic_rank || meta.academic_rank || (meta.position && !['faculty','chairperson','admin','administrator'].includes(meta.position.toLowerCase()) ? meta.position : '') || (profile?.position && !['faculty','chairperson','admin','administrator'].includes(profile.position.toLowerCase()) ? profile.position : '') || 'Instructor I';
@@ -1075,7 +1085,11 @@
                     if (roleLower.includes('admin')) {
                         userRole.value = 'Admin';
                     } else if (roleLower.includes('chair')) {
+                        // Department Chairpersons are assigned by the Admin (one per department).
+                        const chairOpt = userRole.querySelector('option[value="Chairperson"]');
+                        if (chairOpt) chairOpt.hidden = false;
                         userRole.value = 'Chairperson';
+                        userRole.disabled = true;
                     } else {
                         userRole.value = 'Faculty';
                     }
@@ -1096,9 +1110,17 @@
                         const r = profile.role.toLowerCase();
                         userRole.value = r.includes('admin') ? 'Admin' : (r.includes('chair') ? 'Chairperson' : 'Faculty');
                     }
+                    if (profile.designation && designation) designation.value = profile.designation;
                     if (profile.phone) phone.value = profile.phone;
                     if (profile.birthdate) birthdate.value = profile.birthdate ? String(profile.birthdate).split('T')[0] : '';
-                    if (profile.sex) sex.value = profile.sex;
+                    if (profile.sex) {
+                        const normSex = String(profile.sex).trim().toLowerCase();
+                        sex.value = normSex === 'male' ? 'Male'
+                            : normSex === 'female' ? 'Female'
+                            : normSex.startsWith('lgbt') ? 'LGBTQ'
+                            : normSex.includes('prefer') ? 'Prefer not to say'
+                            : profile.sex;
+                    }
                     if (profile.profile_photo_url) {
                         avatarPreview.src = profile.profile_photo_url;
                         avatarPreview.style.display = 'block';
@@ -1310,6 +1332,7 @@
                             department: department.value,
                             academicRank: academicRank ? academicRank.value : 'Instructor I',
                             role: userRole ? userRole.value : 'Faculty',
+                            designation: designation ? designation.value.trim() : '',
                             position: academicRank ? academicRank.value : 'Instructor I',
                             phone: phone.value.trim(),
                             birthdate: birthdate.value || null,

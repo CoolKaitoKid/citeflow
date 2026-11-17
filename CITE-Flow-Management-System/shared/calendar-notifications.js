@@ -486,6 +486,18 @@
       .cite-toast p{margin:0;font-size:12px;color:#475569;line-height:1.4}
       #adminNavNotifDropdown.nav-notif-dropdown{position:absolute!important;top:calc(100% + 10px)!important;right:0!important;width:min(400px,calc(100vw - 20px));display:none!important;z-index:99999!important}
       #adminNavNotifDropdown.nav-notif-dropdown.open{display:block!important}
+      @media (max-width: 640px) {
+        #adminNavNotifDropdown.nav-notif-dropdown {
+          position: fixed !important;
+          top: 60px !important;
+          left: 10px !important;
+          right: 10px !important;
+          width: auto !important;
+          max-width: calc(100vw - 20px) !important;
+          margin: 0 auto !important;
+          z-index: 99999 !important;
+        }
+      }
       @keyframes citeToastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
     `;
   }
