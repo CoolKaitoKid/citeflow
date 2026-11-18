@@ -83,7 +83,6 @@ function facultyPageMap(pageName) {
         settings: "system-settings.html",
         "workflow-approval": "submissions.html#chair-review",
         "chairperson-workflow-approval": "submissions.html#chair-review",
-        // 👉 Idugang kini nga linya:
         "help-support": "help-support.html"
     }[key] || `${key}.html`;
 }
@@ -91,7 +90,16 @@ function facultyPageMap(pageName) {
 // ==========================================
 // MOBILE DRAWER TOGGLE & BACKDROP LOGIC
 // ==========================================
+let lastToggleTime = 0;
+
 function toggleFacultyMobileSidebar(forceClose = false) {
+    const now = Date.now();
+    // Guard against rapid duplicate triggers (e.g. inline onclick + document listener firing together)
+    if (!forceClose && now - lastToggleTime < 250) {
+        return;
+    }
+    lastToggleTime = now;
+
     const sidebar = document.querySelector("aside.sidebar, .sidebar");
     let backdrop = document.getElementById("facultySidebarBackdrop");
 
@@ -99,7 +107,11 @@ function toggleFacultyMobileSidebar(forceClose = false) {
         backdrop = document.createElement("div");
         backdrop.id = "facultySidebarBackdrop";
         backdrop.className = "sidebar-backdrop";
-        backdrop.onclick = () => toggleFacultyMobileSidebar(true);
+        backdrop.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleFacultyMobileSidebar(true);
+        };
         document.body.appendChild(backdrop);
     }
 
@@ -140,7 +152,7 @@ function navigateToFacultyPage(pageFile) {
     const samePage = normalizeFacultyPageKey(currentFile) === normalizeFacultyPageKey(mappedFile);
 
     if (samePage) {
-        // ✅ FIX: Handle switching between Submissions and Chairperson Review on the same page
+        // Handle switching between Submissions and Chairperson Review on the same page
         if (normalizeFacultyPageKey(currentFile) === 'submissions') {
             if (mappedHash === '#chair-review' || mappedHash === '#chairperson-review') {
                 location.hash = mappedHash;
@@ -148,7 +160,6 @@ function navigateToFacultyPage(pageFile) {
                     window.CiteFlowChairReview.setMode('chair');
                 }
             } else {
-                // Switching back to My Submissions: remove hash & switch mode
                 if (location.hash) {
                     history.replaceState(null, '', location.pathname);
                 }
@@ -239,6 +250,7 @@ function attachFacultyNavEvents() {
         const mobileToggleBtn = e.target.closest("#mobileSidebarToggle, .drawer-push-btn, .mobile-toggle-btn");
         if (mobileToggleBtn) {
             e.preventDefault();
+            e.stopPropagation();
             toggleFacultyMobileSidebar();
             return;
         }
@@ -249,6 +261,17 @@ function attachFacultyNavEvents() {
         if (!pageFile) return;
         e.preventDefault();
         navigateToFacultyPage(pageFile);
+    });
+
+    // Close on Escape key press
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            toggleFacultyMobileSidebar(true);
+            const modal = document.getElementById("facultyProfileModal");
+            const backdrop = document.getElementById("facultyProfileBackdrop");
+            if (modal) modal.classList.remove("show");
+            if (backdrop) backdrop.classList.remove("show");
+        }
     });
 
     const modal = document.getElementById("facultyProfileModal");
@@ -272,7 +295,6 @@ function updateFacultyNavProfile(profileData) {
     if (!profileData) {
         try {
             let cached = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
-            // Auto-heal corrupted legacy name in cache if present
             if (cached && typeof cached === 'object') {
                 if (/^Krishnan\s+P\.?\s+Aquino$/i.test(cached.name || '') || /^Krishnan\s+P\.?\s+Aquino$/i.test(cached.full_name || '')) {
                     cached.name = 'Krishnan Paolo A. Rabasto';
@@ -299,7 +321,7 @@ function updateFacultyNavProfile(profileData) {
         } catch (_) {}
     }
 
-    // Always fetch fresh profile from Supabase if auth is available and we don't have explicit first_name + last_name
+    // Always fetch fresh profile from Supabase if auth is available and names are incomplete
     if (window.supabaseClient && window.supabaseClient.auth && (!profileData || !profileData.first_name || !profileData.last_name)) {
         (async () => {
             try {
@@ -362,7 +384,6 @@ function renderFacultyNavData(profileData) {
     let mn = String(profileData.middle_name || '').trim();
     let ln = String(profileData.last_name || '').trim();
 
-    // Auto-heal corrupted legacy string
     let raw = String(profileData.full_name || profileData.name || '').trim();
     if (/^Krishnan\s+P\.?\s+Aquino$/i.test(raw)) {
         fn = 'Krishnan Paolo';
@@ -417,7 +438,6 @@ function renderFacultyNavData(profileData) {
     setEl('facultyNavProfileName', formattedName);
     setEl('#facultyProfileModal #facultyNavProfileName', formattedName);
 
-    // Only update profileName if NOT on faculty-profile.html (which renders its own official formatted name)
     if (!window.location.pathname.includes('faculty-profile.html')) {
         setEl('profileName', formattedName);
         setEl('#facultyProfileModal #profileName', formattedName);
@@ -438,7 +458,6 @@ function renderFacultyNavData(profileData) {
     setEl('#facultyProfileModal #facultyNavRoleDetail', role);
     setEl('#facultyProfileModal #profileRoleDetail', role);
 
-    // --- DISPLAY PROFILE PHOTO SA MODAL ---
     if (photoUrl) {
         const modalImg = document.getElementById('modalProfileImg');
         const modalIcon = document.getElementById('modalProfileIcon');
@@ -504,8 +523,7 @@ async function mountFacultyNavigation() {
             "faculty-nav.html",
             "/faculty/faculty-nav.html",
             "faculty/faculty-nav.html",
-            "../faculty-nav.html",
-            "../faculty/faculty-nav.html"
+            "../faculty-nav.html"
         ];
         let response = null;
         for (const url of candidateUrls) {
@@ -526,8 +544,10 @@ async function mountFacultyNavigation() {
 
         mountFacultyNavPart(doc.querySelector("aside.sidebar"), "sidebar-container");
         mountFacultyNavPart(doc.querySelector("nav.navbar"), "navbar-container");
+        mountFacultyNavPart(doc.getElementById("facultySidebarBackdrop"), null, true);
         mountFacultyNavPart(doc.getElementById("facultyProfileBackdrop"), null, true);
         mountFacultyNavPart(doc.getElementById("facultyProfileModal"), null, true);
+        mountFacultyNavPart(doc.getElementById("citeflowMessageFab"), "message-container", true);
 
         attachFacultyNavEvents();
         ensureFacultyGlobalSearch();
@@ -540,10 +560,6 @@ async function mountFacultyNavigation() {
         if (window.CiteFlowMessenger && typeof window.CiteFlowMessenger.init === 'function') {
             window.CiteFlowMessenger.init();
         } else if (!window.__citeflowMessengerLoading) {
-            // Guard the injection. A second navigation load arriving before
-            // this script finishes would evaluate messenger.js again, and the
-            // replacement module state knows nothing about the realtime
-            // channels the first copy already registered on the client.
             window.__citeflowMessengerLoading = true;
             const script = document.createElement("script");
             script.src = "../shared/messenger.js";
@@ -565,7 +581,6 @@ async function facultyLogout() {
             return;
         }
         if (window.supabaseClient && window.supabaseClient.auth) {
-            console.warn('[AUTH TRACE] FACULTY LOGOUT fallback signOut');
             await window.supabaseClient.auth.signOut();
         }
     } catch (error) {
@@ -579,7 +594,7 @@ function openFacultyMessages() {
         window.CiteFlowMessenger.openPanel();
     } else {
         const panel = document.getElementById("msgrPanel");
-        if (panel) panel.classList.add("show");
+        if (panel) panel.classList.toggle("show");
     }
 }
 
@@ -646,7 +661,6 @@ async function refreshFacultyChairReviewNav(options = {}) {
             return;
         }
 
-        // ✅ DIRECT CHECK: Only show if an ACTIVE grant exists in wf_delegated_access
         let query = sb
             .from('wf_delegated_access')
             .select('id, is_active')
@@ -663,7 +677,7 @@ async function refreshFacultyChairReviewNav(options = {}) {
         if (!error && activeGrants && activeGrants.length > 0) {
             show = true;
         } else {
-            show = false; // Revoked or no grant -> HIDE
+            show = false;
         }
 
         if (window.CiteFlowChairReview) {
@@ -931,7 +945,7 @@ async function loadFacultyNavNotifications(attempt) {
     if (window.CiteFlowSettings?.loadPreferences) {
         try {
             await window.CiteFlowSettings.loadPreferences();
-        } catch (_) { /* keep defaults if preferences cannot be loaded */ }
+        } catch (_) {}
     }
 
     let facultyId = null;
