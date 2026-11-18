@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/supabase-config.js?v=auth-mfo-keep-1"></script>
     <script src="../shared/auth.js?v=auth-mfo-keep-1"></script>
+    <script src="../shared/workflow.js?v=auth-session-4"></script>
     <script src="../shared/auth-guard.js?v=auth-mfo-keep-1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
     <link rel="stylesheet" href="faculty-nav.css">
@@ -117,6 +118,7 @@
         .status-approved { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
         .status-review { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
         .status-completed { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+        .status-declined { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
     </style>
 </head>
 
@@ -147,13 +149,30 @@
                 </div>
             </header>
 
+            <!-- Error Notice (hidden by default) -->
+            <div id="dashboardErrorNotice" class="hidden mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-circle-exclamation text-rose-600 text-lg"></i>
+                    <div>
+                        <p class="font-bold text-xs sm:text-sm text-rose-900">Unable to load dashboard metrics</p>
+                        <p id="dashboardErrorMessage" class="text-xs text-rose-700 mt-0.5">A database error occurred. Please try again.</p>
+                    </div>
+                </div>
+                <button type="button" onclick="loadDashboardData()" class="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition shrink-0 inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right text-xs"></i>
+                    Retry
+                </button>
+            </div>
+
             <!-- Metrics Grid (Responsive 1-col on mobile, 2-col on sm, 4-col on xl) -->
             <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 mb-6 sm:mb-8">
                 <div class="dashboard-card metric-card metric-1 p-5 sm:p-6">
                     <div class="flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Pending Submissions</p>
-                            <p id="pendingCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-1 sm:mt-2">0</p>
+                            <p id="pendingCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-1 sm:mt-2">
+                                <span class="inline-block skeleton h-8 w-14 rounded-lg"></span>
+                            </p>
                             <p class="text-[11px] sm:text-xs text-slate-400 mt-1.5">Awaiting completion</p>
                         </div>
                         <div class="metric-icon">
@@ -166,7 +185,9 @@
                     <div class="flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Approved</p>
-                            <p id="approvedCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-1 sm:mt-2">0</p>
+                            <p id="approvedCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-1 sm:mt-2">
+                                <span class="inline-block skeleton h-8 w-14 rounded-lg"></span>
+                            </p>
                             <p class="text-[11px] sm:text-xs text-emerald-600 mt-1.5 font-medium">Approved records</p>
                         </div>
                         <div class="metric-icon">
@@ -179,7 +200,9 @@
                     <div class="flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Under Review</p>
-                            <p id="reviewCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-1 sm:mt-2">0</p>
+                            <p id="reviewCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-1 sm:mt-2">
+                                <span class="inline-block skeleton h-8 w-14 rounded-lg"></span>
+                            </p>
                             <p class="text-[11px] sm:text-xs text-amber-600 mt-1.5 font-medium">Being reviewed</p>
                         </div>
                         <div class="metric-icon">
@@ -192,7 +215,9 @@
                     <div class="flex items-center justify-between gap-4">
                         <div>
                             <p class="text-xs sm:text-sm font-semibold text-slate-500">Completed</p>
-                            <p id="completedCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-1 sm:mt-2">0</p>
+                            <p id="completedCount" class="text-3xl sm:text-4xl font-bold text-slate-800 mt-1 sm:mt-2">
+                                <span class="inline-block skeleton h-8 w-14 rounded-lg"></span>
+                            </p>
                             <p class="text-[11px] sm:text-xs text-slate-400 mt-1.5">Finished submissions</p>
                         </div>
                         <div class="metric-icon">
@@ -219,8 +244,23 @@
                     </div>
 
                     <div id="recentSubmissionsList" class="space-y-3">
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
-                            <div class="font-bold text-xs sm:text-sm text-slate-900">Loading submissions...</div>
+                        <div class="space-y-3">
+                            <div class="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl skeleton shrink-0"></div>
+                                <div class="flex-1 space-y-2">
+                                    <div class="skeleton h-3.5 w-1/3 rounded"></div>
+                                    <div class="skeleton h-2.5 w-1/2 rounded"></div>
+                                </div>
+                                <div class="skeleton h-6 w-20 rounded-full"></div>
+                            </div>
+                            <div class="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl skeleton shrink-0"></div>
+                                <div class="flex-1 space-y-2">
+                                    <div class="skeleton h-3.5 w-1/4 rounded"></div>
+                                    <div class="skeleton h-2.5 w-2/5 rounded"></div>
+                                </div>
+                                <div class="skeleton h-6 w-20 rounded-full"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -250,7 +290,9 @@
 
                         <div class="flex items-center justify-between mb-2">
                             <span class="text-xs sm:text-sm font-semibold text-slate-700">Overall Progress</span>
-                            <span id="progressPercent" class="text-xs sm:text-sm font-bold text-slate-900">0%</span>
+                            <span id="progressPercent" class="text-xs sm:text-sm font-bold text-slate-900">
+                                <span class="inline-block skeleton h-4 w-10 rounded"></span>
+                            </span>
                         </div>
 
                         <div class="h-2.5 sm:h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -280,6 +322,8 @@ window.supabaseClient = supabaseClient;
 
 let currentUser = null;
 let currentFaculty = null;
+let isFetchingDashboard = false;
+let realtimeChannel = null;
 
 function esc(value) {
     return String(value || '').replace(/[&<>'"]/g, c => ({
@@ -296,35 +340,84 @@ function formatDate(value) {
 
 function getStatusClass(status) {
     const value = String(status || '').toLowerCase();
-    if (value.includes('approved')) return 'status-approved';
-    if (value.includes('review')) return 'status-review';
-    if (value.includes('completed')) return 'status-completed';
+    if (value.includes('approved') || value.includes('completed')) return 'status-approved';
+    if (value.includes('review') || value.includes('submitted')) return 'status-review';
+    if (value.includes('reject') || value.includes('decline')) return 'status-declined';
     return 'status-pending';
 }
 
-function normalizeStatus(status) {
-    const value = String(status || '').toLowerCase();
-    if (value.includes('approved')) return 'Approved';
-    if (value.includes('review') || value.includes('submitted')) return 'Under Review';
-    if (value.includes('completed')) return 'Completed';
-    return 'Pending';
+function showLoadingState() {
+    const errorNotice = document.getElementById('dashboardErrorNotice');
+    if (errorNotice) errorNotice.classList.add('hidden');
+
+    const pendingEl = document.getElementById('pendingCount');
+    const approvedEl = document.getElementById('approvedCount');
+    const reviewEl = document.getElementById('reviewCount');
+    const completedEl = document.getElementById('completedCount');
+    const progressEl = document.getElementById('progressPercent');
+
+    if (pendingEl) pendingEl.innerHTML = '<span class="inline-block skeleton h-8 w-14 rounded-lg"></span>';
+    if (approvedEl) approvedEl.innerHTML = '<span class="inline-block skeleton h-8 w-14 rounded-lg"></span>';
+    if (reviewEl) reviewEl.innerHTML = '<span class="inline-block skeleton h-8 w-14 rounded-lg"></span>';
+    if (completedEl) completedEl.innerHTML = '<span class="inline-block skeleton h-8 w-14 rounded-lg"></span>';
+    if (progressEl) progressEl.innerHTML = '<span class="inline-block skeleton h-4 w-10 rounded"></span>';
+
+    const list = document.getElementById('recentSubmissionsList');
+    if (list) {
+        list.innerHTML = `
+            <div class="space-y-3">
+                <div class="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl skeleton shrink-0"></div>
+                    <div class="flex-1 space-y-2">
+                        <div class="skeleton h-3.5 w-1/3 rounded"></div>
+                        <div class="skeleton h-2.5 w-1/2 rounded"></div>
+                    </div>
+                    <div class="skeleton h-6 w-20 rounded-full"></div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl skeleton shrink-0"></div>
+                    <div class="flex-1 space-y-2">
+                        <div class="skeleton h-3.5 w-1/4 rounded"></div>
+                        <div class="skeleton h-2.5 w-2/5 rounded"></div>
+                    </div>
+                    <div class="skeleton h-6 w-20 rounded-full"></div>
+                </div>
+            </div>
+        `;
+    }
 }
 
-function normalizeAccomplishmentReportStatus(status) {
-    const value = String(status || '').toLowerCase();
-    if (value === 'dean_approved') return 'Approved';
-    if (value === 'chair_approved' || value === 'submitted') return 'Under Review';
-    if (value === 'revision' || value === 'rejected' || value === 'draft') return 'Pending';
-    return normalizeStatus(status);
-}
+function showDashboardError(message) {
+    const errorNotice = document.getElementById('dashboardErrorNotice');
+    const errorMsg = document.getElementById('dashboardErrorMessage');
+    if (errorNotice && errorMsg) {
+        errorMsg.textContent = message || 'A database error occurred while loading dashboard metrics.';
+        errorNotice.classList.remove('hidden');
+    }
 
-async function safeSelect(table, query = '*') {
-    try {
-        const { data, error } = await supabaseClient.from(table).select(query);
-        if (error) throw error;
-        return data || [];
-    } catch (_) {
-        return [];
+    // Do NOT convert database errors into zero counts! Show '—' to indicate data retrieval failure
+    const pendingEl = document.getElementById('pendingCount');
+    const approvedEl = document.getElementById('approvedCount');
+    const reviewEl = document.getElementById('reviewCount');
+    const completedEl = document.getElementById('completedCount');
+    const progressEl = document.getElementById('progressPercent');
+    const progressBar = document.getElementById('progressBar');
+
+    if (pendingEl) pendingEl.textContent = '—';
+    if (approvedEl) approvedEl.textContent = '—';
+    if (reviewEl) reviewEl.textContent = '—';
+    if (completedEl) completedEl.textContent = '—';
+    if (progressEl) progressEl.textContent = '—%';
+    if (progressBar) progressBar.style.width = '0%';
+
+    const list = document.getElementById('recentSubmissionsList');
+    if (list) {
+        list.innerHTML = `
+            <div class="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center">
+                <div class="font-bold text-xs sm:text-sm text-rose-900">Failed to load submissions</div>
+                <p class="text-xs text-rose-600 mt-0.5">${esc(message || 'Unable to retrieve records from database.')}</p>
+            </div>
+        `;
     }
 }
 
@@ -346,13 +439,22 @@ async function loadFacultyProfile() {
         return;
     }
 
-    const { data } = await supabaseClient
-        .from('faculty')
-        .select('*')
-        .or(`auth_user_id.eq.${currentUser.id},email.ilike.${currentUser.email}`);
+    if (window.CiteFlowWorkflow?.getCurrentFaculty) {
+        try {
+            currentFaculty = await window.CiteFlowWorkflow.getCurrentFaculty(currentUser);
+        } catch (_) {}
+    }
 
-    const facultyRows = Array.isArray(data) ? data : (data ? [data] : []);
-    currentFaculty = facultyRows.find(row => String(row.auth_user_id || '') === String(currentUser.id)) || facultyRows[0] || null;
+    if (!currentFaculty) {
+        const { data } = await supabaseClient
+            .from('faculty')
+            .select('*')
+            .or(`auth_user_id.eq.${currentUser.id},email.ilike.${currentUser.email}`);
+
+        const facultyRows = Array.isArray(data) ? data : (data ? [data] : []);
+        currentFaculty = facultyRows.find(row => String(row.auth_user_id || '') === String(currentUser.id)) || facultyRows[0] || null;
+    }
+
     window.currentFaculty = currentFaculty;
 
     const name = currentFaculty?.full_name || currentFaculty?.name || currentUser.user_metadata?.full_name || 'Faculty Member';
@@ -384,62 +486,215 @@ async function loadAcademicPeriod() {
 }
 
 async function loadDashboardData() {
-    const facultyId = currentFaculty?.id;
-    const documents = await safeSelect('faculty_documents', '*');
-    const requests = await safeSelect('faculty_document_requests', '*');
-    const accomplishmentReports = await safeSelect('accomplishment_report_submissions', '*');
+    if (isFetchingDashboard) return;
+    isFetchingDashboard = true;
 
-    const ownDocuments = facultyId ? documents.filter(i => String(i.faculty_id) === String(facultyId)) : documents;
-    const ownRequests = facultyId ? requests.filter(i => String(i.faculty_id) === String(facultyId)) : requests;
-    const ownAccomplishmentReports = facultyId ? accomplishmentReports.filter(i => String(i.faculty_id) === String(facultyId)) : accomplishmentReports;
+    showLoadingState();
 
-    const combined = [
-        ...ownDocuments.map(item => ({
-            title: item.document_name || item.title || 'Submitted Document',
-            description: item.description || item.document_type || 'Document submission',
-            status: normalizeStatus(item.status),
-            due_date: item.due_date || item.created_at,
-            created_at: item.created_at
-        })),
-        ...ownRequests.map(item => ({
-            title: item.request_title || item.title || item.document_name || 'Requested Submission',
-            description: item.description || 'Document requested by administrator',
-            status: normalizeStatus(item.status || 'Pending'),
-            due_date: item.due_date || item.created_at,
-            created_at: item.created_at
-        })),
-        ...ownAccomplishmentReports.map(item => ({
-            title: `Accomplishment Report (${item.report_type === 'online' ? 'Online/WFH' : 'Face-to-Face'})`,
-            description: item.period_start && item.period_end ? `${formatDate(item.period_start)} – ${formatDate(item.period_end)}` : 'Accomplishment report submission',
-            status: normalizeAccomplishmentReportStatus(item.status),
-            due_date: item.updated_at || item.created_at,
-            created_at: item.created_at
-        }))
-    ];
+    try {
+        if (!currentFaculty?.id) {
+            await loadFacultyProfile();
+        }
 
-    const pending = combined.filter(item => item.status === 'Pending').length;
-    const approved = combined.filter(item => item.status === 'Approved').length;
-    const underReview = combined.filter(item => item.status === 'Under Review').length;
-    const completed = combined.filter(item => item.status === 'Completed').length;
+        const facultyId = currentFaculty?.id;
+        if (!facultyId) {
+            showDashboardError('Unable to identify authenticated faculty account. Please sign in again.');
+            return;
+        }
 
-    document.getElementById('pendingCount').textContent = pending;
-    document.getElementById('approvedCount').textContent = approved;
-    document.getElementById('reviewCount').textContent = underReview;
-    document.getElementById('completedCount').textContent = completed;
+        // Query workflow records in parallel strictly filtered to currently authenticated faculty member
+        const [assignmentsRes, submissionsRes, configsRes, mfoRes] = await Promise.all([
+            supabaseClient
+                .from('wf_task_assignments')
+                .select('id, task_id, faculty_id, assigned_at')
+                .eq('faculty_id', facultyId)
+                .order('assigned_at', { ascending: false }),
+            supabaseClient
+                .from('wf_submissions')
+                .select('id, task_id, faculty_id, status, approval_stage, submitted_at, reviewed_at, reviewed_by_name, review_remarks, is_late, resubmission_count, last_reviewed_by_role, final_approved_at, final_approved_by_name, final_approval_remarks, created_at, updated_at')
+                .eq('faculty_id', facultyId)
+                .order('created_at', { ascending: false }),
+            supabaseClient
+                .from('wf_report_configs')
+                .select('id, report_name, requires_chairperson_review, requires_final_approval, is_active'),
+            supabaseClient
+                .from('mfo_packets')
+                .select('id, submission_id, task_id, faculty_id, packet_state')
+                .eq('faculty_id', facultyId)
+        ]);
 
-    const total = combined.length;
-    const progress = total ? Math.round(((approved + completed) / total) * 100) : 0;
-    document.getElementById('progressPercent').textContent = `${progress}%`;
-    document.getElementById('progressBar').style.width = `${progress}%`;
+        if (assignmentsRes.error) {
+            console.error('Error fetching task assignments:', assignmentsRes.error);
+            showDashboardError(assignmentsRes.error.message || 'Failed to retrieve task assignments.');
+            return;
+        }
 
-    renderRecentSubmissions(combined);
+        if (submissionsRes.error) {
+            console.error('Error fetching submissions:', submissionsRes.error);
+            showDashboardError(submissionsRes.error.message || 'Failed to retrieve submission records.');
+            return;
+        }
+
+        const assignmentRows = assignmentsRes.data || [];
+        const submissionRows = submissionsRes.data || [];
+        const configRows = configsRes.data || [];
+        const mfoRows = mfoRes.data || [];
+
+        // Extract unique task IDs
+        const taskIds = [...new Set([
+            ...assignmentRows.map(a => a.task_id),
+            ...submissionRows.map(s => s.task_id)
+        ].filter(Boolean))];
+
+        let tasks = [];
+        if (taskIds.length > 0) {
+            const tasksRes = await supabaseClient
+                .from('wf_tasks')
+                .select('id, title, instructions, attachment_names, due_at, deadline_at, report_config_id, created_at, is_recurring, reporting_period_label')
+                .in('id', taskIds);
+
+            if (tasksRes.error) {
+                console.error('Error fetching tasks:', tasksRes.error);
+                showDashboardError(tasksRes.error.message || 'Failed to retrieve task details.');
+                return;
+            }
+            tasks = tasksRes.data || [];
+        }
+
+        let pending = 0;
+        let approved = 0;
+        let underReview = 0;
+        let completed = 0;
+        let progress = 0;
+
+        if (window.CiteFlowWorkflow?.computeSubmissionAnalytics) {
+            const analytics = window.CiteFlowWorkflow.computeSubmissionAnalytics(
+                assignmentRows,
+                submissionRows,
+                tasks,
+                { reportConfigs: configRows, mfoPackets: mfoRows }
+            );
+            const counts = analytics.counts || {};
+            pending = Number(counts.not_submitted || 0) + Number(counts.needs_revision || 0);
+            underReview = Number(counts.pending_review || 0);
+            approved = Number(counts.approved || 0);
+            completed = Number(counts.approved || 0);
+            const totalExpected = Number(counts.expected || 0) + Number(counts.orphaned_submissions || 0);
+            progress = totalExpected > 0 ? Math.min(100, Math.round((approved / totalExpected) * 100)) : 0;
+        } else {
+            // Self-contained fallback calculation adhering to same lifecycle rules
+            const taskMap = new Map(tasks.map(t => [String(t.id), t]));
+            const configMap = new Map(configRows.map(c => [String(c.id), c]));
+            const latestSubMap = new Map();
+
+            submissionRows.forEach(sub => {
+                const tid = String(sub.task_id || '');
+                if (!tid) return;
+                const existing = latestSubMap.get(tid);
+                if (!existing) {
+                    latestSubMap.set(tid, sub);
+                } else {
+                    const timeA = new Date(sub.updated_at || sub.submitted_at || sub.created_at || 0).getTime();
+                    const timeB = new Date(existing.updated_at || existing.submitted_at || existing.created_at || 0).getTime();
+                    if (timeA > timeB) latestSubMap.set(tid, sub);
+                }
+            });
+
+            const seenTasks = new Set();
+            assignmentRows.forEach(assign => {
+                const tid = String(assign.task_id || '');
+                if (!tid || seenTasks.has(tid)) return;
+                seenTasks.add(tid);
+
+                const sub = latestSubMap.get(tid);
+                if (!sub || sub.status === 'notsubmitted' || sub.status === 'draft') {
+                    pending++;
+                } else {
+                    const st = String(sub.status || '').toLowerCase();
+                    const ap = String(sub.approval_stage || '').toLowerCase();
+                    if (st === 'rejected' || ap === 'declined') {
+                        // Excluded from pending and approved
+                    } else if (st === 'revision' || ap === 'revision') {
+                        pending++;
+                    } else if (st === 'approved' && (ap === 'approved' || !!sub.final_approved_at)) {
+                        approved++;
+                        completed++;
+                    } else {
+                        underReview++;
+                    }
+                }
+            });
+
+            const total = seenTasks.size;
+            progress = total > 0 ? Math.min(100, Math.round((approved / total) * 100)) : 0;
+        }
+
+        // Display accurate counts (0 only when query confirms 0 records)
+        const pendingEl = document.getElementById('pendingCount');
+        const approvedEl = document.getElementById('approvedCount');
+        const reviewEl = document.getElementById('reviewCount');
+        const completedEl = document.getElementById('completedCount');
+        const progressEl = document.getElementById('progressPercent');
+        const progressBar = document.getElementById('progressBar');
+
+        if (pendingEl) pendingEl.textContent = pending;
+        if (approvedEl) approvedEl.textContent = approved;
+        if (reviewEl) reviewEl.textContent = underReview;
+        if (completedEl) completedEl.textContent = completed;
+        if (progressEl) progressEl.textContent = `${progress}%`;
+        if (progressBar) progressBar.style.width = `${progress}%`;
+
+        // Render recent submissions list
+        const taskMap = new Map(tasks.map(t => [String(t.id), t]));
+        const recentItems = submissionRows
+            .filter(sub => sub.status !== 'notsubmitted' && (sub.submitted_at || sub.created_at))
+            .map(sub => {
+                const task = taskMap.get(String(sub.task_id));
+                const st = String(sub.status || '').toLowerCase();
+                const ap = String(sub.approval_stage || '').toLowerCase();
+                let displayStatus = 'Under Review';
+
+                if (st === 'approved' && (ap === 'approved' || !!sub.final_approved_at)) {
+                    displayStatus = 'Approved';
+                } else if (st === 'rejected' || ap === 'declined') {
+                    displayStatus = 'Declined';
+                } else if (st === 'revision' || ap === 'revision') {
+                    displayStatus = 'Needs Revision';
+                } else if (st === 'underreview' || ap === 'final_approver') {
+                    displayStatus = 'Under Review';
+                } else if (st === 'submitted' || ap === 'chairperson') {
+                    displayStatus = 'Pending Chairperson Review';
+                } else if (st === 'late') {
+                    displayStatus = 'Late Submission';
+                }
+
+                return {
+                    id: sub.id,
+                    title: task?.title || 'Faculty Submission',
+                    description: sub.review_remarks || task?.instructions || (task?.is_recurring ? 'Recurring Report' : 'Task Submission'),
+                    due_date: task?.deadline_at || task?.due_at || sub.submitted_at || sub.created_at,
+                    status: displayStatus,
+                    date: sub.submitted_at || sub.updated_at || sub.created_at
+                };
+            })
+            .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+            .slice(0, 5);
+
+        renderRecentSubmissions(recentItems);
+
+    } catch (err) {
+        console.error('Unhandled error in loadDashboardData:', err);
+        showDashboardError(err.message || 'An unexpected error occurred while loading dashboard data.');
+    } finally {
+        isFetchingDashboard = false;
+    }
 }
 
 function renderRecentSubmissions(items) {
     const list = document.getElementById('recentSubmissionsList');
-    const recent = items.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 5);
+    if (!list) return;
 
-    if (!recent.length) {
+    if (!items || !items.length) {
         list.innerHTML = `
             <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
                 <div class="font-bold text-xs sm:text-sm text-slate-900">No submissions yet</div>
@@ -449,7 +704,7 @@ function renderRecentSubmissions(items) {
         return;
     }
 
-    list.innerHTML = recent.map(item => `
+    list.innerHTML = items.map(item => `
         <div class="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 hover:border-slate-300 transition-colors">
             <div class="flex items-start gap-3 min-w-0">
                 <div class="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-600 shrink-0 mt-0.5">
@@ -468,15 +723,48 @@ function renderRecentSubmissions(items) {
     `).join('');
 }
 
+function initRealtime() {
+    if (window.CiteFlowWorkflow?.subscribeWorkflow) {
+        realtimeChannel = window.CiteFlowWorkflow.subscribeWorkflow(() => {
+            if (!isFetchingDashboard) {
+                loadDashboardData();
+            }
+        }, [
+            'wf_submissions',
+            'wf_task_assignments',
+            'wf_tasks',
+            'wf_approval_history'
+        ]);
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !isFetchingDashboard) {
+        loadDashboardData();
+    }
+});
+
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted && !isFetchingDashboard) {
+        loadDashboardData();
+    }
+});
+
+window.addEventListener('beforeunload', () => {
+    if (window.CiteFlowWorkflow?.cleanupWorkflowRealtime) {
+        window.CiteFlowWorkflow.cleanupWorkflowRealtime();
+    }
+});
+
 window.addEventListener('load', async () => {
     await loadSidebar();
     await loadFacultyProfile();
     await loadAcademicPeriod();
     await loadDashboardData();
+    initRealtime();
 });
 </script>
 
-<script src="../shared/workflow.js?v=auth-session-4"></script>
 <script src="../shared/system-ui.js"></script>
 <script src="../shared/cite-settings.js"></script>
 <script src="faculty-nav.js?v=auth-session-4"></script>

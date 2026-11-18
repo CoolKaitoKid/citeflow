@@ -38,21 +38,23 @@ const permsMatch = fpHtml.match(/const PERMISSIONS = \{([\s\S]*?)\};/);
 assert(permsMatch, 'PERMISSIONS object must exist');
 const permsStr = permsMatch[1];
 
-// Archive and Restore must strictly be granted to Dean and Secretary only
+// Archive, Delete, and Restore are granted to Administrators, Dean, and Secretary (regular faculty & chairperson blocked)
 const archiveList = permsStr.match(/archiveFaculty:\s*\[([^\]]*)\]/)?.[1] || '';
+assert(archiveList.includes("'administrator'") && archiveList.includes("'admin'"), 'archiveFaculty must allow administrator and admin');
 assert(archiveList.includes("'dean'") && archiveList.includes("'secretary'"), 'archiveFaculty must allow dean and secretary');
-assert(!archiveList.includes("'admin'") && !archiveList.includes("'administrator'"), 'archiveFaculty must NOT allow administrator or admin');
 assert(!archiveList.includes("'faculty'") && !archiveList.includes("'chairperson'"), 'archiveFaculty must NOT allow regular faculty or chairperson');
 
 const deleteList = permsStr.match(/deleteFaculty:\s*\[([^\]]*)\]/)?.[1] || '';
+assert(deleteList.includes("'administrator'") && deleteList.includes("'admin'"), 'deleteFaculty must allow administrator and admin');
 assert(deleteList.includes("'dean'") && deleteList.includes("'secretary'"), 'deleteFaculty must allow dean and secretary');
-assert(!deleteList.includes("'admin'") && !deleteList.includes("'administrator'"), 'deleteFaculty must NOT allow administrator or admin');
+assert(!deleteList.includes("'faculty'") && !deleteList.includes("'chairperson'"), 'deleteFaculty must NOT allow regular faculty or chairperson');
 
 const restoreList = permsStr.match(/restoreFaculty:\s*\[([^\]]*)\]/)?.[1] || '';
+assert(restoreList.includes("'administrator'") && restoreList.includes("'admin'"), 'restoreFaculty must allow administrator and admin');
 assert(restoreList.includes("'dean'") && restoreList.includes("'secretary'"), 'restoreFaculty must allow dean and secretary');
-assert(!restoreList.includes("'admin'") && !restoreList.includes("'administrator'"), 'restoreFaculty must NOT allow administrator or admin');
+assert(!restoreList.includes("'faculty'") && !restoreList.includes("'chairperson'"), 'restoreFaculty must NOT allow regular faculty or chairperson');
 
-console.log('✓ TEST 2 passed: Archive/Restore permissions strictly limited to College Dean and Secretary.');
+console.log('✓ TEST 2 passed: Archive/Delete/Restore permissions granted to Administrator, Dean, and Secretary (regular faculty and chairperson excluded).');
 
 // =========================================================================
 // TEST 3: Academic Rank Dropdown & Part-time Employment Type
