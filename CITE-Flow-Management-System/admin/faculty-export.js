@@ -1434,7 +1434,10 @@
         exportState.previewPages = buildPreviewPages(records);
         exportState.totalPages = exportState.previewPages.length;
         exportState.currentPreviewPage = 1;
-        exportState.zoomLevel = 1.0;
+        const availableWidth = window.innerWidth - 32;
+        exportState.zoomLevel = availableWidth < 1140
+            ? Math.max(0.3, Math.min(1.0, Math.round((availableWidth / 1120) * 100) / 100))
+            : 1.0;
 
         renderPreviewModalHtml();
     };
@@ -1581,7 +1584,11 @@
     };
 
     window.resetPreviewZoom = function () {
-        exportState.zoomLevel = 1.0;
+        const vp = document.getElementById('previewDocViewport');
+        const availableWidth = vp ? vp.clientWidth - 32 : (window.innerWidth - 32);
+        exportState.zoomLevel = availableWidth < 1140
+            ? Math.max(0.3, Math.min(1.0, Math.round((availableWidth / 1120) * 100) / 100))
+            : 1.0;
         updatePreviewSheet();
     };
 
@@ -1639,43 +1646,43 @@
     function buildSignatoriesDocxXml(prepName, prepTitle, certName, certTitle, notedName, notedTitle) {
         return `<w:tbl>` +
             `<w:tblPr>` +
-                `<w:tblW w:w="16380" w:type="dxa"/>` +
-                `<w:jc w:val="center"/>` +
-                `<w:tblBorders>` +
-                    `<w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/>` +
-                    `<w:insideH w:val="none"/><w:insideV w:val="none"/>` +
-                `</w:tblBorders>` +
+            `<w:tblW w:w="16380" w:type="dxa"/>` +
+            `<w:jc w:val="center"/>` +
+            `<w:tblBorders>` +
+            `<w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/>` +
+            `<w:insideH w:val="none"/><w:insideV w:val="none"/>` +
+            `</w:tblBorders>` +
             `</w:tblPr>` +
             `<w:tblGrid>` +
-                `<w:gridCol w:w="5460"/>` +
-                `<w:gridCol w:w="5460"/>` +
-                `<w:gridCol w:w="5460"/>` +
+            `<w:gridCol w:w="5460"/>` +
+            `<w:gridCol w:w="5460"/>` +
+            `<w:gridCol w:w="5460"/>` +
             `</w:tblGrid>` +
             `<w:tr>` +
-                `<w:trPr><w:cantSplit/></w:trPr>` +
-                `<!-- Column 1: Prepared by — COTE Secretary -->` +
-                `<w:tc>` +
-                    `<w:tcPr><w:tcW w:w="5460" w:type="dxa"/><w:vAlign w:val="top"/></w:tcPr>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="720"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:sz w:val="20"/></w:rPr><w:t>Prepared by:</w:t></w:r></w:p>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:u w:val="single"/><w:sz w:val="22"/></w:rPr><w:t>${prepName}</w:t></w:r></w:p>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:sz w:val="18"/></w:rPr><w:t>${prepTitle}</w:t></w:r></w:p>` +
-                `</w:tc>` +
-                `<!-- Column 2: Certified Correct — Dean, COTE -->` +
-                `<w:tc>` +
-                    `<w:tcPr><w:tcW w:w="5460" w:type="dxa"/><w:vAlign w:val="top"/></w:tcPr>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="720"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:sz w:val="20"/></w:rPr><w:t>Certified Correct:</w:t></w:r></w:p>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:u w:val="single"/><w:sz w:val="22"/></w:rPr><w:t>${certName}</w:t></w:r></w:p>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:sz w:val="18"/></w:rPr><w:t>${certTitle}</w:t></w:r></w:p>` +
-                `</w:tc>` +
-                `<!-- Column 3: Noted By — Campus Director -->` +
-                `<w:tc>` +
-                    `<w:tcPr><w:tcW w:w="5460" w:type="dxa"/><w:vAlign w:val="top"/></w:tcPr>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="720"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:sz w:val="20"/></w:rPr><w:t>Noted By:</w:t></w:r></w:p>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:u w:val="single"/><w:sz w:val="22"/></w:rPr><w:t>${notedName}</w:t></w:r></w:p>` +
-                    `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:sz w:val="18"/></w:rPr><w:t>${notedTitle}</w:t></w:r></w:p>` +
-                `</w:tc>` +
+            `<w:trPr><w:cantSplit/></w:trPr>` +
+            `<!-- Column 1: Prepared by — COTE Secretary -->` +
+            `<w:tc>` +
+            `<w:tcPr><w:tcW w:w="5460" w:type="dxa"/><w:vAlign w:val="top"/></w:tcPr>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="720"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:sz w:val="20"/></w:rPr><w:t>Prepared by:</w:t></w:r></w:p>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:u w:val="single"/><w:sz w:val="22"/></w:rPr><w:t>${prepName}</w:t></w:r></w:p>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:sz w:val="18"/></w:rPr><w:t>${prepTitle}</w:t></w:r></w:p>` +
+            `</w:tc>` +
+            `<!-- Column 2: Certified Correct — Dean, COTE -->` +
+            `<w:tc>` +
+            `<w:tcPr><w:tcW w:w="5460" w:type="dxa"/><w:vAlign w:val="top"/></w:tcPr>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="720"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:sz w:val="20"/></w:rPr><w:t>Certified Correct:</w:t></w:r></w:p>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:u w:val="single"/><w:sz w:val="22"/></w:rPr><w:t>${certName}</w:t></w:r></w:p>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:sz w:val="18"/></w:rPr><w:t>${certTitle}</w:t></w:r></w:p>` +
+            `</w:tc>` +
+            `<!-- Column 3: Noted By — Campus Director -->` +
+            `<w:tc>` +
+            `<w:tcPr><w:tcW w:w="5460" w:type="dxa"/><w:vAlign w:val="top"/></w:tcPr>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="720"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:sz w:val="20"/></w:rPr><w:t>Noted By:</w:t></w:r></w:p>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:b/><w:u w:val="single"/><w:sz w:val="22"/></w:rPr><w:t>${notedName}</w:t></w:r></w:p>` +
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial Narrow" w:hAnsi="Arial Narrow"/><w:sz w:val="18"/></w:rPr><w:t>${notedTitle}</w:t></w:r></w:p>` +
+            `</w:tc>` +
             `</w:tr>` +
-        `</w:tbl>`;
+            `</w:tbl>`;
     }
 
     async function generateDocxBlob() {
