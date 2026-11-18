@@ -32,6 +32,15 @@
         return match ? collapse(match[1]) : '';
     }
 
+    function stripEmojis(value) {
+        return text(value)
+            .replace(/\p{Extended_Pictographic}/gu, '')
+            .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+            .replace(/[\uFE0E\uFE0F\u200D]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
     function stripLabelPrefix(value) {
         return collapse(value).replace(/^(reminder|approval|rejection|revision|submission|task|notification)\s*:\s*/i, '');
     }
@@ -187,6 +196,19 @@
         const lower = `${rawTitle} ${rawMessage}`.toLowerCase();
         const taskTitle = quoted(rawMessage) || quoted(rawTitle);
         const trailing = afterColon(rawMessage);
+
+        if (type === 'birthday' || notification?.category === 'birthday' || /birthday greeting/i.test(lower) || /commented on .+ birthday/i.test(lower) || (String(notification?.event_id || '').startsWith('birthday-') && /commented/i.test(lower))) {
+            const cleanMsg = stripEmojis(message || rawMessage || '');
+            return view({
+                category: 'birthday',
+                icon: 'fa-cake-candles',
+                tone: 'calendar',
+                title: 'Birthday Greetings',
+                description: cleanMsg,
+                actionLabel: 'Open Calendar',
+                subjectTitle: stripEmojis(taskTitle)
+            });
+        }
 
         if (type === 'calendar' || type === 'event' || type === 'schedule' || /calendar schedule|was posted|was updated/.test(lower) && /schedule|seminar|workshop|meeting|exam|calendar/.test(lower)) {
             let title = 'New Schedule Posted';
@@ -720,6 +742,156 @@
         style.textContent = PANEL_CSS;
     }
 
+    const CiteFlowBirthdayEngine = {
+        cleanCelebrantInfo(rawId, rawName) {
+            let cleanId = String(rawId || '').replace(/^birthday-/, '').replace(/-\d{4}$/, '').trim();
+            let raw = stripEmojis(String(rawName || ''))
+                .replace(/^Birthday:\s*/i, '')
+                .replace(/^(?:Sir\s+|Ma'am\s+|Engr\.\s+|Dr\.\s+|Prof\.\s+|Professor\s+|Mr\.\s+|Ms\.\s+|Mrs\.\s+)/i, '')
+                .replace(/'s\s+birthday$/i, '')
+                .replace(/\s+birthday$/i, '')
+                .trim();
+            const firstName = /^(?:dela|de la|san|santa|van)\s+/i.test(raw) ? raw : (raw.split(/\s+/)[0] || raw);
+            return { cleanId, cleanName: firstName || raw, fullName: raw };
+        },
+
+        formatCelebrantPossessive(name) {
+            const clean = String(name || '').trim();
+            if (!clean) return "Colleague's";
+            if (clean.toLowerCase().endsWith("'s")) return clean;
+            return clean + "'s";
+        },
+
+        getCanonicalEventId(commentOrEvent) {
+            if (!commentOrEvent) return '';
+            const rawId = commentOrEvent.celebrant_id || commentOrEvent.event_id || commentOrEvent.id || '';
+            const rawName = commentOrEvent.celebrant_name || commentOrEvent.facultyName || commentOrEvent.title || '';
+            const year = commentOrEvent.celebrant_year || commentOrEvent.year || (new Date()).getFullYear();
+            const { cleanId, cleanName } = this.cleanCelebrantInfo(rawId, rawName);
+            const core = cleanId || cleanName || 'celebrant';
+            return `birthday-${core}-${year}`;
+        },
+
+        getReadTimestamps(userId) {
+            if (typeof localStorage === 'undefined') return {};
+            try {
+                const raw = localStorage.getItem(`citeflow_bday_read_${userId || 'global'}`);
+                return raw ? JSON.parse(raw) : {};
+            } catch (_) {
+                return {};
+            }
+        },
+
+        isEventRead(userId, canonicalEventId, latestCommentIso) {
+            if (!latestCommentIso) return true;
+            const map = this.getReadTimestamps(userId);
+            const readIso = map[canonicalEventId];
+            if (!readIso) return false;
+            return new Date(readIso).getTime() >= new Date(latestCommentIso).getTime();
+        },
+
+        markEventRead(userId, canonicalEventId, timestampIso) {
+            if (typeof localStorage === 'undefined') return;
+            try {
+                const map = this.getReadTimestamps(userId);
+                map[canonicalEventId] = timestampIso || new Date().toISOString();
+                localStorage.setItem(`citeflow_bday_read_${userId || 'global'}`, JSON.stringify(map));
+            } catch (_) {}
+        },
+
+        markAllEventsRead(userId, eventIdsWithTimestamps) {
+            if (typeof localStorage === 'undefined') return;
+            try {
+                const map = this.getReadTimestamps(userId);
+                const now = new Date().toISOString();
+                (eventIdsWithTimestamps || []).forEach(item => {
+                    const eid = typeof item === 'string' ? item : item?.eventId;
+                    const ts = (typeof item === 'object' && item?.timestamp) ? item.timestamp : now;
+                    if (eid) map[eid] = ts;
+                });
+                localStorage.setItem(`citeflow_bday_read_${userId || 'global'}`, JSON.stringify(map));
+            } catch (_) {}
+        },
+
+        buildGroupedMessage(uniqueAuthorNames, celebrantName) {
+            const { cleanName } = this.cleanCelebrantInfo('', celebrantName);
+            const possessive = this.formatCelebrantPossessive(cleanName || 'Colleague');
+            const authors = (Array.isArray(uniqueAuthorNames) ? uniqueAuthorNames : [])
+                .map(a => stripEmojis(a))
+                .filter(Boolean);
+            if (!authors.length) {
+                return `Birthday greetings for ${possessive} birthday.`;
+            }
+            const latest = authors[0];
+            const othersCount = authors.length - 1;
+            if (othersCount === 0) {
+                return `${latest} commented on ${possessive} birthday.`;
+            } else if (othersCount === 1) {
+                return `${latest} and 1 other commented on ${possessive} birthday.`;
+            } else {
+                return `${latest} and ${othersCount} others commented on ${possessive} birthday.`;
+            }
+        },
+
+        computeGroupedBirthdayNotifications(allComments, currentUserId) {
+            if (!Array.isArray(allComments) || !allComments.length) return [];
+
+            const sorted = [...allComments].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+            const groups = new Map();
+
+            for (const c of sorted) {
+                const eventId = this.getCanonicalEventId(c);
+                if (!groups.has(eventId)) {
+                    groups.set(eventId, {
+                        eventId,
+                        celebrantName: c.celebrant_name,
+                        celebrantId: c.celebrant_id,
+                        celebrantYear: c.celebrant_year,
+                        comments: [],
+                        authorSet: new Set(),
+                        uniqueAuthors: []
+                    });
+                }
+                const grp = groups.get(eventId);
+                grp.comments.push(c);
+                const author = String(c.author_name || '').trim();
+                if (author && !grp.authorSet.has(author.toLowerCase())) {
+                    grp.authorSet.add(author.toLowerCase());
+                    grp.uniqueAuthors.push(author);
+                }
+            }
+
+            const notifs = [];
+            for (const [eventId, grp] of groups.entries()) {
+                const latestComment = grp.comments[0];
+                const message = this.buildGroupedMessage(grp.uniqueAuthors, grp.celebrantName);
+                const isRead = this.isEventRead(currentUserId, eventId, latestComment.created_at);
+
+                notifs.push({
+                    id: `bday-group-${eventId}`,
+                    group_id: `bday-group-${eventId}`,
+                    event_id: eventId,
+                    type: 'birthday',
+                    category: 'birthday',
+                    title: 'Birthday Greetings',
+                    message: message,
+                    celebrant_name: grp.celebrantName,
+                    celebrant_id: grp.celebrantId,
+                    total_comments: grp.comments.length,
+                    unique_commenters: grp.uniqueAuthors.length,
+                    latest_author: grp.uniqueAuthors[0] || '',
+                    link: `calendar.html#open=${eventId}`,
+                    is_read: isRead,
+                    created_at: latestComment.created_at || new Date().toISOString()
+                });
+            }
+
+            return notifs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        }
+    };
+
+    root.CiteFlowBirthdayEngine = CiteFlowBirthdayEngine;
+
     root.CiteFlowNotifPresentation = {
         present,
         renderCard,
@@ -730,6 +902,8 @@
         isProfileUpdate,
         hasSpecificDestination,
         formatRelativeTime,
-        deansOffice
+        deansOffice,
+        stripEmojis,
+        birthdayEngine: CiteFlowBirthdayEngine
     };
 })(typeof window !== 'undefined' ? window : globalThis);

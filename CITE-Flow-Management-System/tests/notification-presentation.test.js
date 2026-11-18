@@ -167,4 +167,46 @@ const readCard = api.renderCard({ id: 13, type: 'task', message: 'New task "Syll
 assert(!readCard.includes('nav-notif-dot'), 'read card has no unread dot');
 assert(!readCard.includes('unread'), 'read card is not marked unread');
 
+const bdaySingle = present({
+    type: 'birthday',
+    title: 'Birthday Greetings',
+    message: "Princess commented on Kent's birthday.",
+    event_id: 'birthday-18-2026',
+    link: 'calendar.html#open=birthday-18-2026'
+});
+assert(bdaySingle.title === 'Birthday Greetings', 'bday single title: ' + bdaySingle.title);
+assert(bdaySingle.description === "Princess commented on Kent's birthday.", 'bday single desc: ' + bdaySingle.description);
+assert(bdaySingle.icon === 'fa-cake-candles', 'bday icon: ' + bdaySingle.icon);
+assert(bdaySingle.actionLabel === 'Open Calendar', 'bday action: ' + bdaySingle.actionLabel);
+assert(!/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(bdaySingle.title), 'no emojis in title');
+assert(!/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(bdaySingle.description), 'no emojis in description');
+
+const bdayGroup = present({
+    type: 'birthday',
+    title: 'Birthday Greetings',
+    message: "Princess and 4 others commented on Kent's birthday.",
+    event_id: 'birthday-18-2026',
+    link: 'calendar.html#open=birthday-18-2026'
+});
+assert(bdayGroup.title === 'Birthday Greetings', 'bday group title: ' + bdayGroup.title);
+assert(bdayGroup.description === "Princess and 4 others commented on Kent's birthday.", 'bday group desc: ' + bdayGroup.description);
+assert(bdayGroup.icon === 'fa-cake-candles', 'bday icon: ' + bdayGroup.icon);
+assert(bdayGroup.actionLabel === 'Open Calendar', 'bday action: ' + bdayGroup.actionLabel);
+
+const bdayCard = api.renderCard({
+    id: 'bday-group-birthday-18-2026',
+    type: 'birthday',
+    title: 'Birthday Greetings',
+    message: "Princess and 4 others commented on Kent's birthday.",
+    event_id: 'birthday-18-2026',
+    link: 'calendar.html#open=birthday-18-2026',
+    is_read: false,
+    created_at: new Date().toISOString()
+});
+assert(bdayCard.includes('fa-cake-candles'), 'bday card cake icon');
+assert(bdayCard.includes('Birthday Greetings'), 'bday card title');
+assert(bdayCard.includes('Princess and 4 others commented on Kent&#39;s birthday.') || bdayCard.includes("Princess and 4 others commented on Kent's birthday."), 'bday card desc');
+assert(bdayCard.includes('Open Calendar'), 'bday card action label');
+assert(!/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(bdayCard), 'no emojis in card');
+
 console.log('notification presentation checks passed');

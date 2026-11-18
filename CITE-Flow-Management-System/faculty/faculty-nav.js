@@ -173,13 +173,20 @@ function navigateToFacultyPage(pageFile) {
             history.replaceState(null, '', location.pathname);
         }
 
-        if (typeof window.switchTab === 'function' && mappedHash && /faculty-profile/i.test(mappedFile)) {
-            window.switchTab(mappedHash.replace('#', ''));
-        }
-        if (typeof window.resetPendingFacultyNotification === 'function') {
-            window.setTimeout(() => window.resetPendingFacultyNotification(), 0);
-        } else if (typeof window.openPendingFacultyNotification === 'function') {
-            window.setTimeout(() => window.openPendingFacultyNotification(), 0);
+        const isCalendar = normalizeFacultyPageKey(mappedFile) === 'calendar' || /calendar\.html/i.test(mappedFile);
+        if (isCalendar) {
+            if (typeof window.openPendingCalendarNotification === 'function') {
+                window.setTimeout(() => window.openPendingCalendarNotification(), 0);
+            }
+        } else {
+            if (typeof window.switchTab === 'function' && mappedHash && /faculty-profile/i.test(mappedFile)) {
+                window.switchTab(mappedHash.replace('#', ''));
+            }
+            if (typeof window.resetPendingFacultyNotification === 'function') {
+                window.setTimeout(() => window.resetPendingFacultyNotification(), 0);
+            } else if (typeof window.openPendingFacultyNotification === 'function') {
+                window.setTimeout(() => window.openPendingFacultyNotification(), 0);
+            }
         }
         updateFacultyActiveMenu();
         return;
@@ -716,7 +723,7 @@ function isFacultyCalendarNotification(notification) {
     const type = String(notification?.type || '').toLowerCase();
     const link = String(notification?.link || notification?.url || '').toLowerCase();
     const message = String(notification?.message || '').toLowerCase();
-    return type === 'calendar' || type === 'event' || type === 'schedule'
+    return type === 'calendar' || type === 'event' || type === 'schedule' || type === 'birthday'
         || link.includes('calendar.html')
         || /calendar schedule|faculty calendar|was posted|was updated/.test(message);
 }
@@ -752,9 +759,9 @@ function facultyNotifTarget(notification) {
 
     if (stored && !(profileLink && !accomplishment && !documentPortfolio)) return stored;
 
-    if (isFacultyCalendarNotification(notification)) {
-        const recordId = notification?.event_id || eventId;
-        return recordId ? `calendar.html#open=${recordId}` : 'calendar.html';
+    if (isFacultyCalendarNotification(notification) || type === 'birthday') {
+        const recordId = notification?.event_id || eventId || String(notification?.id || '').replace(/^bday-group-/, '');
+        return recordId ? `calendar.html#open=${encodeURIComponent(recordId)}` : 'calendar.html';
     }
 
     if (accomplishment) return 'faculty-profile.html#accomplishments-subs';
@@ -798,6 +805,17 @@ async function markOneFacultyNotificationRead(id) {
             badge.textContent = '0';
         }
     }
+
+    if (String(id).startsWith('bday-group-')) {
+        const engine = window.CiteFlowBirthdayEngine || window.CiteFlowNotifPresentation?.birthdayEngine;
+        const user = window.CiteFlowAuthGuard?.user || window.CiteFlowAuthGuard?.session?.user;
+        const eventId = String(id).replace(/^bday-group-/, '');
+        if (engine && eventId) {
+            engine.markEventRead(user?.id, eventId);
+        }
+        return;
+    }
+
     const sb = window.supabaseClient;
     if (!sb) return;
     const { error } = await sb.from('wf_notifications').update({ is_read: true }).eq('id', id);
@@ -968,14 +986,26 @@ async function loadFacultyNavNotifications(attempt) {
         query = query.or(`faculty_id.eq.${facultyId},faculty_id.is.null`);
     }
 
-    const { data, error } = await query;
-    if (error) {
-        console.warn('Faculty nav notifications could not be loaded:', error);
+    const [wfRes, bdayRes] = await Promise.all([
+        query,
+        sb.from('faculty_birthday_comments').select('*').order('created_at', { ascending: false }).limit(100)
+    ]);
+
+    if (wfRes.error) {
+        console.warn('Faculty nav notifications could not be loaded:', wfRes.error);
         if (tries < 4) setTimeout(() => loadFacultyNavNotifications(tries + 1), 700);
         return;
     }
 
-    renderFacultyNavNotifications(filterFacultyNavNotifications(data || [], facultyId));
+    let items = filterFacultyNavNotifications(wfRes.data || [], facultyId);
+
+    const engine = window.CiteFlowBirthdayEngine || window.CiteFlowNotifPresentation?.birthdayEngine;
+    if (engine && Array.isArray(bdayRes.data) && bdayRes.data.length) {
+        const bdayNotifs = engine.computeGroupedBirthdayNotifications(bdayRes.data, user.id);
+        items = items.concat(bdayNotifs).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+
+    renderFacultyNavNotifications(items);
 }
 
 function subscribeFacultyNavNotifications() {
@@ -984,6 +1014,12 @@ function subscribeFacultyNavNotifications() {
     window.__facultyWfNotifChannel = sb
         .channel('faculty-wf-notifications-bell')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'wf_notifications' }, () => {
+            loadFacultyNavNotifications();
+        })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'faculty_birthday_comments' }, () => {
+            loadFacultyNavNotifications();
+        })
+        .on('broadcast', { event: 'birthday_comment_posted' }, () => {
             loadFacultyNavNotifications();
         })
         .subscribe();
@@ -1008,7 +1044,20 @@ function toggleFacultyNotifications() {
 
 async function markFacultyNavNotificationsRead() {
     const sb = window.supabaseClient;
-    const ids = facultyNavNotifications.filter((notification) => !notification.is_read).map((notification) => notification.id);
+    const user = window.CiteFlowAuthGuard?.user || window.CiteFlowAuthGuard?.session?.user;
+    const engine = window.CiteFlowBirthdayEngine || window.CiteFlowNotifPresentation?.birthdayEngine;
+    if (engine) {
+        const bdayItems = facultyNavNotifications.filter(x => x.type === 'birthday' || String(x.id).startsWith('bday-group-')).map(x => ({
+            eventId: x.event_id || String(x.id).replace(/^bday-group-/, ''),
+            timestamp: x.created_at
+        }));
+        engine.markAllEventsRead(user?.id, bdayItems);
+    }
+
+    const ids = facultyNavNotifications.filter((notification) => !notification.is_read && !String(notification.id).startsWith('bday-group-')).map((notification) => notification.id);
+    facultyNavNotifications = facultyNavNotifications.map((notification) => ({ ...notification, is_read: true }));
+    renderFacultyNavNotifications(facultyNavNotifications);
+
     if (!sb || !ids.length) return;
 
     const { error } = await sb.from('wf_notifications').update({ is_read: true }).in('id', ids);
