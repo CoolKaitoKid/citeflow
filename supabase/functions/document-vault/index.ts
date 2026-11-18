@@ -4,34 +4,39 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const BUCKET = "documents";
 
 const corsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Origin": "http://localhost:3000",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Vary": "Origin",
 };
 
-function withCors(status: number, body: BodyInit | null, extra?: Record<string, string>) {
+function withCors(status: number, body: BodyInit | null, extra?: Record<string, string>, req?: Request) {
   const headers = new Headers(corsHeaders);
+  const origin = req?.headers?.get("Origin");
+  if (origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
+  }
   if (extra) {
     for (const [key, value] of Object.entries(extra)) headers.set(key, value);
   }
   return new Response(body, { status, headers });
 }
 
-function json(body: Record<string, unknown>, status = 200) {
-  return withCors(status, JSON.stringify(body), { "Content-Type": "application/json" });
+function json(body: Record<string, unknown>, status = 200, req?: Request) {
+  return withCors(status, JSON.stringify(body), { "Content-Type": "application/json" }, req);
 }
 
-function errorResponse(status: number, message: string) {
+function errorResponse(status: number, message: string, req?: Request) {
   try {
-    return json({ error: message }, status);
+    return json({ error: message }, status, req);
   } catch {
+    const origin = req?.headers?.get("Origin") || "*";
     return new Response(
       JSON.stringify({ error: "Document Vault storage failed." }),
       {
         status: 500,
         headers: {
-          "Access-Control-Allow-Origin": "http://localhost:3000",
+          "Access-Control-Allow-Origin": origin,
           "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
           "Access-Control-Allow-Methods": "POST, OPTIONS",
           "Vary": "Origin",
@@ -152,27 +157,27 @@ async function handleJson(req: Request) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return withCors(204, null);
+    return withCors(204, null, undefined, req);
   }
 
   try {
-    if (req.method !== "POST") return errorResponse(405, "Method not allowed");
+    if (req.method !== "POST") return errorResponse(405, "Method not allowed", req);
     if (!SUPABASE_URL || !ANON_KEY || !SERVICE_ROLE) {
-      return errorResponse(500, "Document Vault storage is not configured.");
+      return errorResponse(500, "Document Vault storage is not configured.", req);
     }
 
     const authHeader = req.headers.get("Authorization") || "";
     if (!authHeader.startsWith("Bearer ")) {
-      return errorResponse(401, "Your session expired. Please sign in again.");
+      return errorResponse(401, "Your session expired. Please sign in again.", req);
     }
 
     const admin = await requireVaultAdmin(authHeader);
-    if (admin.error) return errorResponse(admin.status, admin.error);
+    if (admin.error) return errorResponse(admin.status, admin.error, req);
 
     if (isMultipart(req)) return await handleUpload(req);
     return await handleJson(req);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Document Vault storage failed.";
-    return errorResponse(500, message);
+    return errorResponse(500, message, req);
   }
 });

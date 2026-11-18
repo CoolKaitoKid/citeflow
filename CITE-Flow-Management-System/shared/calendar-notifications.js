@@ -933,6 +933,7 @@
   }
 
   function remember(item) {
+    if (item?.type === 'birthday') return true;
     const key = item.id || `${item.event_id}-${item.created_at}-${item.title}`;
     if (seenIds.has(key)) return false;
     seenIds.add(key);
@@ -1030,6 +1031,17 @@
     const item = items.find((row) => String(row.id) === String(id));
     if (item) item.is_read = true;
     updateBadge();
+
+    if (item?.type === 'birthday' || String(id).startsWith('bday-group-')) {
+      const engine = global.CiteFlowBirthdayEngine || global.CiteFlowNotifPresentation?.birthdayEngine;
+      const eventId = item?.event_id || String(id).replace(/^bday-group-/, '');
+      const userId = currentUser?.id || currentProfile?.id || null;
+      if (engine && eventId) {
+        engine.markEventRead(userId, eventId, item?.created_at || new Date().toISOString());
+      }
+      return;
+    }
+
     const db = client();
     if (!db) return;
     await db.from(notificationTable(item)).update({ is_read: true }).eq('id', id);
@@ -1235,9 +1247,20 @@
 
   async function markAllRead() {
     const wfIds = items.filter((row) => row.source === 'wf').map((row) => row.id).filter(Boolean);
-    const otherIds = items.filter((row) => row.source !== 'wf').map((row) => row.id).filter(Boolean);
+    const otherIds = items.filter((row) => row.source !== 'wf' && !String(row.id || '').startsWith('bday-group-')).map((row) => row.id).filter(Boolean);
     items = items.map((row) => ({ ...row, is_read: true }));
     updateBadge();
+
+    const engine = global.CiteFlowBirthdayEngine || global.CiteFlowNotifPresentation?.birthdayEngine;
+    const userId = currentUser?.id || currentProfile?.id || null;
+    if (engine) {
+      const bdayItems = items.filter((x) => x.type === 'birthday' || String(x.id || '').startsWith('bday-group-')).map((x) => ({
+        eventId: x.event_id || String(x.id).replace(/^bday-group-/, ''),
+        timestamp: x.created_at
+      }));
+      engine.markAllEventsRead(userId, bdayItems);
+    }
+
     const db = client();
     if (!db || !currentUser?.id) return;
     if (wfIds.length) await db.from('wf_notifications').update({ is_read: true }).in('id', wfIds);
@@ -1442,143 +1465,99 @@
     return myNames.some((n) => n && (n === target || target.includes(n) || n.includes(target)));
   }
 
-  // 1. Sends notification rows when a comment is posted
+  // 1. Sends broadcast and updates grouped notifications when a comment is posted
   async function notifyBirthdayComment(comment) {
     const db = client();
-    if (!comment || !db) return { ok: false };
+    if (!comment) return { ok: false };
 
-    const { cleanId, cleanName } = cleanCelebrantInfo(comment.celebrant_id, comment.celebrant_name);
-    const authorName = comment.author_name || 'A colleague';
-    const snippet = comment.message ? (comment.message.length > 55 ? comment.message.slice(0, 52) + '...' : comment.message) : 'Sent you a birthday wish!';
-    const year = comment.celebrant_year || new Date().getFullYear();
-    const eventId = comment.celebrant_id || `birthday-${cleanId || cleanName}-${year}`;
+    // Broadcast across realtime channel to all connected clients
+    if (db && typeof db.channel === 'function') {
+      try {
+        const liveChan = db.channel('cite-birthday-comments-live');
+        liveChan.send({
+          type: 'broadcast',
+          event: 'birthday_comment_posted',
+          payload: comment
+        }).catch(() => {});
+      } catch (_) {}
+    }
 
-    let target = null;
-    try {
-      if (cleanId && /^\d+$/.test(cleanId)) {
-        const { data } = await db.from('faculty').select('id, auth_user_id').eq('id', parseInt(cleanId, 10)).maybeSingle();
-        if (data) target = data;
-      }
-      if (!target && cleanId && cleanId.includes('-')) {
-        const { data } = await db.from('faculty').select('id, auth_user_id').eq('auth_user_id', cleanId).maybeSingle();
-        if (data) target = data;
-      }
-      if (!target && cleanName) {
-        const parts = cleanName.split(' ');
-        const last = parts[parts.length - 1];
-        const { data } = await db.from('faculty').select('id, auth_user_id').ilike('last_name', `%${last}%`).maybeSingle();
-        if (data) target = data;
-      }
-    } catch (_) {}
-
-    const payload = {
-      title: 'New Birthday Greeting Posted',
-      message: `${authorName} posted a birthday wish: "${snippet}"`,
-      type: 'birthday',
-      category: 'birthday',
-      audience: 'all_faculty',
-      event_id: eventId,
-      link: `calendar.html#open=${eventId}`,
-      is_read: false
-    };
-
-    try {
-      if (target?.auth_user_id) {
-        await insertNotificationRows(payload, [{ id: target.auth_user_id }]);
-      }
-      if (target?.id) {
-        await insertTableRows('wf_notifications', [{ ...payload, faculty_id: target.id }]);
-      }
-    } catch (_) {}
-
+    // Immediately reload grouped notifications locally
+    await loadBirthdayCommentNotifications();
     return { ok: true };
   }
 
-  // 2. Loads birthday greetings into the notification bell upon login
+  // 2. Loads grouped birthday notifications into the notification bell
   async function loadBirthdayCommentNotifications() {
     const db = client();
-    if (!db || !currentUser?.id) return;
+    if (!db) return;
 
     try {
       const { data, error } = await db
         .from('faculty_birthday_comments')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(30);
+        .limit(100);
 
       if (error || !Array.isArray(data)) return;
 
-      data.forEach((comment) => {
-        // Skip wishes written by myself
-        const isMine = (currentUser?.id && String(comment.author_id) === String(currentUser.id))
-                    || (currentUser?.email && String(comment.author_email || '').toLowerCase() === String(currentUser.email).toLowerCase());
-        if (isMine) return;
+      const engine = global.CiteFlowBirthdayEngine || global.CiteFlowNotifPresentation?.birthdayEngine;
+      if (!engine) return;
 
-        // Check if I am the celebrant
-        if (isCurrentUserCelebrant(comment.celebrant_id, comment.celebrant_name)) {
-          const author = comment.author_name || 'A colleague';
-          const text = comment.message ? (comment.message.length > 55 ? comment.message.slice(0, 52) + '...' : comment.message) : 'Happy Birthday!';
-          const { cleanId, cleanName } = cleanCelebrantInfo(comment.celebrant_id, comment.celebrant_name);
-          const eventId = comment.celebrant_id || `birthday-${cleanId || cleanName}-${comment.celebrant_year || new Date().getFullYear()}`;
+      const userId = currentUser?.id || currentProfile?.id || null;
+      const grouped = engine.computeGroupedBirthdayNotifications(data, userId);
 
-          ingest({
-            id: `bday-comment-${comment.id}`,
-            title: 'New Birthday Greeting Posted',
-            message: `${author} posted a birthday wish: "${text}"`,
-            type: 'birthday',
-            category: 'birthday',
-            event_id: eventId,
-            link: `calendar.html#open=${eventId}`,
-            is_read: false,
-            created_at: comment.created_at || new Date().toISOString()
-          }, { toast: false });
-        }
+      grouped.forEach((notif) => {
+        ingest(notif, { toast: false });
       });
     } catch (err) {
       console.warn('loadBirthdayCommentNotifications error:', err);
     }
   }
 
-  // 3. Real-time listener: triggers toast and bell badge immediately when someone comments
+  // 3. Real-time listener: updates grouped notification and bell badge when comments arrive
   function subscribeBirthdayComments() {
     const db = client();
     if (!db || global.__citeBdayNotifSubscribed) return;
     global.__citeBdayNotifSubscribed = true;
 
+    const handleCommentEvent = async (comment) => {
+      if (!comment) return;
+      await loadBirthdayCommentNotifications();
+
+      const engine = global.CiteFlowBirthdayEngine || global.CiteFlowNotifPresentation?.birthdayEngine;
+      const eventId = engine ? engine.getCanonicalEventId(comment) : comment.celebrant_id;
+      const { cleanName } = engine ? engine.cleanCelebrantInfo(comment.celebrant_id, comment.celebrant_name) : { cleanName: comment.celebrant_name };
+      const author = comment.author_name || 'Someone';
+
+      // If the birthday modal is open for this celebrant, reload comments live
+      if (global.currentBirthdayCelebrant && typeof global.loadBirthdayWishes === 'function') {
+        const modal = document.getElementById('birthday-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+          global.loadBirthdayWishes(global.currentBirthdayCelebrant);
+        }
+      }
+
+      showToast({
+        id: `toast-${eventId}-${Date.now()}`,
+        title: 'Birthday Greetings',
+        message: `${author} posted a greeting on ${cleanName || 'a colleague'}'s birthday.`,
+        type: 'birthday',
+        link: `calendar.html#open=${eventId}`
+      });
+    };
+
     db.channel('cite-birthday-comments-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'faculty_birthday_comments' }, (payload) => {
-        const row = payload.new;
-        if (!row) return;
-
-        // Skip comments written by myself
-        const isMine = (currentUser?.id && String(row.author_id) === String(currentUser.id))
-                    || (currentUser?.email && String(row.author_email || '').toLowerCase() === String(currentUser.email).toLowerCase());
-        if (isMine) return;
-
-        // Trigger toast if I am the celebrant
-        if (isCurrentUserCelebrant(row.celebrant_id, row.celebrant_name)) {
-          const author = row.author_name || 'A colleague';
-          const text = row.message ? (row.message.length > 55 ? row.message.slice(0, 52) + '...' : row.message) : 'Happy Birthday!';
-          const { cleanId, cleanName } = cleanCelebrantInfo(row.celebrant_id, row.celebrant_name);
-          const eventId = row.celebrant_id || `birthday-${cleanId || cleanName}-${row.celebrant_year || new Date().getFullYear()}`;
-
-          ingest({
-            id: `live-bday-${row.id}`,
-            title: 'New Birthday Greeting Posted',
-            message: `${author} posted a birthday wish: "${text}"`,
-            type: 'birthday',
-            category: 'birthday',
-            event_id: eventId,
-            link: `calendar.html#open=${eventId}`,
-            is_read: false,
-            created_at: new Date().toISOString()
-          }, { toast: true });
-        }
+        handleCommentEvent(payload.new);
+      })
+      .on('broadcast', { event: 'birthday_comment_posted' }, (payload) => {
+        handleCommentEvent(payload.payload);
       })
       .subscribe();
   }
 
-  // 4. Automatically announces today's birthdays to faculty and admins
+  // 4. Automatically announces today's birthdays to faculty and admins (No emojis)
   async function checkTodayBirthdays() {
     const db = client();
     if (!db || !currentUser?.id) return;
@@ -1612,7 +1591,7 @@
 
         ingest({
           id: `today-bday-${fac.id || facName}-${todayYear}`,
-          title: isMe ? '🎉 Happy Birthday to You! 🎂' : `🎂 Today is ${facName}'s Birthday!`,
+          title: isMe ? 'Happy Birthday to You!' : `Today is ${facName}'s Birthday!`,
           message: isMe ? 'Wishing you a joyful celebration! View your birthday card on the calendar.' : 'Join the celebration and send your warmest greetings on the calendar!',
           type: 'birthday',
           category: 'birthday',

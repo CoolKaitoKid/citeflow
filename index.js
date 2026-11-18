@@ -4,6 +4,33 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// ================= FACULTY PROFILE EXPORT API =================
+const { generateFacultyDocxBuffer } = require("./CITE-Flow-Management-System/admin/faculty-export-server");
+
+app.post("/api/faculty-export/docx", async (req, res) => {
+  try {
+    const { facultyType, academicYear, signatories, records } = req.body || {};
+    const buf = await generateFacultyDocxBuffer({
+      facultyType,
+      academicYear,
+      signatories,
+      records
+    });
+    const ayClean = (academicYear || '2026-2027').replace(/[^0-9-]/g, '-').replace(/-+/g, '-');
+    const filename = `COTE-Faculty-Profile-AY-${ayClean}_${facultyType === 'parttime' ? 'Parttimer' : 'Organic'}.docx`;
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buf);
+  } catch (err) {
+    console.error("Error generating faculty export docx:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ================= STATIC FILES =================
 // Serve all files in frontend folder (for CSS, images, JS files, etc.)
 app.use(express.static(path.join(__dirname, "CITE-Flow-Management-System")));
@@ -130,10 +157,14 @@ app.use((req, res) => {
 });
 
 // ================= START SERVER =================
-app.listen(PORT, () => {
-  console.log(`✅ Server is running at http://localhost:${PORT}`);
-  console.log(`   Unified Portal → http://localhost:${PORT}/login`);
-  console.log(`   Admin Dashboard → http://localhost:${PORT}/dashboard`);
-  console.log(`   Faculty Dashboard → http://localhost:${PORT}/faculty/dashboard`);
-  console.log(`   Onboarding Setup → http://localhost:${PORT}/onboarding`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`✅ Server is running at http://localhost:${PORT}`);
+    console.log(`   Unified Portal → http://localhost:${PORT}/login`);
+    console.log(`   Admin Dashboard → http://localhost:${PORT}/dashboard`);
+    console.log(`   Faculty Dashboard → http://localhost:${PORT}/faculty/dashboard`);
+    console.log(`   Onboarding Setup → http://localhost:${PORT}/onboarding`);
+  });
+}
+
+module.exports = app;

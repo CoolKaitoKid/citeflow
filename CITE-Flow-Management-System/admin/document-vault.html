@@ -761,7 +761,7 @@
 </div>
 
 <!-- Professional Document Preview Modal -->
-<div id="documentPreviewModal" class="hidden fixed inset-0 citeflow-modal-backdrop items-center justify-center z-[2600] p-3 sm:p-5">
+<div id="documentPreviewModal" class="hidden fixed inset-0 citeflow-modal-backdrop items-center justify-center z-[2600] p-3 sm:p-5" onclick="if(event.target === this) closeDocumentPreviewModal()">
     <div class="citeflow-glass-panel rounded-[1.5rem] sm:rounded-[2rem] w-full max-w-6xl h-[92vh] sm:h-[88vh] overflow-hidden flex flex-col">
         <div class="px-5 py-3.5 sm:px-7 sm:py-5 citeflow-glass-header flex items-center justify-between">
             <div class="flex items-center gap-3 sm:gap-4 min-w-0">
@@ -801,14 +801,50 @@
                     <button onclick="openPreviewInNewTab()" class="document-action-btn document-secondary-btn flex-1 py-2 sm:py-2.5 text-xs sm:text-sm"><i class="fa-solid fa-arrow-up-right-from-square"></i>Open Tab</button>
                 </div>
             </aside>
-            <main class="bg-slate-100/80 min-h-0 relative flex-1">
+            <main class="bg-slate-100/80 min-h-0 relative flex-1 flex flex-col items-center justify-center overflow-hidden">
                 <div id="previewLoading" class="absolute inset-0 flex items-center justify-center bg-slate-100/70 backdrop-blur-sm z-10">
                     <div class="bg-white/90 backdrop-blur-md rounded-2xl px-5 py-3 shadow-sm border border-white/60 flex items-center gap-3">
                         <i class="fa-solid fa-circle-notch fa-spin text-[#621708]"></i>
                         <span class="text-xs sm:text-sm font-bold text-slate-700">Loading preview...</span>
                     </div>
                 </div>
+                <!-- Native PDF / Text Frame -->
                 <iframe id="documentPreviewFrame" title="Document preview" class="w-full h-full bg-white border-0" src="about:blank"></iframe>
+                <!-- Native Image Viewer -->
+                <div id="previewImageContainer" class="hidden w-full h-full p-4 sm:p-6 flex items-center justify-center overflow-auto bg-slate-900/5">
+                    <img id="documentPreviewImage" alt="Document preview" class="max-h-full max-w-full object-contain rounded-xl shadow-md border border-slate-200/80 bg-white" />
+                </div>
+                <!-- Unsupported Format Fallback View -->
+                <div id="previewFallbackContainer" class="hidden w-full h-full flex flex-col items-center justify-center p-6 text-center overflow-y-auto">
+                    <div id="fallbackIconBox" class="w-20 h-20 rounded-3xl bg-white shadow-md border border-slate-200/80 flex items-center justify-center text-4xl mb-4 text-[#621708]">
+                        <i id="fallbackIcon" class="fa-solid fa-file"></i>
+                    </div>
+                    <h4 id="fallbackTitle" class="text-base sm:text-lg font-extrabold text-slate-800 max-w-md truncate mb-1">Document</h4>
+                    <p id="fallbackMeta" class="text-xs text-slate-500 mb-3">—</p>
+                    <div class="bg-white/80 backdrop-blur-sm border border-slate-200/70 rounded-2xl p-4 max-w-md mb-5 text-xs text-slate-600 leading-relaxed shadow-sm">
+                        <i class="fa-solid fa-circle-info text-[#621708] mr-1.5"></i>
+                        Browser preview is not available for this file format. You can download the original file to view its full contents.
+                    </div>
+                    <button type="button" onclick="downloadCurrentPreviewDocument()" class="document-action-btn document-primary-btn px-6 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-download"></i> Download Document
+                    </button>
+                </div>
+                <!-- Error State Container -->
+                <div id="previewErrorContainer" class="hidden w-full h-full flex flex-col items-center justify-center p-6 text-center overflow-y-auto">
+                    <div class="w-16 h-16 rounded-2xl bg-red-50 border border-red-200 text-red-600 flex items-center justify-center text-3xl mb-3">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <h4 class="text-base font-extrabold text-slate-800 mb-1">Unable to Load Preview</h4>
+                    <p id="previewErrorMessage" class="text-xs text-slate-500 max-w-md mb-4">The document could not be retrieved from storage.</p>
+                    <div class="flex flex-wrap items-center justify-center gap-2">
+                        <button type="button" onclick="retryCurrentPreview()" class="document-action-btn document-secondary-btn px-4 py-2 text-xs font-bold">
+                            <i class="fa-solid fa-rotate-right mr-1.5"></i> Retry
+                        </button>
+                        <button type="button" onclick="downloadCurrentPreviewDocument()" class="document-action-btn document-primary-btn px-4 py-2 text-xs font-bold">
+                            <i class="fa-solid fa-download mr-1.5"></i> Download File
+                        </button>
+                    </div>
+                </div>
             </main>
         </div>
     </div>
@@ -858,6 +894,9 @@ function restoreCachedFolders(){
 function ensureSupabaseReady(){ 
     if(!supabaseClient && window.supabaseClient){
         supabaseClient = window.supabaseClient;
+    }
+    if(!supabaseClient && window.supabase && typeof window.supabase.createClient === 'function'){
+        recreateSupabaseClient();
     }
     const client = getVaultClient();
     if(!client){ 
@@ -1732,13 +1771,28 @@ async function uploadFilesToFolder(files, folderId, modalType='main'){
         const filePath = buildFilePath(folderId, file.name);
         const contentType = resolveVaultUploadContentType(file);
 
+        let uploadSuccess = false;
         try {
             await vaultStorageRequest('upload', { path: filePath, file, contentType });
+            uploadSuccess = true;
         } catch(uploadError) {
-            console.error('Document Vault upload error:', uploadError);
-            showDocumentToast(`Failed to upload "${file.name}":\n\n${uploadError.message || 'Upload failed'}`, 'error');
-            failCount++;
-            continue;
+            console.warn('vaultStorageRequest upload failed, trying client storage upload:', uploadError);
+            try {
+                if (client?.storage) {
+                    const { error: directErr } = await client.storage
+                        .from(STORAGE_BUCKET)
+                        .upload(filePath, file, { contentType, upsert: true });
+                    if (!directErr) uploadSuccess = true;
+                    else throw directErr;
+                } else {
+                    throw uploadError;
+                }
+            } catch(directErr) {
+                console.error('Document Vault upload error:', directErr);
+                showDocumentToast(`Failed to upload "${file.name}":\n\n${directErr.message || uploadError.message || 'Upload failed'}`, 'error');
+                failCount++;
+                continue;
+            }
         }
 
         // 2. Insert record into database table
@@ -1782,7 +1836,29 @@ async function uploadToCurrentFolder(){
     await uploadFilesToFolder(files, currentFolderId, 'simple');
 }
 
-async function removeStorageObject(doc){ const paths=getCandidatePaths(doc.file_path, doc); for(const path of paths){ try { await vaultStorageRequest('delete', { path }); return; } catch(err) { console.warn('Document Vault delete attempt failed:', path, err); } } }
+async function removeStorageObject(doc){
+    const client = window.supabaseClient || getVaultClient();
+    const paths = getCandidatePaths(doc.file_path, doc);
+    const buckets = getDocumentBucketCandidates(doc);
+    if(client?.storage){
+        for(const bucket of buckets){
+            for(const path of paths){
+                try {
+                    const { error } = await client.storage.from(bucket).remove([path]);
+                    if(!error) return;
+                } catch(_) {}
+            }
+        }
+    }
+    for(const path of paths){
+        try {
+            await vaultStorageRequest('delete', { path });
+            return;
+        } catch(err) {
+            console.warn('Document Vault delete attempt failed:', path, err);
+        }
+    }
+}
 async function deleteSingleDocument(id){ const doc=documents.find(d=>String(d.id)===String(id)); if(!doc) return; if(!(await confirmVaultAction(`Delete "${doc.name}"?`, 'Delete document'))) return; await removeStorageObject(doc); const {error}=await supabaseClient.from('documents').delete().eq('id',id); if(error){ showDocumentToast('Unable to delete document: '+error.message, 'error'); return; } await refreshVault(); showDocumentToast('Document deleted.', 'success'); }
 async function deleteSelectedDocuments(){
     if(!selectedDocs.size) return;
@@ -1833,99 +1909,517 @@ async function confirmMoveDocuments(){
     showDocumentToast('Documents moved.', 'success');
 }
 
+const DOCUMENT_STORAGE_BUCKETS = ['documents', 'document', 'document-vault', 'admin-documents', 'faculty-documents', 'uploads', 'files'];
+
 function isExternalUrl(value){ return /^https?:\/\//i.test(String(value||'')); }
-function getCandidatePaths(originalPath, doc={}){
-    const raw=String(originalPath||'').trim();
-    if(!raw || isExternalUrl(raw)) return raw ? [raw] : [];
-    const filename=raw.split('/').pop() || doc.name || '';
-    const candidates=[];
-    candidates.push(raw);
-    if(raw.startsWith(`${STORAGE_BUCKET}/`)) candidates.push(raw.replace(new RegExp(`^${STORAGE_BUCKET}/`),''));
-    if(raw.startsWith('documents/')) candidates.push(raw.replace(/^documents\//,''));
-    const parts=raw.split('/').filter(Boolean);
-    if(parts.length>=2) candidates.push(parts.slice(-2).join('/'));
-    const folderId=doc.folder_id||currentFolderId;
-    if(filename&&folderId){ candidates.push(`${folderId}/${filename}`); }
+
+function getDocumentBucketCandidates(doc = {}){
+    const rawBuckets = [
+        doc?.bucket,
+        doc?.bucket_id,
+        doc?.bucket_name,
+        doc?.storage_bucket,
+        STORAGE_BUCKET,
+        ...DOCUMENT_STORAGE_BUCKETS
+    ];
+    return [...new Set(rawBuckets.map(b => String(b || '').trim()).filter(Boolean))];
+}
+
+function getCandidatePaths(originalPath, doc = {}){
+    const raw = String(originalPath || '').trim();
+    if(!raw) return [];
+    if(isExternalUrl(raw)){
+        const candidates = [raw];
+        const match = raw.match(/\/storage\/v1\/object\/(?:public|authenticated|sign)\/([^\/]+)\/(.+?)(?:\?|$)/i);
+        if(match && match[2]){
+            try { candidates.push(decodeURIComponent(match[2])); } catch(_) { candidates.push(match[2]); }
+        }
+        return candidates;
+    }
+
+    const filename = raw.split('/').pop() || doc.name || '';
+    const cleanRaw = raw.replace(/^\/+/, '');
+    const candidates = [];
+    if(cleanRaw) candidates.push(cleanRaw);
+    if(raw !== cleanRaw) candidates.push(raw);
+
+    DOCUMENT_STORAGE_BUCKETS.forEach(b => {
+        if(cleanRaw.startsWith(`${b}/`)){
+            candidates.push(cleanRaw.substring(b.length + 1));
+        }
+    });
+
+    const parts = cleanRaw.split('/').filter(Boolean);
+    if(parts.length >= 2){
+        candidates.push(parts.slice(-2).join('/'));
+    }
+
+    const folderId = doc.folder_id || currentFolderId;
+    if(filename && folderId){
+        candidates.push(`${folderId}/${filename}`);
+    }
+    if(filename){
+        candidates.push(filename);
+    }
+
     return [...new Set(candidates.filter(Boolean))];
 }
-async function resolveDocumentAccessUrl(doc, expiresInSeconds=3600, download=false){
+
+async function resolveDocumentAccessUrl(doc, expiresInSeconds = 3600, download = false){
     if(!doc?.file_path) return null;
-    if(isExternalUrl(doc.file_path)) return {url:doc.file_path,path:doc.file_path,revoke:null};
-    const paths=getCandidatePaths(doc.file_path, doc);
-    let lastError=null;
-    for(const path of paths){
-        try {
-            const result=await vaultStorageRequest('download', { path });
-            if(result?.blob){
-                const url=URL.createObjectURL(result.blob);
-                return {url,path,revoke:()=>URL.revokeObjectURL(url)};
+    const client = window.supabaseClient || getVaultClient();
+
+    if(isExternalUrl(doc.file_path)){
+        return { url: doc.file_path, path: doc.file_path, bucket: STORAGE_BUCKET, revoke: null, isBlob: false };
+    }
+
+    const paths = getCandidatePaths(doc.file_path, doc);
+    const buckets = getDocumentBucketCandidates(doc);
+    let lastError = null;
+
+    // 1. Authenticated Supabase Storage JS SDK createSignedUrl
+    if(client?.storage){
+        for(const bucketName of buckets){
+            for(const path of paths){
+                try {
+                    const options = download ? { download: doc.name || true } : undefined;
+                    const { data, error } = await client.storage
+                        .from(bucketName)
+                        .createSignedUrl(path, expiresInSeconds, options);
+
+                    if(!error && data?.signedUrl){
+                        return {
+                            url: data.signedUrl,
+                            path,
+                            bucket: bucketName,
+                            revoke: null,
+                            isBlob: false
+                        };
+                    }
+                    if(error) lastError = error;
+                } catch(err) {
+                    lastError = err;
+                }
             }
-        } catch(err) {
-            lastError=err;
+        }
+
+        // 2. Authenticated Supabase Storage JS SDK download (Blob)
+        for(const bucketName of buckets){
+            for(const path of paths){
+                try {
+                    const { data: blobData, error: blobError } = await client.storage
+                        .from(bucketName)
+                        .download(path);
+
+                    if(!blobError && blobData && blobData.size > 0){
+                        const mime = doc.mime_type || resolveVaultUploadContentType({ name: doc.name, type: blobData.type });
+                        const typedBlob = (blobData.type && blobData.type !== 'application/octet-stream')
+                            ? blobData
+                            : new Blob([blobData], { type: mime });
+                        const url = URL.createObjectURL(typedBlob);
+                        return {
+                            url,
+                            path,
+                            bucket: bucketName,
+                            blob: typedBlob,
+                            revoke: () => URL.revokeObjectURL(url),
+                            isBlob: true
+                        };
+                    }
+                    if(blobError) lastError = blobError;
+                } catch(err) {
+                    lastError = err;
+                }
+            }
         }
     }
-    console.error('Document access failed:', {doc,paths,lastError});
-    return null;
-}
-async function resolveDocumentBlob(doc){
-    if(!doc?.file_path) return null;
-    if(isExternalUrl(doc.file_path)){
-        const response=await fetch(doc.file_path);
-        if(response.ok) return await response.blob();
-        return null;
-    }
-    const paths=getCandidatePaths(doc.file_path, doc);
+
+    // 3. Fallback to Edge Function vaultStorageRequest if available
     for(const path of paths){
         try {
-            const result=await vaultStorageRequest('download', { path });
-            if(result?.blob) return result.blob;
+            const result = await vaultStorageRequest('download', { path });
+            if(result?.blob && result.blob.size > 0){
+                const mime = doc.mime_type || resolveVaultUploadContentType({ name: doc.name, type: result.blob.type });
+                const typedBlob = (result.blob.type && result.blob.type !== 'application/octet-stream')
+                    ? result.blob
+                    : new Blob([result.blob], { type: mime });
+                const url = URL.createObjectURL(typedBlob);
+                return {
+                    url,
+                    path,
+                    bucket: STORAGE_BUCKET,
+                    blob: typedBlob,
+                    revoke: () => URL.revokeObjectURL(url),
+                    isBlob: true
+                };
+            }
+        } catch(err) {
+            lastError = err;
+        }
+    }
+
+    console.error('Document access failed:', { doc, paths, buckets, lastError });
+    return null;
+}
+
+async function resolveDocumentBlob(doc){
+    if(!doc?.file_path) return null;
+    const client = window.supabaseClient || getVaultClient();
+
+    if(isExternalUrl(doc.file_path)){
+        try {
+            const res = await fetch(doc.file_path);
+            if(res.ok){
+                const blob = await res.blob();
+                const mime = doc.mime_type || resolveVaultUploadContentType({ name: doc.name, type: blob.type });
+                return new Blob([blob], { type: mime });
+            }
+        } catch(_) {}
+    }
+
+    const paths = getCandidatePaths(doc.file_path, doc);
+    const buckets = getDocumentBucketCandidates(doc);
+
+    // 1. Direct Supabase Storage JS SDK download
+    if(client?.storage){
+        for(const bucketName of buckets){
+            for(const path of paths){
+                try {
+                    const { data: blobData, error } = await client.storage
+                        .from(bucketName)
+                        .download(path);
+
+                    if(!error && blobData && blobData.size > 0){
+                        const mime = doc.mime_type || resolveVaultUploadContentType({ name: doc.name, type: blobData.type });
+                        return (blobData.type && blobData.type !== 'application/octet-stream')
+                            ? blobData
+                            : new Blob([blobData], { type: mime });
+                    }
+                } catch(err) {
+                    console.warn('Storage download attempt failed:', bucketName, path, err);
+                }
+            }
+        }
+
+        // 2. Direct createSignedUrl + fetch blob
+        for(const bucketName of buckets){
+            for(const path of paths){
+                try {
+                    const { data, error } = await client.storage
+                        .from(bucketName)
+                        .createSignedUrl(path, 300, { download: doc.name || true });
+
+                    if(!error && data?.signedUrl){
+                        const res = await fetch(data.signedUrl);
+                        if(res.ok){
+                            const blob = await res.blob();
+                            const mime = doc.mime_type || resolveVaultUploadContentType({ name: doc.name, type: blob.type });
+                            return new Blob([blob], { type: mime });
+                        }
+                    }
+                } catch(err) {
+                    console.warn('Storage signed fetch attempt failed:', bucketName, path, err);
+                }
+            }
+        }
+    }
+
+    // 3. Edge function fallback
+    for(const path of paths){
+        try {
+            const result = await vaultStorageRequest('download', { path });
+            if(result?.blob && result.blob.size > 0){
+                const mime = doc.mime_type || resolveVaultUploadContentType({ name: doc.name, type: result.blob.type });
+                return new Blob([result.blob], { type: mime });
+            }
         } catch(err) {
             console.warn('Document Vault download attempt failed:', path, err);
         }
     }
+
     return null;
 }
+
 function saveBlobAsFile(blob, filename){
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=filename||'document';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.setAttribute('download', filename || 'document');
     document.body.appendChild(a);
     a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    setTimeout(() => {
+        if(a.parentNode) a.parentNode.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 1000);
 }
-function makePreviewUrl(doc, access){
-    const kind=getFilePreviewKind(doc);
-    if(kind==='office' && access?.url && !access.url.startsWith('blob:')) return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(access.url)}`;
-    return access.url;
+
+let isDocumentPreviewing = false;
+let isDocumentDownloading = false;
+
+function preparePreviewModal(doc){
+    currentPreviewDocument = doc;
+    if(currentPreviewAccess && typeof currentPreviewAccess.revoke === 'function'){
+        currentPreviewAccess.revoke();
+    }
+    currentPreviewAccess = null;
+
+    const modal = document.getElementById('documentPreviewModal');
+    const frame = document.getElementById('documentPreviewFrame');
+    const imageContainer = document.getElementById('previewImageContainer');
+    const fallbackContainer = document.getElementById('previewFallbackContainer');
+    const errorContainer = document.getElementById('previewErrorContainer');
+    const loader = document.getElementById('previewLoading');
+
+    const fileSize = formatFileSize(doc.size_bytes);
+    const fileType = getFileTypeLabel(doc.name, doc.mime_type);
+    const uploadedDate = doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'Unknown';
+
+    document.getElementById('previewFileIcon').innerHTML = `<i class="fa-solid ${getFileIconClass(doc.name, doc.mime_type)}"></i>`;
+    document.getElementById('previewDocumentTitle').textContent = doc.name || 'Document Preview';
+    document.getElementById('previewDocumentMeta').textContent = `${fileType} • ${fileSize} • Uploaded ${uploadedDate}`;
+    document.getElementById('previewSideName').textContent = doc.name || '-';
+    document.getElementById('previewSideType').textContent = fileType;
+    document.getElementById('previewSideSize').textContent = fileSize;
+    document.getElementById('previewSideDate').textContent = uploadedDate;
+
+    if(frame){
+        frame.classList.add('hidden');
+        frame.src = 'about:blank';
+    }
+    if(imageContainer) imageContainer.classList.add('hidden');
+    if(fallbackContainer) fallbackContainer.classList.add('hidden');
+    if(errorContainer) errorContainer.classList.add('hidden');
+    if(loader) loader.style.display = 'flex';
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
 }
-function openDocumentPreviewModal(doc,access){ currentPreviewDocument=doc; currentPreviewAccess=access; const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); const loader=document.getElementById('previewLoading'); const fileSize=formatFileSize(doc.size_bytes); const fileType=getFileTypeLabel(doc.name,doc.mime_type); const uploadedDate=doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString():'Unknown'; document.getElementById('previewFileIcon').innerHTML=`<i class="fa-solid ${getFileIconClass(doc.name,doc.mime_type)}"></i>`; document.getElementById('previewDocumentTitle').textContent=doc.name||'Document Preview'; document.getElementById('previewDocumentMeta').textContent=`${fileType} • ${fileSize} • Uploaded ${uploadedDate}`; document.getElementById('previewSideName').textContent=doc.name||'-'; document.getElementById('previewSideType').textContent=fileType; document.getElementById('previewSideSize').textContent=fileSize; document.getElementById('previewSideDate').textContent=uploadedDate; loader.style.display='flex'; frame.src='about:blank'; modal.classList.remove('hidden'); modal.classList.add('flex'); setTimeout(()=>{ frame.src=makePreviewUrl(doc,access); },80); frame.onload=()=>{ loader.style.display='none'; }; setTimeout(()=>{ loader.style.display='none'; },4000); }
-function closeDocumentPreviewModal(){ const modal=document.getElementById('documentPreviewModal'); const frame=document.getElementById('documentPreviewFrame'); modal.classList.add('hidden'); modal.classList.remove('flex'); frame.src='about:blank'; if(currentPreviewAccess&&typeof currentPreviewAccess.revoke==='function') currentPreviewAccess.revoke(); currentPreviewDocument=null; currentPreviewAccess=null; }
-function openPreviewInNewTab(){ if(!currentPreviewDocument||!currentPreviewAccess?.url) return; window.open(makePreviewUrl(currentPreviewDocument,currentPreviewAccess),'_blank'); }
-async function viewDocument(id){
-    const doc=documents.find(d=>String(d.id)===String(id));
-    if(!doc){ showDocumentToast('Document not found.', 'error'); return; }
-    try{
-        showDocumentToast('Preparing preview...', 'info');
-        const access=await resolveDocumentAccessUrl(doc,3600,false);
-        if(!access?.url){ showDocumentToast('Unable to preview this document. Check bucket name, file path, and storage policy.', 'error'); return; }
-        openDocumentPreviewModal(doc,access);
-    }catch(err){
-        console.error(err);
-        showDocumentToast('Unable to preview this document.', 'error');
+
+function renderDocumentInPreview(doc, access){
+    currentPreviewAccess = access;
+    const loader = document.getElementById('previewLoading');
+    const frame = document.getElementById('documentPreviewFrame');
+    const imageContainer = document.getElementById('previewImageContainer');
+    const imageEl = document.getElementById('documentPreviewImage');
+    const fallbackContainer = document.getElementById('previewFallbackContainer');
+    const errorContainer = document.getElementById('previewErrorContainer');
+
+    const ext = getFileExtension(doc.name);
+    const type = String(doc.mime_type || '').toLowerCase();
+    const isPdf = ext === 'pdf' || type.includes('pdf');
+    const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || type.includes('image');
+    const isText = ['txt', 'csv', 'md'].includes(ext) || type.includes('text');
+
+    if(errorContainer) errorContainer.classList.add('hidden');
+
+    if(isPdf){
+        if(imageContainer) imageContainer.classList.add('hidden');
+        if(fallbackContainer) fallbackContainer.classList.add('hidden');
+        if(frame){
+            frame.classList.remove('hidden');
+            let loaded = false;
+            frame.onload = () => {
+                loaded = true;
+                if(loader) loader.style.display = 'none';
+            };
+            frame.src = access.url;
+            setTimeout(() => {
+                if(!loaded && loader) loader.style.display = 'none';
+            }, 3000);
+        }
+    } else if(isImg){
+        if(frame) frame.classList.add('hidden');
+        if(fallbackContainer) fallbackContainer.classList.add('hidden');
+        if(imageContainer && imageEl){
+            imageContainer.classList.remove('hidden');
+            imageEl.onload = () => {
+                if(loader) loader.style.display = 'none';
+            };
+            imageEl.onerror = () => {
+                if(loader) loader.style.display = 'none';
+                showPreviewError(doc, 'Failed to display image preview.');
+            };
+            imageEl.src = access.url;
+            setTimeout(() => {
+                if(loader) loader.style.display = 'none';
+            }, 2500);
+        }
+    } else if(isText){
+        if(imageContainer) imageContainer.classList.add('hidden');
+        if(fallbackContainer) fallbackContainer.classList.add('hidden');
+        if(frame){
+            frame.classList.remove('hidden');
+            frame.onload = () => {
+                if(loader) loader.style.display = 'none';
+            };
+            frame.src = access.url;
+            setTimeout(() => {
+                if(loader) loader.style.display = 'none';
+            }, 2000);
+        }
+    } else {
+        // Formats that browsers cannot render natively (DOCX, XLSX, PPTX, ZIP, etc.)
+        if(loader) loader.style.display = 'none';
+        if(frame) frame.classList.add('hidden');
+        if(imageContainer) imageContainer.classList.add('hidden');
+        if(fallbackContainer){
+            fallbackContainer.classList.remove('hidden');
+            const iconClass = getFileIconClass(doc.name, doc.mime_type);
+            const iconColor = getFileIconColor(doc.name, doc.mime_type);
+            const iconEl = document.getElementById('fallbackIcon');
+            const iconBox = document.getElementById('fallbackIconBox');
+            const titleEl = document.getElementById('fallbackTitle');
+            const metaEl = document.getElementById('fallbackMeta');
+
+            if(iconEl) iconEl.className = `fa-solid ${iconClass}`;
+            if(iconBox) iconBox.style.color = iconColor;
+            if(titleEl) titleEl.textContent = doc.name;
+            if(metaEl) metaEl.textContent = `${getFileTypeLabel(doc.name, doc.mime_type)} • ${formatFileSize(doc.size_bytes)}`;
+        }
     }
 }
+
+function showPreviewError(doc, message){
+    const loader = document.getElementById('previewLoading');
+    const frame = document.getElementById('documentPreviewFrame');
+    const imageContainer = document.getElementById('previewImageContainer');
+    const fallbackContainer = document.getElementById('previewFallbackContainer');
+    const errorContainer = document.getElementById('previewErrorContainer');
+    const errorMsg = document.getElementById('previewErrorMessage');
+
+    if(loader) loader.style.display = 'none';
+    if(frame) frame.classList.add('hidden');
+    if(imageContainer) imageContainer.classList.add('hidden');
+    if(fallbackContainer) fallbackContainer.classList.add('hidden');
+
+    if(errorContainer){
+        errorContainer.classList.remove('hidden');
+        if(errorMsg) errorMsg.textContent = message || 'Could not display preview.';
+    }
+}
+
+function retryCurrentPreview(){
+    if(currentPreviewDocument){
+        viewDocument(currentPreviewDocument.id);
+    }
+}
+
+function closeDocumentPreviewModal(){
+    const modal = document.getElementById('documentPreviewModal');
+    const frame = document.getElementById('documentPreviewFrame');
+    const imageEl = document.getElementById('documentPreviewImage');
+    const imageContainer = document.getElementById('previewImageContainer');
+    const fallbackContainer = document.getElementById('previewFallbackContainer');
+    const errorContainer = document.getElementById('previewErrorContainer');
+    const loader = document.getElementById('previewLoading');
+
+    if(modal){
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+    if(frame){
+        frame.src = 'about:blank';
+        frame.classList.add('hidden');
+    }
+    if(imageEl) imageEl.src = '';
+    if(imageContainer) imageContainer.classList.add('hidden');
+    if(fallbackContainer) fallbackContainer.classList.add('hidden');
+    if(errorContainer) errorContainer.classList.add('hidden');
+    if(loader) loader.style.display = 'none';
+
+    if(currentPreviewAccess && typeof currentPreviewAccess.revoke === 'function'){
+        currentPreviewAccess.revoke();
+    }
+    currentPreviewDocument = null;
+    currentPreviewAccess = null;
+}
+
+async function openPreviewInNewTab(){
+    if(!currentPreviewDocument) return;
+
+    if(currentPreviewAccess?.url && !currentPreviewAccess.isBlob && !currentPreviewAccess.url.startsWith('blob:')){
+        window.open(currentPreviewAccess.url, '_blank');
+        return;
+    }
+
+    try {
+        const client = window.supabaseClient || getVaultClient();
+        const paths = getCandidatePaths(currentPreviewDocument.file_path, currentPreviewDocument);
+        const buckets = getDocumentBucketCandidates(currentPreviewDocument);
+
+        if(client?.storage){
+            for(const b of buckets){
+                for(const p of paths){
+                    const { data } = await client.storage.from(b).createSignedUrl(p, 3600);
+                    if(data?.signedUrl){
+                        window.open(data.signedUrl, '_blank');
+                        return;
+                    }
+                }
+            }
+        }
+    } catch(_) {}
+
+    if(currentPreviewAccess?.url){
+        window.open(currentPreviewAccess.url, '_blank');
+    } else {
+        showDocumentToast('Unable to open in a new tab.', 'warning');
+    }
+}
+
+async function viewDocument(id){
+    if(isDocumentPreviewing) return;
+
+    const doc = documents.find(d => String(d.id) === String(id));
+    if(!doc){
+        showDocumentToast('Document not found.', 'error');
+        return;
+    }
+
+    isDocumentPreviewing = true;
+    try {
+        showDocumentToast('Preparing preview...', 'info');
+        preparePreviewModal(doc);
+
+        const access = await resolveDocumentAccessUrl(doc, 3600, false);
+        if(!access?.url){
+            showPreviewError(doc, 'Document file not found in storage. Please check if the file was moved or deleted.');
+            return;
+        }
+
+        renderDocumentInPreview(doc, access);
+    } catch(err) {
+        console.error('Preview error:', err);
+        showPreviewError(doc, err.message || 'Unable to retrieve document preview.');
+    } finally {
+        isDocumentPreviewing = false;
+    }
+}
+
 async function downloadDocument(id){
-    const doc=documents.find(d=>String(d.id)===String(id));
-    if(!doc){ showDocumentToast('Document not found.', 'error'); return; }
-    try{
+    if(isDocumentDownloading){
+        showDocumentToast('Download already in progress...', 'info');
+        return;
+    }
+
+    const doc = documents.find(d => String(d.id) === String(id));
+    if(!doc){
+        showDocumentToast('Document not found.', 'error');
+        return;
+    }
+
+    isDocumentDownloading = true;
+    try {
         showDocumentToast('Preparing download...', 'info');
-        const blob=await resolveDocumentBlob(doc);
-        if(blob){
-            saveBlobAsFile(blob,doc.name||'document');
+
+        // 1. Direct Blob download (preserving exact bytes, type, and filename)
+        const blob = await resolveDocumentBlob(doc);
+        if(blob && blob.size > 0){
+            saveBlobAsFile(blob, doc.name || 'document');
             showDocumentToast('Download started.', 'success');
-            if (window.EngagementLogger?.logDownload) {
+
+            if(window.EngagementLogger?.logDownload){
                 window.EngagementLogger.logDownload({
                     fileName: doc.name,
                     sourceModule: 'Document Vault',
@@ -1934,28 +2428,44 @@ async function downloadDocument(id){
             }
             return;
         }
-        const access=await resolveDocumentAccessUrl(doc,300,true);
-        if(!access?.url){ showDocumentToast('Unable to download this document. Check bucket name, file path, and storage policy.', 'error'); return; }
-        const response=await fetch(access.url);
-        if(response.ok){
-            saveBlobAsFile(await response.blob(),doc.name||'document');
-        }else{
-            window.open(access.url,'_blank');
+
+        // 2. Fallback to signed URL -> fetch blob
+        const access = await resolveDocumentAccessUrl(doc, 300, true);
+        if(access?.url){
+            const response = await fetch(access.url);
+            if(response.ok){
+                const resBlob = await response.blob();
+                const mime = doc.mime_type || resolveVaultUploadContentType({ name: doc.name, type: resBlob.type });
+                const typedBlob = new Blob([resBlob], { type: mime });
+                saveBlobAsFile(typedBlob, doc.name || 'document');
+                showDocumentToast('Download started.', 'success');
+
+                if(window.EngagementLogger?.logDownload){
+                    window.EngagementLogger.logDownload({
+                        fileName: doc.name,
+                        sourceModule: 'Document Vault',
+                        description: 'Downloaded ' + (doc.name || 'a document') + ' from the Document Vault.'
+                    });
+                }
+                if(typeof access.revoke === 'function') access.revoke();
+                return;
+            }
         }
-        showDocumentToast('Download started.', 'success');
-        if (window.EngagementLogger?.logDownload) {
-            window.EngagementLogger.logDownload({
-                fileName: doc.name,
-                sourceModule: 'Document Vault',
-                description: 'Downloaded ' + (doc.name || 'a document') + ' from the Document Vault.'
-            });
-        }
-    }catch(err){
-        console.error(err);
-        showDocumentToast('Unable to download this document.', 'error');
+
+        showDocumentToast(`Unable to download "${doc.name}". File could not be retrieved from storage.`, 'error');
+    } catch(err) {
+        console.error('Download error:', err);
+        showDocumentToast(`Download failed: ${err.message || 'Storage error'}`, 'error');
+    } finally {
+        isDocumentDownloading = false;
     }
 }
-async function downloadCurrentPreviewDocument(){ if(currentPreviewDocument) await downloadDocument(currentPreviewDocument.id); }
+
+async function downloadCurrentPreviewDocument(){
+    if(currentPreviewDocument){
+        await downloadDocument(currentPreviewDocument.id);
+    }
+}
 
 function setupDropZone(){
     const mainDz = document.getElementById('main-drop-zone');

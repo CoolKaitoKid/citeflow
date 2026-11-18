@@ -1187,7 +1187,7 @@ window.CiteFlowMessenger = (function () {
             prehide.id = "citeflow-messenger-prehide";
             prehide.textContent = [
                 ".msgr-backdrop,.msgr-new-modal{position:fixed;inset:0;opacity:0;visibility:hidden}",
-                ".msgr-panel{position:fixed;top:0;right:-440px;width:420px;max-width:100vw}"
+                ".msgr-panel{position:fixed;top:0;right:0;width:420px;max-width:100vw;transform:translateX(100%);visibility:hidden;pointer-events:none}"
             ].join("");
             document.head.appendChild(prehide);
         }
