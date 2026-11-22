@@ -1211,6 +1211,36 @@
                 return true;
             }
 
+            function validateFacultyBirthdateInput() {
+                const raw = (birthdate.value || '').trim();
+                if (!raw) return true;
+                const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+                const dob = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(raw);
+                if (Number.isNaN(dob.getTime())) {
+                    showAlert('Please enter a valid Date of Birth (YYYY-MM-DD).');
+                    return false;
+                }
+                const today = new Date();
+                if (dob > today) {
+                    showAlert('Date of Birth cannot be in the future.');
+                    return false;
+                }
+                let age = today.getFullYear() - dob.getFullYear();
+                const mDiff = today.getMonth() - dob.getMonth();
+                if (mDiff < 0 || (mDiff === 0 && today.getDate() < dob.getDate())) {
+                    age--;
+                }
+                if (age < 18) {
+                    showAlert('Invalid Date of Birth: Faculty member must be at least 18 years old.');
+                    return false;
+                }
+                if (age > 100) {
+                    showAlert('Please enter a valid Date of Birth.');
+                    return false;
+                }
+                return true;
+            }
+
             async function validateFacultyIdInput() {
                 if (!facultyIdEditable) return true;
                 const check = CiteFlowAuth.validateFacultyEmployeeId(employeeId.value);
@@ -1295,6 +1325,7 @@
                         return;
                     }
                     if (!validateFacultyPhoneInput()) return;
+                    if (!validateFacultyBirthdateInput()) return;
                     if (!(await validateFacultyIdInput())) return;
                     currentStep = 3;
                     updateStepUI();
@@ -1304,6 +1335,7 @@
                 // Submission Step 3: Photo & Completion
                 if (currentStep === 3) {
                     if (!validateFacultyPhoneInput()) return;
+                    if (!validateFacultyBirthdateInput()) return;
                     if (!(await validateFacultyIdInput())) return;
 
                     nextBtn.disabled = true;

@@ -2336,8 +2336,10 @@
             });
 
             // Update/save in database if client is available
+            const formattedCustomizations = engine.formatManualCustomizations(regenerated.customizations);
             if (client && previousDraft?.id) {
                 const mergedNotes = engine.mergeNotesMetadata(previousDraft.notes, {
+                    ...formattedCustomizations,
                     excluded_accomplishments: Array.from(regenerated.excludedAccomplishmentIds),
                     count: regenerated.excludedAccomplishmentIds.size,
                     consolidated_at: regenerated.frozenPayload.metadata.consolidated_at
@@ -2364,6 +2366,7 @@
                 }
             } else if (client && !previousDraft?.id) {
                 const mergedNotes = engine.mergeNotesMetadata(null, {
+                    ...formattedCustomizations,
                     excluded_accomplishments: Array.from(regenerated.excludedAccomplishmentIds),
                     count: regenerated.excludedAccomplishmentIds.size,
                     consolidated_at: regenerated.frozenPayload.metadata.consolidated_at
@@ -2393,6 +2396,8 @@
                 }
             }
 
+            review.activeConsolidatedCustomizations = null;
+            review.activeConsolidatedHasUnsavedChanges = false;
             toast('Departmental draft regenerated with latest eligible submissions. Rejection exclusions preserved.', 'info');
             await checkAndRenderMfoDraftBanner(task);
             if (review.activeConsolidatedMfoTaskId === task.id && typeof loadAndRenderConsolidatedMfo === 'function') {
@@ -2668,19 +2673,6 @@
         review.activeConsolidatedChildRows = childRows;
         review.activeConsolidatedProgramRows = programRows;
 
-        const staleness = engine.detectConsolidatedDraftStaleness({
-            taskId: task.id,
-            department: dept,
-            draft: programPacket,
-            submissions: taskSubmissions,
-            packets: taskPackets,
-            childRows,
-            sourceSnapshots: review.activeConsolidatedCustomizations?.source_snapshots,
-            facultyList: review.faculty || [],
-            actorFaculty: global.currentFaculty,
-            delegatedAccess: effectiveGrants()
-        });
-
         const consolidation = engine.buildDepartmentMfoConsolidation({
             taskId: task.id,
             department: dept,
@@ -2692,6 +2684,19 @@
             customizations: review.activeConsolidatedCustomizations,
             facultyList: review.faculty || [],
             assignments: (scopedAssignments()).filter((a) => String(a.task_id) === String(task.id)),
+            actorFaculty: global.currentFaculty,
+            delegatedAccess: effectiveGrants()
+        });
+
+        const staleness = engine.detectConsolidatedDraftStaleness({
+            taskId: task.id,
+            department: dept,
+            draft: programPacket,
+            submissions: taskSubmissions,
+            packets: taskPackets,
+            childRows,
+            sourceSnapshots: review.activeConsolidatedCustomizations?.source_snapshots,
+            facultyList: review.faculty || [],
             actorFaculty: global.currentFaculty,
             delegatedAccess: effectiveGrants()
         });
@@ -3737,7 +3742,9 @@
             });
 
             if (client) {
+                const formattedCustomizations = engine.formatManualCustomizations(regenerated.customizations);
                 const mergedNotes = engine.mergeNotesMetadata(null, {
+                    ...formattedCustomizations,
                     excluded_accomplishments: Array.from(regenerated.excludedAccomplishmentIds),
                     count: regenerated.excludedAccomplishmentIds.size,
                     consolidated_at: regenerated.frozenPayload.metadata.consolidated_at
@@ -3769,6 +3776,8 @@
                 }
             }
 
+            review.activeConsolidatedCustomizations = null;
+            review.activeConsolidatedHasUnsavedChanges = false;
             toast('Consolidated MFO draft created successfully!', 'success');
             await loadAndRenderConsolidatedMfo(task.id);
         } catch (err) {

@@ -4065,7 +4065,7 @@ async function loadResearch() {
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex-1 min-w-0">
                             <div class="font-semibold text-slate-900 group-hover:text-[#621708] transition-colors">${esc(project.title || 'Untitled Research')}</div>
-                            <p class="text-sm text-slate-500 mt-1 line-clamp-2">${esc(project.clean_description || project.description || 'No description provided')}</p>
+                            <p class="text-sm text-slate-500 mt-1 line-clamp-2">${esc(stripCiteflowMetadata(project.clean_description ?? project.description ?? '') || 'No description provided')}</p>
                             ${project.funding_source ? `<p class="text-xs text-slate-500 mt-1"><strong>Funding:</strong> ${esc(project.funding_source)}${budgetStr}</p>` : (budgetStr ? `<p class="text-xs text-slate-500 mt-1"><strong>Budget:</strong> ${budgetStr.replace(' • Budget: ', '')}</p>` : '')}
                             ${renderAuthorChips(authors)}
                         </div>
@@ -4499,6 +4499,29 @@ async function saveProfileChanges() {
     const middleName = document.getElementById('editMiddleName').value.trim();
     const lastName = document.getElementById('editLastName').value.trim();
     const fullName = buildFormalFullName(firstName, middleName, lastName, document.getElementById('editFullName').value.trim());
+    const rawBirthdate = (document.getElementById('editBirthdate').value || '').trim();
+    if (rawBirthdate) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawBirthdate);
+        const dob = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(rawBirthdate);
+        if (Number.isNaN(dob.getTime())) {
+            return notifyProfile('Please enter a valid Date of Birth (YYYY-MM-DD).', 'warning');
+        }
+        const today = new Date();
+        if (dob > today) {
+            return notifyProfile('Date of Birth cannot be in the future.', 'warning');
+        }
+        let age = today.getFullYear() - dob.getFullYear();
+        const mDiff = today.getMonth() - dob.getMonth();
+        if (mDiff < 0 || (mDiff === 0 && today.getDate() < dob.getDate())) {
+            age--;
+        }
+        if (age < 18) {
+            return notifyProfile('Invalid Date of Birth: Faculty member must be at least 18 years old.', 'warning');
+        }
+        if (age > 100) {
+            return notifyProfile('Please enter a valid Date of Birth.', 'warning');
+        }
+    }
 
     const updates = {
         first_name: firstName,
@@ -4507,7 +4530,7 @@ async function saveProfileChanges() {
         full_name: fullName,
         phone: phone, // Saved as clean 11 digits
         sex: document.getElementById('editSex').value,
-        birthdate: document.getElementById('editBirthdate').value || null,
+        birthdate: rawBirthdate || null,
         department: document.getElementById('editDepartment').value,
         shift: document.getElementById('editShift').value.trim(),
         academic_rank: document.getElementById('editAcademicRank').value,
@@ -4716,7 +4739,7 @@ async function openEditDocumentModal(id) {
         document.getElementById('documentExpiryDate').value = doc.expiry_date || '';
     }
     if (document.getElementById('documentDescription')) {
-        document.getElementById('documentDescription').value = doc.clean_description || doc.description || '';
+        document.getElementById('documentDescription').value = stripCiteflowMetadata(doc.clean_description ?? doc.description ?? '');
     }
 
     if (isExtension) {
@@ -5792,7 +5815,7 @@ function openEditResearchModal(id) {
 
     document.getElementById('researchTitle').value = project.title || '';
     document.getElementById('researchStatus').value = project.status || 'Ongoing';
-    document.getElementById('researchDescription').value = project.clean_description || project.description || '';
+    document.getElementById('researchDescription').value = stripCiteflowMetadata(project.clean_description ?? project.description ?? '');
     document.getElementById('researchStartDate').value = project.start_date || '';
     document.getElementById('researchEndDate').value = project.end_date || '';
     if (document.getElementById('researchFundingSource')) {
@@ -5873,7 +5896,7 @@ function openViewResearchModal(id) {
     }
 
     // Description (using clean_description)
-    document.getElementById('viewResearchDescription').textContent = project.clean_description || project.description || 'No description provided for this research project.';
+    document.getElementById('viewResearchDescription').textContent = stripCiteflowMetadata(project.clean_description ?? project.description ?? '') || 'No description provided for this research project.';
 
     // Action buttons in modal footer
     const actionsContainer = document.getElementById('viewResearchActions');
@@ -6312,7 +6335,7 @@ function renderAccomplishmentsList() {
                             <span class="text-lg">${icon}</span>
                             <div class="font-semibold text-slate-900 group-hover:text-[#621708] transition-colors">${esc(unpacked.title || 'Untitled')}</div>
                         </div>
-                        <p class="text-sm text-slate-500 mt-1 line-clamp-2">${esc(unpacked.clean_description || unpacked.description || 'No description provided')}</p>
+                        <p class="text-sm text-slate-500 mt-1 line-clamp-2">${esc(stripCiteflowMetadata(unpacked.clean_description ?? unpacked.description ?? '') || 'No description provided')}</p>
                         ${unpacked.venue ? `<p class="text-xs text-slate-500 mt-1"><strong>Venue:</strong> ${esc(unpacked.venue)}</p>` : ''}
                         <div class="flex items-center gap-3 mt-2 text-xs text-slate-500 flex-wrap">
                             <span class="badge bg-slate-100 text-slate-600 border border-slate-200">${esc(unpacked.accomplishment_type || 'Other')}</span>
@@ -6499,7 +6522,7 @@ function openEditAccomplishmentModal(id) {
     document.getElementById('accomplishmentVenue').value = item.venue || '';
     const durEl = document.getElementById('accomplishmentDuration');
     if (durEl) durEl.value = item.duration_hours || '';
-    document.getElementById('accomplishmentDescription').value = item.clean_description || item.description || '';
+    document.getElementById('accomplishmentDescription').value = stripCiteflowMetadata(item.clean_description ?? item.description ?? '');
 
     renderAccomplishmentPhotoPreviews();
     openAccomplishmentModal();
@@ -7221,17 +7244,21 @@ async function generateReportHtml(type, startDate, endDate) {
         if (loads.length > 0) {
             loads.forEach(load => {
                 const subjectLabel = `${esc(load.subject_code || '')} ${esc(load.subject_title || '')}`.trim();
-                const matchingAccs = accs.filter(a => (a.title && a.title.toLowerCase().includes((load.subject_code||'').toLowerCase())) || (a.description && a.description.toLowerCase().includes((load.subject_code||'').toLowerCase())));
+                const matchingAccs = accs.filter(a => {
+                    const cleanD = stripCiteflowMetadata(a.clean_description ?? a.description ?? '');
+                    return (a.title && a.title.toLowerCase().includes((load.subject_code||'').toLowerCase())) || (cleanD && cleanD.toLowerCase().includes((load.subject_code||'').toLowerCase()));
+                });
                 const list = matchingAccs.length ? matchingAccs : accs;
 
                 if (list.length > 0) {
                     list.forEach((acc, i) => {
                         const dateText = acc.date_achieved ? new Date(acc.date_achieved + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : dateRangeFormatted;
+                        const cleanDesc = stripCiteflowMetadata(acc.clean_description ?? acc.description ?? '');
                         courseRows += `<tr>
                             ${i === 0 ? `<td rowspan="${list.length}" style="border:1px solid #111;padding:6px 8px;font-size:10.5px;vertical-align:top;font-weight:600;">${subjectLabel}</td>` : ''}
                             <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;text-align:center;">${dateText}</td>
                             <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(acc.title || '')}</td>
-                            <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(acc.description || '')}</td>
+                            <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(cleanDesc)}</td>
                         </tr>`;
                     });
                 } else {
@@ -7246,11 +7273,12 @@ async function generateReportHtml(type, startDate, endDate) {
         } else if (accs.length > 0) {
             accs.forEach(acc => {
                 const dateText = acc.date_achieved ? new Date(acc.date_achieved + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : dateRangeFormatted;
+                const cleanDesc = stripCiteflowMetadata(acc.clean_description ?? acc.description ?? '');
                 courseRows += `<tr>
                     <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;font-weight:600;">${esc(acc.accomplishment_type || 'Instructional Activity')}</td>
                     <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;text-align:center;">${dateText}</td>
                     <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(acc.title || '')}</td>
-                    <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(acc.description || '')}</td>
+                    <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(cleanDesc)}</td>
                 </tr>`;
             });
         } else {
@@ -7395,10 +7423,11 @@ async function generateReportHtml(type, startDate, endDate) {
         if (accs.length > 0) {
             accs.forEach(acc => {
                 const dateText = acc.date_achieved ? new Date(acc.date_achieved + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : dateRangeFormatted;
+                const cleanDesc = stripCiteflowMetadata(acc.clean_description ?? acc.description ?? '');
                 dailyRows += `<tr>
                     <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;text-align:center;font-weight:600;">${dateText}</td>
                     <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(acc.title || '')}</td>
-                    <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(acc.description || 'Session completed and documented.')}</td>
+                    <td style="border:1px solid #111;padding:6px 8px;font-size:10.5px;">${esc(cleanDesc || 'Session completed and documented.')}</td>
                 </tr>`;
             });
         } else {

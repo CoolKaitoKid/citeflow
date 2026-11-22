@@ -154,6 +154,23 @@
         #recentActivityList > div {
             cursor: default;
         }
+        #recentActivityList {
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e1 transparent;
+        }
+        #recentActivityList::-webkit-scrollbar {
+            width: 6px;
+        }
+        #recentActivityList::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #recentActivityList::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 9999px;
+        }
+        #recentActivityList::-webkit-scrollbar-thumb:hover {
+            background-color: #94a3b8;
+        }
         @media (max-width: 640px) {
             select.field {
                 width: 100%;
@@ -445,12 +462,12 @@
                     </div>
                 </div>
 
-                <div class="dashboard-card p-5 sm:p-6 xl:col-span-4">
-                    <div class="mb-5">
+                <div class="dashboard-card p-5 sm:p-6 xl:col-span-4 flex flex-col">
+                    <div class="mb-4 flex-shrink-0">
                         <h2 class="text-base sm:text-lg font-semibold text-slate-950">Recent Activity</h2>
                         <p class="text-xs sm:text-sm text-slate-500 mt-1">Latest system activity from faculty and administrative actions.</p>
                     </div>
-                    <div id="recentActivityList" class="space-y-3">
+                    <div id="recentActivityList" class="space-y-3 max-h-[270px] overflow-y-auto pr-1.5">
                         <div class="skeleton-row">
                             <div class="skeleton-circle" style="width:36px;height:36px"></div>
                             <div class="flex-1"><div class="skeleton-text" style="width:50%"></div></div>
@@ -1442,22 +1459,28 @@ function renderRecentActivities(activities = [], engagement = [], submissions = 
             icon: 'fa-bolt',
             color: 'text-violet-600 bg-violet-50 border-violet-200'
         })),
-        ...(engagement || []).map(item => ({
-            title: item.activity_title || item.activity_type || 'Engagement Activity',
-            meta: `${item.faculty_name || 'Faculty'} — ${item.description || item.department || 'Engagement'}`,
-            time: item.created_at || item.activity_at,
-            href: 'engagement-logs.html',
-            icon: 'fa-star',
-            color: 'text-amber-600 bg-amber-50 border-amber-200'
-        })),
-        ...(accomplishments || []).map(item => ({
-            title: item.title || 'Faculty Accomplishment',
-            meta: `${item.accomplishment_type || 'Accomplishment'}${item.description ? ' — ' + item.description : ''}`,
-            time: item.created_at || item.date_achieved,
-            href: 'faculty-profiles.html',
-            icon: 'fa-award',
-            color: 'text-amber-600 bg-amber-50 border-amber-200'
-        })),
+        ...(engagement || []).map(item => {
+            const cleanDesc = String(item.description || '').replace(/<!--[\s\S]*?-->/g, '').replace(/CITEFLOW_[A-Z0-9_]+:%7B[\s\S]*?(%7D|$)/gi, '').trim();
+            return {
+                title: item.activity_title || item.activity_type || 'Engagement Activity',
+                meta: `${item.faculty_name || 'Faculty'} — ${cleanDesc || item.department || 'Engagement'}`,
+                time: item.created_at || item.activity_at,
+                href: 'engagement-logs.html',
+                icon: 'fa-star',
+                color: 'text-amber-600 bg-amber-50 border-amber-200'
+            };
+        }),
+        ...(accomplishments || []).map(item => {
+            const cleanDesc = String(item.description || '').replace(/<!--[\s\S]*?-->/g, '').replace(/CITEFLOW_[A-Z0-9_]+:%7B[\s\S]*?(%7D|$)/gi, '').trim();
+            return {
+                title: item.title || 'Faculty Accomplishment',
+                meta: `${item.accomplishment_type || 'Accomplishment'}${cleanDesc ? ' — ' + cleanDesc : ''}`,
+                time: item.created_at || item.date_achieved,
+                href: 'faculty-profiles.html',
+                icon: 'fa-award',
+                color: 'text-amber-600 bg-amber-50 border-amber-200'
+            };
+        }),
         ...(submissions || []).map(item => {
             const task = taskMap[item.task_id];
             const statusLower = String(item.status || '').toLowerCase();
