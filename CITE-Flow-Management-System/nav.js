@@ -42,6 +42,7 @@ function resolveAdminPath(pageFile) {
     const mapped = pageMap(pageFile);
     const file = mapped.endsWith(".html") ? mapped : `${mapped}.html`;
     if (isInAdminFolder()) return file;
+    if (window.location.pathname.toLowerCase().includes("/faculty/")) return `../admin/${file}`;
     return `admin/${file}`;
 }
 
@@ -127,10 +128,15 @@ async function loadPage(pageName) {
 }
 
 function normalizeMenuTarget(fileName) {
-    return String(fileName || "")
+    const norm = String(fileName || "")
         .replace(/^\.\.\//, "")
         .replace(/^admin\//, "")
+        .replace(/^faculty\//, "")
         .toLowerCase();
+    if (norm === "mfo-report.html" || norm === "mfo-report" || norm === "form-e0-viewer.html" || norm === "form-e0-viewer") {
+        return "workflow-approval.html";
+    }
+    return norm;
 }
 
 function updateActiveMenu(fileName) {
@@ -376,7 +382,9 @@ function wireAdminNavbarBell() {
               </div>
               <div class="nav-notif-filters" role="tablist" aria-label="Notification filters">
                 <button type="button" class="nav-notif-filter is-active" data-notif-filter="all" aria-selected="true">All</button>
-                <button type="button" class="nav-notif-filter" data-notif-filter="unread" aria-selected="false">Unread</button>
+                <button type="button" class="nav-notif-filter" data-notif-filter="task_assignment" aria-selected="false">Assignments</button>
+                <button type="button" class="nav-notif-filter" data-notif-filter="submission_update" aria-selected="false">Submission Updates</button>
+                <button type="button" class="nav-notif-filter" data-notif-filter="deadline_reminder" aria-selected="false">Reminders</button>
               </div>
             </div>
             <div id="adminNavNotifList" class="nav-notif-list">

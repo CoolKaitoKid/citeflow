@@ -748,6 +748,29 @@ window.CiteFlowMessenger = (function () {
         return true;
     }
 
+    function roleBadgeForUser(user) {
+        const raw = String(user?.role || user?.position || "").trim();
+        if (/admin|dean/i.test(raw)) {
+            return '<span class="msgr-role-badge role-admin">Admin</span>';
+        }
+        if (/chair/i.test(raw)) {
+            return '<span class="msgr-role-badge role-chair">Chair</span>';
+        }
+        if (/student/i.test(raw)) {
+            return '<span class="msgr-role-badge role-student">Student</span>';
+        }
+        return '<span class="msgr-role-badge role-faculty">Faculty</span>';
+    }
+
+    function roleBadgeForConvo(c) {
+        if (!c) return "";
+        if (c.is_group) {
+            return '<span class="msgr-role-badge role-group">Group</span>';
+        }
+        const others = safeOthersOf(c);
+        return roleBadgeForUser(others[0]);
+    }
+
     function convoRowHtml(c) {
         const others = safeOthersOf(c);
         const online = !c.is_group && isUserOnline(others[0]);
@@ -763,11 +786,12 @@ window.CiteFlowMessenger = (function () {
         const notifies = c.unread && !muted;
         const unreadClass = notifies ? " unread" : "";
         const activeClass = String(State.activeConversationId) === String(c.id) ? " active" : "";
+        const roleBadgeHtml = roleBadgeForConvo(c);
         return `
             <div class="msgr-convo${unreadClass}${activeClass}" data-id="${c.id}">
                 ${avatarHtml}
                 <div class="msgr-convo-info">
-                    <div class="msgr-convo-name">${c.isPinned ? '<i class="fa-solid fa-thumbtack msgr-pin-icon" title="Pinned"></i> ' : ""}${muted ? '<i class="fa-solid fa-bell-slash msgr-mute-icon" title="Notifications muted"></i> ' : ""}${escapeHtml(c.displayName)}</div>
+                    <div class="msgr-convo-name"><span class="msgr-convo-name-text">${c.isPinned ? '<i class="fa-solid fa-thumbtack msgr-pin-icon" title="Pinned"></i> ' : ""}${muted ? '<i class="fa-solid fa-bell-slash msgr-mute-icon" title="Notifications muted"></i> ' : ""}${escapeHtml(c.displayName)}</span>${roleBadgeHtml}</div>
                     <div class="msgr-convo-preview">${preview} ${time ? '<span class="msgr-convo-time-inline"> · ' + time + "</span>" : ""}</div>
                 </div>
                 <div class="msgr-convo-meta">
@@ -1232,7 +1256,7 @@ window.CiteFlowMessenger = (function () {
                 <div id="msgrBackdrop" class="msgr-backdrop"></div>
                 <div id="msgrPanel" class="msgr-panel">
                     <div class="msgr-header">
-                        <h2>Chats</h2>
+                        <h2>Chatbox</h2>
                         <div class="msgr-header-actions">
                             <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrExpandBtn" title="Expand">
                                 <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
@@ -1247,7 +1271,7 @@ window.CiteFlowMessenger = (function () {
                     </div>
 
                     <div class="msgr-search">
-                        <input type="text" id="msgrConvoSearch" placeholder="Search Messenger">
+                        <input type="text" id="msgrConvoSearch" placeholder="Search users">
                     </div>
 
                     <div class="msgr-filter-tabs" id="msgrFilterTabs">
@@ -1313,14 +1337,14 @@ window.CiteFlowMessenger = (function () {
                 <div id="msgrExpanded" class="msgr-expanded" style="display:none;">
                     <div class="msgr-exp-sidebar">
                         <div class="msgr-exp-sidebar-header">
-                            <h2>Chats</h2>
+                            <h2>Chatbox</h2>
                             <div class="msgr-header-actions">
                                 <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrCollapseBtn" title="Collapse"><i class="fa-solid fa-down-left-and-up-right-to-center"></i></button>
                                 <button type="button" class="msgr-icon-btn msgr-icon-btn-flat" id="msgrExpNewBtn" title="New Message"><i class="fa-solid fa-pen-to-square"></i></button>
                             </div>
                         </div>
                         <div class="msgr-search">
-                            <input type="text" id="msgrExpSearch" placeholder="Search Messenger">
+                            <input type="text" id="msgrExpSearch" placeholder="Search users">
                         </div>
                         <div class="msgr-filter-tabs">
                             <button type="button" class="msgr-filter-tab active" data-filter="all">All</button>
@@ -1410,6 +1434,14 @@ window.CiteFlowMessenger = (function () {
 
         document.getElementById("msgrHeaderOptionsBtn")?.remove();
         document.getElementById("msgrExpHeaderOptionsBtn")?.remove();
+
+        // Ensure headers and search placeholders are normalized even if mounted from cached HTML
+        document.querySelectorAll("#msgrPanel .msgr-header h2, #msgrExpanded .msgr-exp-sidebar-header h2").forEach((h) => {
+            h.textContent = "Chatbox";
+        });
+        document.querySelectorAll("#msgrConvoSearch, #msgrExpSearch").forEach((inp) => {
+            inp.setAttribute("placeholder", "Search users");
+        });
 
         bindEvents();
         setupLifecycleListeners();
@@ -4167,7 +4199,7 @@ window.CiteFlowMessenger = (function () {
                     <div class="msgr-convo msgr-search-item" data-id="${c.id}" data-type="convo">
                         ${avatarHtml}
                         <div class="msgr-convo-info">
-                            <div class="msgr-convo-name">${escapeHtml(c.displayName)}</div>
+                            <div class="msgr-convo-name"><span class="msgr-convo-name-text">${escapeHtml(c.displayName)}</span>${roleBadgeForConvo(c)}</div>
                             <div class="msgr-convo-preview">${preview} ${time ? '<span class="msgr-convo-time-inline"> · ' + time + '</span>' : ''}</div>
                         </div>
                     </div>`;
@@ -4182,7 +4214,7 @@ window.CiteFlowMessenger = (function () {
                     <div class="msgr-convo msgr-search-item" data-uid="${u.auth_user_id || u.id}" data-type="person">
                         ${avatarHtml}
                         <div class="msgr-convo-info">
-                            <div class="msgr-convo-name">${escapeHtml(u.name || u.display_name || u.email)}</div>
+                            <div class="msgr-convo-name"><span class="msgr-convo-name-text">${escapeHtml(u.name || u.display_name || u.email)}</span>${roleBadgeForUser(u)}</div>
                             <div class="msgr-convo-preview">${escapeHtml(u.department || u.role || 'Faculty')} • ${escapeHtml(u.position || u.role || 'Member')}</div>
                         </div>
                     </div>`;

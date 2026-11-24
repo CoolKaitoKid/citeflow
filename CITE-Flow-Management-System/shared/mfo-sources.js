@@ -43,6 +43,22 @@
         return isBlank(value) ? '' : String(value).trim();
     }
 
+    function stripCiteflowMetadata(value) {
+        if (isBlank(value)) return '';
+        let str = String(value);
+        const citeflowRegex = new RegExp('<' + '!--\\s*CITEFLOW_[A-Z0-9_]+:[\\s\\S]*?(?:--' + '>|--!>|→|->|&#8594;|&rarr;|\\n|$)', 'gi');
+        str = str.replace(citeflowRegex, '');
+        const lineRegex = new RegExp('^[^\\n]*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA[^\\n]*(?:\\r?\\n|$)', 'gim');
+        str = str.replace(lineRegex, '');
+        const inlineRegex = new RegExp('[^\\n]*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA[^\\n]*', 'gi');
+        str = str.replace(inlineRegex, '');
+        const htmlCommentRegex = new RegExp('<' + '!--[\\s\\S]*?--' + '>', 'gi');
+        str = str.replace(htmlCommentRegex, '');
+        str = str.replace(/%22(?:name|size|type|url|media_files|duration_hours|extension_project_id|sub_category)[^\s\n\r]*/gi, '');
+        str = str.replace(/%7B[\s\S]*?%7D/gi, '');
+        return str.trim();
+    }
+
     function isoDate(value) {
         if (isBlank(value)) return '';
         const raw = String(value);
@@ -141,7 +157,7 @@
             out.push({
                 file_url: url,
                 file_name: text(item?.title) || decodeURIComponent(nameFromUrl.split('?')[0]) || `photo-${index + 1}`,
-                mfo_caption: text(item?.title) || text(item?.description),
+                mfo_caption: text(item?.title) || stripCiteflowMetadata(item?.description),
                 source_ref: `${row?.id}:${index}`
             });
         });
@@ -169,7 +185,7 @@
             caption: text(row.title),
             activity_date: isoDate(row.date_achieved),
             venue: text(row.venue),
-            narrative: text(row.description),
+            narrative: stripCiteflowMetadata(row.description),
             record_table: recordTable
         };
     }
@@ -269,7 +285,7 @@
                         certification_title: text(row.title),
                         certification_nature: text(row.accomplishment_type),
                         date_granted: isoDate(row.date_achieved),
-                        remarks: text(row.description)
+                        remarks: stripCiteflowMetadata(row.description)
                     })
                 },
                 {
@@ -280,7 +296,7 @@
                     build: (row) => ({
                         certification_title: text(row.title) || text(row.document_name),
                         certification_nature: text(row.document_type),
-                        remarks: text(row.description)
+                        remarks: stripCiteflowMetadata(row.description)
                     })
                 }
             ]
@@ -316,7 +332,7 @@
                         training_type: text(row.accomplishment_type),
                         activity_date: isoDate(row.date_achieved),
                         venue: text(row.venue),
-                        remarks: text(row.description)
+                        remarks: stripCiteflowMetadata(row.description)
                     })
                 },
                 {
@@ -333,7 +349,7 @@
                         venue: text(row.details?.venue) || text(row.details?.location),
                         sponsoring_agency: text(row.details?.sponsoring_agency) || text(row.details?.agency),
                         role: text(row.details?.role),
-                        remarks: text(row.description)
+                        remarks: stripCiteflowMetadata(row.description)
                     })
                 }
             ]
@@ -356,7 +372,7 @@
                 build: (row, ctx) => ({
                     title: text(row.title) || text(row.document_name),
                     authors_text: text(ctx.facultyName(row.faculty_id)),
-                    remarks: text(row.description)
+                    remarks: stripCiteflowMetadata(row.description)
                 })
             }]
         },
@@ -393,7 +409,7 @@
                     completed_at: isoDate(row.end_date),
                     research_status: text(row.status),
                     funding_source: text(row.funding_source),
-                    remarks: text(row.description)
+                    remarks: stripCiteflowMetadata(row.description)
                 })
             }]
         },
@@ -422,7 +438,7 @@
                     proponents_text: authorsToText(row.authors) || text(ctx.facultyName(row.faculty_id)),
                     funding_source: text(row.funding_source),
                     publication_url: text(row.publication_url),
-                    remarks: text(row.description)
+                    remarks: stripCiteflowMetadata(row.description)
                 })
             }]
         },
@@ -440,7 +456,7 @@
                 fit: (row, ctx) => periodFit(row.activity_at, ctx.period),
                 accept: (row) => /research/i.test(text(row.activity_type))
                     && /present|paper|colloqui|conference/i.test(
-                        `${text(row.activity_title)} ${text(row.description)}`
+                        `${text(row.activity_title)} ${stripCiteflowMetadata(row.description)}`
                     ),
                 build: (row, ctx) => ({
                     research_title: text(row.activity_title),
@@ -471,7 +487,7 @@
                     build: (row, ctx) => ({
                         project_title: text(row.title) || text(row.document_name),
                         proponents_text: text(ctx.facultyName(row.faculty_id)),
-                        remarks: text(row.description)
+                        remarks: stripCiteflowMetadata(row.description)
                     })
                 },
                 {
@@ -484,7 +500,7 @@
                         proponents_text: text(row.faculty_name) || text(ctx.facultyName(row.faculty_id)),
                         partner_name: text(row.details?.partner) || text(row.details?.partner_name),
                         project_locale: text(row.details?.locale) || text(row.details?.venue),
-                        remarks: text(row.description)
+                        remarks: stripCiteflowMetadata(row.description)
                     })
                 }
             ]
@@ -509,7 +525,7 @@
                     beneficiaries_male: row.details?.male ?? null,
                     beneficiaries_female: row.details?.female ?? null,
                     training_hours: row.details?.hours ?? null,
-                    remarks: text(row.description)
+                    remarks: stripCiteflowMetadata(row.description)
                 })
             }]
         },
@@ -530,7 +546,7 @@
                     build: (row, ctx) => ({
                         activity_title: text(row.title),
                         category: text(row.accomplishment_type),
-                        description: text(row.description),
+                        description: stripCiteflowMetadata(row.description),
                         activity_date: isoDate(row.date_achieved),
                         venue: text(row.venue),
                         faculty_involved: text(ctx.facultyName(row.faculty_id))
@@ -544,7 +560,7 @@
                     build: (row, ctx) => ({
                         activity_title: text(row.activity_title),
                         category: text(row.activity_type),
-                        description: text(row.description),
+                        description: stripCiteflowMetadata(row.description),
                         activity_date: isoDate(row.activity_at),
                         venue: text(row.details?.venue) || text(row.details?.location),
                         sponsoring_agency: text(row.details?.sponsoring_agency) || text(row.details?.agency),
@@ -570,7 +586,7 @@
                     award_title: text(row.title),
                     award_type: text(row.accomplishment_type),
                     awarded_at: isoDate(row.date_achieved),
-                    remarks: text(row.description)
+                    remarks: stripCiteflowMetadata(row.description)
                 })
             }]
         },
@@ -1166,7 +1182,8 @@
         isCertificationAccomplishment,
         isAwardAccomplishment,
         isOtherAccomplishment,
+        stripCiteflowMetadata,
         // Exposed for the report and documentation renderers.
-        helpers: { isBlank, text, isoDate, authorsToText, normalizeKey, periodFit, termFit, sourceLabel, accomplishmentPeriodFit }
+        helpers: { isBlank, text, stripCiteflowMetadata, isoDate, authorsToText, normalizeKey, periodFit, termFit, sourceLabel, accomplishmentPeriodFit }
     };
 })(typeof window !== 'undefined' ? window : globalThis);

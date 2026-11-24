@@ -714,17 +714,47 @@
         `;
         document.head.appendChild(style);
 
+        function getBirthdateBounds() {
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const maxYear = now.getFullYear() - 18;
+            const minYear = now.getFullYear() - 100;
+            const month = pad(now.getMonth() + 1);
+            const day = pad(now.getDate());
+            // Handle Feb 29 on non-leap target year
+            const maxDateObj = new Date(maxYear, now.getMonth(), now.getDate());
+            const maxYmd = `${maxDateObj.getFullYear()}-${pad(maxDateObj.getMonth() + 1)}-${pad(maxDateObj.getDate())}`;
+            const minYmd = `${minYear}-01-01`;
+            return { minYmd, maxYmd };
+        }
+
+        function isBirthdateInput(input) {
+            if (!input) return false;
+            const id = String(input.id || '').toLowerCase();
+            const name = String(input.name || '').toLowerCase();
+            return id.includes('birthdate') || id.includes('dob') || name.includes('birthdate') || name.includes('dob') || input.dataset.birthdate === 'true';
+        }
+
         function attachFlatpickr() {
             if (typeof flatpickr !== 'function') return;
             const dateInputs = document.querySelectorAll('input[type="date"], input[data-cite-picker="true"]');
             dateInputs.forEach(input => {
                 if (input._flatpickr) return;
+                const isDob = isBirthdateInput(input);
+                const dobBounds = isDob ? getBirthdateBounds() : null;
+                const minAttr = input.getAttribute('min') || (dobBounds ? dobBounds.minYmd : null);
+                const maxAttr = input.getAttribute('max') || (dobBounds ? dobBounds.maxYmd : null);
+                if (isDob && dobBounds) {
+                    if (!input.getAttribute('min')) input.setAttribute('min', dobBounds.minYmd);
+                    if (!input.getAttribute('max')) input.setAttribute('max', dobBounds.maxYmd);
+                }
+
                 input.type = 'text';
                 input.setAttribute('data-cite-picker', 'true');
                 input.setAttribute('autocomplete', 'off');
                 input.setAttribute('placeholder', 'YYYY-MM-DD');
 
-                flatpickr(input, {
+                const fpOptions = {
                     dateFormat: 'Y-m-d',
                     allowInput: true,
                     clickOpens: true,
@@ -736,7 +766,11 @@
                         input.dispatchEvent(new Event('change', { bubbles: true }));
                         input.dispatchEvent(new Event('input', { bubbles: true }));
                     }
-                });
+                };
+                if (minAttr) fpOptions.minDate = minAttr;
+                if (maxAttr) fpOptions.maxDate = maxAttr;
+
+                flatpickr(input, fpOptions);
             });
         }
 

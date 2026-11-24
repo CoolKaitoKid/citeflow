@@ -297,17 +297,19 @@
             });
         }
 
-        if (/^reminder:/i.test(rawMessage) || /is due\b/i.test(rawMessage)) {
+        if (type === 'deadline_reminder' || notification?.category === 'deadline_reminder' || /^reminder:/i.test(rawMessage) || /is due\b/i.test(rawMessage)) {
             const dueTitle = taskTitle || trailing || 'Assigned report';
             let title = 'Upcoming Deadline';
             if (/\bdue today\b/i.test(rawMessage)) title = 'Task Due Today';
             else if (/\bdue tomorrow\b/i.test(rawMessage)) title = 'Task Due Tomorrow';
+            else if (/\boverdue\b/i.test(rawMessage)) title = 'Task Overdue';
+            if (rawTitle && !/^reminder:/i.test(rawTitle)) title = rawTitle;
             const when = rawMessage.match(/\(([^)]+)\)/);
             const phraseMatch = rawMessage.match(/is due\s+([^(]+)/i);
             const phrase = phraseMatch ? collapse(phraseMatch[1]) : 'soon';
             const whenText = when ? ` (${collapse(when[1]).replace(/\s*Asia\/Manila\.?$/i, '')})` : '';
             return view({
-                category: 'deadline',
+                category: 'deadline_reminder',
                 icon: 'fa-clock',
                 tone: 'revision',
                 title,
@@ -317,16 +319,32 @@
             });
         }
 
-        if (/new task\b/i.test(rawMessage) && /assigned/i.test(rawMessage)) {
+        if (type === 'task_assignment' || notification?.category === 'task_assignment' || (/new task\b/i.test(rawMessage) && /assigned/i.test(rawMessage)) || /new task assigned/i.test(rawTitle) || /dean's office has assigned you/i.test(rawMessage)) {
             const assigned = taskTitle || trailing || 'a new task';
+            const isCreator = /task created|created successfully|assigned to \d+ faculty|new recurring report.*assigned to/i.test(rawMessage) || /task created/i.test(rawTitle);
+
+            if (isCreator) {
+                return view({
+                    category: 'task_assignment',
+                    icon: 'fa-clipboard-check',
+                    tone: 'task',
+                    title: rawTitle && !/^reminder:/i.test(rawTitle) ? rawTitle : 'Task Created Successfully',
+                    description: message || (assigned === 'a new task' ? 'Task created successfully.' : `Task "${assigned}" created successfully.`),
+                    actionLabel: 'View Task',
+                    subjectTitle: taskTitle || (assigned !== 'a new task' ? assigned : '')
+                });
+            }
+
             return view({
-                category: 'task',
+                category: 'task_assignment',
                 icon: 'fa-clipboard-list',
                 tone: 'task',
-                title: 'New Task Assigned',
-                description: assigned === 'a new task'
-                    ? 'A new task has been assigned to you.'
-                    : `You have been assigned "${assigned}".`,
+                title: rawTitle && !/^reminder:/i.test(rawTitle) ? rawTitle : 'New Task Assigned',
+                description: /dean's office has assigned you/i.test(rawMessage)
+                    ? message
+                    : (assigned === 'a new task'
+                        ? 'A new task has been assigned to you.'
+                        : `You have been assigned "${assigned}".`),
                 actionLabel: 'View Task',
                 subjectTitle: taskTitle || (assigned !== 'a new task' ? assigned : '')
             });
@@ -336,7 +354,7 @@
             const name = taskTitle || 'your task';
             const due = rawMessage.match(/:\s*due\s+(.+)$/i);
             return view({
-                category: 'deadline',
+                category: 'deadline_reminder',
                 icon: 'fa-clock',
                 tone: 'revision',
                 title: 'Deadline Updated',
@@ -350,7 +368,7 @@
 
         if (/workflow access/i.test(rawMessage)) {
             return view({
-                category: 'task',
+                category: 'task_assignment',
                 icon: 'fa-clipboard-list',
                 tone: 'task',
                 title: 'Workflow Access Granted',
@@ -365,7 +383,7 @@
             const reviewer = personFrom(rawMessage);
             if (/revis|returned/i.test(rawMessage)) {
                 return view({
-                    category: 'revision',
+                    category: 'submission_update',
                     icon: 'fa-pen-to-square',
                     tone: 'revision',
                     title: 'Revision Requested',
@@ -375,7 +393,7 @@
             }
             if (/declin|reject/i.test(rawMessage)) {
                 return view({
-                    category: 'rejection',
+                    category: 'submission_update',
                     icon: 'fa-circle-xmark',
                     tone: 'rejection',
                     title: 'Report Declined',
@@ -385,7 +403,7 @@
             }
             if (/certified/i.test(rawMessage)) {
                 return view({
-                    category: 'approval',
+                    category: 'submission_update',
                     icon: 'fa-circle-check',
                     tone: 'approval',
                     title: 'Report Certified',
@@ -395,7 +413,7 @@
             }
             if (/approved/i.test(rawMessage)) {
                 return view({
-                    category: 'approval',
+                    category: 'submission_update',
                     icon: 'fa-circle-check',
                     tone: 'approval',
                     title: 'Final Approval Completed',
@@ -405,17 +423,21 @@
             }
         }
 
-        if (/chairperson review/i.test(rawMessage)) {
+        if (/faculty submission received/i.test(rawMessage) || /chairperson review/i.test(rawMessage)) {
             const name = personFrom(rawMessage) || 'A faculty member';
             const item = taskTitle || trailing || '';
             const mfo = isMfo(item) || isMfo(rawMessage);
             const resubmit = /resubmission/i.test(rawMessage);
             const fileUpdate = /updated files|deleted a file|replaced a file|added a file/i.test(rawMessage);
-            let title = mfo ? 'MFO Report Awaiting Review' : 'Submission Awaiting Review';
+            let title = rawTitle || (mfo ? 'MFO Report Awaiting Review' : 'Submission Awaiting Review');
+            if (/submission received/i.test(rawTitle)) title = rawTitle;
             let description = mfo
                 ? 'An MFO report is waiting for your review.'
                 : `${name} submitted a report that is waiting for your review.`;
-            if (resubmit) {
+            if (/faculty submission received/i.test(rawMessage)) {
+                title = rawTitle || (resubmit ? 'Resubmission Received' : 'Submission Received');
+                description = message;
+            } else if (resubmit) {
                 title = mfo ? 'MFO Report Awaiting Review' : 'Resubmission Awaiting Review';
                 description = mfo
                     ? 'A resubmitted MFO report is waiting for your review.'
@@ -425,7 +447,7 @@
                 description = `${name} updated a submission and it is waiting for your review.`;
             }
             return view({
-                category: 'submission',
+                category: 'submission_update',
                 icon: 'fa-file-lines',
                 tone: 'submission',
                 title,
@@ -437,10 +459,10 @@
 
         if (/deleted a file|replaced a file|added a file|updated files/i.test(rawMessage)) {
             return view({
-                category: 'submission',
+                category: 'submission_update',
                 icon: 'fa-file-lines',
                 tone: 'submission',
-                title: 'Submission Updated',
+                title: rawTitle || 'Submission Updated',
                 description: message,
                 actionLabel: notification?.task_id || notification?.submission_id ? 'View Submission' : '',
                 subjectTitle: taskTitle || trailing
@@ -451,10 +473,10 @@
             const name = taskTitle || trailing;
             const mfo = isMfo(name) || isMfo(rawMessage);
             return view({
-                category: 'approval',
+                category: 'submission_update',
                 icon: 'fa-circle-check',
                 tone: 'approval',
-                title: 'Final Approval Needed',
+                title: rawTitle || 'Final Approval Needed',
                 description: mfo
                     ? "An MFO report is waiting for final approval from the Dean's Office."
                     : "A submission is waiting for final approval from the Dean's Office.",
@@ -463,56 +485,72 @@
             });
         }
 
-        if (/approved by chair/i.test(rawMessage) || (/pending final approval/i.test(rawMessage) && /approv/i.test(rawMessage))) {
+        if (/approved by the department chairperson and forwarded to the dean's office/i.test(rawMessage) || /approved by chair/i.test(rawMessage) || (/pending final approval/i.test(rawMessage) && /approv/i.test(rawMessage))) {
             const name = taskTitle || trailing;
+            const title = rawTitle || 'Submission Approved';
+            const description = /forwarded to the dean's office/i.test(rawMessage)
+                ? message
+                : `${sentence(namedSubject(name, rawMessage))} has been approved by the Chairperson and is now pending final approval from the Dean's Office.`;
             return view({
-                category: 'approval',
+                category: 'submission_update',
                 icon: 'fa-circle-check',
                 tone: 'approval',
-                title: 'Submission Approved',
-                description: `${sentence(namedSubject(name, rawMessage))} has been approved by the Chairperson and is now pending final approval from the Dean's Office.`,
+                title,
+                description,
                 actionLabel: 'View Submission',
                 subjectTitle: name
             });
         }
 
-        if (/fully approved/i.test(rawMessage) || (/^submission fully approved/i.test(rawMessage))) {
+        if (/received final approval from the dean's office/i.test(rawMessage) || /fully approved/i.test(rawMessage) || (/^submission fully approved/i.test(rawMessage)) || /final approval granted/i.test(rawTitle)) {
             const name = taskTitle || trailing;
+            const title = rawTitle || 'Final Approval Completed';
+            const description = /received final approval from the dean's office/i.test(rawMessage)
+                ? message
+                : `${sentence(namedSubject(name, rawMessage))} has received final approval from the Dean's Office.`;
             return view({
-                category: 'approval',
+                category: 'submission_update',
                 icon: 'fa-circle-check',
                 tone: 'approval',
-                title: 'Final Approval Completed',
-                description: `${sentence(namedSubject(name, rawMessage))} has received final approval from the Dean's Office.`,
+                title,
+                description,
                 actionLabel: 'View Submission',
                 subjectTitle: name
             });
         }
 
-        if (/revision required|returned for revision|needs revision/i.test(rawMessage)) {
+        if (/requires revision based on/i.test(rawMessage) || /revision required|returned for revision|needs revision/i.test(rawMessage)) {
             const name = taskTitle || trailing;
             const remarks = remarksFrom(rawMessage);
+            const title = rawTitle || 'Revision Requested';
+            const description = /requires revision based on/i.test(rawMessage)
+                ? message
+                : `${sentence(namedSubject(name, rawMessage))} was returned for revision.${remarks ? ` Remarks: ${remarks}` : ' Please review the remarks and resubmit.'}`;
             return view({
-                category: 'revision',
+                category: 'submission_update',
                 icon: 'fa-pen-to-square',
                 tone: 'revision',
-                title: 'Revision Requested',
-                description: `${sentence(namedSubject(name, rawMessage))} was returned for revision.${remarks ? ` Remarks: ${remarks}` : ' Please review the remarks and resubmit.'}`,
+                title,
+                description,
                 actionLabel: 'Review Revision',
                 subjectTitle: name
             });
         }
 
-        if (/submission rejected|was rejected|was declined|\brejected\b|\bdeclined\b/i.test(rawMessage)) {
+        if (/was declined by/i.test(rawMessage) || /submission rejected|was rejected|was declined|\brejected\b|\bdeclined\b/i.test(rawMessage)) {
             const name = taskTitle || trailing;
+            const title = rawTitle || 'Submission Declined';
+            const description = /was declined by/i.test(rawMessage)
+                ? message
+                : (name
+                    ? `${sentence(namedSubject(name, rawMessage))} was declined.`
+                    : 'A submission was declined.');
             return view({
-                category: 'rejection',
+                category: 'submission_update',
                 icon: 'fa-circle-xmark',
                 tone: 'rejection',
-                title: 'Submission Declined',
-                description: name
-                    ? `${sentence(namedSubject(name, rawMessage))} was declined.`
-                    : 'A submission was declined.',
+                title,
+                description,
                 actionLabel: name || notification?.task_id || notification?.submission_id ? 'View Submission' : '',
                 subjectTitle: name
             });
@@ -522,40 +560,54 @@
             const name = taskTitle || trailing;
             const resubmit = /^resubmission/i.test(rawMessage);
             const mfo = isMfo(name) || isMfo(rawMessage);
-            let title = resubmit ? 'Submission Resubmitted' : 'Submission Sent';
-            if (mfo) title = resubmit ? 'MFO Report Resubmitted' : 'MFO Report Submitted';
+            let title = rawTitle || (resubmit ? 'Submission Resubmitted' : 'Submission Sent');
+            if (mfo && !rawTitle) title = resubmit ? 'MFO Report Resubmitted' : 'MFO Report Submitted';
             const owned = namedSubject(name, rawMessage);
             return view({
-                category: 'submission',
+                category: 'submission_update',
                 icon: 'fa-file-lines',
                 tone: 'submission',
                 title,
-                description: resubmit
-                    ? `${sentence(owned)} was resubmitted for review.`
-                    : `${sentence(owned)} has been submitted.`,
+                description: /submitted for review/i.test(rawMessage)
+                    ? message
+                    : (resubmit
+                        ? `${sentence(owned)} was resubmitted for review.`
+                        : `${sentence(owned)} has been submitted.`),
                 actionLabel: 'View Submission',
                 subjectTitle: name
             });
         }
 
-        if (type === 'task' || type === 'assignment' || type === 'reminder' || type === 'deadline') {
+        if (type === 'task_assignment' || type === 'assignment' || type === 'task') {
             return view({
-                category: 'task',
+                category: 'task_assignment',
                 icon: 'fa-clipboard-list',
                 tone: 'task',
-                title: rawTitle && !/^reminder:/i.test(rawTitle) ? stripLabelPrefix(rawTitle) : 'Task Update',
+                title: rawTitle && !/^reminder:/i.test(rawTitle) ? stripLabelPrefix(rawTitle) : 'New Task Assigned',
                 description: message || rawTitle,
                 actionLabel: notification?.task_id || taskTitle ? 'View Task' : '',
                 subjectTitle: taskTitle
             });
         }
 
-        if (type === 'submission') {
+        if (type === 'deadline_reminder' || type === 'reminder' || type === 'deadline') {
             return view({
-                category: 'submission',
+                category: 'deadline_reminder',
+                icon: 'fa-clock',
+                tone: 'revision',
+                title: rawTitle && !/^reminder:/i.test(rawTitle) ? stripLabelPrefix(rawTitle) : 'Upcoming Deadline',
+                description: message || rawTitle,
+                actionLabel: notification?.task_id || taskTitle ? 'View Task' : '',
+                subjectTitle: taskTitle
+            });
+        }
+
+        if (type === 'submission_update' || type === 'submission') {
+            return view({
+                category: 'submission_update',
                 icon: 'fa-file-lines',
                 tone: 'submission',
-                title: 'Submission Update',
+                title: rawTitle || 'Submission Update',
                 description: message || rawTitle,
                 actionLabel: notification?.task_id || notification?.submission_id || taskTitle ? 'View Submission' : '',
                 subjectTitle: taskTitle
@@ -563,19 +615,17 @@
         }
 
         if (type === 'review' || type === 'comment') {
-            let category = 'approval';
+            let category = 'submission_update';
             let icon = 'fa-circle-check';
             let tone = 'approval';
             let title = 'Review Update';
             let actionLabel = 'View Submission';
             if (/revis/.test(lower)) {
-                category = 'revision';
                 icon = 'fa-pen-to-square';
                 tone = 'revision';
                 title = 'Revision Requested';
                 actionLabel = 'Review Revision';
             } else if (/reject|declin/.test(lower)) {
-                category = 'rejection';
                 icon = 'fa-circle-xmark';
                 tone = 'rejection';
                 title = 'Submission Declined';
@@ -647,9 +697,77 @@
         `;
     }
 
+    function normalizeFilterKey(filter) {
+        const f = String(filter || 'all').toLowerCase().trim();
+        if (f === 'assignments' || f === 'assignment' || f === 'tasks' || f === 'task') return 'task_assignment';
+        if (f === 'submission_updates' || f === 'submissions' || f === 'submission') return 'submission_update';
+        if (f === 'reminders' || f === 'reminder' || f === 'deadlines' || f === 'deadline') return 'deadline_reminder';
+        return f;
+    }
+
+    function resolveCategory(notification) {
+        if (!notification) return 'other';
+        const rawCat = String(notification.category || '').toLowerCase().trim();
+        if (rawCat === 'task_assignment' || rawCat === 'assignment' || rawCat === 'assignments') return 'task_assignment';
+        if (rawCat === 'submission_update' || rawCat === 'submission' || rawCat === 'submission_updates') return 'submission_update';
+        if (rawCat === 'deadline_reminder' || rawCat === 'reminder' || rawCat === 'reminders' || rawCat === 'deadline') return 'deadline_reminder';
+
+        const type = text(notification.type).toLowerCase().trim();
+        if (type === 'task_assignment') return 'task_assignment';
+        if (type === 'submission_update') return 'submission_update';
+        if (type === 'deadline_reminder') return 'deadline_reminder';
+
+        const rawTitle = collapse(notification.title);
+        const rawMessage = stripRef(notification.message);
+        const lower = `${rawTitle} ${rawMessage}`.toLowerCase();
+
+        if (type === 'birthday' || rawCat === 'birthday' || /birthday greeting/i.test(lower) || /commented on .+ birthday/i.test(lower) || String(notification.event_id || '').startsWith('birthday-')) {
+            return 'birthday';
+        }
+        if (type === 'calendar' || type === 'event' || type === 'schedule' || rawCat === 'calendar' || /calendar schedule|leave filing|event feedback/i.test(lower)) {
+            return 'calendar';
+        }
+        if (type === 'document_expiry' || type === 'document_uploaded' || type === 'document_verified' || type === 'document_rejected' || rawCat === 'document') {
+            return 'document';
+        }
+
+        if (type === 'reminder' || type === 'deadline' || /^reminder:/i.test(rawMessage) || /\bis due\b|\bdue today\b|\bdue tomorrow\b|\bdeadline updated\b|\boverdue\b/i.test(rawMessage)) {
+            return 'deadline_reminder';
+        }
+
+        if (type === 'task' && (/^reminder:/i.test(rawMessage) || /is due\b|\bdue today\b|\bdue tomorrow\b/i.test(rawMessage))) {
+            return 'deadline_reminder';
+        }
+
+        if (/new task\b/i.test(rawMessage) || /new task assigned/i.test(rawTitle) || /assigned to you\b/i.test(rawMessage) || /you have been assigned/i.test(rawMessage) || /dean's office has assigned you/i.test(rawMessage) || /assigned to \d+ faculty/i.test(rawMessage) || type === 'assignment' || type === 'task') {
+            return 'task_assignment';
+        }
+
+        if (/submission|revision|decline|reject|approv|awaiting review|certif/i.test(lower) || type === 'review' || type === 'submission') {
+            return 'submission_update';
+        }
+
+        const presented = present(notification);
+        if (presented.category === 'task_assignment' || presented.category === 'task') return 'task_assignment';
+        if (presented.category === 'submission_update' || presented.category === 'submission' || presented.category === 'approval' || presented.category === 'revision' || presented.category === 'rejection') return 'submission_update';
+        if (presented.category === 'deadline_reminder' || presented.category === 'deadline') return 'deadline_reminder';
+
+        return presented.category || 'other';
+    }
+
     function emptyState(filter) {
-        if (filter === 'unread') {
+        const norm = normalizeFilterKey(filter);
+        if (norm === 'unread') {
             return '<div class="nav-notif-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><p>No unread notifications</p></div>';
+        }
+        if (norm === 'task_assignment') {
+            return '<div class="nav-notif-empty"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i><p>No task assignments</p></div>';
+        }
+        if (norm === 'submission_update') {
+            return '<div class="nav-notif-empty"><i class="fa-solid fa-file-lines" aria-hidden="true"></i><p>No submission updates</p></div>';
+        }
+        if (norm === 'deadline_reminder') {
+            return '<div class="nav-notif-empty"><i class="fa-solid fa-clock" aria-hidden="true"></i><p>No deadline reminders</p></div>';
         }
         return '<div class="nav-notif-empty"><i class="fa-regular fa-bell" aria-hidden="true"></i><p>No notifications yet</p></div>';
     }
@@ -665,8 +783,10 @@
                     ${mark}
                 </div>
                 <div class="nav-notif-filters" role="tablist" aria-label="Notification filters">
-                    <button type="button" class="nav-notif-filter is-active" data-notif-filter="all">All</button>
-                    <button type="button" class="nav-notif-filter" data-notif-filter="unread">Unread</button>
+                    <button type="button" class="nav-notif-filter is-active" data-notif-filter="all" aria-selected="true">All</button>
+                    <button type="button" class="nav-notif-filter" data-notif-filter="task_assignment" aria-selected="false">Assignments</button>
+                    <button type="button" class="nav-notif-filter" data-notif-filter="submission_update" aria-selected="false">Submission Updates</button>
+                    <button type="button" class="nav-notif-filter" data-notif-filter="deadline_reminder" aria-selected="false">Reminders</button>
                 </div>
             </div>
         `;
@@ -674,8 +794,10 @@
 
     function syncFilters(root, filter) {
         if (!root) return;
+        const norm = normalizeFilterKey(filter);
         root.querySelectorAll('[data-notif-filter]').forEach((button) => {
-            const active = button.getAttribute('data-notif-filter') === filter;
+            const btnKey = normalizeFilterKey(button.getAttribute('data-notif-filter'));
+            const active = btnKey === norm;
             button.classList.toggle('is-active', active);
             button.setAttribute('aria-selected', active ? 'true' : 'false');
         });
@@ -699,8 +821,9 @@
 .nav-notif-dropdown .nav-notif-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#1c1917;font-size:15px;font-weight:700;letter-spacing:-.01em}
 .nav-notif-dropdown .nav-notif-mark,.nav-notif-dropdown .nav-notif-header button.nav-notif-mark{border:0;background:transparent;color:var(--cite-theme-ink,#621708);font-size:12px;font-weight:700;cursor:pointer;padding:8px 12px;margin:-6px -8px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}
 .nav-notif-dropdown .nav-notif-mark:hover{color:var(--cite-theme-hover,#4a1006)}
-.nav-notif-dropdown .nav-notif-filters{display:inline-flex;margin-top:12px;background:#f4f1ef;border-radius:999px;padding:3px;gap:2px}
-.nav-notif-dropdown .nav-notif-filter{border:0;background:transparent;color:#57534e;font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer;line-height:1.2}
+.nav-notif-dropdown .nav-notif-filters{display:flex;overflow-x:auto;white-space:nowrap;margin-top:12px;background:#f4f1ef;border-radius:999px;padding:3px;gap:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.nav-notif-dropdown .nav-notif-filters::-webkit-scrollbar{display:none}
+.nav-notif-dropdown .nav-notif-filter{border:0;background:transparent;color:#57534e;font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer;line-height:1.2;flex-shrink:0}
 .nav-notif-dropdown .nav-notif-filter.is-active{background:var(--cite-theme,#621708);color:var(--cite-theme-text,#fff)}
 .nav-notif-dropdown .nav-notif-list{max-height:min(460px,70vh);overflow-y:auto;padding:0;background:#fff}
 .nav-notif-dropdown .nav-notif-item{display:block;width:100%;text-align:left;padding:14px 16px;border:0;border-radius:0;background:#fff;color:#1c1917;cursor:pointer;font:inherit}
@@ -894,6 +1017,8 @@
 
     root.CiteFlowNotifPresentation = {
         present,
+        resolveCategory,
+        normalizeFilterKey,
         renderCard,
         emptyState,
         headerMarkup,

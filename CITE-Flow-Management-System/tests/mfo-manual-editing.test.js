@@ -401,6 +401,55 @@ registerTest('3.4 Decision Decline: Declining source update syncs baseline snaps
     assert.strictEqual(result.manualOverrides['tr-1'].title, 'Chair Custom Title (I want to keep this)');
 });
 
+registerTest('3.5 Review Source Changes Modal Contract: updatedRows, totalUpdatedRows, and diffItem decisions work end-to-end', () => {
+    const sourceSnapshots = {
+        'tr-1': {
+            id: 'tr-1',
+            title: 'Quantum Computing Foundations',
+            venue: 'MIT / Online',
+            start_date: '2026-01-15',
+            end_date: '',
+            remarks: 'Completed with distinction'
+        }
+    };
+
+    const childRowsUpdated = getSampleChildRows();
+    childRowsUpdated.mfo_pi7_trainings[0].title = 'Quantum Computing & Algorithms (Revised Title)';
+    childRowsUpdated.mfo_pi7_trainings[0].venue = 'MIT Stata Center';
+
+    const result = engine.detectSourceAccomplishmentUpdates({
+        childRows: childRowsUpdated,
+        sourceSnapshots
+    });
+
+    assert.ok(Array.isArray(result.updatedRows), 'updatedRows must be an array');
+    assert.strictEqual(result.totalUpdatedRows, result.updatedRows.length, 'totalUpdatedRows must match updatedRows.length');
+    const tr1Row = result.updatedRows.find((r) => r.rowId === 'tr-1');
+    assert.ok(tr1Row, 'updatedRows must contain tr-1');
+    assert.ok(tr1Row.diffs && tr1Row.diffs.title && tr1Row.diffs.venue, 'tr-1 diffs must be keyed by field (title and venue)');
+    assert.strictEqual(tr1Row.diffs.title.previousValue, 'Quantum Computing Foundations');
+    assert.strictEqual(tr1Row.diffs.title.currentFacultyValue, 'Quantum Computing & Algorithms (Revised Title)');
+
+    // Apply decision using diffItem (as called by chairperson-review.js)
+    const customizations = {
+        manual_overrides: { 'tr-1': { title: 'Old Chair Title' } },
+        manual_additions: {},
+        manual_removals: new Set(),
+        source_snapshots: sourceSnapshots,
+        program_portion_overrides: {}
+    };
+
+    engine.applySourceUpdateDecision({
+        customizations,
+        diffItem: tr1Row,
+        decision: 'accept'
+    });
+
+    assert.strictEqual(customizations.source_snapshots['tr-1'].title, 'Quantum Computing & Algorithms (Revised Title)');
+    assert.strictEqual(customizations.source_snapshots['tr-1'].venue, 'MIT Stata Center');
+    assert.strictEqual(customizations.manual_overrides['tr-1'], undefined);
+});
+
 // =============================================================================
 // AREA 4: DRAFT PERSISTENCE & METADATA SERIALIZATION
 // =============================================================================

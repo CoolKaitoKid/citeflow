@@ -341,7 +341,6 @@
         const flag = config?.requires_chairperson_review;
         if (flag === false || flag === 'false' || flag === 0) return false;
         if (flag === true || flag === 'true' || flag === 1) return true;
-        if (config && (flag == null || flag === '')) return true;
         const taskFlag = task?.requires_chairperson_review;
         if (taskFlag === false || taskFlag === 'false' || taskFlag === 0) return false;
         if (taskFlag === true || taskFlag === 'true' || taskFlag === 1) return true;
@@ -350,6 +349,7 @@
             || resolveDocumentCategory(task) === 'MFO'
             || /\bmfo\b|major final output/i.test([config?.report_name, task?.title].join(' '));
         if (isMfo) return true;
+        if (config || task) return true;
         return false;
     }
 
@@ -487,10 +487,11 @@
     }
 
     function sanitizeDbStatus(status) {
+        if (!status) return 'notsubmitted';
         const s = normalizeText(status);
         if (VALID_DB_STATUSES.has(s)) return s;
         if (s === 'pending') return 'underreview';
-        return 'submitted';
+        return 'notsubmitted';
     }
 
     function getWorkflowStage(submission, task, config) {
@@ -589,9 +590,9 @@
         if (!submission) return false;
         if (submission.packet_state === 'draft' || submission.mfo_packet?.packet_state === 'draft' || submission.is_draft === true) return false;
         const status = normalizeText(submission.status);
-        if (status === 'notsubmitted' || status === 'draft') return false;
+        if (!status || status === 'notsubmitted' || status === 'draft') return false;
         if (submission.submitted_at) return true;
-        if (!status && !submission.id) return false;
+        if (!submission.id && !submission.submission_id) return false;
         return ['submitted', 'late', 'underreview', 'approved', 'rejected', 'revision'].includes(status);
     }
 
@@ -884,12 +885,12 @@
         const expected = Number(counts?.expected || 0);
 
         const reviewSum = Number(counts?.pending_review || 0) +
-                          Number(counts?.needs_revision || 0) +
-                          Number(counts?.approved || 0) +
-                          Number(counts?.rejected || 0);
+            Number(counts?.needs_revision || 0) +
+            Number(counts?.approved || 0) +
+            Number(counts?.rejected || 0);
 
         const notSubmittedSum = Number(counts?.not_submitted_open || 0) +
-                                Number(counts?.not_submitted_overdue || 0);
+            Number(counts?.not_submitted_overdue || 0);
 
         return {
             exclusiveMatchesSubmitted: reviewSum === submitted,
@@ -1027,13 +1028,20 @@
 
     function resolveReportingFrequency(task, config) {
         if (isMfoWorkflowRecord(task, config)) return 'quarterly';
-        if (task?.frequency) return String(task.frequency).toLowerCase();
-        if (config?.frequency) return String(config.frequency).toLowerCase();
-        if (task?.reporting_period_frequency) return String(task.reporting_period_frequency).toLowerCase();
+        const explicit = task?.frequency || config?.frequency || task?.reporting_period_frequency;
+        if (explicit) {
+            const normalized = String(explicit).toLowerCase().trim();
+            if (normalized === 'twice_a_month' || normalized === 'twice_monthly' || normalized === 'bimonthly' || normalized === 'bi-monthly') return 'twice_monthly';
+            if (normalized === 'custom_schedule' || normalized === 'custom') return 'custom';
+            if (['monthly', 'quarterly', 'semi_annual', 'annual'].includes(normalized)) return normalized;
+            return normalized;
+        }
         const hay = [task?.title, task?.reporting_period_label, task?.instructions, config?.report_name].filter(Boolean).join(' ').toLowerCase();
+        if (hay.includes('twice a month') || hay.includes('twice-monthly') || hay.includes('twice_monthly') || hay.includes('bimonthly') || hay.includes('bi-monthly') || hay.includes('1st half') || hay.includes('2nd half') || /\bdtr\b|daily time record/i.test(hay)) return 'twice_monthly';
         if (hay.includes('quarter') || /\bq[1-4]\b/i.test(hay)) return 'quarterly';
         if (hay.includes('semi-annual') || hay.includes('semiannual') || hay.includes('mid-year') || hay.includes('1st sem') || hay.includes('2nd sem')) return 'semi_annual';
         if (hay.includes('annual') || hay.includes('year-end') || hay.includes('fiscal year')) return 'annual';
+        if (hay.includes('custom')) return 'custom';
         if (hay.includes('month') || /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(hay)) return 'monthly';
         return 'monthly';
     }
@@ -1666,7 +1674,7 @@
         let notifQuery = sb
             .from('wf_notifications')
             .select('faculty_id,task_id,message')
-            .eq('type', 'task')
+            .in('type', ['task', 'deadline_reminder'])
             .ilike('message', 'Reminder:%');
         if (facultyFilter != null) notifQuery = notifQuery.eq('faculty_id', facultyFilter);
         const { data: existing, error: notifError } = await notifQuery.limit(1000);
@@ -1693,12 +1701,20 @@
             if (!windowSpec) return;
 
             const message = buildDeadlineReminderMessage(task, windowSpec);
+            let title = 'Upcoming Deadline';
+            if (windowSpec.daysBefore === 0) title = 'Task Due Today';
+            else if (windowSpec.daysBefore === 1) title = 'Task Due Tomorrow';
+            else if (windowSpec.daysBefore < 0) title = 'Task Overdue';
+
             const row = {
-                type: 'task',
+                type: 'deadline_reminder',
+                category: 'deadline_reminder',
+                title,
                 faculty_id: assignment.faculty_id,
                 task_id: assignment.task_id,
                 message,
-                is_read: false
+                is_read: false,
+                link: `submissions.html#task=${encodeURIComponent(assignment.task_id)}`
             };
             const key = reminderDedupeKey(row);
             if (existingKeys.has(key)) return;
@@ -2203,7 +2219,10 @@
         const rows = (Array.isArray(payload) ? payload : [payload]).filter(Boolean);
         if (!rows.length) return true;
 
-        const validTypes = new Set(['task', 'submission', 'review', 'comment', 'system']);
+        const validTypes = new Set([
+            'task', 'submission', 'review', 'comment', 'system',
+            'task_assignment', 'submission_update', 'deadline_reminder'
+        ]);
         const sanitized = rows.map((r) => {
             const type = validTypes.has(r.type) ? r.type : 'review';
             const row = {
@@ -2215,35 +2234,123 @@
             if (r.task_id != null) row.task_id = r.task_id;
             if (r.submission_id != null) row.submission_id = r.submission_id;
             if (r.title != null) row.title = String(r.title);
+            if (r.category != null) row.category = String(r.category);
+            if (r.link != null) row.link = String(r.link);
+            if (r.recipient_auth_user_id != null) row.recipient_auth_user_id = r.recipient_auth_user_id;
             return row;
         });
 
         try {
-            const { error } = await sb.from('wf_notifications').insert(sanitized);
-            if (error) {
-                console.warn('CiteFlowWorkflow.createWorkflowNotification first attempt:', error?.message || error);
-                // Fallback attempt: minimal core notification payload
-                const fallback = sanitized.map((row) => {
-                    const next = {
-                        type: row.type || 'review',
-                        message: row.message || '',
-                        is_read: false
-                    };
-                    if (row.faculty_id != null) next.faculty_id = row.faculty_id;
-                    if (row.task_id != null) next.task_id = row.task_id;
-                    return next;
-                });
-                const res2 = await sb.from('wf_notifications').insert(fallback);
-                if (res2.error) {
-                    console.warn('CiteFlowWorkflow.createWorkflowNotification fallback error:', res2.error?.message || res2.error);
-                    return false;
+            let current = sanitized;
+            for (let attempt = 0; attempt < 4 && current.length; attempt++) {
+                const { error } = await sb.from('wf_notifications').insert(current);
+                if (!error) return true;
+                console.warn('CiteFlowWorkflow.createWorkflowNotification attempt ' + (attempt + 1) + ' failed:', error?.message || error);
+                const raw = String(error?.message || '');
+                const colMatch = raw.match(/column "?([a-z0-9_]+)"? does not exist/i)
+                    || raw.match(/could not find the '([a-z0-9_]+)' column/i)
+                    || raw.match(/'([a-z0-9_]+)' column of/i);
+                if (colMatch) {
+                    const col = colMatch[1];
+                    current = current.map(item => {
+                        const copy = { ...item };
+                        delete copy[col];
+                        return copy;
+                    });
+                    continue;
                 }
+                break;
+            }
+            // Fallback attempt: minimal core notification payload
+            const fallback = sanitized.map((row) => {
+                const legacyType = row.type === 'task_assignment' ? 'task'
+                    : (row.type === 'submission_update' ? 'submission'
+                        : (row.type === 'deadline_reminder' ? 'task' : (row.type || 'review')));
+                const next = {
+                    type: legacyType,
+                    message: row.message || '',
+                    is_read: false
+                };
+                if (row.faculty_id != null) next.faculty_id = row.faculty_id;
+                if (row.task_id != null) next.task_id = row.task_id;
+                return next;
+            });
+            const res2 = await sb.from('wf_notifications').insert(fallback);
+            if (res2.error) {
+                console.warn('CiteFlowWorkflow.createWorkflowNotification fallback error:', res2.error?.message || res2.error);
+                return false;
             }
             return true;
         } catch (err) {
             console.warn('CiteFlowWorkflow.createWorkflowNotification threw:', err);
             return false;
         }
+    }
+
+    async function dispatchTaskAssignmentNotifications(sb, options) {
+        if (!sb) return { sent: 0, error: 'Database client missing' };
+        const {
+            task,
+            assignedFaculty,
+            sender = "Dean's Office",
+            academicYear = '',
+            semester = '',
+            instructions = '',
+            dueAt = null
+        } = options || {};
+
+        if (!task || !task.id) return { sent: 0, skipped: true, reason: 'no_task' };
+        const list = (Array.isArray(assignedFaculty) ? assignedFaculty : []).filter(Boolean);
+        if (!list.length) return { sent: 0, skipped: true, reason: 'no_faculty' };
+
+        const facultyIds = list.map((f) => f.id).filter(Boolean);
+        if (!facultyIds.length) return { sent: 0, skipped: true, reason: 'no_faculty_ids' };
+
+        // Deduplication / Idempotency check:
+        // Do not generate duplicate assignment notifications for the same task and recipient
+        const existingIds = new Set();
+        try {
+            const { data: existing } = await sb
+                .from('wf_notifications')
+                .select('faculty_id')
+                .eq('task_id', task.id)
+                .in('faculty_id', facultyIds);
+            if (existing && Array.isArray(existing)) {
+                existing.forEach((row) => {
+                    if (row.faculty_id) existingIds.add(String(row.faculty_id));
+                });
+            }
+        } catch (_) { }
+
+        const unnotified = list.filter((f) => !existingIds.has(String(f.id)));
+        if (!unnotified.length) return { sent: 0, count: 0, alreadyDispatched: true };
+
+        const taskTitle = task.title || 'New Task';
+        const deadline = dueAt || task.due_at;
+        const deadlineText = deadline ? formatManilaDateTime(deadline) : '';
+        const ay = academicYear || task.academic_year || '';
+        const sem = semester || task.semester || task.period || '';
+        const periodText = [ay, sem].filter(Boolean).join(' · ');
+
+        let details = `Dean's Office has assigned you "${taskTitle}".`;
+        if (deadlineText) details += ` Deadline: ${deadlineText}.`;
+        if (periodText) details += ` (${periodText})`;
+        if (instructions || task.instructions) details += ` Instructions: ${instructions || task.instructions}`;
+
+        const rows = unnotified.map((f) => ({
+            type: 'task_assignment',
+            category: 'task_assignment',
+            title: 'New Task Assigned',
+            message: details,
+            is_read: false,
+            task_id: task.id,
+            faculty_id: f.id,
+            recipient_auth_user_id: f.auth_user_id || null,
+            link: `submissions.html#task=${encodeURIComponent(task.id)}`
+        }));
+
+        const ok = await createWorkflowNotification(sb, rows);
+        return { sent: ok ? rows.length : 0, count: rows.length };
     }
 
     async function loadActiveDelegatedAccess(sb) {
@@ -2348,12 +2455,17 @@
     function authorizedChairpersonsForSubmission(submitter, facultyList, grants, config, task) {
         if (!submitter || !requiresChairpersonReview(config, task)) return [];
         return (facultyList || []).filter((chair) => {
+            if (!chair || String(chair.id) === String(submitter.id)) return false;
             if (!hasChairpersonWorkflowAccess(chair, grants)) return false;
+            // Ensure notification is sent to the authorized Chairperson, not an arbitrary administrator
+            const isNativeChair = isChairperson(chair);
+            const hasGrant = matchingChairpersonGrants(chair, grants).length > 0;
+            if (!isNativeChair && !hasGrant) return false;
             return isInChairpersonScope(chair, submitter, grants);
         });
     }
 
-    async function notifyAuthorizedChairpersons(sb, { submitter, task, taskId, submissionId, message }) {
+    async function notifyAuthorizedChairpersons(sb, { submitter, task, taskId, submissionId, message, isResubmit }) {
         const [grants, facultyList] = await Promise.all([
             loadActiveDelegatedAccess(sb),
             loadFacultyDirectory(sb)
@@ -2362,14 +2474,23 @@
         const chairs = authorizedChairpersonsForSubmission(submitter, facultyList, grants, config, task);
         if (!chairs.length) return true;
 
+        const actorName = submitter?.full_name || 'Faculty Member';
+        const taskTitle = task?.title || 'Report';
+        const defaultMsg = `Faculty ${isResubmit ? 'resubmission' : 'submission'} received. A report from ${actorName} is awaiting your review: ${taskTitle}.`;
+        const notifMsg = message || defaultMsg;
+        const notifTitle = isResubmit ? 'Resubmission Received' : 'Submission Received';
+
         return createWorkflowNotification(sb, chairs.map((chair) => ({
-            type: 'submission',
+            type: 'submission_update',
+            category: 'submission_update',
+            title: notifTitle,
             faculty_id: chair.id,
             recipient_auth_user_id: chair.auth_user_id || null,
             task_id: taskId || task?.id || null,
             submission_id: submissionId || null,
-            message,
-            is_read: false
+            message: notifMsg,
+            is_read: false,
+            link: taskId ? `submissions.html#task=${encodeURIComponent(taskId)}` : 'submissions.html#chair-review'
         })));
     }
 
@@ -2731,22 +2852,45 @@
             submission_id: submissionId
         });
 
-        const notifyMessage = action === 'approved' && transition.nextStage === APPROVAL_STAGES.FINAL
-            ? `Submission approved by chairperson — pending final approval: ${task?.title || 'Submission'}`
-            : action === 'approved' && transition.nextStage === APPROVAL_STAGES.APPROVED
-                ? `Submission fully approved: ${task?.title || 'Submission'}`
-                : action === 'revision'
-                    ? `Revision required: ${task?.title || 'Submission'}`
-                    : `Submission rejected: ${task?.title || 'Submission'}`;
+        const isChairReviewer = transition.historyAction === 'chairperson_revision'
+            || transition.historyAction === 'chairperson_declined'
+            || (stage === APPROVAL_STAGES.CHAIRPERSON && transition.actorRoleLabel === 'CHAIRPERSON');
+        const reviewerAuthority = isChairReviewer ? "Department Chairperson" : "Dean's Office";
+        const reviewSourceText = isChairReviewer ? "the Department Chairperson's review" : "the Dean's Office review";
+
+        let notifTitle = 'Submission Update';
+        let notifyMessage = '';
+
+        if (action === 'approved') {
+            if (transition.nextStage === APPROVAL_STAGES.FINAL) {
+                notifTitle = 'Submission Approved by Chairperson';
+                notifyMessage = `Your submission has been approved by the Department Chairperson and forwarded to the Dean's Office for final review.`;
+            } else if (transition.nextStage === APPROVAL_STAGES.APPROVED) {
+                notifTitle = 'Final Approval Granted';
+                notifyMessage = `Your submission has received final approval from the Dean's Office.`;
+            } else {
+                notifTitle = 'Submission Approved';
+                notifyMessage = `Your submission for "${task?.title || 'Submission'}" has been approved.`;
+            }
+        } else if (action === 'revision') {
+            notifTitle = 'Revision Required';
+            notifyMessage = `Your submission requires revision based on ${reviewSourceText}.${comment ? ' Remarks: ' + comment : ''}`;
+        } else if (action === 'rejected') {
+            notifTitle = 'Submission Declined';
+            notifyMessage = `Your submission was declined by the ${reviewerAuthority}.${comment ? ' Remarks: ' + comment : ''}`;
+        }
 
         await createWorkflowNotification(sb, {
-            type: 'review',
+            type: 'submission_update',
+            category: 'submission_update',
+            title: notifTitle,
             message: notifyMessage,
             is_read: false,
             faculty_id: submission.faculty_id,
             recipient_auth_user_id: target?.auth_user_id || null,
             task_id: submission.task_id,
-            submission_id: submissionId
+            submission_id: submissionId,
+            link: `submissions.html#task=${encodeURIComponent(submission.task_id)}`
         });
 
         if (action === 'approved' && transition.nextStage === APPROVAL_STAGES.FINAL) {
@@ -2975,13 +3119,16 @@
         });
 
         await createWorkflowNotification(sb, {
-            type: 'submission',
+            type: 'submission_update',
+            category: 'submission_update',
+            title: isResubmit ? 'Report Resubmitted' : 'Report Submitted',
             faculty_id: faculty.id,
             recipient_auth_user_id: faculty.auth_user_id || null,
             task_id: taskId,
             submission_id: submissionId || null,
-            message: `${isResubmit ? 'Resubmission' : 'New submission'} from ${actorName}: ${task?.title || 'Task'}`,
-            is_read: false
+            message: `Your submission for "${task?.title || 'Task'}" has been submitted for review.`,
+            is_read: false,
+            link: `submissions.html#task=${encodeURIComponent(taskId)}`
         });
 
         await notifyAuthorizedChairpersons(sb, {
@@ -2989,7 +3136,8 @@
             task,
             taskId,
             submissionId,
-            message: `${isResubmit ? 'Resubmission' : 'New submission'} from ${actorName} requires Chairperson review: ${task?.title || 'Task'}`
+            isResubmit,
+            message: `Faculty ${isResubmit ? 'resubmission' : 'submission'} received. A report from ${actorName} is awaiting your review: ${task?.title || 'Task'}.`
         });
 
         if (submissionId) {
@@ -3430,6 +3578,7 @@
         buildFacultyFileChangeUpdate,
         getTaskDeadline,
         getTaskRequirementText,
+        runDeadlineReminderPass,
         processDeadlineReminders,
         formatWorkflowStatus,
         getStatusClass,
@@ -3446,6 +3595,7 @@
         recordApprovalHistory,
         logActivity,
         createWorkflowNotification,
+        dispatchTaskAssignmentNotifications,
         notifyFinalApprovers,
         getActorDisplayName,
         showToast,

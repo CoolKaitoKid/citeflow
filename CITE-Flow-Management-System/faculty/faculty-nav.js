@@ -524,6 +524,88 @@ async function loadFacultyNavigation() {
 
 async function mountFacultyNavigation() {
     try {
+        let isAdminUser = Boolean(
+            window.CiteFlowAuthGuard?.isAdminRole ||
+            window.CiteFlowAuthGuard?.isDean ||
+            window.CiteFlowAuthGuard?.isSecretary ||
+            (window.CiteFlowAuth?.isAdmin && window.CiteFlowAuth.isAdmin()) ||
+            (window.CiteFlowAuth?.isCollegeDean && window.CiteFlowAuth.isCollegeDean()) ||
+            (window.CiteFlowAuth?.isCollegeSecretary && window.CiteFlowAuth.isCollegeSecretary())
+        );
+        if (!isAdminUser) {
+            try {
+                const u = JSON.parse(localStorage.getItem('citeflow_user') || '{}');
+                const role = String(u.role || u.position || '').toLowerCase();
+                if (role === 'admin' || role === 'administrator' || role === 'superadmin' || role.includes('dean') || role.includes('secretary')) {
+                    isAdminUser = true;
+                }
+            } catch (_) {}
+        }
+
+        if (isAdminUser) {
+            const adminCandidateUrls = ["../nav.html", "/nav.html", "nav.html"];
+            let adminRes = null;
+            for (const url of adminCandidateUrls) {
+                try {
+                    const res = await fetch(url);
+                    if (res && res.ok) { adminRes = res; break; }
+                } catch (_) {}
+            }
+            if (adminRes) {
+                const adminHtml = await adminRes.text();
+                const adminDoc = new DOMParser().parseFromString(adminHtml, "text/html");
+
+                if (!document.querySelector('link[href*="nav.css"]')) {
+                    const navCss = document.createElement("link");
+                    navCss.rel = "stylesheet";
+                    navCss.href = "../nav.css";
+                    document.head.appendChild(navCss);
+                }
+
+                mountFacultyNavPart(adminDoc.querySelector("aside.sidebar"), "sidebar-container");
+                mountFacultyNavPart(adminDoc.querySelector("nav.navbar"), "navbar-container");
+                mountFacultyNavPart(adminDoc.getElementById("profileBackdrop"), null, true);
+                mountFacultyNavPart(adminDoc.getElementById("profileModal"), null, true);
+                mountFacultyNavPart(adminDoc.querySelector(".message-btn"), "message-container", true);
+
+                const logoImg = document.querySelector(".logo-area img");
+                if (logoImg && !logoImg.src.includes('assets/')) {
+                    logoImg.src = "../assets/ctu-logo.png";
+                }
+
+                document.addEventListener("click", (e) => {
+                    const item = e.target.closest(".nav-item, .logo-area[data-page]");
+                    if (!item) return;
+                    const pageFile = item.getAttribute("data-page");
+                    if (!pageFile) return;
+                    e.preventDefault();
+                    const dest = pageFile.replace(/^\.\.\//, "").replace(/^admin\//, "");
+                    window.location.href = `../admin/${dest}`;
+                });
+
+                document.querySelectorAll(".sidebar .nav-item, .logo-area[data-page]").forEach((item) => {
+                    const dataPage = item.getAttribute("data-page") || "";
+                    const isActive = dataPage.includes("workflow-approval");
+                    item.classList.toggle("active", isActive);
+                });
+
+                document.addEventListener("click", (e) => {
+                    const mobileBtn = e.target.closest("#mobileSidebarToggle, .drawer-push-btn, .mobile-toggle-btn");
+                    if (mobileBtn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleFacultyMobileSidebar();
+                    }
+                });
+
+                ensureNotificationPresentation().then(() => {
+                    loadFacultyNavNotifications();
+                    subscribeFacultyNavNotifications();
+                });
+                return;
+            }
+        }
+
         const candidateUrls = [
             "faculty-nav.html?v=sub-load-1",
             "../faculty/faculty-nav.html?v=sub-load-1",
@@ -895,7 +977,7 @@ function bindFacultyNotifFilters() {
         if (!button) return;
         event.preventDefault();
         event.stopPropagation();
-        facultyNotifFilter = button.getAttribute('data-notif-filter') === 'unread' ? 'unread' : 'all';
+        facultyNotifFilter = button.getAttribute('data-notif-filter') || 'all';
         renderFacultyNavNotifications(facultyNavNotifications);
     });
 }
@@ -909,7 +991,20 @@ function renderFacultyNavNotifications(items) {
 
     const api = window.CiteFlowNotifPresentation;
     const visible = visibleFacultyNotifications();
-    const shown = facultyNotifFilter === 'unread' ? visible.filter((item) => !item.is_read) : visible;
+    let filtered;
+    const norm = api?.normalizeFilterKey ? api.normalizeFilterKey(facultyNotifFilter) : facultyNotifFilter;
+    if (norm === 'unread') {
+        filtered = visible.filter((item) => !item.is_read);
+    } else if (norm === 'task_assignment') {
+        filtered = visible.filter((item) => (api?.resolveCategory ? api.resolveCategory(item) : item.category) === 'task_assignment');
+    } else if (norm === 'submission_update') {
+        filtered = visible.filter((item) => (api?.resolveCategory ? api.resolveCategory(item) : item.category) === 'submission_update');
+    } else if (norm === 'deadline_reminder') {
+        filtered = visible.filter((item) => (api?.resolveCategory ? api.resolveCategory(item) : item.category) === 'deadline_reminder');
+    } else {
+        filtered = visible;
+    }
+    const shown = filtered;
     api?.syncFilters(document.getElementById('facultyNavNotifDropdown'), facultyNotifFilter);
     list.dataset.notifFilter = facultyNotifFilter;
 

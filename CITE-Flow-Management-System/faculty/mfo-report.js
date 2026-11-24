@@ -370,9 +370,26 @@
         return String(value ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
     }
 
+    function stripCiteflowMetadata(value) {
+        if (value === null || value === undefined) return '';
+        let str = String(value);
+        if (!str.includes('CITEFLOW_') && !str.includes('<!--') && !str.includes('%7B')) return str.trim();
+        const citeflowRegex = new RegExp('<' + '!--\\s*CITEFLOW_[A-Z0-9_]+:[\\s\\S]*?(?:--' + '>|--!>|→|->|&#8594;|&rarr;|\\n|$)', 'gi');
+        str = str.replace(citeflowRegex, '');
+        const lineRegex = new RegExp('^[^\\n]*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA[^\\n]*(?:\\r?\\n|$)', 'gim');
+        str = str.replace(lineRegex, '');
+        const inlineRegex = new RegExp('[^\\n]*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA[^\\n]*', 'gi');
+        str = str.replace(inlineRegex, '');
+        const htmlCommentRegex = new RegExp('<' + '!--[\\s\\S]*?--' + '>', 'gi');
+        str = str.replace(htmlCommentRegex, '');
+        str = str.replace(/%22(?:name|size|type|url|media_files|duration_hours|extension_project_id|sub_category)[^\s\n\r]*/gi, '');
+        str = str.replace(/%7B[\s\S]*?%7D/gi, '');
+        return str.trim();
+    }
+
     function tmpId() { return 'tmp-' + Math.random().toString(36).slice(2, 10); }
     function isUuid(v) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || '')); }
-    function tv(v) { const t = String(v ?? '').trim(); return t === '' ? NA : t; }
+    function tv(v) { const t = stripCiteflowMetadata(v); return t === '' ? NA : t; }
     function dateInputValue(value) {
         const text = String(value ?? '').trim();
         const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -920,7 +937,7 @@
     }
 
     function unpackDocDetails(row) {
-        const raw = String(row?.narrative || '');
+        const raw = stripCiteflowMetadata(row?.narrative || '');
         let activity_time = row.activity_time || '', venue = row.venue || '', narrative = raw;
         if (!activity_time || !venue) {
             const timeMatch = raw.match(/^Time:\s*(.+)$/im), venueMatch = raw.match(/^Venue:\s*(.+)$/im);
@@ -930,7 +947,7 @@
                 narrative = raw.replace(/^Time:\s*.+$/im, '').replace(/^Venue:\s*.+$/im, '').trim();
             }
         }
-        return { ...row, title: row.title || row.caption || '', activity_time, venue, narrative };
+        return { ...row, title: stripCiteflowMetadata(row.title || row.caption || ''), activity_time, venue, narrative };
     }
 
     function generalDocs() {
@@ -1545,7 +1562,31 @@
                 }
             }
         } else {
-            if (!state.chairFaculty && currentFaculty) {
+            state.reviewerIsAdmin = true;
+            let resolvedChair = null;
+            if (programPacket?.chairperson_faculty_id) {
+                try {
+                    const { data: cRow } = await client.from('faculty').select('*').eq('id', programPacket.chairperson_faculty_id).maybeSingle();
+                    if (cRow) resolvedChair = cRow;
+                } catch (_) {}
+            }
+            if (!resolvedChair && targetDept) {
+                try {
+                    const { data: cRows } = await client.from('faculty')
+                        .select('*')
+                        .or(`department.ilike.%${targetDept}%,department_code.ilike.%${targetDept}%`)
+                        .or('role.ilike.%chair%,position.ilike.%chair%,academic_rank.ilike.%chair%')
+                        .limit(5);
+                    if (cRows && cRows.length > 0) {
+                        resolvedChair = cRows[0];
+                    }
+                } catch (_) {}
+            }
+            if (resolvedChair) {
+                state.chairFaculty = resolvedChair;
+                state.chairName = facultyFullName(resolvedChair) || resolvedChair.full_name || 'Program Chairperson';
+            }
+            if (!state.chairFaculty && currentFaculty && !state.reviewerIsAdmin) {
                 state.chairFaculty = currentFaculty;
             }
             if (!state.faculty && state.chairFaculty) {
@@ -1627,8 +1668,26 @@
             }
 
             const submittingChair = snapshotPayload.submitting_chairperson || {};
-            const chairName = submittingChair.name || submittingChair.full_name || 'Program Chairperson';
-            state.chairFaculty = {
+            let chairName = submittingChair.name || submittingChair.full_name;
+            if (!chairName && state.chairFaculty?.full_name) {
+                chairName = state.chairFaculty.full_name;
+            }
+            if (!chairName && targetDept) {
+                try {
+                    const { data: cRows } = await client.from('faculty')
+                        .select('*')
+                        .or(`department.ilike.%${targetDept}%,department_code.ilike.%${targetDept}%`)
+                        .or('role.ilike.%chair%,position.ilike.%chair%,academic_rank.ilike.%chair%')
+                        .limit(5);
+                    if (cRows && cRows.length > 0) {
+                        chairName = facultyFullName(cRows[0]) || cRows[0].full_name;
+                        if (!state.chairFaculty) state.chairFaculty = cRows[0];
+                    }
+                } catch (_) {}
+            }
+            chairName = chairName || 'Program Chairperson';
+            state.chairName = chairName;
+            state.chairFaculty = state.chairFaculty || {
                 id: submittingChair.id || programPacket?.chairperson_faculty_id || null,
                 full_name: chairName,
                 name: chairName,
@@ -2014,7 +2073,8 @@
                 if (def.isDocumentation) Object.assign(copy, unpackDocDetails(row));
                 (def.fields || []).forEach((f) => {
                     if (f.type === 'checkbox') copy[f.key] = !!copy[f.key];
-                    if (f.type === 'date' && copy[f.key]) copy[f.key] = dateInputValue(copy[f.key]) || copy[f.key];
+                    else if (f.type === 'date' && copy[f.key]) copy[f.key] = dateInputValue(copy[f.key]) || copy[f.key];
+                    else if (typeof copy[f.key] === 'string') copy[f.key] = stripCiteflowMetadata(copy[f.key]);
                 });
                 return copy;
             });
@@ -2049,7 +2109,13 @@
         if (backup?.rows) {
             SECTIONS.forEach((def) => {
                 if (!state.rows[def.table]?.length && backup.rows[def.table]?.length) {
-                    state.rows[def.table] = backup.rows[def.table];
+                    state.rows[def.table] = backup.rows[def.table].map((row) => {
+                        const copy = { ...row };
+                        (def.fields || []).forEach((f) => {
+                            if (typeof copy[f.key] === 'string') copy[f.key] = stripCiteflowMetadata(copy[f.key]);
+                        });
+                        return copy;
+                    });
                 }
             });
             if (backup.sectionStatus) {
@@ -2187,7 +2253,7 @@
             try {
                 const result = api.mergeCandidates(state.rows[def.table] || [], forSection, {
                     newRow: () => Object.assign(emptyRow(def), { faculty_id: state.faculty.id }),
-                    refreshSystemValues: false
+                    refreshSystemValues: true
                 });
                 state.rows[def.table] = result.rows;
                 added += result.added; filled += result.filled;
@@ -2938,7 +3004,7 @@
             rowsOf(def.table).forEach((row, index) => {
                 (def.fields || []).forEach((field) => {
                     if (field.type === 'checkbox' || field.key === 'section_code') return;
-                    let value = String(row[field.key] ?? '').trim();
+                    let value = stripCiteflowMetadata(row[field.key] ?? '');
                     if (!value) return;
                     if (field.type === 'date') value = reportDate(row[field.key]) || dateInputValue(row[field.key]);
                     else if (field.type === 'select') value = DOC_LABELS[row[field.key]] || value.replace(/_/g, ' ');
@@ -2947,7 +3013,7 @@
                 });
             });
         });
-        const notes = String(state.packet?.notes || '').trim();
+        const notes = stripCiteflowMetadata(state.packet?.notes || '');
         if (notes && !text.includes(notes)) missingRecords.push('Other accomplishments');
         if (missingRecords.length) throw new Error(`The PDF is missing saved MFO records: ${missingRecords.slice(0, 4).join('; ')}`);
     }
@@ -3551,7 +3617,9 @@
                 return;
             }
             let value = row[field.key];
-            if (value === null || value === undefined || String(value).trim() === '') return;
+            if (value === null || value === undefined) return;
+            if (typeof value === 'string') value = stripCiteflowMetadata(value);
+            if (String(value).trim() === '') return;
             if (field.type === 'date') value = reportDate(value) || value;
             if (field.type === 'select') value = DOC_LABELS[value] || String(value).replace(/_/g, ' ');
             bits.push(`${field.label}: ${value}`);
@@ -3985,11 +4053,11 @@
     }
 
     function photoDetailText(file, row) {
-        const caption = String(file?.mfo_caption || '').trim();
+        const caption = stripCiteflowMetadata(file?.mfo_caption || '');
         const date = reportDate(row?.activity_date);
         const time = String(row?.activity_time || '').trim();
         const venue = String(row?.venue || '').trim();
-        const narrative = String(row?.narrative || '').trim();
+        const narrative = stripCiteflowMetadata(row?.narrative || '');
         const lines = [];
         if (caption) lines.push(caption);
         const meta = [date && `Date: ${date}`, time && `Time: ${time}`, venue && `Venue: ${venue}`].filter(Boolean).join(' · ');
@@ -4007,7 +4075,7 @@
                 ['Date', reportDate(row.activity_date)], ['Time', String(row.activity_time || '').trim()],
                 ['Venue', String(row.venue || '').trim()], ['Sponsoring agency', String(row.sponsoring_agency || '').trim()], ['Role', String(row.role || '').trim()]
             ].filter(([, value]) => value);
-            const narrative = String(row.narrative || '').trim();
+            const narrative = stripCiteflowMetadata(row.narrative || '');
             const photos = images.map((file) => {
                 const src = String(file.pdf_data_url || '').trim();
                 const detail = photoDetailText(file, row);
@@ -4117,8 +4185,8 @@
 
         function formatAccomplishmentText(row, tableKey) {
             if (!row) return '';
-            const title = String(row.title || row.activity_title || row.research_title || row.project_title || row.award_title || row.certification_title || row.training_title || row.course_title || row.program_enrolled || '').trim();
-            const desc = String(row.description || row.narrative || '').trim();
+            const title = stripCiteflowMetadata(row.title || row.activity_title || row.research_title || row.project_title || row.award_title || row.certification_title || row.training_title || row.course_title || row.program_enrolled || '');
+            const desc = stripCiteflowMetadata(row.description || row.narrative || '');
 
             if (tableKey === 'mfo_pi1_licensure') {
                 if (row.exam_name) {
@@ -4231,7 +4299,7 @@
                 bodyHtml = rows.map((row, idx) => {
                     const pi = idx === 0 ? esc(defaultPiText || '') : '';
                     const acc = esc(formatAccomplishmentText(row, tableKey));
-                    const strat = esc(row.remarks || row.outcomes || row.ched_strategies || '');
+                    const strat = esc(stripCiteflowMetadata(row.remarks || row.outcomes || row.ched_strategies || ''));
                     return `
                         <tr class="mfo-pdf-unit">
                             <td style="border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;width:24%;">${pi}</td>
@@ -4273,8 +4341,8 @@
             let subRowsHtml = '';
             if (Array.isArray(rows) && rows.length > 0) {
                 subRowsHtml = rows.map((r) => {
-                    const prog = esc(r.program || r.program_name || r.title || '');
-                    const status = esc(r.status || r.accreditation_status || r.description || '');
+                    const prog = esc(stripCiteflowMetadata(r.program || r.program_name || r.title || ''));
+                    const status = esc(stripCiteflowMetadata(r.status || r.accreditation_status || r.description || ''));
                     const surveyDate = esc(r.date_of_survey || r.survey_date || r.activity_date || r.start_date || '');
                     return `
                         <tr>
@@ -4422,7 +4490,8 @@
                     `;
                 }).join('');
 
-                const narrativeHtml = row.narrative && row.narrative !== captionTitle ? `<div style="font-size:11px;color:#333;margin-top:4px;">${esc(row.narrative)}</div>` : '';
+                const cleanNarrative = stripCiteflowMetadata(row.narrative || '');
+                const narrativeHtml = cleanNarrative && cleanNarrative !== captionTitle ? `<div style="font-size:11px;color:#333;margin-top:4px;">${esc(cleanNarrative)}</div>` : '';
 
                 return `
                     <div class="mfo-pdf-unit" style="margin-top:18px;margin-bottom:18px;text-align:center;">
@@ -4798,9 +4867,9 @@
         const evidenceCount = Array.isArray(state.files) ? state.files.length : 0;
         const unsubmittedCount = Array.isArray(state.unsubmittedFacultyList) ? state.unsubmittedFacultyList.length : 0;
         root.innerHTML = `<div class="mfo-doc-toolbar mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div><div class="cite-kicker">${state.isCollegeConsolidated ? 'College-Wide Consolidated MFO Report (All Programs: BSIT · BSIE · BIT)' : (state.isConsolidated ? 'Department Consolidated MFO Report' : (state.reviewerMode ? 'Submitted report (read-only)' : 'Completed report'))}</div>
+            <div><div class="cite-kicker">${state.isCollegeConsolidated ? 'College-Wide Consolidated MFO Report (All Programs: BSIT · BSIE · BIT)' : (state.isConsolidated ? (state.isFinalApprover || state.reviewerIsAdmin ? 'Department Consolidated MFO Report — Dean\'s Review' : 'Department Consolidated MFO Report') : (state.reviewerMode ? (state.reviewerIsAdmin ? 'Individual Faculty MFO Report (Dean\'s Review)' : 'Submitted report (read-only)') : 'Completed report'))}</div>
             <h1 class="cite-title">MFO Accomplishment Report</h1>
-            <p class="cite-subtitle">${esc(statusLabel())}${state.isConsolidated ? ` · ${esc(state.chairFaculty?.full_name || '')} (${esc(profile.department || '')})` : (state.reviewerMode ? ` · ${esc(state.faculty.full_name || '')}` : (state.previewPdfUrl ? ' · generated PDF' : ' · reflects the last saved values.'))}</p></div>
+            <p class="cite-subtitle">${esc(statusLabel())}${state.isConsolidated ? (state.isFinalApprover || state.reviewerIsAdmin ? ` · Department: ${esc(profile.department || state.task?.department || '')} · Chairperson: ${esc(state.chairName || state.chairFaculty?.full_name || 'Program Chairperson')}` : ` · ${esc(state.chairFaculty?.full_name || '')} (${esc(profile.department || '')})`) : (state.reviewerMode ? ` · ${esc(state.faculty.full_name || '')}` : (state.previewPdfUrl ? ' · generated PDF' : ' · reflects the last saved values.'))}</p></div>
             <div class="flex flex-wrap items-center gap-2">
                 ${state.isConsolidated
                     ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = '${state.isFinalApprover ? '../admin/workflow-approval.html' : 'submissions.html#chair-review'}';">← Back</button>`

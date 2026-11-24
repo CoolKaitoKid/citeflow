@@ -177,6 +177,57 @@ test('Photos produce documentation candidates without a second mapper', () => {
     assert(photos.length === 1 && photos[0].file_url.includes('faculty-61'), 'photo ref');
 });
 
+test('CITEFLOW metadata comments are stripped from descriptions across PI8, PI7, Research, and Documentation', () => {
+    const docDataComment = '<!-- CITEFLOW_DOC_DATA:%7B%22media_files%22%3A%5B%7B%22name%22%3A%2201-File.pdf%22%7D%5D%2C%22extension_project_id%22%3Anull%2C%22sub_category%22%3A%22General%22%7D -->';
+    const accompDataComment = '<!-- CITEFLOW_ACCOMP_DATA:%7B%22duration_hours%22%3A8%7D -->';
+    const researchDataComment = '<!-- CITEFLOW_RESEARCH_DATA:%7B%22budget%22%3A50000%7D -->';
+
+    const loadedWithMeta = {
+        rows: {
+            faculty_documents: [{
+                id: 201,
+                faculty_id: 61,
+                title: 'work of tesla the goat',
+                document_type: 'Teaching Material',
+                category: 'Instructional',
+                uploaded_at: '2026-02-15',
+                description: `blah blah blah ${docDataComment}`
+            }],
+            faculty_accomplishments: [acc({
+                id: 202,
+                description: `Seminar remarks ${accompDataComment}`,
+                photo_attachments: [{ title: 'Photo 1', photo_url: 'https://example.test/a.jpg' }]
+            })],
+            faculty_research_projects: [{
+                id: 203,
+                faculty_id: 61,
+                title: 'AI Research',
+                status: 'Completed',
+                end_date: '2026-02-20',
+                description: `Completed study ${researchDataComment}`
+            }]
+        },
+        facultyById: new Map([['61', { id: 61, full_name: 'KrishPao A. Ars' }]])
+    };
+
+    const built = api.buildCandidates(loadedWithMeta, { period, includeUndated: true });
+    const pi8 = (built.mfo1_pi8 || [])[0];
+    assert(pi8, 'missing PI8 candidate');
+    assert(pi8.fields.remarks === 'blah blah blah', `expected clean PI8 remarks, got: ${pi8.fields.remarks}`);
+
+    const pi7 = (built.mfo1_pi7 || [])[0];
+    assert(pi7, 'missing PI7 candidate');
+    assert(pi7.fields.remarks === 'Seminar remarks', `expected clean PI7 remarks, got: ${pi7.fields.remarks}`);
+
+    const docItem = (built.documentation_pi7 || [])[0];
+    assert(docItem, 'missing documentation candidate');
+    assert(docItem.fields.narrative === 'Seminar remarks', `expected clean doc narrative, got: ${docItem.fields.narrative}`);
+
+    const resItem = (built.mfo3_pi2 || [])[0];
+    assert(resItem, 'missing research candidate');
+    assert(resItem.fields.remarks === 'Completed study', `expected clean research remarks, got: ${resItem.fields.remarks}`);
+});
+
 const failed = results.filter((item) => !item.ok);
 results.forEach((item) => {
     console.log(`${item.ok ? 'PASS' : 'FAIL'}  ${item.name}${item.error ? ' — ' + item.error : ''}`);

@@ -71,6 +71,23 @@
         return str.replace(/\s+department$/i, '').trim();
     }
 
+    function stripCiteflowMetadata(value) {
+        if (value === null || value === undefined) return '';
+        let str = String(value);
+        if (!str.includes('CITEFLOW_') && !str.includes('<!--') && !str.includes('%7B')) return str.trim();
+        const citeflowRegex = new RegExp('<' + '!--\\s*CITEFLOW_[A-Z0-9_]+:[\\s\\S]*?(?:--' + '>|--!>|→|->|&#8594;|&rarr;|\\n|$)', 'gi');
+        str = str.replace(citeflowRegex, '');
+        const lineRegex = new RegExp('^[^\\n]*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA[^\\n]*(?:\\r?\\n|$)', 'gim');
+        str = str.replace(lineRegex, '');
+        const inlineRegex = new RegExp('[^\\n]*CITEFLOW_(?:ACCOMP|DOC|RESEARCH)_DATA[^\\n]*', 'gi');
+        str = str.replace(inlineRegex, '');
+        const htmlCommentRegex = new RegExp('<' + '!--[\\s\\S]*?--' + '>', 'gi');
+        str = str.replace(htmlCommentRegex, '');
+        str = str.replace(/%22(?:name|size|type|url|media_files|duration_hours|extension_project_id|sub_category)[^\s\n\r]*/gi, '');
+        str = str.replace(/%7B[\s\S]*?%7D/gi, '');
+        return str.trim();
+    }
+
     function deepClone(obj) {
         if (obj === null || typeof obj !== 'object') return obj;
         if (obj instanceof Date) return new Date(obj.getTime());
@@ -395,7 +412,28 @@
         const childRows = p.childRows && typeof p.childRows === 'object' ? p.childRows : {};
 
         const updates = [];
+        const updatedRowsMap = new Map();
         const checkedRowIds = new Set();
+
+        const ensureUpdatedRow = (rowId, baseInfo) => {
+            if (!updatedRowsMap.has(rowId)) {
+                updatedRowsMap.set(rowId, {
+                    rowId,
+                    sourceRowId: rowId,
+                    table: baseInfo.table || '',
+                    sectionCode: baseInfo.sectionCode || '',
+                    sectionTitle: baseInfo.sectionTitle || '',
+                    facultyId: baseInfo.facultyId || null,
+                    facultyName: baseInfo.facultyName || 'Faculty',
+                    title: baseInfo.title || baseInfo.rowTitle || 'Accomplishment',
+                    rowTitle: baseInfo.rowTitle || baseInfo.title || 'Accomplishment',
+                    type: baseInfo.type || 'field_updated',
+                    newRecord: baseInfo.newRecord || null,
+                    diffs: {}
+                });
+            }
+            return updatedRowsMap.get(rowId);
+        };
 
         MFO_SECTIONS.forEach((secDef) => {
             const tableName = secDef.table;
@@ -409,6 +447,10 @@
                 const snapshot = sourceSnapshots[rowId];
 
                 if (!snapshot) {
+                    const rowTitle = stripCiteflowMetadata(
+                        row.title || row.activity_title || row.program_title || row.subject_code || row.course_title || row.award_name || row.name || 'New Accomplishment'
+                    );
+                    const cleanRecord = deepClone(row);
                     updates.push({
                         type: 'new_entry',
                         sourceRowId: rowId,
@@ -416,10 +458,30 @@
                         sectionCode: secCode,
                         sectionTitle: secDef.title,
                         facultyId: row.faculty_id,
-                        rowTitle: row.title || row.activity_title || row.program_title || row.subject_code || row.course_title || row.award_name || row.name || 'New Accomplishment',
-                        newRecord: deepClone(row),
+                        rowTitle,
+                        newRecord: cleanRecord,
                         description: `New accomplishment submitted by faculty in ${secDef.title}.`
                     });
+                    const entry = ensureUpdatedRow(rowId, {
+                        table: tableName,
+                        sectionCode: secCode,
+                        sectionTitle: secDef.title,
+                        facultyId: row.faculty_id,
+                        facultyName: row.faculty_name || 'Faculty',
+                        title: rowTitle,
+                        rowTitle,
+                        type: 'new_entry',
+                        newRecord: cleanRecord
+                    });
+                    entry.diffs.title = {
+                        field: 'title',
+                        label: 'New Accomplishment Added',
+                        previousValue: '(not in baseline draft)',
+                        currentFacultyValue: rowTitle,
+                        previousSourceValue: '',
+                        newSourceValue: rowTitle,
+                        facultyValue: rowTitle
+                    };
                     return;
                 }
 
@@ -434,9 +496,9 @@
                 fieldsToCompare.forEach(({ key, altKeys, label }) => {
                     const findVal = (obj) => {
                         if (!obj) return '';
-                        if (obj[key] !== undefined && obj[key] !== null) return String(obj[key]).trim();
+                        if (obj[key] !== undefined && obj[key] !== null) return stripCiteflowMetadata(String(obj[key])).trim();
                         for (const k of altKeys) {
-                            if (obj[k] !== undefined && obj[k] !== null) return String(obj[k]).trim();
+                            if (obj[k] !== undefined && obj[k] !== null) return stripCiteflowMetadata(String(obj[k])).trim();
                         }
                         return '';
                     };
@@ -446,8 +508,9 @@
 
                     if (prevVal !== newVal && (prevVal || newVal)) {
                         const chairOverride = manualOverrides[rowId]?.[key] !== undefined
-                            ? String(manualOverrides[rowId][key]).trim()
+                            ? stripCiteflowMetadata(String(manualOverrides[rowId][key])).trim()
                             : null;
+                        const rowTitle = stripCiteflowMetadata(snapshot.title || row.title || 'Accomplishment');
 
                         updates.push({
                             type: 'field_updated',
@@ -464,8 +527,30 @@
                             chairpersonValue: chairOverride !== null ? chairOverride : prevVal,
                             hasChairpersonOverride: chairOverride !== null,
                             isManuallyRemoved: manualRemovals.has(rowId),
-                            rowTitle: snapshot.title || 'Accomplishment'
+                            rowTitle
                         });
+
+                        const entry = ensureUpdatedRow(rowId, {
+                            table: tableName,
+                            sectionCode: secCode,
+                            sectionTitle: secDef.title,
+                            facultyId: row.faculty_id,
+                            facultyName: snapshot.faculty_name || 'Faculty',
+                            title: rowTitle,
+                            rowTitle,
+                            type: 'field_updated'
+                        });
+                        entry.diffs[key] = {
+                            field: key,
+                            label,
+                            previousValue: prevVal,
+                            currentFacultyValue: newVal,
+                            previousSourceValue: prevVal,
+                            newSourceValue: newVal,
+                            facultyValue: newVal,
+                            chairpersonValue: chairOverride !== null ? chairOverride : prevVal,
+                            hasChairpersonOverride: chairOverride !== null
+                        };
                     }
                 });
             });
@@ -474,22 +559,45 @@
         // Check if any previously snapshotted rows were removed by faculty
         Object.keys(sourceSnapshots).forEach((rowId) => {
             if (!checkedRowIds.has(rowId) && sourceSnapshots[rowId]?.id) {
+                const snap = sourceSnapshots[rowId];
+                const rowTitle = stripCiteflowMetadata(snap.title || 'Accomplishment');
                 updates.push({
                     type: 'removed_by_faculty',
                     sourceRowId: rowId,
-                    table: sourceSnapshots[rowId].table,
-                    sectionCode: sourceSnapshots[rowId].section_code,
-                    facultyName: sourceSnapshots[rowId].faculty_name || 'Faculty',
-                    rowTitle: sourceSnapshots[rowId].title || 'Accomplishment',
-                    description: `Faculty removed accomplishment "${sourceSnapshots[rowId].title || rowId}" from their submission.`
+                    table: snap.table,
+                    sectionCode: snap.section_code,
+                    facultyName: snap.faculty_name || 'Faculty',
+                    rowTitle,
+                    description: `Faculty removed accomplishment "${rowTitle || rowId}" from their submission.`
                 });
+                const entry = ensureUpdatedRow(rowId, {
+                    table: snap.table,
+                    sectionCode: snap.section_code,
+                    facultyName: snap.faculty_name || 'Faculty',
+                    title: rowTitle,
+                    rowTitle,
+                    type: 'removed_by_faculty'
+                });
+                entry.diffs.title = {
+                    field: 'title',
+                    label: 'Removed by Faculty',
+                    previousValue: rowTitle,
+                    currentFacultyValue: '(removed from faculty submission)',
+                    previousSourceValue: rowTitle,
+                    newSourceValue: '',
+                    facultyValue: ''
+                };
             }
         });
+
+        const updatedRows = Array.from(updatedRowsMap.values());
 
         return {
             hasUpdates: updates.length > 0,
             updates,
-            updateCount: updates.length
+            updateCount: updates.length,
+            updatedRows,
+            totalUpdatedRows: updatedRows.length
         };
     }
 
@@ -522,38 +630,73 @@
 
         const sourceSnapshots = customizations.source_snapshots;
         const manualOverrides = customizations.manual_overrides;
-        const update = p.update || p.updateItem;
+        const update = p.update || p.updateItem || p.diffItem;
         const decision = p.decision; // 'accept' | 'decline'
 
-        if (!update || (!update.sourceRowId && !update.accomplishmentId)) {
+        if (!update || (!update.sourceRowId && !update.accomplishmentId && !update.rowId)) {
             throw new Error('Update details with sourceRowId or accomplishmentId are required.');
         }
 
-        const rowId = String(update.sourceRowId || update.accomplishmentId);
+        const rowId = String(update.sourceRowId || update.accomplishmentId || update.rowId);
 
-        // Support both single update object and update with .diffs array
-        const diffList = Array.isArray(update.diffs) && update.diffs.length > 0
-            ? update.diffs
-            : [{
-                field: update.field,
-                newSourceValue: update.newSourceValue !== undefined ? update.newSourceValue : update.facultyValue
-            }];
-
-        diffList.forEach((d) => {
-            const field = d.field;
-            const newVal = d.newSourceValue !== undefined ? d.newSourceValue : d.facultyValue;
-            if (!field) return;
+        if (update.type === 'removed_by_faculty') {
+            if (decision === 'accept') {
+                customizations.manual_removals.add(rowId);
+                delete sourceSnapshots[rowId];
+            } else if (decision === 'decline') {
+                delete sourceSnapshots[rowId];
+            }
+        } else if (update.type === 'new_entry') {
+            const newRecord = update.newRecord;
+            const snapRecord = newRecord ? {
+                id: rowId,
+                table: update.table || newRecord.table || '',
+                section_code: update.sectionCode || newRecord.section_code || '',
+                faculty_id: update.facultyId || newRecord.faculty_id || null,
+                faculty_name: update.facultyName || newRecord.faculty_name || 'Faculty',
+                title: stripCiteflowMetadata(newRecord.title || newRecord.activity_title || newRecord.program_title || newRecord.subject_code || newRecord.course_title || newRecord.award_name || newRecord.name || update.title || update.rowTitle || ''),
+                description: stripCiteflowMetadata(newRecord.description || newRecord.details || newRecord.venue || newRecord.remarks || ''),
+                start_date: newRecord.start_date || newRecord.date || '',
+                end_date: newRecord.end_date || '',
+                venue: newRecord.venue || newRecord.location || '',
+                remarks: stripCiteflowMetadata(newRecord.remarks || '')
+            } : {
+                id: rowId,
+                table: update.table || '',
+                section_code: update.sectionCode || '',
+                title: stripCiteflowMetadata(update.title || update.rowTitle || '')
+            };
 
             if (decision === 'accept') {
-                if (update.type === 'removed_by_faculty') {
-                    customizations.manual_removals.add(rowId);
-                    delete sourceSnapshots[rowId];
-                } else if (update.type === 'new_entry') {
-                    if (update.newRecord) {
-                        sourceSnapshots[rowId] = deepClone(update.newRecord);
-                    }
-                } else {
-                    // Update baseline snapshot
+                sourceSnapshots[rowId] = snapRecord;
+                customizations.manual_removals.delete(rowId);
+            } else if (decision === 'decline') {
+                sourceSnapshots[rowId] = snapRecord;
+                customizations.manual_removals.add(rowId);
+            }
+        } else {
+            // Support single update object, update with .diffs array, or update with keyed .diffs object
+            let diffList = [];
+            if (Array.isArray(update.diffs) && update.diffs.length > 0) {
+                diffList = update.diffs;
+            } else if (update.diffs && typeof update.diffs === 'object' && Object.keys(update.diffs).length > 0) {
+                diffList = Object.entries(update.diffs).map(([k, v]) => ({
+                    field: v?.field || k,
+                    newSourceValue: v?.newSourceValue !== undefined ? v.newSourceValue : (v?.currentFacultyValue !== undefined ? v.currentFacultyValue : v?.facultyValue)
+                }));
+            } else {
+                diffList = [{
+                    field: update.field,
+                    newSourceValue: update.newSourceValue !== undefined ? update.newSourceValue : update.facultyValue
+                }];
+            }
+
+            diffList.forEach((d) => {
+                const field = d.field;
+                const newVal = d.newSourceValue !== undefined ? d.newSourceValue : (d.currentFacultyValue !== undefined ? d.currentFacultyValue : d.facultyValue);
+                if (!field) return;
+
+                if (decision === 'accept') {
                     if (!sourceSnapshots[rowId]) sourceSnapshots[rowId] = {};
                     sourceSnapshots[rowId][field] = newVal;
 
@@ -564,13 +707,13 @@
                             delete manualOverrides[rowId];
                         }
                     }
+                } else if (decision === 'decline') {
+                    // Retain Chairperson's existing override/value, but advance source snapshot so it is acknowledged
+                    if (!sourceSnapshots[rowId]) sourceSnapshots[rowId] = {};
+                    sourceSnapshots[rowId][field] = newVal;
                 }
-            } else if (decision === 'decline') {
-                // Retain Chairperson's existing override/value, but advance source snapshot so it is acknowledged
-                if (!sourceSnapshots[rowId]) sourceSnapshots[rowId] = {};
-                sourceSnapshots[rowId][field] = newVal;
-            }
-        });
+            });
+        }
 
         const formatted = formatManualCustomizations(customizations);
         const mergedNotes = draft ? mergeNotesMetadata(draft.notes, formatted) : null;
@@ -897,6 +1040,9 @@
 
                 // Non-destructive copy
                 const item = deepClone(row);
+                if (typeof item.remarks === 'string') item.remarks = stripCiteflowMetadata(item.remarks);
+                if (typeof item.description === 'string') item.description = stripCiteflowMetadata(item.description);
+                if (typeof item.narrative === 'string') item.narrative = stripCiteflowMetadata(item.narrative);
                 const rowId = item.id != null ? String(item.id) : `${tableName}_${consolidatedSectionRows.length}`;
 
                 // Rule 4: Detect if accomplishment is rejected
@@ -1636,22 +1782,30 @@
         }
 
         // Check for field-level source accomplishment updates if childRows provided
-        let sourceUpdates = { hasUpdates: false, updates: [], updateCount: 0 };
+        let sourceUpdates = { hasUpdates: false, updates: [], updateCount: 0, updatedRows: [], totalUpdatedRows: 0 };
         if (p.childRows && typeof p.childRows === 'object') {
-            sourceUpdates = detectSourceAccomplishmentUpdates({
-                draft,
-                childRows: p.childRows
-            });
-            if (sourceUpdates.hasUpdates) {
-                sourceUpdates.updates.forEach((u) => {
-                    if (u.type === 'field_updated') {
-                        reasons.push(`Accomplishment "${u.rowTitle}" was updated by ${u.facultyName} (${u.fieldLabel}: "${u.previousSourceValue}" -> "${u.newSourceValue}").`);
-                    } else if (u.type === 'new_entry') {
-                        reasons.push(u.description);
-                    } else if (u.type === 'removed_by_faculty') {
-                        reasons.push(u.description);
-                    }
+            const resolvedCustomizations = extractManualCustomizations(p.customizations || draft || draft?.notes);
+            const resolvedSnapshots = p.sourceSnapshots || resolvedCustomizations.source_snapshots || {};
+            if (Object.keys(resolvedSnapshots).length > 0) {
+                sourceUpdates = detectSourceAccomplishmentUpdates({
+                    draft,
+                    customizations: p.customizations,
+                    sourceSnapshots: resolvedSnapshots,
+                    manualOverrides: p.manualOverrides || resolvedCustomizations.manual_overrides,
+                    manualRemovals: p.manualRemovals || resolvedCustomizations.manual_removals,
+                    childRows: p.childRows
                 });
+                if (sourceUpdates.hasUpdates) {
+                    sourceUpdates.updates.forEach((u) => {
+                        if (u.type === 'field_updated') {
+                            reasons.push(`Accomplishment "${u.rowTitle}" was updated by ${u.facultyName} (${u.fieldLabel}: "${u.previousSourceValue}" -> "${u.newSourceValue}").`);
+                        } else if (u.type === 'new_entry') {
+                            reasons.push(u.description);
+                        } else if (u.type === 'removed_by_faculty') {
+                            reasons.push(u.description);
+                        }
+                    });
+                }
             }
         }
 
@@ -1715,12 +1869,15 @@
         const manualOverrides = p.manualOverrides || existingCustomizations.manual_overrides;
         const manualAdditions = p.manualAdditions || existingCustomizations.manual_additions;
         const manualRemovals = p.manualRemovals || existingCustomizations.manual_removals;
-        const sourceSnapshots = p.sourceSnapshots || existingCustomizations.source_snapshots;
+        const sourceSnapshots = p.sourceSnapshots ? deepClone(p.sourceSnapshots) : deepClone(existingCustomizations.source_snapshots || {});
         const programPortionOverrides = p.programPortionOverrides || existingCustomizations.program_portion_overrides;
 
         // Preserve program-level portions if not explicitly provided
         const programRows = p.programRows || previousDraft?.programPortion || { pi1: [], pi2: [] };
         const programPacket = p.programPacket || previousDraft?.programPacket || (previousDraft?.department ? previousDraft : null);
+
+        // Refresh baseline source_snapshots from latest childRows during regeneration
+        const refreshedSnapshots = {};
 
         const consolidation = buildDepartmentMfoConsolidation({
             ...p,
@@ -1732,18 +1889,12 @@
             manualOverrides,
             manualAdditions,
             manualRemovals,
-            sourceSnapshots,
+            sourceSnapshots: Object.keys(sourceSnapshots).length > 0 ? sourceSnapshots : refreshedSnapshots,
             programPortionOverrides
         });
 
-        const formatted = formatManualCustomizations({
-            manual_overrides: manualOverrides,
-            manual_additions: manualAdditions,
-            manual_removals: manualRemovals,
-            source_snapshots: sourceSnapshots,
-            program_portion_overrides: programPortionOverrides
-        });
-        const mergedNotes = previousDraft ? mergeNotesMetadata(previousDraft.notes, formatted) : null;
+        const formatted = formatManualCustomizations(consolidation.customizations);
+        const mergedNotes = previousDraft ? mergeNotesMetadata(previousDraft.notes, formatted) : mergeNotesMetadata(null, formatted);
 
         consolidation.consolidation = consolidation;
         consolidation.notes = mergedNotes;
