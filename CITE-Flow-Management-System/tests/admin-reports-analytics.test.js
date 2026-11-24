@@ -321,7 +321,7 @@ test('6. admin/workflow-approval.html renderReportSubmissions renders cycles, su
                 report_config_id: 'cfg-1',
                 is_recurring: true,
                 reporting_period_label: 'October 2026',
-                deadline_at: '2026-10-31T23:59:59Z'
+                deadline_at: new Date(Date.now() + 14 * 86400000).toISOString()
             }
         ],
         assignments: [

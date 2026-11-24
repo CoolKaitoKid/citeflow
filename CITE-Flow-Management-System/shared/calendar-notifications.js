@@ -598,7 +598,9 @@
         </div>
         <div class="nav-notif-filters" role="tablist" aria-label="Notification filters">
           <button type="button" class="nav-notif-filter is-active" data-notif-filter="all">All</button>
-          <button type="button" class="nav-notif-filter" data-notif-filter="unread">Unread</button>
+          <button type="button" class="nav-notif-filter" data-notif-filter="task_assignment">Assignments</button>
+          <button type="button" class="nav-notif-filter" data-notif-filter="submission_update">Submission Updates</button>
+          <button type="button" class="nav-notif-filter" data-notif-filter="deadline_reminder">Reminders</button>
         </div>
       </div>
     `;
@@ -692,7 +694,7 @@
         if (!button) return;
         event.preventDefault();
         event.stopPropagation();
-        listFilter = button.getAttribute('data-notif-filter') === 'unread' ? 'unread' : 'all';
+        listFilter = button.getAttribute('data-notif-filter') || 'all';
         renderList();
       });
     }
@@ -739,7 +741,20 @@
     const api = presentationApi();
     api?.ensureStyles();
     const visible = visiblePanelItems();
-    const shown = (listFilter === 'unread' ? visible.filter((item) => !item.is_read) : visible).slice(0, 30);
+    let filtered;
+    const norm = api?.normalizeFilterKey ? api.normalizeFilterKey(listFilter) : listFilter;
+    if (norm === 'unread') {
+      filtered = visible.filter((item) => !item.is_read);
+    } else if (norm === 'task_assignment') {
+      filtered = visible.filter((item) => (api?.resolveCategory ? api.resolveCategory(item) : item.category) === 'task_assignment');
+    } else if (norm === 'submission_update') {
+      filtered = visible.filter((item) => (api?.resolveCategory ? api.resolveCategory(item) : item.category) === 'submission_update');
+    } else if (norm === 'deadline_reminder') {
+      filtered = visible.filter((item) => (api?.resolveCategory ? api.resolveCategory(item) : item.category) === 'deadline_reminder');
+    } else {
+      filtered = visible;
+    }
+    const shown = filtered.slice(0, 30);
     api?.syncFilters(existingPanel(), listFilter);
     list.dataset.notifFilter = listFilter;
     if (!shown.length) {

@@ -376,7 +376,8 @@
                     return;
                 }
             } else if (isFacultyArea) {
-                const isSharedFacultyReport = currentPath.includes('mfo-report') || currentPath.includes('form-e0');
+                const isMfoReport = currentPath.includes('mfo-report');
+                const isSharedFacultyReport = isMfoReport || currentPath.includes('form-e0');
                 // Administrators should be sent to the admin dashboard, unless viewing/reviewing an MFO or Form E-0 report
                 if (isAdminRole && !isSharedFacultyReport) {
                     window.location.replace(`${prefix}admin/dashboard.html`);

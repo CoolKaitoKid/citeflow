@@ -170,7 +170,7 @@ test('3. Revision and rejected submissions are counted as submitted, separating 
         id: 'task-1',
         title: 'Department Research Output',
         department: 'bsit',
-        deadline_at: '2026-10-31T23:59:59Z'
+        deadline_at: new Date(Date.now() + 14 * 86400000).toISOString()
     };
     const assignments = [
         { id: 'as-1', task_id: 'task-1', faculty_id: 'fac-1' },
@@ -219,7 +219,7 @@ test('4. Draft MFO packets are excluded from formal submission counts', () => {
         id: 'task-mfo',
         title: 'Q1 Major Final Output (MFO) Report',
         department: 'bsit',
-        deadline_at: '2026-10-31T23:59:59Z'
+        deadline_at: new Date(Date.now() + 14 * 86400000).toISOString()
     };
     const assignments = [
         { id: 'as-1', task_id: 'task-mfo', faculty_id: 'fac-1' },
@@ -286,7 +286,7 @@ test('5. Reporting-cycle isolation: submissions in cycle 1 never bleed into cycl
             is_recurring: true,
             reporting_period_label: 'October 2026',
             department: 'bsit',
-            deadline_at: '2026-10-31T23:59:59Z'
+            deadline_at: new Date(Date.now() + 14 * 86400000).toISOString()
         },
         {
             id: 'task-cycle-2',
@@ -449,7 +449,7 @@ test('7. Mathematical invariants hold across department summary and recurring cy
         id: 'task-inv',
         title: 'Department Progress Audit',
         department: 'bsit',
-        deadline_at: '2026-10-31T23:59:59Z'
+        deadline_at: new Date(Date.now() + 14 * 86400000).toISOString()
     };
     const assignments = faculty.map((f, i) => ({ id: `as-${i}`, task_id: 'task-inv', faculty_id: f.id }));
     const submissions = [
@@ -505,7 +505,7 @@ test('8. Realtime refresh without duplicate counts: duplicate assignment events 
         id: 'task-1',
         title: 'Department Report',
         department: 'bsit',
-        deadline_at: '2026-10-31T23:59:59Z'
+        deadline_at: new Date(Date.now() + 14 * 86400000).toISOString()
     };
     // Duplicate assignment records sent by multiple realtime bursts
     const duplicateAssignments = [

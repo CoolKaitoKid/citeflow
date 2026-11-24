@@ -1562,7 +1562,31 @@
                 }
             }
         } else {
-            if (!state.chairFaculty && currentFaculty) {
+            state.reviewerIsAdmin = true;
+            let resolvedChair = null;
+            if (programPacket?.chairperson_faculty_id) {
+                try {
+                    const { data: cRow } = await client.from('faculty').select('*').eq('id', programPacket.chairperson_faculty_id).maybeSingle();
+                    if (cRow) resolvedChair = cRow;
+                } catch (_) {}
+            }
+            if (!resolvedChair && targetDept) {
+                try {
+                    const { data: cRows } = await client.from('faculty')
+                        .select('*')
+                        .or(`department.ilike.%${targetDept}%,department_code.ilike.%${targetDept}%`)
+                        .or('role.ilike.%chair%,position.ilike.%chair%,academic_rank.ilike.%chair%')
+                        .limit(5);
+                    if (cRows && cRows.length > 0) {
+                        resolvedChair = cRows[0];
+                    }
+                } catch (_) {}
+            }
+            if (resolvedChair) {
+                state.chairFaculty = resolvedChair;
+                state.chairName = facultyFullName(resolvedChair) || resolvedChair.full_name || 'Program Chairperson';
+            }
+            if (!state.chairFaculty && currentFaculty && !state.reviewerIsAdmin) {
                 state.chairFaculty = currentFaculty;
             }
             if (!state.faculty && state.chairFaculty) {
@@ -1644,8 +1668,26 @@
             }
 
             const submittingChair = snapshotPayload.submitting_chairperson || {};
-            const chairName = submittingChair.name || submittingChair.full_name || 'Program Chairperson';
-            state.chairFaculty = {
+            let chairName = submittingChair.name || submittingChair.full_name;
+            if (!chairName && state.chairFaculty?.full_name) {
+                chairName = state.chairFaculty.full_name;
+            }
+            if (!chairName && targetDept) {
+                try {
+                    const { data: cRows } = await client.from('faculty')
+                        .select('*')
+                        .or(`department.ilike.%${targetDept}%,department_code.ilike.%${targetDept}%`)
+                        .or('role.ilike.%chair%,position.ilike.%chair%,academic_rank.ilike.%chair%')
+                        .limit(5);
+                    if (cRows && cRows.length > 0) {
+                        chairName = facultyFullName(cRows[0]) || cRows[0].full_name;
+                        if (!state.chairFaculty) state.chairFaculty = cRows[0];
+                    }
+                } catch (_) {}
+            }
+            chairName = chairName || 'Program Chairperson';
+            state.chairName = chairName;
+            state.chairFaculty = state.chairFaculty || {
                 id: submittingChair.id || programPacket?.chairperson_faculty_id || null,
                 full_name: chairName,
                 name: chairName,
@@ -4825,9 +4867,9 @@
         const evidenceCount = Array.isArray(state.files) ? state.files.length : 0;
         const unsubmittedCount = Array.isArray(state.unsubmittedFacultyList) ? state.unsubmittedFacultyList.length : 0;
         root.innerHTML = `<div class="mfo-doc-toolbar mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div><div class="cite-kicker">${state.isCollegeConsolidated ? 'College-Wide Consolidated MFO Report (All Programs: BSIT · BSIE · BIT)' : (state.isConsolidated ? 'Department Consolidated MFO Report' : (state.reviewerMode ? 'Submitted report (read-only)' : 'Completed report'))}</div>
+            <div><div class="cite-kicker">${state.isCollegeConsolidated ? 'College-Wide Consolidated MFO Report (All Programs: BSIT · BSIE · BIT)' : (state.isConsolidated ? (state.isFinalApprover || state.reviewerIsAdmin ? 'Department Consolidated MFO Report — Dean\'s Review' : 'Department Consolidated MFO Report') : (state.reviewerMode ? (state.reviewerIsAdmin ? 'Individual Faculty MFO Report (Dean\'s Review)' : 'Submitted report (read-only)') : 'Completed report'))}</div>
             <h1 class="cite-title">MFO Accomplishment Report</h1>
-            <p class="cite-subtitle">${esc(statusLabel())}${state.isConsolidated ? ` · ${esc(state.chairFaculty?.full_name || '')} (${esc(profile.department || '')})` : (state.reviewerMode ? ` · ${esc(state.faculty.full_name || '')}` : (state.previewPdfUrl ? ' · generated PDF' : ' · reflects the last saved values.'))}</p></div>
+            <p class="cite-subtitle">${esc(statusLabel())}${state.isConsolidated ? (state.isFinalApprover || state.reviewerIsAdmin ? ` · Department: ${esc(profile.department || state.task?.department || '')} · Chairperson: ${esc(state.chairName || state.chairFaculty?.full_name || 'Program Chairperson')}` : ` · ${esc(state.chairFaculty?.full_name || '')} (${esc(profile.department || '')})`) : (state.reviewerMode ? ` · ${esc(state.faculty.full_name || '')}` : (state.previewPdfUrl ? ' · generated PDF' : ' · reflects the last saved values.'))}</p></div>
             <div class="flex flex-wrap items-center gap-2">
                 ${state.isConsolidated
                     ? `<button type="button" class="cite-action" onclick="if (history.length > 1) history.back(); else location.href = '${state.isFinalApprover ? '../admin/workflow-approval.html' : 'submissions.html#chair-review'}';">← Back</button>`

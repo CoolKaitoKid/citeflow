@@ -428,8 +428,8 @@ registerTest('1.8 Auth Guard: Allows Admins on faculty/mfo-report.html without r
         'auth-guard.js must detect mfo-report in currentPath'
     );
     assert.ok(
-        authGuardCode.includes("if (isAdminRole && !isMfoReport) {"),
-        'auth-guard.js must only redirect admin to admin/dashboard.html if not on mfo-report'
+        authGuardCode.includes("if (isAdminRole && !isSharedFacultyReport) {") || authGuardCode.includes("if (isAdminRole && !isMfoReport) {"),
+        'auth-guard.js must only redirect admin to admin/dashboard.html if not on mfo-report or shared faculty report'
     );
 
     // Simulate auth guard routing decision in isolated logic
@@ -438,7 +438,8 @@ registerTest('1.8 Auth Guard: Allows Admins on faculty/mfo-report.html without r
         let redirectedTo = null;
         if (isFacultyArea) {
             const isMfoReport = currentPath.includes('mfo-report');
-            if (isAdminRole && !isMfoReport) {
+            const isSharedFacultyReport = isMfoReport || currentPath.includes('form-e0');
+            if (isAdminRole && !isSharedFacultyReport) {
                 redirectedTo = '../admin/dashboard.html';
             }
         }
